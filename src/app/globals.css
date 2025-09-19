@@ -3,15 +3,13 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  
-  /* AccentCRM Custom Colors */
-  --accent-primary: #64126D;
-  --accent-secondary: #86288F;
-  --accent-white: #FFFFFF;
-  --accent-primary-light: #7d1a84;
-  --accent-primary-dark: #4e0e57;
-  --accent-secondary-light: #9e3aa6;
-  --accent-secondary-dark: #6f2078;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,89 +17,6 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-/* AccentCRM Custom Utility Classes */
-.bg-accent-primary {
-  background-color: var(--accent-primary);
-}
-
-.bg-accent-secondary {
-  background-color: var(--accent-secondary);
-}
-
-.bg-accent-primary-light {
-  background-color: var(--accent-primary-light);
-}
-
-.bg-accent-primary-dark {
-  background-color: var(--accent-primary-dark);
-}
-
-.bg-accent-secondary-light {
-  background-color: var(--accent-secondary-light);
-}
-
-.bg-accent-secondary-dark {
-  background-color: var(--accent-secondary-dark);
-}
-
-.text-accent-primary {
-  color: var(--accent-primary);
-}
-
-.text-accent-secondary {
-  color: var(--accent-secondary);
-}
-
-.text-accent-white {
-  color: var(--accent-white);
-}
-
-.border-accent-primary {
-  border-color: var(--accent-primary);
-}
-
-.border-accent-secondary {
-  border-color: var(--accent-secondary);
-}
-
-.ring-accent-primary {
-  --tw-ring-color: var(--accent-primary);
-}
-
-.ring-accent-secondary {
-  --tw-ring-color: var(--accent-secondary);
-}
-
-.hover\:bg-accent-primary-light:hover {
-  background-color: var(--accent-primary-light);
-}
-
-.hover\:bg-accent-secondary-light:hover {
-  background-color: var(--accent-secondary-light);
-}
-
-.focus\:ring-accent-primary:focus {
-  --tw-ring-color: var(--accent-primary);
-}
-
-.focus\:ring-accent-secondary:focus {
-  --tw-ring-color: var(--accent-secondary);
-}
-
-.focus\:border-accent-primary:focus {
-  border-color: var(--accent-primary);
-}
-
-.focus\:border-accent-secondary:focus {
-  border-color: var(--accent-secondary);
 }
 
 body {

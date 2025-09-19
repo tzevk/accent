@@ -1,4 +1,4 @@
-import { dbConnect } from '@/utils/database'
+import { connectToDatabase } from '../../../../lib/db';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -12,11 +12,11 @@ export async function POST(request) {
       );
     }
 
-    const connection = await dbConnect();
+    const connection = await connectToDatabase();
     
     // Query to fetch user with username and password
     const [rows] = await connection.execute(
-      'SELECT username, password_hash FROM users WHERE username = ? AND password_hash = ?',
+      'SELECT username, password FROM users WHERE username = ? AND password = ?',
       [username, password]
     );
 

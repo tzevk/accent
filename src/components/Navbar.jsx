@@ -7,6 +7,7 @@ import {
   DocumentTextIcon, 
   UserGroupIcon, 
   BriefcaseIcon,
+  BuildingOfficeIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
   { name: 'Proposals', href: '/proposals', icon: DocumentTextIcon },
   { name: 'Leads', href: '/leads', icon: UserGroupIcon },
+  { name: 'Company', href: '/company', icon: BuildingOfficeIcon },
   { name: 'Projects', href: '/projects', icon: BriefcaseIcon },
   { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
 ];

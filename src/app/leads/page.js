@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   PlusIcon, 
   UserGroupIcon,
@@ -18,6 +19,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function Leads() {
+  const router = useRouter();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({});
@@ -27,7 +29,9 @@ export default function Leads() {
   const [cityFilter, setCityFilter] = useState('');
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
+  const [companies, setCompanies] = useState([]);
   const [formData, setFormData] = useState({
+    company_id: '',
     company_name: '',
     contact_name: '',
     contact_email: '',
@@ -68,7 +72,21 @@ export default function Leads() {
     }
   };
 
+  const fetchCompanies = async () => {
+    try {
+      const response = await fetch('/api/companies');
+      const result = await response.json();
+      
+      if (result.success) {
+        setCompanies(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    }
+  };
+
   useEffect(() => {
+    fetchCompanies(); // Fetch companies on component mount
     if (activeTab === 'list') {
       fetchLeads();
     }
@@ -93,6 +111,7 @@ export default function Leads() {
       if (result.success) {
         // Reset form
         setFormData({
+          company_id: '',
           company_name: '',
           contact_name: '',
           contact_email: '',
@@ -126,6 +145,17 @@ export default function Leads() {
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+
+  const handleCompanyChange = (e) => {
+    const selectedCompanyId = e.target.value;
+    const selectedCompany = companies.find(company => company.id.toString() === selectedCompanyId);
+    
+    setFormData(prev => ({
+      ...prev,
+      company_id: selectedCompanyId,
+      company_name: selectedCompany ? selectedCompany.company_name : ''
     }));
   };
 
@@ -458,20 +488,14 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
                         <button 
-                          onClick={() => {
-                            // View functionality - could navigate to lead detail page
-                            alert(`View details for ${lead.company_name}`);
-                          }}
+                          onClick={() => router.push(`/leads/${lead.id}`)}
                           className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
                           title="View Details"
                         >
                           <EyeIcon className="h-4 w-4" />
                         </button>
                         <button 
-                          onClick={() => {
-                            // Edit functionality - could switch to edit mode or navigate to edit page
-                            alert(`Edit lead for ${lead.company_name}`);
-                          }}
+                          onClick={() => router.push(`/leads/${lead.id}/edit`)}
                           className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
                           title="Edit Lead"
                         >
@@ -536,17 +560,31 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
             {/* Company Information */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Company Name *
+                Company *
               </label>
-              <input
-                type="text"
-                name="company_name"
-                value={formData.company_name}
-                onChange={handleFormChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Enter company name"
-              />
+              <div className="space-y-2">
+                <select
+                  name="company_id"
+                  value={formData.company_id}
+                  onChange={handleCompanyChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                >
+                  <option value="">Select a company</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.company_name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  name="company_name"
+                  value={formData.company_name}
+                  onChange={handleFormChange}
+                  placeholder="Or enter new company name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                />
+              </div>
             </div>
             
             <div>
@@ -719,18 +757,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-300 bg-white rounded-b-lg -m-3 p-3">
-            <button
-              type="button"
-              onClick={() => {
-                // Quick add functionality - could open a modal or navigate to company creation
-                alert('Quick Add Company feature - to be implemented');
-              }}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium"
-            >
-              + Quick Add Company
-            </button>
-            
+          <div className="flex justify-end items-center pt-4 mt-4 border-t border-gray-300 bg-white rounded-b-lg -m-3 p-3">
             <div className="flex space-x-3">
               <button
                 type="button"

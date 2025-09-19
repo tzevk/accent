@@ -1,55 +1,6 @@
-# Accent - Lead Management System
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-A modern lead management system built with Next.js 15, featuring a comprehensive dashboard for managing business leads with tabbed interface, Excel import/export capabilities, and full CRUD operations.
-
-## 🚀 Features
-
-- **📊 Dashboard Interface** - Clean, modern UI with navigation and statistics
-- **📋 Lead Management** - Complete CRUD operations for lead data
-- **📁 Tabbed Interface** - Switch between leads list and add lead form
-- **📤 Excel Import/Export** - Upload leads via CSV/Excel files and download templates
-- **🔍 Search & Filter** - Find leads by company name, status, city, etc.
-- **📱 Responsive Design** - Works on desktop and mobile devices
-- **🎯 Action Buttons** - View, Edit, and Delete operations with icon-based UI
-- **📈 Statistics Cards** - Real-time stats for total, active, and won leads
-
-## 🛠️ Tech Stack
-
-- **Frontend**: Next.js 15.5.3 with Turbopack
-- **Styling**: Tailwind CSS
-- **Icons**: Heroicons
-- **Database**: MySQL with mysql2
-- **Environment**: Node.js with dotenv
-
-## 📦 Installation
-
-1. Clone the repository:
-```bash
-git clone [your-repo-url]
-cd accent
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Set up environment variables:
-Create a `.env.local` file with your database configuration:
-```env
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=your_database_name
-DB_USER=your_username
-DB_PASSWORD=your_password
-```
-
-4. Set up the database:
-```bash
-node setup-leads.js
-```
-
-## 🚀 Getting Started
+## Getting Started
 
 First, run the development server:
 

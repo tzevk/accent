@@ -14,7 +14,7 @@ export async function POST(req) {
     const db = await dbConnect()
     
     const [rows] = await db.execute(
-      'SELECT * FROM users WHERE username = ? AND password_hash = ?',
+      'SELECT * FROM users WHERE username = ? AND password = ?',
       [username, password]
     )
     
