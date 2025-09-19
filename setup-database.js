@@ -1,4 +1,8 @@
+import dotenv from 'dotenv';
 import { dbConnect } from './src/utils/database.js';
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
 
 async function setupDatabase() {
   try {
@@ -19,6 +23,36 @@ async function setupDatabase() {
       )
     `);
     console.log('✓ Companies table created successfully');
+
+    // Create users table for authentication
+    console.log('Creating users table...');
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_username (username)
+      )
+    `);
+    console.log('✓ Users table created successfully');
+
+    // Check if users table has the right structure
+    const [tableInfo] = await db.execute('DESCRIBE users');
+    console.log('Users table structure:', tableInfo.map(col => col.Field));
+
+    // Insert default admin user if it doesn't exist
+    console.log('Checking for default admin user...');
+    const [existingUsers] = await db.execute('SELECT COUNT(*) as count FROM users WHERE username = ?', ['admin']);
+    
+    if (existingUsers[0].count === 0) {
+      await db.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)', 
+        ['admin', 'admin123', 'admin@example.com']);
+      console.log('✓ Default admin user created (username: admin, password: admin123)');
+    } else {
+      console.log('✓ Admin user already exists');
+    }
 
     // Create proposals table with proper foreign key relationship
     console.log('Creating proposals table...');

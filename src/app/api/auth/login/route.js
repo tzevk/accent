@@ -16,7 +16,7 @@ export async function POST(request) {
     
     // Query to fetch user with username and password
     const [rows] = await db.execute(
-      'SELECT username, password FROM users WHERE username = ? AND password = ?',
+      'SELECT username, password_hash FROM users WHERE username = ? AND password_hash = ?',
       [username, password]
     );
 
