@@ -7,6 +7,7 @@ import {
   UserGroupIcon,
   DocumentTextIcon,
   BuildingOfficeIcon,
+  FolderIcon,
   ChartBarIcon,
   PlusIcon,
   EyeIcon
@@ -14,9 +15,10 @@ import {
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
-    leads: { total: 0, under_discussion: 0, proposal_sent: 0, closed_won: 0 },
+    leads: { total_leads: 0, under_discussion: 0, proposal_sent: 0, closed_won: 0 },
     proposals: { total: 0, pending: 0, approved: 0, draft: 0 },
-    companies: { total: 0 }
+    companies: { total: 0 },
+    projects: { total: 0, in_progress: 0, completed: 0 }
   });
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +42,11 @@ export default function Dashboard() {
       const companiesResponse = await fetch('/api/companies');
       const companiesData = await companiesResponse.json();
       
-      if (leadsData.success && proposalsData.success && companiesData.success) {
+      // Fetch projects stats
+      const projectsResponse = await fetch('/api/projects');
+      const projectsData = await projectsResponse.json();
+      
+      if (leadsData.success && proposalsData.success && companiesData.success && projectsData.success) {
         // Calculate proposal stats
         const proposals = proposalsData.data || [];
         const proposalStats = {
@@ -50,10 +56,19 @@ export default function Dashboard() {
           draft: proposals.filter(p => p.status === 'draft').length
         };
         
+        // Calculate project stats
+        const projects = projectsData.data || [];
+        const projectStats = {
+          total: projects.length,
+          in_progress: projects.filter(p => p.status === 'in-progress').length,
+          completed: projects.filter(p => p.status === 'completed').length
+        };
+        
         setStats({
           leads: leadsData.data?.stats || { total_leads: 0, under_discussion: 0, active_leads: 0, closed_won: 0 },
           proposals: proposalStats,
-          companies: { total: companiesData.data?.length || 0 }
+          companies: { total: companiesData.data?.length || 0 },
+          projects: projectStats
         });
       }
     } catch (error) {
@@ -76,7 +91,7 @@ export default function Dashboard() {
           </div>
 
         {/* Quick Stats Cards */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
           {/* Leads Card */}
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
@@ -168,6 +183,38 @@ export default function Dashboard() {
                 <Link href="/company" className="font-medium text-purple-600 hover:text-purple-500 flex items-center">
                   <EyeIcon className="h-4 w-4 mr-1" />
                   View companies
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Projects Card */}
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <FolderIcon className="h-6 w-6 text-indigo-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Projects
+                    </dt>
+                    <dd className="text-lg font-semibold text-gray-900">
+                      {loading ? '...' : stats.projects.total}
+                    </dd>
+                    <dd className="text-sm text-gray-600">
+                      {loading ? '' : `${stats.projects.in_progress} active, ${stats.projects.completed} completed`}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-5 py-3">
+              <div className="text-sm">
+                <Link href="/projects" className="font-medium text-indigo-600 hover:text-indigo-500 flex items-center">
+                  <EyeIcon className="h-4 w-4 mr-1" />
+                  View projects
                 </Link>
               </div>
             </div>

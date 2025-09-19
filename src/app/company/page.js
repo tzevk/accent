@@ -271,10 +271,10 @@ export default function Company() {
 
           {/* Tabs */}
           <div className="mb-6">
-            <nav className="flex space-x-8" aria-label="Tabs">
+            <nav className="flex space-x-8 border-b border-gray-200" aria-label="Tabs">
               <button
                 onClick={() => setActiveTab('list')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'list'
                     ? 'border-accent-primary text-accent-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -284,7 +284,7 @@ export default function Company() {
               </button>
               <button
                 onClick={() => setActiveTab('add')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'add'
                     ? 'border-accent-primary text-accent-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -294,7 +294,7 @@ export default function Company() {
               </button>
               <button
                 onClick={() => setActiveTab('import')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'import'
                     ? 'border-accent-primary text-accent-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -687,7 +687,7 @@ export default function Company() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="bg-accent-primary hover:bg-accent-primary/90 text-white px-4 py-1.5 rounded-md transition-colors disabled:opacity-50 flex items-center space-x-1 text-xs"
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-md transition-colors disabled:opacity-50 flex items-center space-x-1 text-xs"
                     >
                       <PlusIcon className="h-3 w-3" />
                       <span>{submitting ? 'Adding...' : 'Add Company'}</span>
@@ -697,15 +697,15 @@ export default function Company() {
               </div>
             ) : (
               /* Import from Excel/CSV Tab */
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-6">Import Companies from Excel or CSV</h3>
+              <div className="bg-white rounded-lg border border-gray-200 p-8 w-full">
+                <h3 className="text-xl font-medium text-gray-900 mb-8">Import Companies from Excel or CSV</h3>
                 
-                <div className="space-y-6">
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                <div className="space-y-8">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-12">
                     <div className="text-center">
-                      <DocumentArrowUpIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">Upload File</h4>
-                      <p className="text-gray-600 mb-4">
+                      <DocumentArrowUpIcon className="h-20 w-20 text-gray-400 mx-auto mb-6" />
+                      <h4 className="text-2xl font-medium text-gray-900 mb-4">Upload File</h4>
+                      <p className="text-gray-600 mb-8 max-w-2xl mx-auto text-lg">
                         Select an Excel file (.xlsx or .xls) or CSV file (.csv) containing company information
                       </p>
                       
@@ -719,41 +719,53 @@ export default function Company() {
                       />
                       <label
                         htmlFor="file-upload"
-                        className={`bg-accent-primary hover:bg-accent-primary/90 text-white px-6 py-3 rounded-md inline-flex items-center space-x-2 transition-colors cursor-pointer ${
+                        className={`bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg inline-flex items-center space-x-3 transition-colors cursor-pointer text-base font-medium ${
                           importing ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       >
-                        <DocumentArrowUpIcon className="h-5 w-5" />
+                        <DocumentArrowUpIcon className="h-6 w-6" />
                         <span>{importing ? 'Importing...' : 'Choose File'}</span>
                       </label>
                     </div>
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="text-sm font-medium text-blue-900 mb-2">File Format Requirements:</h4>
-                    <div className="space-y-3">
-                      <div>
-                        <h5 className="text-xs font-medium text-blue-900 mb-1">Excel Files (.xlsx, .xls):</h5>
-                        <ul className="text-sm text-blue-800 space-y-1 ml-2">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-8">
+                    <h4 className="text-lg font-medium text-blue-900 mb-6">File Format Requirements:</h4>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      <div className="bg-white rounded-lg p-6 border border-blue-100">
+                        <h5 className="text-base font-semibold text-blue-900 mb-4 flex items-center">
+                          📊 Excel Files (.xlsx, .xls):
+                        </h5>
+                        <ul className="text-sm text-blue-800 space-y-2 ml-2">
                           <li>• Column A: Company ID (optional - unique identifier)</li>
                           <li>• Column B: Company Name (required)</li>
+                          <li>• Simple 2-column format for basic imports</li>
+                          <li>• Perfect for quick bulk company additions</li>
                         </ul>
                       </div>
-                      <div>
-                        <h5 className="text-xs font-medium text-blue-900 mb-1">CSV Files (.csv):</h5>
-                        <ul className="text-sm text-blue-800 space-y-1 ml-2">
+                      <div className="bg-white rounded-lg p-6 border border-blue-100">
+                        <h5 className="text-base font-semibold text-blue-900 mb-4 flex items-center">
+                          📄 CSV Files (.csv):
+                        </h5>
+                        <ul className="text-sm text-blue-800 space-y-2 ml-2">
                           <li>• Supports flexible column names (company_id, Company_ID, ID, etc.)</li>
                           <li>• Required: Company ID and Company Name columns</li>
                           <li>• Optional: All other company fields will be imported if present</li>
+                          <li>• Industry, size, contact info, and more supported</li>
                         </ul>
                       </div>
                     </div>
-                    <p className="text-xs text-blue-700 mt-2">
-                      * First row should contain headers. CSV format supports importing all available fields.
-                    </p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      * Additional company details can be added manually after import.
-                    </p>
+                    <div className="mt-4 pt-4 border-t border-blue-200">
+                      <p className="text-sm text-blue-700 font-medium mb-1">
+                        📝 Import Notes:
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        • First row should contain headers. CSV format supports importing all available fields.
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        • Additional company details can be added manually after import.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
