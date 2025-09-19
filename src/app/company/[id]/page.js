@@ -7,10 +7,10 @@ import {
   ArrowLeftIcon,
   BuildingOfficeIcon,
   PencilIcon,
-  GlobeAltIcon,
   PhoneIcon,
   EnvelopeIcon,
-  MapPinIcon
+  LinkIcon,
+  MapIcon
 } from '@heroicons/react/24/outline';
 
 export default function CompanyView({ params }) {
@@ -181,7 +181,7 @@ export default function CompanyView({ params }) {
                 <div className="space-y-4">
                   {company.website && (
                     <div className="flex items-center space-x-3">
-                      <GlobeAltIcon className="h-5 w-5 text-gray-400" />
+                      <LinkIcon className="h-5 w-5 text-gray-400" />
                       <div>
                         <label className="block text-sm font-medium text-gray-700">
                           Website
@@ -234,7 +234,7 @@ export default function CompanyView({ params }) {
 
                   {(company.address || company.city || company.state || company.country) && (
                     <div className="flex items-start space-x-3">
-                      <MapPinIcon className="h-5 w-5 text-gray-400 mt-0.5" />
+                      <MapIcon className="h-5 w-5 text-gray-400 mt-0.5" />
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Address

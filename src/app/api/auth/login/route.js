@@ -1,4 +1,4 @@
-import { connectToDatabase } from '../../../../lib/db';
+import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
@@ -12,15 +12,15 @@ export async function POST(request) {
       );
     }
 
-    const connection = await connectToDatabase();
+    const db = await dbConnect();
     
     // Query to fetch user with username and password
-    const [rows] = await connection.execute(
+    const [rows] = await db.execute(
       'SELECT username, password FROM users WHERE username = ? AND password = ?',
       [username, password]
     );
 
-    await connection.end();
+    await db.end();
 
     if (rows.length > 0) {
       return NextResponse.json(
