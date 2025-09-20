@@ -691,9 +691,9 @@ export default function Company() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-md transition-colors disabled:opacity-50 flex items-center space-x-1 text-xs"
+                      className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl transition-all duration-300 disabled:opacity-50 flex items-center space-x-2 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-1"
                     >
-                      <PlusIcon className="h-3 w-3" />
+                      <PlusIcon className="h-5 w-5" />
                       <span>{submitting ? 'Adding...' : 'Add Company'}</span>
                     </button>
                   </div>
