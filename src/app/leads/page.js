@@ -27,6 +27,8 @@ export default function Leads() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [sortBy, setSortBy] = useState('enquiry_date');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
   const [companies, setCompanies] = useState([]);
@@ -53,6 +55,8 @@ export default function Leads() {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '20',
+        sortBy: sortBy,
+        sortOrder: sortOrder,
         ...(searchTerm && { search: searchTerm }),
         ...(statusFilter && { status: statusFilter }),
         ...(cityFilter && { city: cityFilter })
@@ -91,7 +95,7 @@ export default function Leads() {
       fetchLeads();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchTerm, statusFilter, cityFilter, activeTab]);
+  }, [currentPage, searchTerm, statusFilter, cityFilter, sortBy, sortOrder, activeTab]);
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -383,6 +387,25 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
               <option value="Kolkata">Kolkata</option>
             </select>
           </div>
+
+          <div className="sm:w-48">
+            <select
+              value={`${sortBy}-${sortOrder}`}
+              onChange={(e) => {
+                const [field, order] = e.target.value.split('-');
+                setSortBy(field);
+                setSortOrder(order);
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            >
+              <option value="enquiry_date-desc">Date: Newest First</option>
+              <option value="enquiry_date-asc">Date: Oldest First</option>
+              <option value="created_at-desc">Recently Added</option>
+              <option value="company_name-asc">Company A-Z</option>
+              <option value="company_name-desc">Company Z-A</option>
+              <option value="enquiry_status-asc">Status A-Z</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -407,6 +430,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Sr
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Company & Contact
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -424,8 +450,13 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {leads.map((lead) => (
+                {leads.map((lead, index) => (
                   <tr key={lead.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {(currentPage - 1) * 20 + index + 1}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">

@@ -9,6 +9,8 @@ export async function GET(request) {
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
     const city = searchParams.get('city') || '';
+    const sortBy = searchParams.get('sortBy') || 'created_at';
+    const sortOrder = searchParams.get('sortOrder') || 'desc';
     
     const offset = (page - 1) * limit;
     
@@ -40,11 +42,16 @@ export async function GET(request) {
     
     const total = countRows[0].total;
     
+    // Validate and sanitize sort parameters
+    const allowedSortFields = ['created_at', 'enquiry_date', 'company_name', 'contact_name', 'enquiry_status'];
+    const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
+    const validSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    
     // Get paginated results
     const [rows] = await db.execute(`
       SELECT * FROM leads 
       ${whereClause}
-      ORDER BY created_at DESC 
+      ORDER BY ${validSortBy} ${validSortOrder}
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
     

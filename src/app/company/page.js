@@ -346,7 +346,7 @@ export default function Company() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Company ID
+                            Sr
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Company Name
@@ -369,11 +369,11 @@ export default function Company() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {companies.map((company) => (
+                        {companies.map((company, index) => (
                           <tr key={company.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-blue-600">
-                                {company.company_id || '-'}
+                              <div className="text-sm font-medium text-gray-900">
+                                {index + 1}
                               </div>
                             </td>
                             <td className="px-6 py-4">
