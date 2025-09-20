@@ -57,6 +57,28 @@ function normalizePriority(priorityString) {
   }
 }
 
+// Helper function to normalize phone numbers
+function normalizePhone(phoneString) {
+  if (!phoneString || phoneString.trim() === '') return '';
+  
+  // Remove all non-digit characters except + at the beginning
+  let cleaned = phoneString.trim().replace(/[^\d+]/g, '');
+  
+  // If it starts with +, keep the + and following digits
+  if (cleaned.startsWith('+')) {
+    cleaned = '+' + cleaned.substring(1).replace(/[^\d]/g, '');
+  }
+  
+  // Limit to 20 characters (adjust based on your database column size)
+  return cleaned.substring(0, 20);
+}
+
+// Helper function to normalize text fields with length limits
+function normalizeText(text, maxLength = 255) {
+  if (!text || text.trim() === '') return '';
+  return text.trim().substring(0, maxLength);
+}
+
 export async function POST(request) {
   try {
     const formData = await request.formData();
@@ -129,31 +151,31 @@ async function importLeadsFromCSV(file) {
           const lowerHeader = header.toLowerCase();
           
           if (lowerHeader.includes('company')) {
-            leadData.company_name = value;
+            leadData.company_name = normalizeText(value, 255);
           } else if (lowerHeader.includes('contact') && lowerHeader.includes('name')) {
-            leadData.contact_name = value;
+            leadData.contact_name = normalizeText(value, 255);
           } else if (lowerHeader.includes('email')) {
-            leadData.contact_email = value;
+            leadData.contact_email = normalizeText(value, 255);
           } else if (lowerHeader.includes('phone')) {
-            leadData.phone = value;
+            leadData.phone = normalizePhone(value);
           } else if (lowerHeader.includes('city')) {
-            leadData.city = value;
+            leadData.city = normalizeText(value, 100);
           } else if (lowerHeader.includes('project') || lowerHeader.includes('description')) {
-            leadData.project_description = value;
+            leadData.project_description = normalizeText(value, 1000);
           } else if (lowerHeader.includes('enquiry') && lowerHeader.includes('type')) {
-            leadData.enquiry_type = value;
+            leadData.enquiry_type = normalizeText(value, 100);
           } else if (lowerHeader.includes('status')) {
-            leadData.enquiry_status = value;
+            leadData.enquiry_status = normalizeText(value, 100);
           } else if (lowerHeader.includes('date')) {
             leadData.enquiry_date = formatDateForMySQL(value);
           } else if (lowerHeader.includes('source')) {
-            leadData.lead_source = value;
+            leadData.lead_source = normalizeText(value, 255);
           } else if (lowerHeader.includes('priority')) {
             const normalizedPriority = normalizePriority(value);
             console.log(`Row ${i + 1}: Original priority "${value}" -> Normalized: "${normalizedPriority}"`);
             leadData.priority = normalizedPriority;
           } else if (lowerHeader.includes('notes')) {
-            leadData.notes = value;
+            leadData.notes = normalizeText(value, 1000);
           }
         });
 

@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "clear-leads": "node scripts/clear-leads.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
