@@ -9,27 +9,103 @@ import {
   UserGroupIcon, 
   BriefcaseIcon,
   BuildingOfficeIcon,
-  Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   XMarkIcon,
   UserCircleIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  UsersIcon,
+  MapPinIcon,
+  DocumentDuplicateIcon,
+  CogIcon
 } from '@heroicons/react/24/outline';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Proposals', href: '/proposals', icon: DocumentTextIcon },
   { name: 'Leads', href: '/leads', icon: UserGroupIcon },
-  { name: 'Company', href: '/company', icon: BuildingOfficeIcon },
+  { name: 'Proposals', href: '/proposals', icon: DocumentTextIcon },
   { name: 'Projects', href: '/projects', icon: BriefcaseIcon },
-  { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
+];
+
+const mastersNavigation = [
+  {
+    category: 'User & Role Masters',
+    items: [
+      { name: 'User Master', href: '/masters/users', icon: UsersIcon },
+      { name: 'Role/Permission Master', href: '/masters/roles', icon: CogIcon },
+    ]
+  },
+  {
+    category: 'Client & Contact Masters', 
+    items: [
+      { name: 'Client Master', href: '/company', icon: BuildingOfficeIcon },
+      { name: 'Contact Master', href: '/masters/contacts', icon: UserCircleIcon },
+    ]
+  },
+  {
+    category: 'Lead & Opportunity Masters',
+    items: [
+      { name: 'Lead Master', href: '/leads', icon: UserGroupIcon },
+      { name: 'Opportunity Master', href: '/masters/opportunities', icon: DocumentTextIcon },
+    ]
+  },
+  {
+    category: 'Project/Proposal Masters',
+    items: [
+      { name: 'Proposal Master', href: '/proposals', icon: DocumentTextIcon },
+      { name: 'Project Master', href: '/projects', icon: BriefcaseIcon },
+    ]
+  },
+  {
+    category: 'Employee/HR Masters',
+    items: [
+      { name: 'Employee Master', href: '/masters/employees', icon: UsersIcon },
+      { name: 'Department Master', href: '/masters/departments', icon: BuildingOfficeIcon },
+      { name: 'Designation Master', href: '/masters/designations', icon: CogIcon },
+    ]
+  },
+  {
+    category: 'Product/Service Masters',
+    items: [
+      { name: 'Product/Service Master', href: '/masters/products', icon: DocumentDuplicateIcon },
+      { name: 'Pricing/Rate Master', href: '/masters/pricing', icon: CogIcon },
+    ]
+  },
+  {
+    category: 'Location & Geography Masters',
+    items: [
+      { name: 'Location Master', href: '/masters/locations', icon: MapPinIcon },
+      { name: 'Region/Zones Master', href: '/masters/regions', icon: MapPinIcon },
+    ]
+  },
+  {
+    category: 'Activity & Communication Masters',
+    items: [
+      { name: 'Activity Master', href: '/masters/activities', icon: DocumentTextIcon },
+      { name: 'Campaign Master', href: '/masters/campaigns', icon: DocumentDuplicateIcon },
+    ]
+  },
+  {
+    category: 'Document Masters',
+    items: [
+      { name: 'Document Master', href: '/masters/documents', icon: DocumentDuplicateIcon },
+    ]
+  },
+  {
+    category: 'Utility/Configuration Masters',
+    items: [
+      { name: 'Settings Master', href: '/masters/settings', icon: CogIcon },
+      { name: 'Status Master', href: '/masters/status', icon: CogIcon },
+      { name: 'Source Master', href: '/masters/sources', icon: CogIcon },
+    ]
+  }
 ];
 
 export default function Navbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isMastersMenuOpen, setIsMastersMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   // Handle scroll effect
@@ -136,6 +212,58 @@ export default function Navbar() {
                   </Link>
                 );
               })}
+              
+              {/* Masters Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsMastersMenuOpen(!isMastersMenuOpen)}
+                  className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden text-white/90 hover:text-white`}
+                  style={{ background: 'transparent' }}
+                  onMouseEnter={(e) => {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.background = 'transparent';
+                  }}
+                >
+                  <CogIcon className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
+                  <span className="font-medium">Masters</span>
+                  <svg
+                    className={`ml-1 h-4 w-4 transition-transform ${
+                      isMastersMenuOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {isMastersMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-3 p-6">
+                      {mastersNavigation.map((master) => (
+                        <div key={master.category} className="space-y-2">
+                          <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide border-b border-gray-100 pb-1">
+                            {master.category}
+                          </h3>
+                          {master.items.map((item) => (
+                            <Link
+                              key={item.name}
+                              href={item.href}
+                              className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-900 rounded-lg transition-colors"
+                              onClick={() => setIsMastersMenuOpen(false)}
+                            >
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.name}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Profile Menu and Mobile Button */}
@@ -222,6 +350,55 @@ export default function Navbar() {
                 );
               })}
               
+              {/* Mobile Masters Section */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => setIsMastersMenuOpen(!isMastersMenuOpen)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-all duration-200"
+                >
+                  <div className="flex items-center space-x-3">
+                    <CogIcon className="h-5 w-5" />
+                    <span>Masters</span>
+                  </div>
+                  <svg
+                    className={`h-4 w-4 transition-transform ${
+                      isMastersMenuOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {isMastersMenuOpen && (
+                  <div className="pl-4 space-y-1">
+                    {mastersNavigation.map((master) => (
+                      <div key={master.category} className="space-y-1">
+                        <h4 className="text-xs font-semibold text-white/70 uppercase tracking-wide px-4 py-1">
+                          {master.category}
+                        </h4>
+                        {master.items.map((item) => (
+                          <Link
+                            key={item.name}
+                            href={item.href}
+                            className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
+                            onClick={() => {
+                              setIsMastersMenuOpen(false);
+                              setIsMobileMenuOpen(false);
+                            }}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.name}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
               {/* Mobile Profile Section */}
               <div className="pt-4 mt-4 border-t border-white/20">
                 <div className="flex items-center space-x-3 px-4 py-2 text-white/90">
@@ -257,6 +434,14 @@ export default function Navbar() {
         <div 
           className="fixed inset-0 z-40 hidden md:block"
           onClick={() => setIsProfileMenuOpen(false)}
+        />
+      )}
+
+      {/* Overlay for masters menu */}
+      {isMastersMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 hidden md:block"
+          onClick={() => setIsMastersMenuOpen(false)}
         />
       )}
     </>

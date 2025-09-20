@@ -15,6 +15,7 @@ export async function GET() {
         description TEXT NOT NULL,
         status VARCHAR(50) DEFAULT 'Scheduled',
         next_action VARCHAR(255),
+        next_follow_up_date DATE,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -56,13 +57,14 @@ export async function POST(request) {
       description,
       status,
       next_action,
+      next_follow_up_date,
       notes
     } = data;
 
-    if (!lead_id || !follow_up_date || !follow_up_type || !description) {
+    if (!lead_id || !follow_up_date || !follow_up_type || !description || !next_follow_up_date) {
       return Response.json({ 
         success: false, 
-        error: 'Lead ID, follow-up date, type, and description are required' 
+        error: 'Lead ID, follow-up date, type, description, and next follow-up date are required' 
       }, { status: 400 });
     }
 
@@ -72,11 +74,11 @@ export async function POST(request) {
     const [result] = await db.execute(
       `INSERT INTO follow_ups (
         lead_id, follow_up_date, follow_up_type, description, 
-        status, next_action, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        status, next_action, next_follow_up_date, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         lead_id, follow_up_date, follow_up_type, description,
-        status || 'Scheduled', next_action || '', notes || ''
+        status || 'Scheduled', next_action || '', next_follow_up_date || null, notes || ''
       ]
     );
     
