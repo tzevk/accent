@@ -258,80 +258,81 @@ export default function Company() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full px-8 pt-22">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-accent-primary">Companies</h1>
-            <p className="text-gray-600">Manage your company database</p>
-          </div>
+      <div className="px-4 sm:px-6 lg:px-8 py-8 mt-16">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Companies</h1>
+          <p className="text-gray-600">Manage your company database efficiently</p>
+        </div>
 
-          {/* Tabs */}
-          <div className="mb-6">
-            <nav className="flex space-x-8 border-b border-gray-200" aria-label="Tabs">
+        {/* Tabs */}
+        <div className="mb-8">
+          <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+            <nav className="flex" aria-label="Tabs">
               <button
                 onClick={() => setActiveTab('list')}
-                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
                   activeTab === 'list'
-                    ? 'border-accent-primary text-accent-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
                 Companies List ({companies.length})
               </button>
               <button
                 onClick={() => setActiveTab('add')}
-                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
                   activeTab === 'add'
-                    ? 'border-accent-primary text-accent-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
                 Add New Company
               </button>
               <button
                 onClick={() => setActiveTab('import')}
-                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
                   activeTab === 'import'
-                    ? 'border-accent-primary text-accent-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
                 Import Files
               </button>
             </nav>
           </div>
+        </div>
 
-          {/* Content */}
-          <div className="h-full overflow-y-auto pb-8">
-            {activeTab === 'list' ? (
-              loading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Loading companies...</p>
-                  </div>
+        {/* Content */}
+        <div className="pb-8">
+          {activeTab === 'list' ? (
+            loading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#64126D] mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading companies...</p>
                 </div>
-              ) : companies.length === 0 ? (
-                /* Empty State */
-                <div className="text-center py-12">
+              </div>
+            ) : companies.length === 0 ? (
+              /* Empty State */
+              <div className="bg-white shadow-lg rounded-xl border border-gray-200 text-center py-16">
                   <BuildingOfficeIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-600 mb-2">No companies yet</h3>
                   <p className="text-gray-500 mb-6">Get started by adding your first company or importing from Excel</p>
                   <div className="flex justify-center space-x-4">
                     <button
                       onClick={() => setActiveTab('add')}
-                      className="bg-accent-primary hover:bg-accent-primary/90 text-white px-6 py-3 rounded-md inline-flex items-center space-x-2 transition-colors"
+                      className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl inline-flex items-center space-x-2 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
                     >
                       <PlusIcon className="h-5 w-5" />
                       <span>Add Company</span>
                     </button>
                     <button
                       onClick={() => setActiveTab('import')}
-                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md inline-flex items-center space-x-2 transition-colors"
+                      className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-500 text-white px-6 py-3 rounded-xl inline-flex items-center space-x-2 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
                     >
                       <DocumentArrowUpIcon className="h-5 w-5" />
                       <span>Import Excel</span>
@@ -340,30 +341,30 @@ export default function Company() {
                 </div>
               ) : (
                 /* Companies Table */
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Sr
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Company Name
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Industry
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Size
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Location
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Contact
                           </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                             Actions
                           </th>
                         </tr>
@@ -452,15 +453,18 @@ export default function Company() {
               )
             ) : activeTab === 'add' ? (
               /* Add New Company Form */
-              <div className="bg-white rounded-lg border border-gray-200 p-3">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Add New Company</h3>
+              <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Add New Company</h3>
+                  <p className="text-sm text-gray-600 mt-1">Fill in the company details to add to your database</p>
+                </div>
                 
-                <form onSubmit={handleSubmit} className="space-y-3">
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
                   {/* Form Grid Layout */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Basic Information */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Company ID
                       </label>
                       <input
@@ -468,13 +472,13 @@ export default function Company() {
                         name="company_id"
                         value={formData.company_id}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter company ID (optional)"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Company Name *
                       </label>
                       <input
@@ -769,8 +773,8 @@ export default function Company() {
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            )
+          }
         </div>
       </div>
     </div>

@@ -146,105 +146,106 @@ export default function Proposals() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full px-8 pt-22">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-accent-primary">Proposals</h1>
-            <p className="text-gray-600">Manage and track your client proposals</p>
-          </div>
+      <div className="px-4 sm:px-6 lg:px-8 py-8 mt-16">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Proposals</h1>
+          <p className="text-gray-600">Manage and track your client proposals efficiently</p>
+        </div>
 
-          {/* Tabs */}
-          <div className="mb-6">
-            <nav className="flex space-x-8" aria-label="Tabs">
+        {/* Tabs */}
+        <div className="mb-8">
+          <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+            <nav className="flex" aria-label="Tabs">
               <button
                 onClick={() => setActiveTab('list')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
                   activeTab === 'list'
-                    ? 'border-accent-primary text-accent-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
                 Proposals List ({proposals.length})
               </button>
               <button
                 onClick={() => setActiveTab('add')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
                   activeTab === 'add'
-                    ? 'border-accent-primary text-accent-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
                 Add New Proposal
               </button>
             </nav>
           </div>
+        </div>
 
-          {/* Content */}
-          <div className="h-full overflow-y-auto pb-8">
-            {activeTab === 'list' ? (
-              loading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Loading proposals...</p>
-                  </div>
+        {/* Content */}
+        <div className="pb-8">
+          {activeTab === 'list' ? (
+            loading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#64126D] mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading proposals...</p>
                 </div>
-              ) : proposals.length === 0 ? (
-                /* Empty State */
-                <div className="text-center py-12">
-                  <DocumentTextIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">No proposals yet</h3>
-                  <p className="text-gray-500 mb-6">Get started by creating your first proposal</p>
-                  <button
-                    onClick={() => setActiveTab('add')}
-                    className="bg-accent-primary hover:bg-accent-primary/90 text-white px-6 py-3 rounded-md inline-flex items-center space-x-2 transition-colors"
-                  >
-                    <PlusIcon className="h-5 w-5" />
-                    <span>Create Your First Proposal</span>
-                  </button>
-                </div>
-              ) : (
-                /* Proposals Table */
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Proposal ID
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Title / Client
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Value
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Status
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Created
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Due Date
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {proposals.map((proposal) => (
-                          <tr key={proposal.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-blue-600">
-                                {proposal.proposal_id}
-                              </div>
-                            </td>
+              </div>
+            ) : proposals.length === 0 ? (
+              /* Empty State */
+              <div className="bg-white shadow-lg rounded-xl border border-gray-200 text-center py-16">
+                <DocumentTextIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-600 mb-2">No proposals yet</h3>
+                <p className="text-gray-500 mb-6">Get started by creating your first proposal</p>
+                <button
+                  onClick={() => setActiveTab('add')}
+                  className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl inline-flex items-center space-x-2 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                >
+                  <PlusIcon className="h-5 w-5" />
+                  <span>Create Your First Proposal</span>
+                </button>
+              </div>
+            ) : (
+              /* Proposals Table */
+              <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Proposal ID
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Title / Client
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Value
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Created
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Due Date
+                        </th>
+                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {proposals.map((proposal) => (
+                        <tr key={proposal.id} className="hover:bg-gray-50 transition-colors duration-200">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-semibold text-[#64126D]">
+                              {proposal.proposal_id}
+                            </div>
+                          </td>
                             <td className="px-6 py-4">
                               <div className="text-sm font-medium text-gray-900">
                                 {proposal.title}
@@ -273,21 +274,21 @@ export default function Proposals() {
                               <div className="flex justify-end space-x-2">
                                 <button 
                                   onClick={() => router.push(`/proposals/${proposal.id}`)}
-                                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
+                                  className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-xl transition-all duration-200 transform hover:scale-105"
                                   title="View Proposal"
                                 >
                                   <EyeIcon className="h-4 w-4" />
                                 </button>
                                 <button 
                                   onClick={() => router.push(`/proposals/${proposal.id}`)}
-                                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
+                                  className="p-2 text-[#64126D] hover:text-[#86288F] hover:bg-purple-50 rounded-xl transition-all duration-200 transform hover:scale-105"
                                   title="Edit Proposal"
                                 >
                                   <PencilIcon className="h-4 w-4" />
                                 </button>
                                 <button 
                                   onClick={() => handleDelete(proposal.id, proposal.proposal_id)}
-                                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
+                                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-all duration-200 transform hover:scale-105"
                                   title="Delete Proposal"
                                 >
                                   <TrashIcon className="h-4 w-4" />
@@ -303,15 +304,18 @@ export default function Proposals() {
               )
             ) : (
               /* Add New Proposal Form */
-              <div className="bg-white rounded-lg border border-gray-200 p-3">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Create New Proposal</h3>
+              <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Create New Proposal</h3>
+                  <p className="text-sm text-gray-600 mt-1">Fill in the details to create a new proposal</p>
+                </div>
                 
-                <form onSubmit={handleSubmit} className="space-y-3">
+                <form onSubmit={handleSubmit} className="p-6 space-y-6">
                   {/* Form Grid Layout */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Basic Information */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Proposal Title *
                       </label>
                       <input
@@ -320,13 +324,13 @@ export default function Proposals() {
                         value={formData.title}
                         onChange={handleFormChange}
                         required
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter proposal title"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Client Company *
                       </label>
                       <input
@@ -335,13 +339,13 @@ export default function Proposals() {
                         value={formData.client}
                         onChange={handleFormChange}
                         required
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter client company name"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Contact Person
                       </label>
                       <input
@@ -349,13 +353,13 @@ export default function Proposals() {
                         name="contact_name"
                         value={formData.contact_name}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter contact person name"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Email Address
                       </label>
                       <input
@@ -363,13 +367,13 @@ export default function Proposals() {
                         name="contact_email"
                         value={formData.contact_email}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter email address"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Phone Number
                       </label>
                       <input
@@ -377,13 +381,13 @@ export default function Proposals() {
                         name="phone"
                         value={formData.phone}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter phone number"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         City
                       </label>
                       <input
@@ -391,20 +395,20 @@ export default function Proposals() {
                         name="city"
                         value={formData.city}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Enter city"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Priority
                       </label>
                       <select
                         name="priority"
                         value={formData.priority}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                       >
                         <option value="Low">Low</option>
                         <option value="Medium">Medium</option>
@@ -413,7 +417,7 @@ export default function Proposals() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Proposal Value
                       </label>
                       <input
@@ -422,20 +426,20 @@ export default function Proposals() {
                         value={formData.value}
                         onChange={handleFormChange}
                         step="0.01"
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="0.00"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Status
                       </label>
                       <select
                         name="status"
                         value={formData.status}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                       >
                         <option value="draft">Draft</option>
                         <option value="pending">Pending</option>
@@ -445,7 +449,7 @@ export default function Proposals() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Due Date
                       </label>
                       <input
@@ -453,37 +457,37 @@ export default function Proposals() {
                         name="due_date"
                         value={formData.due_date}
                         onChange={handleFormChange}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                       />
                     </div>
                   </div>
 
                   {/* Project Description & Notes - Full Width */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Project Description
                       </label>
                       <textarea
                         name="project_description"
                         value={formData.project_description}
                         onChange={handleFormChange}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Describe the project requirements"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Notes
                       </label>
                       <textarea
                         name="notes"
                         value={formData.notes}
                         onChange={handleFormChange}
-                        rows={2}
-                        className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
                         placeholder="Add any additional notes about this proposal"
                       />
                     </div>
@@ -494,16 +498,16 @@ export default function Proposals() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="bg-accent-primary hover:bg-accent-primary/90 text-white px-4 py-1.5 rounded-md transition-colors disabled:opacity-50 flex items-center space-x-1 text-xs"
+                      className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl transition-all duration-300 disabled:opacity-50 flex items-center space-x-2 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-1"
                     >
-                      <DocumentTextIcon className="h-3 w-3" />
+                      <DocumentTextIcon className="h-5 w-5" />
                       <span>{submitting ? 'Creating...' : 'Create Proposal'}</span>
                     </button>
                   </div>
                 </form>
               </div>
-            )}
-          </div>
+            )
+          }
         </div>
       </div>
     </div>
