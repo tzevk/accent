@@ -59,9 +59,8 @@ const mastersNavigation = [
   {
     category: 'Employee/HR Masters',
     items: [
-      { name: 'Employee Master', href: '/masters/employees', icon: UsersIcon },
+      { name: 'Employee Master', href: '/employees', icon: UserGroupIcon },
       { name: 'Department Master', href: '/masters/departments', icon: BuildingOfficeIcon },
-      { name: 'Designation Master', href: '/masters/designations', icon: CogIcon },
     ]
   },
   {
