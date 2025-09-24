@@ -33,10 +33,19 @@ export default function Company() {
     description: '',
     founded_year: '',
     revenue: '',
-    notes: ''
+    notes: '',
+    // New fields
+    location: '',
+    contact_person: '',
+    designation: '',
+    mobile_number: '',
+    sector: ''
   });
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+  const [companyFollowUps, setCompanyFollowUps] = useState([]);
+  const [showFollowUpsPanel, setShowFollowUpsPanel] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -57,6 +66,22 @@ export default function Company() {
       console.error('Error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCompanyFollowUps = async (companyId) => {
+    try {
+      // Fetch follow-ups for a given company (API supports company_id)
+      const res = await fetch(`/api/followups?company_id=${companyId}`);
+      const result = await res.json();
+      if (result.success) {
+        setCompanyFollowUps(result.data || []);
+      } else {
+        setCompanyFollowUps([]);
+      }
+    } catch (err) {
+      console.error('Error fetching company follow-ups', err);
+      setCompanyFollowUps([]);
     }
   };
 
@@ -103,6 +128,13 @@ export default function Company() {
           founded_year: '',
           revenue: '',
           notes: ''
+          ,
+          // Reset new fields
+          location: '',
+          contact_person: '',
+          designation: '',
+          mobile_number: '',
+          sector: ''
         });
         // Refresh companies list and switch to list tab
         fetchCompanies();
@@ -200,6 +232,12 @@ export default function Company() {
           founded_year: row.founded_year || row.Founded_Year || row['Founded Year'] || row.founded || row.Founded || '',
           revenue: row.revenue || row.Revenue || '',
           notes: row.notes || row.Notes || row.comments || row.Comments || ''
+          ,
+          location: row.location || row.Location || row.Location_Name || '',
+          contact_person: row.contact_person || row.Contact_Person || row['Contact Person'] || row.contact || row.Contact || '',
+          designation: row.designation || row.Designation || '',
+          mobile_number: row.mobile_number || row.Mobile || row.Phone || row.phone || '',
+          sector: row.sector || row.Sector || row.industry_sector || ''
         };
       });
 
@@ -428,6 +466,20 @@ export default function Company() {
                                 >
                                   <EyeIcon className="h-4 w-4" />
                                 </button>
+                                <button
+                                  onClick={async () => {
+                                    await fetchCompanyFollowUps(company.id);
+                                    setSelectedCompanyId(company.id);
+                                    setShowFollowUpsPanel(true);
+                                  }}
+                                  className="relative p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-full transition-colors"
+                                  title="View Follow Ups"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M8 9a3 3 0 100-6 3 3 0 000 6zM2 15a6 6 0 1112 0H2z" /></svg>
+                                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white bg-red-600 rounded-full">
+                                    {company.follow_up_count || 0}
+                                  </span>
+                                </button>
                                 <button 
                                   onClick={() => router.push(`/company/${company.id}/edit`)}
                                   className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
@@ -449,6 +501,36 @@ export default function Company() {
                       </tbody>
                     </table>
                   </div>
+                  {/* Company Follow-ups Panel */}
+                  {showFollowUpsPanel && (
+                    <div className="bg-white border-t border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-medium text-gray-900">Follow Ups for {companies.find(c => c.id === selectedCompanyId)?.company_name || 'Company'}</h4>
+                        <button onClick={() => { setShowFollowUpsPanel(false); setCompanyFollowUps([]); setSelectedCompanyId(null); }} className="text-xs text-gray-500">Close</button>
+                      </div>
+                      {companyFollowUps.length === 0 ? (
+                        <div className="text-sm text-gray-500">No follow-ups for this company.</div>
+                      ) : (
+                        <ol className="list-decimal list-inside divide-y divide-gray-100">
+                          {companyFollowUps.sort((a,b) => {
+                            const da = new Date(a.follow_up_date || a.created_at || 0).getTime();
+                            const db = new Date(b.follow_up_date || b.created_at || 0).getTime();
+                            if (db !== da) return db - da;
+                            return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                          }).map(fu => {
+                            const d = fu.follow_up_date ? new Date(fu.follow_up_date) : (fu.created_at ? new Date(fu.created_at) : null);
+                            const formattedDate = d ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}` : 'N/A';
+                            return (
+                              <li key={fu.id} className="py-2">
+                                <div className="text-xs text-gray-900">{formattedDate}</div>
+                                <div className="text-xs text-gray-600 mt-1">{fu.description}</div>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             ) : activeTab === 'add' ? (
@@ -570,73 +652,71 @@ export default function Company() {
 
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        City
+                        Contact Person
                       </label>
                       <input
                         type="text"
-                        name="city"
-                        value={formData.city}
+                        name="contact_person"
+                        value={formData.contact_person}
                         onChange={handleFormChange}
                         className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                        placeholder="Enter city"
+                        placeholder="Primary contact person"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        State
+                        Designation
                       </label>
                       <input
                         type="text"
-                        name="state"
-                        value={formData.state}
+                        name="designation"
+                        value={formData.designation}
                         onChange={handleFormChange}
                         className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                        placeholder="Enter state"
+                        placeholder="Contact designation"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        Country
+                        Mobile Number
                       </label>
                       <input
-                        type="text"
-                        name="country"
-                        value={formData.country}
+                        type="tel"
+                        name="mobile_number"
+                        value={formData.mobile_number}
                         onChange={handleFormChange}
                         className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                        placeholder="Enter country"
+                        placeholder="Enter mobile number"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        Founded Year
+                        Location
                       </label>
                       <input
-                        type="number"
-                        name="founded_year"
-                        value={formData.founded_year}
+                        type="text"
+                        name="location"
+                        value={formData.location}
                         onChange={handleFormChange}
-                        min="1800"
-                        max="2025"
                         className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                        placeholder="e.g., 2010"
+                        placeholder="e.g., Head Office / Branch"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        Annual Revenue
+                        Sector
                       </label>
                       <input
                         type="text"
-                        name="revenue"
-                        value={formData.revenue}
+                        name="sector"
+                        value={formData.sector}
                         onChange={handleFormChange}
                         className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                        placeholder="e.g., $1M-$10M"
+                        placeholder="e.g., Manufacturing, Retail"
                       />
                     </div>
                   </div>

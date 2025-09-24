@@ -17,7 +17,8 @@ import {
   UsersIcon,
   MapPinIcon,
   DocumentDuplicateIcon,
-  CogIcon
+  CogIcon,
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -105,6 +106,7 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isMastersMenuOpen, setIsMastersMenuOpen] = useState(false);
+  const [selectedMasterIndex, setSelectedMasterIndex] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
   // Handle scroll effect
@@ -212,18 +214,12 @@ export default function Navbar() {
                 );
               })}
               
-              {/* Masters Dropdown */}
+              {/* Masters Dropdown (nested) */}
               <div className="relative">
                 <button
                   onClick={() => setIsMastersMenuOpen(!isMastersMenuOpen)}
                   className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden text-white/90 hover:text-white`}
                   style={{ background: 'transparent' }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = 'transparent';
-                  }}
                 >
                   <CogIcon className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
                   <span className="font-medium">Masters</span>
@@ -238,27 +234,49 @@ export default function Navbar() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
+
                 {isMastersMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto">
-                    <div className="grid grid-cols-2 gap-3 p-6">
-                      {mastersNavigation.map((master) => (
-                        <div key={master.category} className="space-y-2">
-                          <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide border-b border-gray-100 pb-1">
-                            {master.category}
-                          </h3>
-                          {master.items.map((item) => (
-                            <Link
-                              key={item.name}
-                              href={item.href}
-                              className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-900 rounded-lg transition-colors"
-                              onClick={() => setIsMastersMenuOpen(false)}
-                            >
-                              <item.icon className="h-4 w-4" />
-                              <span>{item.name}</span>
-                            </Link>
-                          ))}
-                        </div>
-                      ))}
+                  <div className="absolute right-0 mt-2 w-[980px] bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[480px] overflow-hidden">
+                    <div className="flex">
+                      {/* Left: Categories */}
+                      <div className="w-1/3 border-r border-gray-100 overflow-y-auto max-h-[480px]">
+                        {mastersNavigation.map((master, idx) => (
+                          <button
+                            key={master.category}
+                            onClick={() => setSelectedMasterIndex(idx)}
+                            className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between ${selectedMasterIndex === idx ? 'bg-gray-50' : ''}`}
+                          >
+                            <span className="text-sm font-semibold text-gray-800">{master.category}</span>
+                            <ChevronDownIcon className={`h-4 w-4 text-gray-400 ${selectedMasterIndex === idx ? 'rotate-180' : ''}`} />
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Right: Items for selected category */}
+                      <div className="w-2/3 p-4 overflow-y-auto max-h-[480px]">
+                        {mastersNavigation[selectedMasterIndex] && (
+                          <div>
+                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wide mb-3">
+                              {mastersNavigation[selectedMasterIndex].category}
+                            </h4>
+                            <div className="grid grid-cols-2 gap-3">
+                              {mastersNavigation[selectedMasterIndex].items.map((item) => (
+                                <Link
+                                  key={item.name}
+                                  href={item.href}
+                                  className="flex items-center space-x-3 p-3 rounded-lg hover:bg-purple-50 hover:text-purple-900 transition-colors"
+                                  onClick={() => setIsMastersMenuOpen(false)}
+                                >
+                                  <item.icon className="h-5 w-5 text-gray-600" />
+                                  <div className="text-sm">
+                                    <div className="font-medium">{item.name}</div>
+                                  </div>
+                                </Link>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -349,7 +367,7 @@ export default function Navbar() {
                 );
               })}
               
-              {/* Mobile Masters Section */}
+              {/* Mobile Masters Section (collapsible per category) */}
               <div className="space-y-2">
                 <button
                   onClick={() => setIsMastersMenuOpen(!isMastersMenuOpen)}
@@ -370,28 +388,36 @@ export default function Navbar() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                
+
                 {isMastersMenuOpen && (
-                  <div className="pl-4 space-y-1">
-                    {mastersNavigation.map((master) => (
+                  <div className="pl-4 space-y-2">
+                    {mastersNavigation.map((master, idx) => (
                       <div key={master.category} className="space-y-1">
-                        <h4 className="text-xs font-semibold text-white/70 uppercase tracking-wide px-4 py-1">
-                          {master.category}
-                        </h4>
-                        {master.items.map((item) => (
-                          <Link
-                            key={item.name}
-                            href={item.href}
-                            className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
-                            onClick={() => {
-                              setIsMastersMenuOpen(false);
-                              setIsMobileMenuOpen(false);
-                            }}
-                          >
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.name}</span>
-                          </Link>
-                        ))}
+                        <button
+                          onClick={() => setSelectedMasterIndex(idx === selectedMasterIndex ? -1 : idx)}
+                          className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 rounded-lg transition-colors"
+                        >
+                          <span className="uppercase tracking-wide text-xs">{master.category}</span>
+                          <ChevronDownIcon className={`h-4 w-4 ${selectedMasterIndex === idx ? 'rotate-180' : ''}`} />
+                        </button>
+                        {selectedMasterIndex === idx && (
+                          <div className="pl-4 space-y-1">
+                            {master.items.map((item) => (
+                              <Link
+                                key={item.name}
+                                href={item.href}
+                                className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
+                                onClick={() => {
+                                  setIsMastersMenuOpen(false);
+                                  setIsMobileMenuOpen(false);
+                                }}
+                              >
+                                <item.icon className="h-4 w-4" />
+                                <span>{item.name}</span>
+                              </Link>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

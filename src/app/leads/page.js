@@ -32,18 +32,7 @@ export default function Leads() {
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
   const [companies, setCompanies] = useState([]);
-  const [followUps, setFollowUps] = useState([]);
-  const [selectedLead, setSelectedLead] = useState(null);
-  const [followUpData, setFollowUpData] = useState({
-    lead_id: '',
-    follow_up_date: new Date().toISOString().split('T')[0],
-    follow_up_type: 'Call',
-    description: '',
-    status: 'Scheduled',
-    next_action: '',
-    next_follow_up_date: '',
-    notes: ''
-  });
+  // follow-ups are managed in the Edit Lead view; keep this page focused on list/add
   const [formData, setFormData] = useState({
     company_id: '',
     company_name: '',
@@ -88,57 +77,7 @@ export default function Leads() {
     }
   };
 
-  const fetchFollowUps = async () => {
-    try {
-      const response = await fetch('/api/followups');
-      const result = await response.json();
-      
-      if (result.success) {
-        setFollowUps(result.data);
-      }
-    } catch (error) {
-      console.error('Error fetching follow-ups:', error);
-    }
-  };
-
-  const handleFollowUpSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const response = await fetch('/api/followups', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(followUpData),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('Follow-up added successfully!');
-        setFollowUpData({
-          lead_id: '',
-          follow_up_date: new Date().toISOString().split('T')[0],
-          follow_up_type: 'Call',
-          description: '',
-          status: 'Scheduled',
-          next_action: '',
-          next_follow_up_date: '',
-          notes: ''
-        });
-        fetchFollowUps();
-      } else {
-        alert('Error adding follow-up: ' + result.error);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Error adding follow-up');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // follow-up operations are handled in the Edit Lead page
 
   const fetchCompanies = async () => {
     try {
@@ -157,9 +96,8 @@ export default function Leads() {
     fetchCompanies(); // Fetch companies on component mount
     if (activeTab === 'list') {
       fetchLeads();
-    } else if (activeTab === 'followup') {
-      fetchFollowUps();
-      fetchLeads(); // Also fetch leads for the dropdown
+    } else if (activeTab === 'add') {
+      // nothing special for add
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, statusFilter, cityFilter, sortBy, sortOrder, activeTab]);
@@ -880,208 +818,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
     </div>
   );
 
-  const renderFollowUpForm = () => (
-    <div className="space-y-6">
-      {/* Follow Up Form */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Follow Up</h3>
-        
-        <form onSubmit={handleFollowUpSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Lead *
-              </label>
-              <select
-                value={followUpData.lead_id}
-                onChange={(e) => setFollowUpData(prev => ({ ...prev, lead_id: e.target.value }))}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              >
-                <option value="">Choose a lead...</option>
-                {leads.map(lead => (
-                  <option key={lead.id} value={lead.id}>
-                    {lead.company_name} - {lead.contact_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Follow Up Date *
-              </label>
-              <input
-                type="date"
-                value={followUpData.follow_up_date}
-                onChange={(e) => setFollowUpData(prev => ({ ...prev, follow_up_date: e.target.value }))}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Follow Up Type *
-              </label>
-              <select
-                value={followUpData.follow_up_type}
-                onChange={(e) => setFollowUpData(prev => ({ ...prev, follow_up_type: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              >
-                <option value="Call">Call</option>
-                <option value="Email">Email</option>
-                <option value="Meeting">Meeting</option>
-                <option value="WhatsApp">WhatsApp</option>
-                <option value="Site Visit">Site Visit</option>
-                <option value="Proposal">Proposal</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status
-              </label>
-              <select
-                value={followUpData.status}
-                onChange={(e) => setFollowUpData(prev => ({ ...prev, status: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              >
-                <option value="Scheduled">Scheduled</option>
-                <option value="Completed">Completed</option>
-                <option value="Cancelled">Cancelled</option>
-                <option value="Rescheduled">Rescheduled</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description *
-            </label>
-            <textarea
-              value={followUpData.description}
-              onChange={(e) => setFollowUpData(prev => ({ ...prev, description: e.target.value }))}
-              required
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              placeholder="Describe the purpose of this follow-up"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Next Follow-up Date *
-            </label>
-            <input
-              type="date"
-              value={followUpData.next_follow_up_date}
-              onChange={(e) => setFollowUpData(prev => ({ ...prev, next_follow_up_date: e.target.value }))}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Next Action
-            </label>
-            <input
-              type="text"
-              value={followUpData.next_action}
-              onChange={(e) => setFollowUpData(prev => ({ ...prev, next_action: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              placeholder="What should be done next?"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
-            </label>
-            <textarea
-              value={followUpData.notes}
-              onChange={(e) => setFollowUpData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              placeholder="Additional notes about this follow-up"
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 text-sm"
-            >
-              {loading ? 'Adding...' : 'Add Follow Up'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* Follow Ups List */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Recent Follow Ups</h3>
-        </div>
-        
-        {followUps.length === 0 ? (
-          <div className="p-8 text-center">
-            <ArrowRightIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No follow-ups yet</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Start by adding your first follow-up above.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {followUps.map((followUp) => (
-              <div key={followUp.id} className="p-6 hover:bg-gray-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h4 className="text-sm font-medium text-gray-900">
-                        {followUp.company_name} - {followUp.contact_name}
-                      </h4>
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        followUp.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                        followUp.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
-                        followUp.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {followUp.status}
-                      </span>
-                      <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                        {followUp.follow_up_type}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">
-                      {followUp.description}
-                    </p>
-                    <div className="flex items-center space-x-4 text-xs text-gray-500">
-                      <span>📅 {followUp.follow_up_date}</span>
-                      {followUp.next_follow_up_date && (
-                        <span>🔔 Next: {followUp.next_follow_up_date}</span>
-                      )}
-                      {followUp.next_action && (
-                        <span>➡️ {followUp.next_action}</span>
-                      )}
-                    </div>
-                    {followUp.notes && (
-                      <p className="text-xs text-gray-500 mt-2 italic">
-                        {followUp.notes}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  // Follow-ups are displayed and managed on the Edit Lead page; no follow-up UI on this listing page
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -1122,17 +859,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
             <PlusIcon className="h-5 w-5 inline mr-2" />
             Add Lead
           </button>
-          <button
-            onClick={() => setActiveTab('followup')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'followup'
-                ? 'border-accent-purple text-accent-purple'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <ArrowRightIcon className="h-5 w-5 inline mr-2" />
-            Follow Ups
-          </button>
+          {/* Follow Ups tab removed — follow-ups are now managed in the Edit Lead view */}
           
           {/* Save Button - Only show on Add Lead tab */}
           {activeTab === 'add' && (
@@ -1159,9 +886,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
       <div className="flex-1 px-8 overflow-hidden">
         <div className="h-full overflow-y-auto bg-white rounded-b-lg">
           <div className="p-6">
-            {activeTab === 'list' ? renderLeadsList() : 
-             activeTab === 'add' ? renderAddLeadForm() : 
-             renderFollowUpForm()}
+            {activeTab === 'list' ? renderLeadsList() : renderAddLeadForm()}
           </div>
         </div>
       </div>

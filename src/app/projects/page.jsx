@@ -15,6 +15,8 @@ import {
   CurrencyDollarIcon,
   ChartBarIcon
 } from '@heroicons/react/24/outline';
+import ManhoursCalculator from '@/components/ManhoursCalculator';
+import PriceBreakupEditor from '@/components/PriceBreakupEditor';
 
 export default function Projects() {
   const [projects, setProjects] = useState([]);
@@ -30,6 +32,8 @@ export default function Projects() {
     start_date: '',
     end_date: '',
     budget: '',
+    manhours: 0,
+    cost_breakup: [],
     status: 'planning',
     priority: 'medium',
     progress: 0,
@@ -98,6 +102,8 @@ export default function Projects() {
           start_date: '',
           end_date: '',
           budget: '',
+          manhours: 0,
+          cost_breakup: [],
           status: 'planning',
           priority: 'medium',
           progress: 0,
@@ -281,6 +287,9 @@ export default function Projects() {
                               Status
                             </th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
+                              Estimated Cost
+                            </th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
                               Budget
                             </th>
                             <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
@@ -332,6 +341,20 @@ export default function Projects() {
                                 <span className={`px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded-full ${getStatusColor(project.status)}`}>
                                   {project.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                                 </span>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-black">
+                                {(() => {
+                                  try {
+                                    if (project.cost_breakup) {
+                                      const cb = typeof project.cost_breakup === 'string' ? JSON.parse(project.cost_breakup) : project.cost_breakup;
+                                      const tot = cb.reduce((s, r) => s + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
+                                      return tot > 0 ? formatCurrency(tot) : '-';
+                                    }
+                                  } catch (e) {
+                                    // ignore parse errors
+                                  }
+                                  return '-';
+                                })()}
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap text-sm text-black">
                                 {formatCurrency(project.budget)}
@@ -492,6 +515,18 @@ export default function Projects() {
                           min="0"
                           step="0.01"
                         />
+                      </div>
+
+                      {/* Manhours */}
+                      <div className="col-span-1 md:col-span-2">
+                        <label className="block text-sm font-medium text-black mb-2">Manhours</label>
+                        <ManhoursCalculator value={formData.manhours} onChange={(val) => setFormData(prev => ({ ...prev, manhours: val }))} />
+                      </div>
+
+                      {/* Price Breakup */}
+                      <div className="col-span-1 md:col-span-2">
+                        <label className="block text-sm font-medium text-black mb-2">Price Breakup</label>
+                        <PriceBreakupEditor value={formData.cost_breakup} onChange={(rows) => setFormData(prev => ({ ...prev, cost_breakup: rows }))} />
                       </div>
 
                       {/* Status */}

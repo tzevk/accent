@@ -19,6 +19,8 @@ export async function GET() {
         start_date DATE,
         end_date DATE,
         budget DECIMAL(15,2),
+        manhours DECIMAL(10,2),
+        cost_breakup JSON,
         status ENUM('planning', 'in-progress', 'on-hold', 'completed', 'cancelled') DEFAULT 'planning',
         priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
         progress INT DEFAULT 0,
@@ -67,6 +69,8 @@ export async function POST(request) {
       start_date,
       end_date,
       budget,
+      manhours,
+      cost_breakup,
       status,
       priority,
       progress,
@@ -95,15 +99,18 @@ export async function POST(request) {
       projectId = 'PRJ00001';
     }
     
-    // Insert the new project
+    // Insert the new project (include manhours and cost_breakup)
     const [result] = await db.execute(
       `INSERT INTO projects (
         project_id, name, description, company_id, client_name, project_manager,
-        start_date, end_date, budget, status, priority, progress, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        start_date, end_date, budget, manhours, cost_breakup, status, priority, progress, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         projectId, name, description, company_id || null, client_name, project_manager || null,
-        start_date || null, end_date || null, budget || null, status || 'planning', 
+        start_date || null, end_date || null, budget || null,
+        manhours || null,
+        cost_breakup ? JSON.stringify(cost_breakup) : null,
+        status || 'planning', 
         priority || 'medium', progress || 0, notes || null
       ]
     );
@@ -145,6 +152,8 @@ export async function PUT(request) {
       start_date,
       end_date,
       budget,
+      manhours,
+      cost_breakup,
       status,
       priority,
       progress,
@@ -174,15 +183,18 @@ export async function PUT(request) {
       }, { status: 404 });
     }
 
-    // Update project
+    // Update project (including manhours and cost_breakup)
     await db.execute(
       `UPDATE projects SET 
         name = ?, description = ?, company_id = ?, client_name = ?, project_manager = ?,
-        start_date = ?, end_date = ?, budget = ?, status = ?, priority = ?, progress = ?, notes = ?
+        start_date = ?, end_date = ?, budget = ?, manhours = ?, cost_breakup = ?, status = ?, priority = ?, progress = ?, notes = ?
       WHERE id = ?`,
       [
         name, description, company_id || null, client_name, project_manager || null,
-        start_date || null, end_date || null, budget || null, status || 'planning',
+        start_date || null, end_date || null, budget || null,
+        manhours || null,
+        cost_breakup ? JSON.stringify(cost_breakup) : null,
+        status || 'planning',
         priority || 'medium', progress || 0, notes || null, id
       ]
     );

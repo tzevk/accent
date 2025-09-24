@@ -5,10 +5,13 @@
  * This script sets up the database, creates tables, and initializes the backend
  */
 
-const mysql = require('mysql2/promise');
-const fs = require('fs');
-const path = require('path');
-const readline = require('readline');
+import mysql from 'mysql2/promise';
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
+import { spawn } from 'child_process';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 
 // Color codes for console output
 const colors = {
@@ -90,7 +93,7 @@ async function testDatabaseConnection() {
   
   try {
     // Load environment variables
-    require('dotenv').config({ path: '.env.local' });
+    dotenv.config({ path: '.env.local' });
     
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
@@ -114,7 +117,7 @@ async function createDatabase() {
   log('\n🗄️  Creating database...', 'blue');
   
   try {
-    require('dotenv').config({ path: '.env.local' });
+    dotenv.config({ path: '.env.local' });
     
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
@@ -143,7 +146,7 @@ async function runSQLScript(scriptPath, description) {
       return false;
     }
     
-    require('dotenv').config({ path: '.env.local' });
+    dotenv.config({ path: '.env.local' });
     
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
@@ -194,7 +197,6 @@ async function installDependencies() {
   if (missingPackages.length > 0) {
     log(`📦 Installing missing packages: ${missingPackages.join(', ')}`, 'yellow');
     
-    const { spawn } = require('child_process');
     const installCmd = spawn('npm', ['install', ...missingPackages], {
       stdio: 'inherit',
       shell: true
@@ -221,7 +223,7 @@ async function verifySetup() {
   log('\n🔍 Verifying setup...', 'blue');
   
   try {
-    require('dotenv').config({ path: '.env.local' });
+    dotenv.config({ path: '.env.local' });
     
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
@@ -321,9 +323,10 @@ async function main() {
   }
 }
 
-// Run the setup
-if (require.main === module) {
+// Run the setup when executed directly
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename) {
   main().catch(console.error);
 }
 
-module.exports = { main };
+export { main };
