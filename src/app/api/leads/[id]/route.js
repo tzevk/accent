@@ -3,7 +3,8 @@ import { dbConnect } from '@/utils/database';
 // GET individual lead by ID
 export async function GET(request, { params }) {
   try {
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = parseInt(id);
     const db = await dbConnect();
     
     const [rows] = await db.execute(
@@ -36,7 +37,8 @@ export async function GET(request, { params }) {
 // PUT update lead by ID
 export async function PUT(request, { params }) {
   try {
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = parseInt(id);
     const data = await request.json();
     const db = await dbConnect();
     
@@ -98,7 +100,8 @@ export async function PUT(request, { params }) {
 // DELETE lead by ID
 export async function DELETE(request, { params }) {
   try {
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = parseInt(id);
     const db = await dbConnect();
     
     const [result] = await db.execute(

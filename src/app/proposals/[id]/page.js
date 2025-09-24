@@ -1,7 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeftIcon,
@@ -21,6 +21,7 @@ export default function ProposalDetails({ params }) {
     due_date: '',
     notes: ''
   });
+  const [linkedLead, setLinkedLead] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -33,6 +34,25 @@ export default function ProposalDetails({ params }) {
         if (result.success) {
           const proposalData = result.data;
           setProposal(proposalData);
+          // If proposal is linked to a lead, fetch lead summary
+          if (proposalData.lead_id) {
+            try {
+              const leadRes = await fetch(`/api/leads/${proposalData.lead_id}`);
+              const leadJson = await leadRes.json();
+              if (leadJson.success) setLinkedLead(leadJson.data);
+            } catch {
+              // ignore
+            }
+          }
+            if (proposalData.lead_id) {
+              try {
+                const leadRes = await fetch(`/api/leads/${proposalData.lead_id}`);
+                const leadJson = await leadRes.json();
+                if (leadJson.success) setLinkedLead(leadJson.data);
+              } catch {
+                // ignore fetch errors
+              }
+            }
           setFormData({
             title: proposalData.title || '',
             value: proposalData.value || '',
@@ -83,6 +103,105 @@ export default function ProposalDetails({ params }) {
       console.error('Error:', error);
       alert('Error updating proposal');
     }
+  };
+
+  // Versions & approvals state
+  const [versions, setVersions] = useState([]);
+  const [approvals, setApprovals] = useState([]);
+  const [newVersion, setNewVersion] = useState({ version_label: '', file_url: '', original_name: '', uploaded_by: '', notes: '' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [approvalComment, setApprovalComment] = useState('');
+
+  const fetchVersions = useCallback(async () => {
+    if (!proposal || !proposal.id) return;
+    try {
+      const res = await fetch(`/api/proposals/${proposal.id}/versions`);
+      const j = await res.json(); if (j.success) setVersions(j.data || []);
+    } catch (e) { console.error('versions fetch', e); }
+  }, [proposal]);
+
+  const fetchApprovals = useCallback(async () => {
+    if (!proposal || !proposal.id) return;
+    try {
+      const res = await fetch(`/api/proposals/${proposal.id}/approvals`);
+      const j = await res.json(); if (j.success) setApprovals(j.data || []);
+    } catch (e) { console.error('approvals fetch', e); }
+  }, [proposal]);
+
+  useEffect(() => {
+    const fetchMeta = async () => {
+      if (!proposal || !proposal.id) return;
+      await fetchVersions();
+      await fetchApprovals();
+    };
+    fetchMeta();
+  }, [proposal, fetchVersions, fetchApprovals]);
+
+  const handleFileSelect = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+      setSelectedFile(f);
+      setNewVersion(prev => ({ ...prev, original_name: f.name }));
+    } else {
+      setSelectedFile(null);
+    }
+  };
+
+  const addVersion = async () => {
+    try {
+      let fileUrl = newVersion.file_url;
+      // If a file is selected, upload it first
+      if (selectedFile) {
+        // read file as data URL
+        const reader = new FileReader();
+        const dataUrl = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedFile);
+        });
+
+        // send to uploads endpoint
+        const upl = await fetch('/api/uploads', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: selectedFile.name, b64: dataUrl })
+        });
+        const uplj = await upl.json();
+        if (!uplj.success) return alert('Upload failed: ' + (uplj.error || 'unknown'));
+        fileUrl = uplj.data.fileUrl;
+      }
+
+      if (!fileUrl) return alert('Provide a file or URL');
+
+      const payload = { ...newVersion, file_url: fileUrl };
+      const res = await fetch(`/api/proposals/${proposal.id}/versions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const j = await res.json();
+      if (j.success) {
+        setNewVersion({ version_label: '', file_url: '', original_name: '', uploaded_by: '', notes: '' });
+        setSelectedFile(null);
+        fetchVersions();
+        alert('Version added');
+      } else alert('Failed to add version: ' + j.error);
+    } catch (e) { console.error(e); alert('Failed to add version'); }
+  };
+
+  const recordApproval = async (stage) => {
+    try {
+      const res = await fetch(`/api/proposals/${proposal.id}/approvals`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage, changed_by: 'system', comment: approvalComment })
+      });
+      const j = await res.json();
+      if (j.success) {
+        setApprovalComment('');
+        fetchApprovals();
+        // refresh proposal to get updated approval_stage
+        const pr = await fetch(`/api/proposals/${proposal.id}`);
+        const prj = await pr.json(); if (prj.success) setProposal(prj.data);
+      } else alert('Failed to record approval: ' + j.error);
+    } catch (e) { console.error(e); alert('Failed to record approval'); }
   };
 
   const getStatusColor = (status) => {
@@ -157,6 +276,11 @@ export default function ProposalDetails({ params }) {
                     {proposal.title}
                   </h1>
                   <p className="text-gray-600 text-sm">{proposal.client}</p>
+                  {linkedLead && (
+                    <div className="text-sm mt-1">
+                      <a href={`/leads/${linkedLead.id}/edit`} className="text-indigo-600 hover:underline">Linked Lead: {linkedLead.company_name}</a>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -238,7 +362,7 @@ export default function ProposalDetails({ params }) {
                       />
                     ) : (
                       <p className="text-gray-900 text-xl font-semibold">
-                        {proposal.value ? `$${parseFloat(proposal.value).toLocaleString()}` : 'Not specified'}
+                        {proposal.value ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(parseFloat(proposal.value)) : 'Not specified'}
                       </p>
                     )}
                   </div>
@@ -369,6 +493,71 @@ export default function ProposalDetails({ params }) {
                     {proposal.notes || 'No notes added yet.'}
                   </p>
                 )}
+              </div>
+
+              {/* Versions */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Versions</h3>
+                <div className="space-y-3">
+                  {versions.length === 0 ? (
+                    <p className="text-sm text-gray-500">No versions uploaded yet.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {versions.map(v => (
+                        <li key={v.id} className="flex items-center justify-between">
+                          <div>
+                            <a href={v.file_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{v.version_label || 'Version'}</a>
+                            <div className="text-xs text-gray-500">{v.original_name} • {new Date(v.created_at).toLocaleString()}</div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input placeholder="Version label (v1, v2)" value={newVersion.version_label} onChange={(e)=>setNewVersion(prev=>({...prev, version_label:e.target.value}))} className="px-3 py-2 border rounded" />
+                    <input placeholder="File URL (publicly accessible)" value={newVersion.file_url} onChange={(e)=>setNewVersion(prev=>({...prev, file_url:e.target.value}))} className="px-3 py-2 border rounded col-span-2" />
+                    <input placeholder="Original filename" value={newVersion.original_name} onChange={(e)=>setNewVersion(prev=>({...prev, original_name:e.target.value}))} className="px-3 py-2 border rounded" />
+                    <input type="file" onChange={handleFileSelect} className="col-span-3" />
+                    <input placeholder="Uploaded by" value={newVersion.uploaded_by} onChange={(e)=>setNewVersion(prev=>({...prev, uploaded_by:e.target.value}))} className="px-3 py-2 border rounded" />
+                    <input placeholder="Notes" value={newVersion.notes} onChange={(e)=>setNewVersion(prev=>({...prev, notes:e.target.value}))} className="px-3 py-2 border rounded col-span-2" />
+                    <div className="col-span-3 text-right">
+                      <button onClick={addVersion} className="px-3 py-1 bg-accent-primary text-white rounded">Add Version</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Approvals */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Approval Workflow</h3>
+                <div className="space-y-3">
+                  <div className="text-sm text-gray-700">Current Stage: <strong>{proposal.approval_stage || 'Not set'}</strong></div>
+                  <div className="flex items-center space-x-2">
+                    <button onClick={()=>recordApproval('Draft')} className="px-3 py-1 bg-gray-200 rounded">Set Draft</button>
+                    <button onClick={()=>recordApproval('Reviewed')} className="px-3 py-1 bg-yellow-100 rounded">Mark Reviewed</button>
+                    <button onClick={()=>recordApproval('Approved')} className="px-3 py-1 bg-green-100 rounded">Approve</button>
+                    <button onClick={()=>recordApproval('Sent')} className="px-3 py-1 bg-blue-100 rounded">Mark Sent</button>
+                  </div>
+                  <div>
+                    <textarea placeholder="Approval comment (optional)" value={approvalComment} onChange={(e)=>setApprovalComment(e.target.value)} className="w-full px-3 py-2 border rounded" />
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium">Approval History</h4>
+                    {approvals.length === 0 ? <p className="text-sm text-gray-500">No approvals recorded yet.</p> : (
+                      <ul className="space-y-2 mt-2">
+                        {approvals.map(a => (
+                          <li key={a.id} className="text-sm text-gray-700">
+                            <div className="font-medium">{a.stage}</div>
+                            <div className="text-xs text-gray-500">by {a.changed_by || 'unknown'} on {new Date(a.created_at).toLocaleString()}</div>
+                            {a.comment && <div className="mt-1 text-gray-600">{a.comment}</div>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -44,6 +44,7 @@ export async function POST(request) {
       due_date,
       notes
     } = data;
+    const lead_id = data.lead_id || null;
 
     if (!title || !client) {
       return Response.json({ 
@@ -61,11 +62,11 @@ export async function POST(request) {
 
     const [result] = await db.execute(`
       INSERT INTO proposals (
-        proposal_id, title, client, contact_name, contact_email, phone, 
+        proposal_id, lead_id, title, client, contact_name, contact_email, phone, 
         project_description, city, priority, value, status, due_date, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      proposalId, title, client, contact_name, contact_email, phone,
+      proposalId, lead_id, title, client, contact_name, contact_email, phone,
       project_description, city, priority, value, status, due_date, notes
     ]);
     

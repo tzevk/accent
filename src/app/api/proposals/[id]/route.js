@@ -36,9 +36,9 @@ export async function GET(request, { params }) {
 }
 
 // PUT - Update proposal
-export async function PUT(request, { params }) {
+export async function PUT(request, context) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     const proposalId = parseInt(id);
     const data = await request.json();
     
@@ -52,6 +52,19 @@ export async function PUT(request, { params }) {
 
     const db = await dbConnect();
     
+    // Ensure undefined => null for SQL parameters (mysql2 forbids undefined)
+    // Normalize parameters: mysql2 rejects `undefined`; also convert empty date strings to null
+    const normalizedDueDate = (due_date === undefined || (typeof due_date === 'string' && due_date.trim() === '')) ? null : due_date;
+
+    const params = [
+      title === undefined ? null : title,
+      value === undefined ? null : value,
+      normalizedDueDate,
+      notes === undefined ? null : notes,
+      status === undefined ? null : status,
+      proposalId
+    ];
+
     // Update the proposal
     const [result] = await db.execute(
       `UPDATE proposals SET 
@@ -62,7 +75,7 @@ export async function PUT(request, { params }) {
         status = COALESCE(?, status),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-      [title, value, due_date, notes, status, proposalId]
+      params
     );
     
     await db.end();

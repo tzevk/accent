@@ -12,6 +12,7 @@ import {
   StarIcon,
   MagnifyingGlassIcon,
   DocumentArrowUpIcon,
+  DocumentTextIcon,
   ArrowDownTrayIcon,
   EyeIcon,
   PencilIcon,
@@ -210,6 +211,99 @@ export default function Leads() {
     } catch (error) {
       console.error('Error:', error);
       alert('Error deleting lead');
+    }
+  };
+
+  const convertToProposal = async (lead) => {
+    if (!confirm(`Convert lead for "${lead.company_name}" to a proposal?`)) return;
+
+    try {
+      // Build proposal payload from lead
+      const payload = {
+        title: lead.project_description ? `${lead.company_name} - ${lead.project_description.slice(0, 60)}` : `Proposal for ${lead.company_name}`,
+        client: lead.company_name,
+        contact_name: lead.contact_name || null,
+        contact_email: lead.contact_email || null,
+        phone: lead.phone || null,
+        project_description: lead.project_description || null,
+        city: lead.city || null,
+        priority: lead.priority || 'Medium',
+        value: null,
+        status: 'pending',
+        due_date: null,
+        notes: lead.notes || null
+      };
+
+      const res = await fetch('/api/proposals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, lead_id: lead.id })
+      });
+
+      const result = await res.json();
+      if (!result.success) {
+        alert('Failed to create proposal: ' + (result.error || 'Unknown'));
+        return;
+      }
+
+      // Update lead status to Converted to Proposal
+      // Ensure enquiry_date is in YYYY-MM-DD format (MySQL DATE) to avoid invalid value errors
+      let formattedEnquiryDate = null;
+      if (lead.enquiry_date) {
+        try {
+          // If it's an ISO datetime, convert to YYYY-MM-DD
+          const d = new Date(lead.enquiry_date);
+          if (!isNaN(d.getTime())) {
+            formattedEnquiryDate = d.toISOString().split('T')[0];
+          } else if (typeof lead.enquiry_date === 'string' && lead.enquiry_date.includes('T')) {
+            formattedEnquiryDate = lead.enquiry_date.split('T')[0];
+          } else {
+            formattedEnquiryDate = lead.enquiry_date;
+          }
+        } catch {
+          formattedEnquiryDate = null;
+        }
+      }
+
+      const updateBody = {
+        company_name: lead.company_name,
+        contact_name: lead.contact_name || null,
+        contact_email: lead.contact_email || null,
+        phone: lead.phone || null,
+        city: lead.city || null,
+        project_description: lead.project_description || null,
+        enquiry_type: lead.enquiry_type || 'Email',
+        enquiry_status: 'Converted to Proposal',
+        enquiry_date: formattedEnquiryDate,
+        lead_source: lead.lead_source || null,
+        priority: lead.priority || 'Medium',
+        notes: lead.notes || null
+      };
+
+      const upd = await fetch(`/api/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody)
+      });
+
+      const updResult = await upd.json();
+      if (!updResult.success) {
+        alert('Proposal created but failed to update lead status: ' + (updResult.error || 'Unknown'));
+      } else {
+        const createdId = result.data && result.data.id;
+        const proposalId = result.data && result.data.proposalId;
+        // Redirect to proposal detail page if available
+        if (createdId) {
+          // navigate to the proposal detail page
+          router.push(`/proposals/${createdId}`);
+        } else {
+          alert('Proposal created: ' + (proposalId || ('ID ' + (result.data && result.data.id))));
+          fetchLeads();
+        }
+      }
+    } catch (error) {
+      console.error('Error converting lead:', error);
+      alert('Error converting lead to proposal');
     }
   };
 
@@ -536,6 +630,14 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                           title="Edit Lead"
                         >
                           <PencilIcon className="h-4 w-4" />
+                        </button>
+                        <button 
+                          onClick={() => convertToProposal(lead)}
+                          className="flex items-center gap-2 px-3 py-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors"
+                          title="Convert to Proposal"
+                        >
+                          <DocumentTextIcon className="h-4 w-4" />
+                          <span className="hidden sm:inline text-sm">Convert</span>
                         </button>
                         <button 
                           onClick={() => handleDeleteLead(lead.id, lead.company_name)}

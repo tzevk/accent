@@ -31,11 +31,23 @@ export default function Proposals() {
     notes: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [companies, setCompanies] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
     fetchProposals();
+    fetchCompanies();
   }, []);
+
+  const fetchCompanies = async () => {
+    try {
+      const res = await fetch('/api/companies');
+      const json = await res.json();
+      if (json.success) setCompanies(json.data || []);
+    } catch (err) {
+      console.error('Error fetching companies', err);
+    }
+  };
 
   const fetchProposals = async () => {
     try {
@@ -252,11 +264,14 @@ export default function Proposals() {
                               </div>
                               <div className="text-sm text-gray-500">
                                 {proposal.client}
+                                {proposal.lead_id && (
+                                  <span className="ml-2 text-xs text-indigo-600">• Linked Lead</span>
+                                )}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-gray-900">
-                                {proposal.value ? `$${parseFloat(proposal.value).toLocaleString()}` : 'TBD'}
+                                {proposal.value ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(parseFloat(proposal.value)) : 'TBD'}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -333,15 +348,37 @@ export default function Proposals() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Client Company *
                       </label>
-                      <input
-                        type="text"
-                        name="client"
-                        value={formData.client}
-                        onChange={handleFormChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
-                        placeholder="Enter client company name"
-                      />
+                      <div>
+                        <select
+                          name="client_select"
+                          value={formData.client || ''}
+                          onChange={(e) => {
+                            const selected = companies.find(c => c.company_name === e.target.value);
+                            setFormData(prev => ({
+                              ...prev,
+                              client: e.target.value,
+                              contact_name: selected ? (selected.contact_person || prev.contact_name) : prev.contact_name,
+                              contact_email: selected ? (selected.email || prev.contact_email) : prev.contact_email,
+                              phone: selected ? (selected.mobile_number || selected.phone || prev.phone) : prev.phone
+                            }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
+                        >
+                          <option value="">Select client company or type below</option>
+                          {companies.map(c => (
+                            <option key={c.id} value={c.company_name}>{c.company_name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          name="client"
+                          value={formData.client}
+                          onChange={handleFormChange}
+                          required
+                          className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm transition-all duration-200"
+                          placeholder="Or enter new client company name"
+                        />
+                      </div>
                     </div>
 
                     <div>
