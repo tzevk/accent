@@ -19,10 +19,8 @@ export async function GET() {
         start_date DATE,
         end_date DATE,
         budget DECIMAL(15,2),
-        manhours DECIMAL(10,2),
-        cost_breakup JSON,
-        status ENUM('planning', 'in-progress', 'on-hold', 'completed', 'cancelled') DEFAULT 'planning',
-        priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
+        status VARCHAR(50) DEFAULT 'NEW',
+        priority VARCHAR(50) DEFAULT 'MEDIUM',
         progress INT DEFAULT 0,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -30,6 +28,22 @@ export async function GET() {
         FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
       )
     `);
+
+    // Add new columns if they don't exist
+    try {
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS target_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255)');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT \'ONGOING\'');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS proposal_id INT');
+      await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
+
+      // Update enum fields to use VARCHAR instead for more flexibility
+      await db.execute('ALTER TABLE projects MODIFY COLUMN status VARCHAR(50) DEFAULT \'NEW\'');
+      await db.execute('ALTER TABLE projects MODIFY COLUMN priority VARCHAR(50) DEFAULT \'MEDIUM\'');
+      await db.execute('ALTER TABLE projects MODIFY COLUMN type VARCHAR(50) DEFAULT \'ONGOING\'');
+    } catch (err) {
+      console.warn('Some ALTER TABLE statements failed, table might already be updated:', err);
+    }
     
     const [rows] = await db.execute(`
       SELECT 
@@ -68,12 +82,14 @@ export async function POST(request) {
       project_manager,
       start_date,
       end_date,
+      target_date,
       budget,
-      manhours,
-      cost_breakup,
+      assigned_to,
       status,
+      type,
       priority,
       progress,
+      proposal_id,
       notes
     } = data;
 
@@ -103,15 +119,12 @@ export async function POST(request) {
     const [result] = await db.execute(
       `INSERT INTO projects (
         project_id, name, description, company_id, client_name, project_manager,
-        start_date, end_date, budget, manhours, cost_breakup, status, priority, progress, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         projectId, name, description, company_id || null, client_name, project_manager || null,
-        start_date || null, end_date || null, budget || null,
-        manhours || null,
-        cost_breakup ? JSON.stringify(cost_breakup) : null,
-        status || 'planning', 
-        priority || 'medium', progress || 0, notes || null
+        start_date || null, end_date || null, target_date || null, budget || null, assigned_to || null,
+        status || 'NEW', type || 'ONGOING', priority || 'MEDIUM', progress || 0, proposal_id || null, notes || null
       ]
     );
     
