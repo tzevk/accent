@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
@@ -97,7 +97,17 @@ const PAYMENT_TERMS = ['Milestones', 'Monthly', 'Percent Completion', 'Advance +
 const INVOICING_STATUS = ['Pending', 'Raised', 'Partially Paid', 'Paid', 'Overdue'];
 const APPROVAL_STATUS = ['Submitted', 'Approved', 'Resubmitted', 'Rejected'];
 
+/** Wrapper component that provides a Suspense boundary */
 export default function NewProjectPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm">Loading…</div>}>
+      <NewProjectForm />
+    </Suspense>
+  );
+}
+
+/** All the original logic moved here; useSearchParams lives inside Suspense now */
+function NewProjectForm() {
   const searchParams = useSearchParams();
   const preset = searchParams.get('date');
   const normalizedDate = useMemo(() => {
@@ -119,14 +129,11 @@ export default function NewProjectPage() {
       try {
         const response = await fetch('/api/companies');
         const result = await response.json();
-        if (result.success) {
-          setCompanies(result.data);
-        }
+        if (result.success) setCompanies(result.data);
       } catch (error) {
         console.error('Error fetching companies:', error);
       }
     };
-
     fetchCompanies();
   }, []);
 
@@ -149,10 +156,7 @@ export default function NewProjectPage() {
   const updateField = (section, field, value) => {
     setFormData((prev) => ({
       ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: value
-      }
+      [section]: { ...prev[section], [field]: value }
     }));
   };
 
@@ -171,15 +175,11 @@ export default function NewProjectPage() {
 
   const redirectToCalendar = (dateString) => {
     const params = new URLSearchParams({ view: 'calendar' });
-    if (dateString) {
-      params.set('focus', dateString);
-    }
+    if (dateString) params.set('focus', dateString);
     router.push(`/projects?${params.toString()}`);
   };
 
-  const handleCancel = () => {
-    redirectToCalendar(formData.general.startDate);
-  };
+  const handleCancel = () => redirectToCalendar(formData.general.startDate);
 
   const handleFormSubmit = async (event) => {
     event.preventDefault();
@@ -193,7 +193,6 @@ export default function NewProjectPage() {
       setSubmitting(false);
       return;
     }
-
     if (!general.clientName.trim()) {
       alert('Client name is required.');
       setActiveTab('general');
@@ -201,7 +200,8 @@ export default function NewProjectPage() {
       return;
     }
 
-    const statusValue = STATUS_MAP[general.status] || general.status?.toLowerCase().replace(/\s+/g, '_') || 'planning';
+    const statusValue =
+      STATUS_MAP[general.status] || general.status?.toLowerCase().replace(/\s+/g, '_') || 'planning';
 
     const payload = {
       name: general.projectName,
@@ -221,14 +221,10 @@ export default function NewProjectPage() {
     try {
       const response = await fetch('/api/projects', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
       const result = await response.json();
-
       if (result.success) {
         redirectToCalendar(general.startDate);
       } else {
@@ -252,7 +248,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.projectCode}
-              onChange={(event) => updateField('general', 'projectCode', event.target.value)}
+              onChange={(e) => updateField('general', 'projectCode', e.target.value)}
               placeholder="Auto-generated or manual reference"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -261,14 +257,12 @@ export default function NewProjectPage() {
             <label className="block text-xs font-medium text-black mb-1">Industry</label>
             <select
               value={formData.general.industry}
-              onChange={(event) => updateField('general', 'industry', event.target.value)}
+              onChange={(e) => updateField('general', 'industry', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">Select industry</option>
               {INDUSTRIES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
+                <option key={option} value={option}>{option}</option>
               ))}
             </select>
           </div>
@@ -277,7 +271,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.projectName}
-              onChange={(event) => updateField('general', 'projectName', event.target.value)}
+              onChange={(e) => updateField('general', 'projectName', e.target.value)}
               required
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -286,14 +280,12 @@ export default function NewProjectPage() {
             <label className="block text-xs font-medium text-black mb-1">Contract Type</label>
             <select
               value={formData.general.contractType}
-              onChange={(event) => updateField('general', 'contractType', event.target.value)}
+              onChange={(e) => updateField('general', 'contractType', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">Select contract type</option>
               {CONTRACT_TYPES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
+                <option key={option} value={option}>{option}</option>
               ))}
             </select>
           </div>
@@ -301,7 +293,7 @@ export default function NewProjectPage() {
             <label className="block text-xs font-medium text-black mb-1">Linked Company</label>
             <select
               value={formData.general.companyId}
-              onChange={(event) => updateField('general', 'companyId', event.target.value)}
+              onChange={(e) => updateField('general', 'companyId', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">No company linked</option>
@@ -323,7 +315,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.clientName}
-              onChange={(event) => updateField('general', 'clientName', event.target.value)}
+              onChange={(e) => updateField('general', 'clientName', e.target.value)}
               required
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -333,7 +325,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.clientContact}
-              onChange={(event) => updateField('general', 'clientContact', event.target.value)}
+              onChange={(e) => updateField('general', 'clientContact', e.target.value)}
               placeholder="Email / Phone / Point of Contact"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -343,7 +335,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.projectManager}
-              onChange={(event) => updateField('general', 'projectManager', event.target.value)}
+              onChange={(e) => updateField('general', 'projectManager', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
           </div>
@@ -351,13 +343,11 @@ export default function NewProjectPage() {
             <label className="block text-xs font-medium text-black mb-1">Status</label>
             <select
               value={formData.general.status}
-              onChange={(event) => updateField('general', 'status', event.target.value)}
+              onChange={(e) => updateField('general', 'status', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               {Object.keys(STATUS_MAP).map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
+                <option key={option} value={option}>{option}</option>
               ))}
             </select>
           </div>
@@ -372,7 +362,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.locationCountry}
-              onChange={(event) => updateField('general', 'locationCountry', event.target.value)}
+              onChange={(e) => updateField('general', 'locationCountry', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
           </div>
@@ -381,7 +371,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.locationCity}
-              onChange={(event) => updateField('general', 'locationCity', event.target.value)}
+              onChange={(e) => updateField('general', 'locationCity', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
           </div>
@@ -390,7 +380,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.locationSite}
-              onChange={(event) => updateField('general', 'locationSite', event.target.value)}
+              onChange={(e) => updateField('general', 'locationSite', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
           </div>
@@ -410,7 +400,7 @@ export default function NewProjectPage() {
             <input
               type="date"
               value={formData.general.endDate}
-              onChange={(event) => updateField('general', 'endDate', event.target.value)}
+              onChange={(e) => updateField('general', 'endDate', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
           </div>
@@ -421,7 +411,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.durationPlanned}
-              onChange={(event) => updateField('general', 'durationPlanned', event.target.value)}
+              onChange={(e) => updateField('general', 'durationPlanned', e.target.value)}
               placeholder="e.g., 18 months"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -431,7 +421,7 @@ export default function NewProjectPage() {
             <input
               type="text"
               value={formData.general.durationActual}
-              onChange={(event) => updateField('general', 'durationActual', event.target.value)}
+              onChange={(e) => updateField('general', 'durationActual', e.target.value)}
               placeholder="e.g., 20 months"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
@@ -443,7 +433,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Project Overview</label>
         <textarea
           value={formData.general.projectOverview}
-          onChange={(event) => updateField('general', 'projectOverview', event.target.value)}
+          onChange={(e) => updateField('general', 'projectOverview', e.target.value)}
           rows={3}
           placeholder="Summarize project scope, objectives, and key outcomes."
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -460,7 +450,7 @@ export default function NewProjectPage() {
           <input
             type="number"
             value={formData.commercial.projectValue}
-            onChange={(event) => updateField('commercial', 'projectValue', event.target.value)}
+            onChange={(e) => updateField('commercial', 'projectValue', e.target.value)}
             min="0"
             step="0.01"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -470,13 +460,11 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Currency</label>
           <select
             value={formData.commercial.currency}
-            onChange={(event) => updateField('commercial', 'currency', event.target.value)}
+            onChange={(e) => updateField('commercial', 'currency', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           >
             {CURRENCIES.map((currency) => (
-              <option key={currency} value={currency}>
-                {currency}
-              </option>
+              <option key={currency} value={currency}>{currency}</option>
             ))}
           </select>
         </div>
@@ -484,13 +472,11 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Payment Terms</label>
           <select
             value={formData.commercial.paymentTerms}
-            onChange={(event) => updateField('commercial', 'paymentTerms', event.target.value)}
+            onChange={(e) => updateField('commercial', 'paymentTerms', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           >
             {PAYMENT_TERMS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+              <option key={option} value={option}>{option}</option>
             ))}
           </select>
         </div>
@@ -498,13 +484,11 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Invoicing Status</label>
           <select
             value={formData.commercial.invoicingStatus}
-            onChange={(event) => updateField('commercial', 'invoicingStatus', event.target.value)}
+            onChange={(e) => updateField('commercial', 'invoicingStatus', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           >
             {INVOICING_STATUS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+              <option key={option} value={option}>{option}</option>
             ))}
           </select>
         </div>
@@ -513,7 +497,7 @@ export default function NewProjectPage() {
           <input
             type="number"
             value={formData.commercial.costToCompany}
-            onChange={(event) => updateField('commercial', 'costToCompany', event.target.value)}
+            onChange={(e) => updateField('commercial', 'costToCompany', e.target.value)}
             min="0"
             step="0.01"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -524,7 +508,7 @@ export default function NewProjectPage() {
           <input
             type="text"
             value={formData.commercial.profitabilityEstimate}
-            onChange={(event) => updateField('commercial', 'profitabilityEstimate', event.target.value)}
+            onChange={(e) => updateField('commercial', 'profitabilityEstimate', e.target.value)}
             placeholder="e.g., 18% gross margin"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
@@ -535,7 +519,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Subcontractors / Vendors (Scope & Contract Value)</label>
         <textarea
           value={formData.commercial.subcontractorsList}
-          onChange={(event) => updateField('commercial', 'subcontractorsList', event.target.value)}
+          onChange={(e) => updateField('commercial', 'subcontractorsList', e.target.value)}
           rows={3}
           placeholder="List subcontractors with scope, value, and contact references."
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -545,7 +529,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Additional Vendors</label>
         <textarea
           value={formData.commercial.vendorsList}
-          onChange={(event) => updateField('commercial', 'vendorsList', event.target.value)}
+          onChange={(e) => updateField('commercial', 'vendorsList', e.target.value)}
           rows={3}
           placeholder="Capture vendor names, scope, PO references, and values."
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -560,7 +544,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Discipline-wise Deliverables</label>
         <textarea
           value={formData.engineering.disciplineDeliverables}
-          onChange={(event) => updateField('engineering', 'disciplineDeliverables', event.target.value)}
+          onChange={(e) => updateField('engineering', 'disciplineDeliverables', e.target.value)}
           rows={3}
           placeholder="List deliverables across Process, Mechanical, Piping, Civil, Electrical, Instrumentation, etc."
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -571,7 +555,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Planned Submission Dates</label>
           <textarea
             value={formData.engineering.plannedSubmissionDates}
-            onChange={(event) => updateField('engineering', 'plannedSubmissionDates', event.target.value)}
+            onChange={(e) => updateField('engineering', 'plannedSubmissionDates', e.target.value)}
             rows={3}
             placeholder="Discipline-wise planned dates"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -581,7 +565,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Actual Submission Dates</label>
           <textarea
             value={formData.engineering.actualSubmissionDates}
-            onChange={(event) => updateField('engineering', 'actualSubmissionDates', event.target.value)}
+            onChange={(e) => updateField('engineering', 'actualSubmissionDates', e.target.value)}
             rows={3}
             placeholder="Discipline-wise actual dates"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -593,13 +577,11 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Approval Status</label>
           <select
             value={formData.engineering.approvalStatus}
-            onChange={(event) => updateField('engineering', 'approvalStatus', event.target.value)}
+            onChange={(e) => updateField('engineering', 'approvalStatus', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           >
             {APPROVAL_STATUS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+              <option key={option} value={option}>{option}</option>
             ))}
           </select>
         </div>
@@ -608,7 +590,7 @@ export default function NewProjectPage() {
           <input
             type="number"
             value={formData.engineering.manhoursPlanned}
-            onChange={(event) => updateField('engineering', 'manhoursPlanned', event.target.value)}
+            onChange={(e) => updateField('engineering', 'manhoursPlanned', e.target.value)}
             min="0"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
@@ -618,7 +600,7 @@ export default function NewProjectPage() {
           <input
             type="number"
             value={formData.engineering.manhoursConsumed}
-            onChange={(event) => updateField('engineering', 'manhoursConsumed', event.target.value)}
+            onChange={(e) => updateField('engineering', 'manhoursConsumed', e.target.value)}
             min="0"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
@@ -633,7 +615,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Long Lead Items (LLI)</label>
         <textarea
           value={formData.procurement.longLeadItems}
-          onChange={(event) => updateField('procurement', 'longLeadItems', event.target.value)}
+          onChange={(e) => updateField('procurement', 'longLeadItems', e.target.value)}
           rows={3}
           placeholder="Capture critical equipment with lead times and responsible buyer"
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -643,7 +625,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Vendor PO Details</label>
         <textarea
           value={formData.procurement.vendorPoDetails}
-          onChange={(event) => updateField('procurement', 'vendorPoDetails', event.target.value)}
+          onChange={(e) => updateField('procurement', 'vendorPoDetails', e.target.value)}
           rows={3}
           placeholder="PO numbers, vendor names, scope, value"
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -653,7 +635,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Delivery Dates</label>
         <textarea
           value={formData.procurement.deliveryDates}
-          onChange={(event) => updateField('procurement', 'deliveryDates', event.target.value)}
+          onChange={(e) => updateField('procurement', 'deliveryDates', e.target.value)}
           rows={3}
           placeholder="Planned vs actual deliveries"
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -663,7 +645,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Inspection & Expediting Records</label>
         <textarea
           value={formData.procurement.inspectionRecords}
-          onChange={(event) => updateField('procurement', 'inspectionRecords', event.target.value)}
+          onChange={(e) => updateField('procurement', 'inspectionRecords', e.target.value)}
           rows={3}
           placeholder="Inspection status, expediting notes, NCRs"
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -680,7 +662,7 @@ export default function NewProjectPage() {
           <input
             type="date"
             value={formData.construction.mobilizationDate}
-            onChange={(event) => updateField('construction', 'mobilizationDate', event.target.value)}
+            onChange={(e) => updateField('construction', 'mobilizationDate', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
         </div>
@@ -689,7 +671,7 @@ export default function NewProjectPage() {
           <input
             type="date"
             value={formData.construction.commissioningDate}
-            onChange={(event) => updateField('construction', 'commissioningDate', event.target.value)}
+            onChange={(e) => updateField('construction', 'commissioningDate', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
         </div>
@@ -698,7 +680,7 @@ export default function NewProjectPage() {
           <input
             type="date"
             value={formData.construction.handoverDate}
-            onChange={(event) => updateField('construction', 'handoverDate', event.target.value)}
+            onChange={(e) => updateField('construction', 'handoverDate', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
         </div>
@@ -707,9 +689,8 @@ export default function NewProjectPage() {
           <input
             type="number"
             value={formData.construction.installationPercentPlanned}
-            onChange={(event) => updateField('construction', 'installationPercentPlanned', event.target.value)}
-            min="0"
-            max="100"
+            onChange={(e) => updateField('construction', 'installationPercentPlanned', e.target.value)}
+            min="0" max="100"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
         </div>
@@ -718,9 +699,8 @@ export default function NewProjectPage() {
           <input
             type="number"
             value={formData.construction.installationPercentActual}
-            onChange={(event) => updateField('construction', 'installationPercentActual', event.target.value)}
-            min="0"
-            max="100"
+            onChange={(e) => updateField('construction', 'installationPercentActual', e.target.value)}
+            min="0" max="100"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
         </div>
@@ -729,7 +709,7 @@ export default function NewProjectPage() {
         <label className="block text-xs font-medium text-black mb-1">Site Progress (Weekly / Monthly)</label>
         <textarea
           value={formData.construction.siteProgress}
-          onChange={(event) => updateField('construction', 'siteProgress', event.target.value)}
+          onChange={(e) => updateField('construction', 'siteProgress', e.target.value)}
           rows={3}
           placeholder="Capture progress summaries, key accomplishments, blockers."
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -745,7 +725,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Major Risks Identified</label>
           <textarea
             value={formData.risk.majorRisks}
-            onChange={(event) => updateField('risk', 'majorRisks', event.target.value)}
+            onChange={(e) => updateField('risk', 'majorRisks', e.target.value)}
             rows={3}
             placeholder="List key risks with probability & impact."
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -755,7 +735,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Mitigation Plans</label>
           <textarea
             value={formData.risk.mitigationPlans}
-            onChange={(event) => updateField('risk', 'mitigationPlans', event.target.value)}
+            onChange={(e) => updateField('risk', 'mitigationPlans', e.target.value)}
             rows={3}
             placeholder="Actions, owners, deadlines"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -765,7 +745,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Change Orders / Variations</label>
           <textarea
             value={formData.risk.changeOrders}
-            onChange={(event) => updateField('risk', 'changeOrders', event.target.value)}
+            onChange={(e) => updateField('risk', 'changeOrders', e.target.value)}
             rows={3}
             placeholder="Reference numbers, description, commercial impact"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -775,7 +755,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Claims / Disputes</label>
           <textarea
             value={formData.risk.claimsDisputes}
-            onChange={(event) => updateField('risk', 'claimsDisputes', event.target.value)}
+            onChange={(e) => updateField('risk', 'claimsDisputes', e.target.value)}
             rows={3}
             placeholder="Client claims, contractor disputes, resolution status"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -793,7 +773,7 @@ export default function NewProjectPage() {
           <input
             type="text"
             value={formData.closeout.finalDocumentationStatus}
-            onChange={(event) => updateField('closeout', 'finalDocumentationStatus', event.target.value)}
+            onChange={(e) => updateField('closeout', 'finalDocumentationStatus', e.target.value)}
             placeholder="e.g., 80% submitted"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
@@ -803,7 +783,7 @@ export default function NewProjectPage() {
           <input
             type="text"
             value={formData.closeout.actualProfitLoss}
-            onChange={(event) => updateField('closeout', 'actualProfitLoss', event.target.value)}
+            onChange={(e) => updateField('closeout', 'actualProfitLoss', e.target.value)}
             placeholder="e.g., +₹1.8 Cr"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
           />
@@ -814,7 +794,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Lessons Learned</label>
           <textarea
             value={formData.closeout.lessonsLearned}
-            onChange={(event) => updateField('closeout', 'lessonsLearned', event.target.value)}
+            onChange={(e) => updateField('closeout', 'lessonsLearned', e.target.value)}
             rows={3}
             placeholder="Captured best practices, improvement areas"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -824,7 +804,7 @@ export default function NewProjectPage() {
           <label className="block text-xs font-medium text-black mb-1">Client Feedback</label>
           <textarea
             value={formData.closeout.clientFeedback}
-            onChange={(event) => updateField('closeout', 'clientFeedback', event.target.value)}
+            onChange={(e) => updateField('closeout', 'clientFeedback', e.target.value)}
             rows={3}
             placeholder="Client satisfaction, testimonials, surveys"
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
@@ -836,29 +816,20 @@ export default function NewProjectPage() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'general':
-        return renderGeneralTab();
-      case 'commercial':
-        return renderCommercialTab();
-      case 'engineering':
-        return renderEngineeringTab();
-      case 'procurement':
-        return renderProcurementTab();
-      case 'construction':
-        return renderConstructionTab();
-      case 'risk':
-        return renderRiskTab();
-      case 'closeout':
-        return renderCloseoutTab();
-      default:
-        return null;
+      case 'general': return renderGeneralTab();
+      case 'commercial': return renderCommercialTab();
+      case 'engineering': return renderEngineeringTab();
+      case 'procurement': return renderProcurementTab();
+      case 'construction': return renderConstructionTab();
+      case 'risk': return renderRiskTab();
+      case 'closeout': return renderCloseoutTab();
+      default: return null;
     }
   };
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
-
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-8 pt-22 pb-8 space-y-6">
@@ -902,9 +873,7 @@ export default function NewProjectPage() {
                     </button>
                   ))}
                 </nav>
-                <div className="p-6 space-y-6">
-                  {renderTabContent()}
-                </div>
+                <div className="p-6 space-y-6">{renderTabContent()}</div>
               </div>
 
               <div className="flex justify-end gap-3">
@@ -924,6 +893,7 @@ export default function NewProjectPage() {
                 </button>
               </div>
             </form>
+
           </div>
         </div>
       </div>
