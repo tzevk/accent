@@ -1,9 +1,8 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   PlusIcon, 
   FolderIcon,
@@ -11,41 +10,59 @@ import {
   PencilIcon,
   TrashIcon,
   CalendarIcon,
-  UserGroupIcon,
-  CurrencyDollarIcon,
-  ChartBarIcon
+  ArrowLeftIcon,
+  ArrowRightIcon
 } from '@heroicons/react/24/outline';
-import ManhoursCalculator from '@/components/ManhoursCalculator';
-import PriceBreakupEditor from '@/components/PriceBreakupEditor';
+import {
+  format,
+  addMonths,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  addDays,
+  isSameDay,
+  isSameMonth
+} from 'date-fns';
+
+const PRIORITY_ORDER = {
+  high: 0,
+  medium: 1,
+  low: 2
+};
 
 export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('list');
-  const [companies, setCompanies] = useState([]);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    company_id: '',
-    client_name: '',
-    project_manager: '',
-    start_date: '',
-    end_date: '',
-    budget: '',
-    manhours: 0,
-    cost_breakup: [],
-    status: 'planning',
-    priority: 'medium',
-    progress: 0,
-    notes: ''
-  });
-  const [submitting, setSubmitting] = useState(false);
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get('view');
+  const focusParam = searchParams.get('focus');
+  const [activeTab, setActiveTab] = useState(() => (viewParam === 'calendar' ? 'calendar' : 'list'));
+  const [calendarDate, setCalendarDate] = useState(() => startOfMonth(new Date()));
+  const [selectedDate, setSelectedDate] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
     fetchProjects();
-    fetchCompanies();
   }, []);
+
+  useEffect(() => {
+    setActiveTab(viewParam === 'calendar' ? 'calendar' : 'list');
+  }, [viewParam]);
+
+  useEffect(() => {
+    if (!focusParam) {
+      setSelectedDate(null);
+      return;
+    }
+
+    const parsed = new Date(focusParam);
+    if (!Number.isNaN(parsed.getTime())) {
+      setSelectedDate(parsed);
+      setCalendarDate(startOfMonth(parsed));
+    }
+  }, [focusParam]);
 
   const fetchProjects = async () => {
     try {
@@ -64,70 +81,8 @@ export default function Projects() {
     }
   };
 
-  const fetchCompanies = async () => {
-    try {
-      const response = await fetch('/api/companies');
-      const result = await response.json();
-      
-      if (result.success) {
-        setCompanies(result.data);
-      }
-    } catch (error) {
-      console.error('Error fetching companies:', error);
-    }
-  };
-
-  const handleFormSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-
-    try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setFormData({
-          name: '',
-          description: '',
-          company_id: '',
-          client_name: '',
-          project_manager: '',
-          start_date: '',
-          end_date: '',
-          budget: '',
-          manhours: 0,
-          cost_breakup: [],
-          status: 'planning',
-          priority: 'medium',
-          progress: 0,
-          notes: ''
-        });
-        setActiveTab('list');
-        fetchProjects();
-      } else {
-        alert('Error creating project: ' + result.error);
-      }
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      alert('Error creating project');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleNewProject = () => {
+    router.push('/projects/new');
   };
 
   const handleDelete = async (id) => {
@@ -156,20 +111,24 @@ export default function Projects() {
       case 'planning':
         return 'bg-yellow-100 text-yellow-800';
       case 'in-progress':
+      case 'in_progress':
         return 'bg-blue-100 text-blue-800';
       case 'on-hold':
+      case 'on_hold':
         return 'bg-orange-100 text-orange-800';
       case 'completed':
         return 'bg-green-100 text-green-800';
       case 'cancelled':
         return 'bg-red-100 text-red-800';
+      case 'active':
+        return 'bg-accent-primary/10 text-accent-primary';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getPriorityColor = (priority) => {
-    switch (priority) {
+    switch ((priority || '').toLowerCase()) {
       case 'high':
         return 'text-red-600';
       case 'medium':
@@ -196,6 +155,90 @@ export default function Projects() {
       style: 'currency',
       currency: 'INR'
     }).format(amount);
+  };
+
+  const formatLabel = (value) => {
+    if (!value) return 'Status';
+    return value
+      .toString()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const toDateKey = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string' && value.length >= 10) {
+      return value.slice(0, 10);
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return format(parsed, 'yyyy-MM-dd');
+  };
+
+  const projectsByDate = useMemo(() => {
+    const grouped = {};
+
+    projects.forEach((project) => {
+      const key = toDateKey(project.start_date) || toDateKey(project.target_date);
+      if (!key) return;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(project);
+    });
+
+    Object.values(grouped).forEach((items) => {
+      items.sort((a, b) => {
+        const priorityDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
+        if (priorityDiff !== 0) return priorityDiff;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+    });
+
+    return grouped;
+  }, [projects]);
+
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(calendarDate);
+    const monthEnd = endOfMonth(calendarDate);
+    const periodStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+    const periodEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+
+    const days = [];
+    for (let current = periodStart; current <= periodEnd; current = addDays(current, 1)) {
+      days.push(current);
+    }
+    return days;
+  }, [calendarDate]);
+
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(calendarDate, { weekStartsOn: 0 });
+    return Array.from({ length: 7 }, (_, idx) => addDays(start, idx));
+  }, [calendarDate]);
+
+  const handlePrevMonth = () => {
+    setCalendarDate((prev) => subMonths(prev, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCalendarDate((prev) => addMonths(prev, 1));
+  };
+
+  const handleGoToToday = () => {
+    setCalendarDate(startOfMonth(new Date()));
+  };
+
+  const handleQuickAdd = (date) => {
+    const target = date instanceof Date ? date : new Date(date);
+    if (!Number.isNaN(target.getTime())) {
+      setSelectedDate(target);
+      setCalendarDate(startOfMonth(target));
+      router.push(`/projects/new?date=${format(target, 'yyyy-MM-dd')}`);
+      return;
+    }
+    router.push('/projects/new');
   };
 
   return (
@@ -225,27 +268,27 @@ export default function Projects() {
                 Projects List ({projects.length})
               </button>
               <button
-                onClick={() => setActiveTab('create')}
+                onClick={() => setActiveTab('calendar')}
                 className={`py-2 px-1 border-b-2 font-medium text-xs ${
-                  activeTab === 'create'
+                  activeTab === 'calendar'
                     ? 'border-accent-primary text-black'
                     : 'border-transparent text-black hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Create Project
+                Calendar View
               </button>
             </nav>
           </div>
 
           {/* Content */}
           <div className="space-y-6">
-            {activeTab === 'list' ? (
+            {activeTab === 'list' && (
               <div className="space-y-6">
                 {/* Action Bar */}
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-4">
                     <button
-                      onClick={() => setActiveTab('create')}
+                      onClick={handleNewProject}
                       className="bg-accent-primary hover:bg-accent-primary/90 text-white px-4 py-2 rounded-md inline-flex items-center space-x-2 transition-colors text-sm"
                     >
                       <PlusIcon className="h-4 w-4" />
@@ -312,7 +355,7 @@ export default function Projects() {
                                     {project.description}
                                   </div>
                                   <div className={`text-xs font-medium mt-1 ${getPriorityColor(project.priority)}`}>
-                                    {project.priority.charAt(0).toUpperCase() + project.priority.slice(1)} Priority
+                                    {formatLabel(project.priority || 'Unassigned')} Priority
                                   </div>
                                 </div>
                               </td>
@@ -339,7 +382,7 @@ export default function Projects() {
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap">
                                 <span className={`px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded-full ${getStatusColor(project.status)}`}>
-                                  {project.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                  {formatLabel(project.status)}
                                 </span>
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap text-sm text-black">
@@ -403,238 +446,121 @@ export default function Projects() {
                   )}
                 </div>
               </div>
-            ) : (
-              /* Create Project Form */
-              <div className="space-y-6">
+            )}
+
+            {activeTab === 'calendar' && (
+              <div className="space-y-4">
                 <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <form onSubmit={handleFormSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Project Name */}
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Project Name *
-                        </label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                          required
-                        />
-                      </div>
-
-                      {/* Company */}
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Company
-                        </label>
-                        <select
-                          name="company_id"
-                          value={formData.company_id}
-                          onChange={handleInputChange}
-                          className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        >
-                          <option value="">Select a company</option>
-                          {companies.map((company) => (
-                            <option key={company.id} value={company.id}>
-                              {company.company_name || company.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Client Name */}
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Client Name *
-                        </label>
-                        <input
-                          type="text"
-                          name="client_name"
-                          value={formData.client_name}
-                          onChange={handleInputChange}
-                          className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                          required
-                        />
-                      </div>
-
-                      {/* Project Manager */}
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Project Manager
-                        </label>
-                        <input
-                          type="text"
-                          name="project_manager"
-                          value={formData.project_manager}
-                          onChange={handleInputChange}
-                          className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        />
-                      </div>
-
-                      {/* Start Date */}
-                      <div>
-                        <label className="block text-sm font-medium text-black mb-2">
-                          Start Date
-                        </label>
-                        <input
-                          type="date"
-                          name="start_date"
-                          value={formData.start_date}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        />
-                      </div>
-
-                      {/* End Date */}
-                      <div>
-                        <label className="block text-sm font-medium text-black mb-2">
-                          End Date
-                        </label>
-                        <input
-                          type="date"
-                          name="end_date"
-                          value={formData.end_date}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        />
-                      </div>
-
-                      {/* Budget */}
-                      <div>
-                        <label className="block text-sm font-medium text-black mb-2">
-                          Budget (INR)
-                        </label>
-                        <input
-                          type="number"
-                          name="budget"
-                          value={formData.budget}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                          min="0"
-                          step="0.01"
-                        />
-                      </div>
-
-                      {/* Manhours */}
-                      <div className="col-span-1 md:col-span-2">
-                        <label className="block text-sm font-medium text-black mb-2">Manhours</label>
-                        <ManhoursCalculator value={formData.manhours} onChange={(val) => setFormData(prev => ({ ...prev, manhours: val }))} />
-                      </div>
-
-                      {/* Price Breakup */}
-                      <div className="col-span-1 md:col-span-2">
-                        <label className="block text-sm font-medium text-black mb-2">Price Breakup</label>
-                        <PriceBreakupEditor value={formData.cost_breakup} onChange={(rows) => setFormData(prev => ({ ...prev, cost_breakup: rows }))} />
-                      </div>
-
-                      {/* Status */}
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Status
-                        </label>
-                        <select
-                          name="status"
-                          value={formData.status}
-                          onChange={handleInputChange}
-                          className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        >
-                          <option value="active">Active</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="completed">Completed</option>
-                          <option value="on_hold">On Hold</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </div>
-
-                      {/* Priority */}
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Priority
-                        </label>
-                        <select
-                          name="priority"
-                          value={formData.priority}
-                          onChange={handleInputChange}
-                          className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        >
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                        </select>
-                      </div>
-
-                      {/* Progress */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Progress (%)
-                        </label>
-                        <input
-                          type="number"
-                          name="progress"
-                          value={formData.progress}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Description */}
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Description
-                      </label>
-                      <textarea
-                        name="description"
-                        value={formData.description}
-                        onChange={handleInputChange}
-                        rows={3}
-                        className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        placeholder="Describe the project details, objectives, and requirements..."
-                      />
+                      <h2 className="text-lg font-semibold text-black">Plan by Calendar</h2>
+                      <p className="text-xs text-gray-500">Assign projects to specific days and monitor workload.</p>
                     </div>
-
-                    {/* Notes */}
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Notes
-                      </label>
-                      <textarea
-                        name="notes"
-                        value={formData.notes}
-                        onChange={handleInputChange}
-                        rows={2}
-                        className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        placeholder="Any additional notes or comments..."
-                      />
-                    </div>
-
-                    {/* Form Actions */}
-                    <div className="sticky bottom-0 bg-white border-t border-gray-200 pt-4 mt-6 -mx-4 px-4">
-                      <div className="flex justify-end space-x-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleGoToToday}
+                        className="px-3 py-1.5 text-xs font-medium text-black border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                      >
+                        Today
+                      </button>
+                      <div className="flex items-center border border-gray-200 rounded-md overflow-hidden divide-x divide-gray-200 bg-gray-50">
                         <button
                           type="button"
-                          onClick={() => setActiveTab('list')}
-                          className="px-6 py-2 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                          onClick={handlePrevMonth}
+                          className="p-2 text-gray-600 hover:bg-gray-100 transition-colors"
+                          aria-label="Previous month"
                         >
-                          Cancel
+                          <ArrowLeftIcon className="h-4 w-4" />
                         </button>
+                        <div className="px-4 text-sm font-semibold text-black whitespace-nowrap">
+                          {format(calendarDate, 'MMMM yyyy')}
+                        </div>
                         <button
-                          type="submit"
-                          disabled={submitting}
-                          className="px-6 py-2 text-sm bg-accent-primary text-white rounded-md hover:bg-accent-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-sm"
+                          type="button"
+                          onClick={handleNextMonth}
+                          className="p-2 text-gray-600 hover:bg-gray-100 transition-colors"
+                          aria-label="Next month"
                         >
-                          {submitting ? 'Creating...' : 'Create Project'}
+                          <ArrowRightIcon className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
-                  </form>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="grid grid-cols-7 gap-px bg-gray-200">
+                    {weekDays.map((day) => (
+                      <div key={`heading-${format(day, 'yyyy-MM-dd')}`} className="bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                        {format(day, 'EEE')}
+                      </div>
+                    ))}
+                    {calendarDays.map((day) => {
+                      const key = format(day, 'yyyy-MM-dd');
+                      const dayProjects = projectsByDate[key] || [];
+                      const muted = !isSameMonth(day, calendarDate);
+                      const isToday = isSameDay(day, new Date());
+                      const isSelected = selectedDate && isSameDay(day, selectedDate);
+
+                      return (
+                        <div
+                          key={key}
+                          className={`min-h-[128px] bg-white p-2 flex flex-col border-b border-r border-gray-200 transition-colors hover:bg-accent-primary/5 ${
+                            muted ? 'bg-gray-50 text-gray-400' : 'text-black'
+                          } ${isSelected ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-white' : ''}`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className={`text-sm font-semibold ${muted ? 'text-gray-400' : 'text-black'}`}>
+                              {format(day, 'd')}
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              {isToday && (
+                                <span className="text-[10px] font-semibold text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded-full">
+                                  Today
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleQuickAdd(day)}
+                                className="p-1 rounded-full text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                                aria-label={`Add project on ${format(day, 'MMMM d, yyyy')}`}
+                              >
+                                <PlusIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-2 overflow-y-auto max-h-32 pr-1">
+                            {dayProjects.map((project) => (
+                              <div
+                                key={project.id}
+                                className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1"
+                              >
+                                <p className="text-xs font-semibold text-black truncate" title={project.name}>
+                                  {project.name}
+                                </p>
+                                <p className="text-[11px] text-gray-500 truncate" title={project.client_name}>
+                                  {project.client_name}
+                                </p>
+                                <div className="mt-1 flex items-center justify-between">
+                                  <span className={`text-[10px] font-medium ${getPriorityColor(project.priority)}`}>
+                                    {formatLabel(project.priority || 'Unassigned')}
+                                  </span>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getStatusColor(project.status)}`}>
+                                    {formatLabel(project.status)}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
+
           </div>
           </div>
         </div>
