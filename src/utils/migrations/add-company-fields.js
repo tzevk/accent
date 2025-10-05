@@ -1,14 +1,14 @@
-import dotenv from 'dotenv';
-import { dbConnect } from '../database.js';
+import dotenv from "dotenv";
+import { dbConnect } from "../database.js";
 
 // Load environment variables from .env.local
-dotenv.config({ path: '.env.local' });
+dotenv.config({ path: ".env.local" });
 
 async function runMigration() {
   let connection;
   try {
     connection = await dbConnect();
-    
+
     const alterTableQuery = `
       ALTER TABLE companies
       ADD COLUMN IF NOT EXISTS location VARCHAR(255),
@@ -20,10 +20,9 @@ async function runMigration() {
     `;
 
     await connection.query(alterTableQuery);
-    console.log('✅ Successfully added new fields to companies table');
-
+    console.log("✅ Successfully added new fields to companies table");
   } catch (error) {
-    console.error('❌ Migration failed:', error);
+    console.error("❌ Migration failed:", error);
     process.exit(1);
   } finally {
     if (connection) {

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "clear-leads": "node scripts/clear-leads.js",
+    "add:activity-functions-master": "node ./src/utils/migrations/create-activity-functions-master.js",
     "setup": "node setup-backend.js"
   },
   "dependencies": {
