@@ -29,76 +29,11 @@ const navigation = [
 ];
 
 const mastersNavigation = [
-  {
-    category: 'User & Role Masters',
-    items: [
-      { name: 'User Master', href: '/masters/users', icon: UsersIcon },
-      { name: 'Role/Permission Master', href: '/masters/roles', icon: CogIcon },
-    ]
-  },
-  {
-    category: 'Client & Contact Masters', 
-    items: [
-      { name: 'Client Master', href: '/company', icon: BuildingOfficeIcon },
-      { name: 'Contact Master', href: '/masters/contacts', icon: UserCircleIcon },
-    ]
-  },
-  {
-    category: 'Lead & Opportunity Masters',
-    items: [
-      { name: 'Lead Master', href: '/leads', icon: UserGroupIcon },
-      { name: 'Opportunity Master', href: '/masters/opportunities', icon: DocumentTextIcon },
-    ]
-  },
-  {
-    category: 'Project/Proposal Masters',
-    items: [
-      { name: 'Proposal Master', href: '/proposals', icon: DocumentTextIcon },
-      { name: 'Project Master', href: '/projects', icon: BriefcaseIcon },
-    ]
-  },
-  {
-    category: 'Employee/HR Masters',
-    items: [
-      { name: 'Employee Master', href: '/employees', icon: UserGroupIcon },
-      { name: 'Department Master', href: '/masters/departments', icon: BuildingOfficeIcon },
-    ]
-  },
-  {
-    category: 'Product/Service Masters',
-    items: [
-      { name: 'Product/Service Master', href: '/masters/products', icon: DocumentDuplicateIcon },
-      { name: 'Pricing/Rate Master', href: '/masters/pricing', icon: CogIcon },
-    ]
-  },
-  {
-    category: 'Location & Geography Masters',
-    items: [
-      { name: 'Location Master', href: '/masters/locations', icon: MapPinIcon },
-      { name: 'Region/Zones Master', href: '/masters/regions', icon: MapPinIcon },
-    ]
-  },
-  {
-    category: 'Activity & Communication Masters',
-    items: [
-      { name: 'Activity Master', href: '/masters/activities', icon: DocumentTextIcon },
-      { name: 'Campaign Master', href: '/masters/campaigns', icon: DocumentDuplicateIcon },
-    ]
-  },
-  {
-    category: 'Document Masters',
-    items: [
-      { name: 'Document Master', href: '/masters/documents', icon: DocumentDuplicateIcon },
-    ]
-  },
-  {
-    category: 'Utility/Configuration Masters',
-    items: [
-      { name: 'Settings Master', href: '/masters/settings', icon: CogIcon },
-      { name: 'Status Master', href: '/masters/status', icon: CogIcon },
-      { name: 'Source Master', href: '/masters/sources', icon: CogIcon },
-    ]
-  }
+  { name: 'Employee Master', href: '/employees', icon: UserGroupIcon },
+  { name: 'User Master', href: '/masters/users', icon: UsersIcon },
+  { name: 'Activity Master', href: '/masters/activities', icon: DocumentTextIcon },
+  { name: 'Company Master', href: '/company', icon: BuildingOfficeIcon },
+  { name: 'Document Master', href: '/masters/documents', icon: DocumentDuplicateIcon },
 ];
 
 export default function Navbar() {
@@ -236,48 +171,18 @@ export default function Navbar() {
                 </button>
 
                 {isMastersMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-[980px] bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-[480px] overflow-hidden">
-                    <div className="flex">
-                      {/* Left: Categories */}
-                      <div className="w-1/3 border-r border-gray-100 overflow-y-auto max-h-[480px]">
-                        {mastersNavigation.map((master, idx) => (
-                          <button
-                            key={master.category}
-                            onClick={() => setSelectedMasterIndex(idx)}
-                            className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between ${selectedMasterIndex === idx ? 'bg-gray-50' : ''}`}
-                          >
-                            <span className="text-sm font-semibold text-gray-800">{master.category}</span>
-                            <ChevronDownIcon className={`h-4 w-4 text-gray-400 ${selectedMasterIndex === idx ? 'rotate-180' : ''}`} />
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Right: Items for selected category */}
-                      <div className="w-2/3 p-4 overflow-y-auto max-h-[480px]">
-                        {mastersNavigation[selectedMasterIndex] && (
-                          <div>
-                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wide mb-3">
-                              {mastersNavigation[selectedMasterIndex].category}
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                              {mastersNavigation[selectedMasterIndex].items.map((item) => (
-                                <Link
-                                  key={item.name}
-                                  href={item.href}
-                                  className="flex items-center space-x-3 p-3 rounded-lg hover:bg-purple-50 hover:text-purple-900 transition-colors"
-                                  onClick={() => setIsMastersMenuOpen(false)}
-                                >
-                                  <item.icon className="h-5 w-5 text-gray-600" />
-                                  <div className="text-sm">
-                                    <div className="font-medium">{item.name}</div>
-                                  </div>
-                                </Link>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-2">
+                    {mastersNavigation.map((item) => (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-900 transition-colors"
+                        onClick={() => setIsMastersMenuOpen(false)}
+                      >
+                        <item.icon className="h-5 w-5 text-gray-600" />
+                        <span>{item.name}</span>
+                      </Link>
+                    ))}
                   </div>
                 )}
               </div>
@@ -390,35 +295,20 @@ export default function Navbar() {
                 </button>
 
                 {isMastersMenuOpen && (
-                  <div className="pl-4 space-y-2">
-                    {mastersNavigation.map((master, idx) => (
-                      <div key={master.category} className="space-y-1">
-                        <button
-                          onClick={() => setSelectedMasterIndex(idx === selectedMasterIndex ? -1 : idx)}
-                          className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 rounded-lg transition-colors"
-                        >
-                          <span className="uppercase tracking-wide text-xs">{master.category}</span>
-                          <ChevronDownIcon className={`h-4 w-4 ${selectedMasterIndex === idx ? 'rotate-180' : ''}`} />
-                        </button>
-                        {selectedMasterIndex === idx && (
-                          <div className="pl-4 space-y-1">
-                            {master.items.map((item) => (
-                              <Link
-                                key={item.name}
-                                href={item.href}
-                                className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
-                                onClick={() => {
-                                  setIsMastersMenuOpen(false);
-                                  setIsMobileMenuOpen(false);
-                                }}
-                              >
-                                <item.icon className="h-4 w-4" />
-                                <span>{item.name}</span>
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                  <div className="pl-4 space-y-1">
+                    {mastersNavigation.map((item) => (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
+                        onClick={() => {
+                          setIsMastersMenuOpen(false);
+                          setIsMobileMenuOpen(false);
+                        }}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.name}</span>
+                      </Link>
                     ))}
                   </div>
                 )}

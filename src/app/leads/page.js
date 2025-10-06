@@ -316,20 +316,14 @@ export default function Leads() {
     });
   };
 
-  // Handle Excel file upload
-  const handleExcelUpload = async (event) => {
+  // Handle CSV file upload
+  const handleCsvUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     // Validate file type
-    const allowedTypes = [
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/csv'
-    ];
-    
-    if (!allowedTypes.includes(file.type)) {
-      alert('Please upload a valid Excel file (.xlsx, .xls) or CSV file');
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      alert('Please upload a valid CSV file (.csv)');
       return;
     }
 
@@ -432,8 +426,8 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleExcelUpload}
+              accept=".csv"
+              onChange={handleCsvUpload}
               className="hidden"
               disabled={uploading}
             />

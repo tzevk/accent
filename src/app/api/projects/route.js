@@ -164,13 +164,15 @@ export async function PUT(request) {
       project_manager,
       start_date,
       end_date,
+      target_date,
       budget,
-      manhours,
-      cost_breakup,
       status,
       priority,
       progress,
-      notes
+      notes,
+      assigned_to,
+      type,
+      proposal_id
     } = data;
 
     if (!id || !name || !client_name) {
@@ -199,16 +201,41 @@ export async function PUT(request) {
     // Update project (including manhours and cost_breakup)
     await db.execute(
       `UPDATE projects SET 
-        name = ?, description = ?, company_id = ?, client_name = ?, project_manager = ?,
-        start_date = ?, end_date = ?, budget = ?, manhours = ?, cost_breakup = ?, status = ?, priority = ?, progress = ?, notes = ?
+        name = ?,
+        description = ?,
+        company_id = ?,
+        client_name = ?,
+        project_manager = ?,
+        start_date = ?,
+        end_date = ?,
+        target_date = ?,
+        budget = ?,
+        status = ?,
+        priority = ?,
+        progress = ?,
+        notes = ?,
+        assigned_to = ?,
+        type = ?,
+        proposal_id = ?
       WHERE id = ?`,
       [
-        name, description, company_id || null, client_name, project_manager || null,
-        start_date || null, end_date || null, budget || null,
-        manhours || null,
-        cost_breakup ? JSON.stringify(cost_breakup) : null,
+        name,
+        description,
+        company_id || null,
+        client_name,
+        project_manager || null,
+        start_date || null,
+        end_date || null,
+        target_date || null,
+        budget || null,
         status || 'planning',
-        priority || 'medium', progress || 0, notes || null, id
+        priority || 'medium',
+        progress || 0,
+        notes || null,
+        assigned_to || null,
+        type || 'ONGOING',
+        proposal_id || null,
+        id
       ]
     );
     

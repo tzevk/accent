@@ -57,46 +57,28 @@ export default function ProjectViewPage() {
       INFO_PAIR('Project Code', project.project_id || `PRJ-${project.id}`),
       INFO_PAIR('Client', project.client_name || '—'),
       INFO_PAIR('Project Manager', project.project_manager || '—'),
-      INFO_PAIR('Execution Mode', project.execution_mode || project.type || '—'),
+      INFO_PAIR('Project Type', project.type || '—'),
       INFO_PAIR('Status', project.status || '—'),
+      INFO_PAIR('Priority', project.priority || '—'),
       INFO_PAIR('Progress', `${project.progress || 0}%`),
       INFO_PAIR('Start Date', project.start_date || '—'),
       INFO_PAIR('End Date', project.end_date || '—'),
-      INFO_PAIR('Completion Date', project.completion_date || '—'),
-      INFO_PAIR('City', project.city || '—'),
-      INFO_PAIR('Billing Status', project.billing_status || '—'),
-      INFO_PAIR('Outsourced Company', project.outsourced_company || '—'),
-      INFO_PAIR('Accent Invoice No', project.accent_invoice_no || '—'),
-      INFO_PAIR('Accent Invoice Date', project.accent_invoice_date || '—')
+      INFO_PAIR('Target Date', project.target_date || '—'),
+      INFO_PAIR('Assigned To', project.assigned_to || '—'),
+      INFO_PAIR('Budget', project.budget ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(project.budget) : '—'),
+      INFO_PAIR('Company ID', project.company_id || '—'),
+      INFO_PAIR('Proposal ID', project.proposal_id || project.linked_proposal_id || '—')
     ];
   }, [project]);
 
   const scopeSummary = useMemo(() => {
     if (!project) return [];
     const notes = [];
-    if (project.project_description) {
-      notes.push({
-        title: 'Project Overview',
-        content: project.project_description
-      });
+    if (project.description) {
+      notes.push({ title: 'Project Overview', content: project.description });
     }
-    if (project.scope_client_responsibilities) {
-      notes.push({
-        title: 'Client Responsibilities',
-        content: project.scope_client_responsibilities
-      });
-    }
-    if (project.scope_change_log) {
-      notes.push({
-        title: 'Change Requests / Variations',
-        content: project.scope_change_log
-      });
-    }
-    if (project.scope_quality_notes) {
-      notes.push({
-        title: 'Quality & Acceptance',
-        content: project.scope_quality_notes
-      });
+    if (project.notes) {
+      notes.push({ title: 'Internal Notes', content: project.notes });
     }
     return notes;
   }, [project]);
@@ -140,7 +122,7 @@ export default function ProjectViewPage() {
                 </span>
                 <h1 className="text-2xl font-bold text-black">{project.name}</h1>
                 <p className="text-sm text-gray-600 max-w-2xl">
-                  {project.project_description || 'No summary provided. Use the edit view to enrich scope details.'}
+                  {project.description || 'No summary provided. Use the edit view to enrich scope details.'}
                 </p>
               </div>
               <div className="flex items-center gap-2 text-xs">
@@ -212,7 +194,7 @@ export default function ProjectViewPage() {
                 </div>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                   <p className="font-semibold text-black">Next Planning</p>
-                  <p className="mt-1 text-gray-600">{project.completion_date || '—'}</p>
+                  <p className="mt-1 text-gray-600">{project.target_date || '—'}</p>
                 </div>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                   <p className="font-semibold text-black">Progress</p>
@@ -248,11 +230,11 @@ export default function ProjectViewPage() {
                 <h2 className="text-sm font-semibold text-black">Team & Ownership</h2>
               </div>
               <div className="px-6 py-5 space-y-3 text-sm text-gray-600">
-                <p>Project Manager: {project.project_manager || '—'}</p>
-                <p>Client Contact: {project.client_name || '—'}</p>
-                <p>Outsourced Partner: {project.outsourced_company || '—'}</p>
+                <p><span className="font-semibold text-black">Project Manager:</span> {project.project_manager || '—'}</p>
+                <p><span className="font-semibold text-black">Primary Client:</span> {project.client_name || '—'}</p>
+                <p><span className="font-semibold text-black">Assigned To:</span> {project.assigned_to || '—'}</p>
                 <p className="text-xs text-gray-500 mt-4">
-                  Ownership and responsibility matrix will populate once activities are assigned to employees.
+                  Team details are sourced from project fields only. For richer responsibility mapping use the Activity Master to assign work packages.
                 </p>
               </div>
             </section>

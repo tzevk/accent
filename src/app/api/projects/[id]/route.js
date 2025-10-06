@@ -80,16 +80,46 @@ export async function PUT(request, { params }) {
       assigned_to === undefined ? null : assigned_to,
       projectId
     ]);
-    
+
+    // Ensure columns exist to store assigned disciplines/activities and per-discipline descriptions
+    try {
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_disciplines TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_activities TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS discipline_descriptions TEXT');
+    } catch (err) {
+      // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
+      console.warn('Could not ensure project assignment columns exist:', err.message || err);
+    }
+
+    // Persist disciplines/activities/descriptions if provided in payload
+    try {
+      const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : null;
+      const assignedActivities = data.activities ? JSON.stringify(data.activities) : null;
+      const disciplineDescriptions = data.discipline_descriptions ? JSON.stringify(data.discipline_descriptions) : null;
+
+      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null) {
+        await db.execute(
+          `UPDATE projects SET 
+             assigned_disciplines = COALESCE(?, assigned_disciplines),
+             assigned_activities = COALESCE(?, assigned_activities),
+             discipline_descriptions = COALESCE(?, discipline_descriptions)
+           WHERE id = ?`,
+          [assignedDisciplines, assignedActivities, disciplineDescriptions, projectId]
+        );
+      }
+    } catch (err) {
+      console.error('Failed to persist project discipline/activity assignments:', err);
+    }
+
     await db.end();
-    
+
     if (result.affectedRows === 0) {
       return Response.json({ 
         success: false, 
         error: 'Project not found' 
       }, { status: 404 });
     }
-    
+
     return Response.json({ 
       success: true, 
       message: 'Project updated successfully' 

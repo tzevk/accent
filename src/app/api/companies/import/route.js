@@ -1,5 +1,5 @@
 import { dbConnect } from '@/utils/database';
-import * as xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 
 export async function POST(request) {
   try {
@@ -109,14 +109,20 @@ async function importCompaniesFromData(companies, fileType) {
 }
 
 async function importCompaniesFromExcel(file) {
-  // Read the Excel file
+  // Read the Excel file into ExcelJS
   const buffer = await file.arrayBuffer();
-  const workbook = xlsx.read(buffer);
-  const sheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[sheetName];
-  
-  // Convert to JSON
-  const jsonData = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
+  const workbook = new ExcelJS.Workbook();
+  // Buffer.from works with ArrayBuffer in Node
+  await workbook.xlsx.load(Buffer.from(buffer));
+  const worksheet = workbook.worksheets[0];
+
+  // Convert to JSON (array-of-arrays, header row included)
+  const jsonData = [];
+  worksheet.eachRow((row) => {
+    // row.values is 1-based; slice off the first element
+    const values = (row.values || []).slice(1).map((v) => (v === undefined ? null : v));
+    jsonData.push(values);
+  });
   
   if (jsonData.length < 2) {
     return Response.json({ 

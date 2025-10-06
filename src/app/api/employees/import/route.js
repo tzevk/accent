@@ -1,6 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 // Function to parse CSV content
 function parseCSV(csvContent) {
@@ -19,53 +19,6 @@ function parseCSV(csvContent) {
     }
   }
 
-  return data;
-}
-
-// Function to parse Excel content
-function parseExcel(buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0]; // Use first sheet
-  const worksheet = workbook.Sheets[sheetName];
-  
-  // Convert to JSON with headers
-  const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-    header: 1,
-    blankrows: false // Skip blank rows
-  });
-  
-  if (jsonData.length === 0) {
-    return [];
-  }
-  
-  const headers = jsonData[0];
-  const data = [];
-  
-  console.log('Excel Headers:', headers);
-  console.log('Excel Data Length:', jsonData.length);
-  
-  for (let i = 1; i < jsonData.length; i++) {
-    const rowData = jsonData[i];
-    
-    // Skip empty rows
-    if (!rowData || rowData.every(cell => !cell || String(cell).trim() === '')) {
-      continue;
-    }
-    
-    const row = {};
-    headers.forEach((header, index) => {
-      if (header) { // Only process if header exists
-        row[header] = rowData[index] || '';
-      }
-    });
-    
-    // Only add row if it has at least SR.NO
-    if (row['SR.NO']) {
-      data.push(row);
-    }
-  }
-  
-  console.log('Parsed Excel Data:', data.slice(0, 2)); // Log first 2 rows for debugging
   return data;
 }
 
@@ -173,17 +126,15 @@ export async function POST(request) {
     }
 
     // Check file type
-    const isCSV = file.name.endsWith('.csv');
-    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-    
-    if (!isCSV && !isExcel) {
+    const isCSV = file.name.toLowerCase().endsWith('.csv');
+
+    if (!isCSV) {
       return NextResponse.json(
-        { error: 'Only CSV and Excel files (.csv, .xlsx, .xls) are allowed' },
+        { error: 'Only CSV files (.csv) are allowed' },
         { status: 400 }
       );
     }
 
-    // Check file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       return NextResponse.json(
         { error: 'File size too large. Maximum 5MB allowed.' },
@@ -195,13 +146,8 @@ export async function POST(request) {
     let parsedData;
     
     try {
-      if (isCSV) {
-        const csvContent = await file.text();
-        parsedData = parseCSV(csvContent);
-      } else if (isExcel) {
-        const buffer = await file.arrayBuffer();
-        parsedData = parseExcel(Buffer.from(buffer));
-      }
+      const csvContent = await file.text();
+      parsedData = parseCSV(csvContent);
     } catch {
       return NextResponse.json(
         { error: 'Invalid file format or corrupted file' },
@@ -350,20 +296,20 @@ export async function GET(request) {
     const format = searchParams.get('format') || 'csv';
 
     if (format === 'excel' || format === 'xlsx') {
-      // Create Excel template
+      // Create Excel template using ExcelJS
       const templateData = [
         ['SR.NO', 'Employee Code', 'Full Name', 'Phone', 'Department', 'Position', 'Hire Date', 'Salary', 'Address', 'Notes'],
         [1, 'EMP001', 'John Doe', '+1-555-0123', 'Engineering', 'Senior Developer', '2023-01-15', 85000, '123 Main St', 'Sample employee'],
         [2, 'EMP002', 'Jane Smith', '+1-555-0124', 'Sales', 'Sales Manager', '2023-02-01', 75000, '456 Oak Ave', 'Sample employee']
       ];
 
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.aoa_to_sheet(templateData);
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Employees');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Employees');
+      templateData.forEach((row) => worksheet.addRow(row));
 
-      const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      const buffer = await workbook.xlsx.writeBuffer();
 
-      return new Response(excelBuffer, {
+      return new Response(Buffer.from(buffer), {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': 'attachment; filename="employee_template.xlsx"'
