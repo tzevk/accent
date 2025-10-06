@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import {
   ArrowLeftIcon,
   ChartBarIcon,
+  PlusIcon,
+  MinusIcon,
 } from '@heroicons/react/24/outline';
 
 const STATUS_OPTIONS = ['NEW', 'planning', 'in-progress', 'on-hold', 'completed', 'cancelled'];
@@ -381,54 +383,119 @@ export default function EditProjectPage() {
                       Select disciplines and their activities for this project. Disciplines and activities are managed in the Activity Master.
                     </p>
 
-                    {(activities || []).map((discipline) => (
-                      <div key={discipline.id} className="mb-6">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedDisciplines.includes(String(discipline.id))}
-                            onChange={() => toggleDiscipline(discipline.id)}
-                            className="h-4 w-4 text-[#7F2487] border-gray-300 rounded"
-                          />
-                          <h3 className="font-semibold text-gray-800">{discipline.name}</h3>
-                        </div>
-
-                        {selectedDisciplines.includes(String(discipline.id)) && (
-                          <>
-                            <textarea
-                              placeholder="Add a short description for this discipline in this project (optional)"
-                              value={(form.discipline_descriptions || {})[discipline.id] || ''}
-                              onChange={(e) =>
-                                setForm((p) => ({
-                                  ...p,
-                                  discipline_descriptions: {
-                                    ...(p.discipline_descriptions || {}),
-                                    [discipline.id]: e.target.value,
-                                  },
-                                }))
-                              }
-                              rows={2}
-                              className="w-full mt-2 px-3 py-2 text-sm border border-gray-300 rounded-md"
-                            />
-
-                            <div className="ml-6 grid md:grid-cols-2 gap-2 mt-3">
-                              {(discipline.activities || []).map((act) => (
-                                <label key={act.id} className="flex items-center gap-2 text-sm">
-                                  <input
-                                    type="checkbox"
-                                    value={String(act.id)}
-                                    checked={selectedActivities.includes(String(act.id))}
-                                    onChange={() => toggleActivity(act.id)}
-                                    className="h-4 w-4 text-[#7F2487] border-gray-300 rounded"
-                                  />
-                                  {act.name}
-                                </label>
-                              ))}
+                    <div className="grid lg:grid-cols-3 gap-6">
+                      <div className="lg:col-span-2">
+                        {(activities || []).map((discipline) => (
+                          <div key={discipline.id} className="mb-6">
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleDiscipline(discipline.id)}
+                                aria-pressed={selectedDisciplines.includes(String(discipline.id))}
+                                className={`inline-flex items-center justify-center h-7 w-7 rounded-full border ${selectedDisciplines.includes(String(discipline.id)) ? 'bg-[#7F2487] text-white border-[#7F2487]' : 'bg-white text-gray-600 border-gray-200'}`}
+                              >
+                                {selectedDisciplines.includes(String(discipline.id)) ? (
+                                  <MinusIcon className="h-4 w-4" />
+                                ) : (
+                                  <PlusIcon className="h-4 w-4" />
+                                )}
+                              </button>
+                              <h3 className="font-semibold text-gray-800 ml-2">{discipline.name}</h3>
                             </div>
-                          </>
-                        )}
+
+                            {selectedDisciplines.includes(String(discipline.id)) && (
+                              <>
+                                <textarea
+                                  placeholder="Add a short description for this discipline in this project (optional)"
+                                  value={(form.discipline_descriptions || {})[discipline.id] || ''}
+                                  onChange={(e) =>
+                                    setForm((p) => ({
+                                      ...p,
+                                      discipline_descriptions: {
+                                        ...(p.discipline_descriptions || {}),
+                                        [discipline.id]: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  rows={2}
+                                  className="w-full mt-2 px-3 py-2 text-sm border border-gray-300 rounded-md"
+                                />
+
+                                <div className="ml-6 grid md:grid-cols-2 gap-2 mt-3">
+                                  {(discipline.activities || []).map((act) => (
+                                    <div key={act.id} className="flex items-center gap-2 text-sm">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleActivity(act.id)}
+                                        className={`inline-flex items-center justify-center h-7 w-7 rounded-full border ${selectedActivities.includes(String(act.id)) ? 'bg-[#7F2487] text-white border-[#7F2487]' : 'bg-white text-gray-600 border-gray-200'}`}
+                                        aria-pressed={selectedActivities.includes(String(act.id))}
+                                      >
+                                        {selectedActivities.includes(String(act.id)) ? (
+                                          <MinusIcon className="h-4 w-4" />
+                                        ) : (
+                                          <PlusIcon className="h-4 w-4" />
+                                        )}
+                                      </button>
+                                      <span>{act.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
+
+                      {/* Preview panel */}
+                      <aside className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-gray-800">Preview</h4>
+                        <p className="text-xs text-gray-600 mt-1">Selected disciplines & activities for this project</p>
+                        <div className="mt-3 space-y-3 text-sm">
+                          <div>
+                            <p className="text-xs text-gray-500">Disciplines</p>
+                            {selectedDisciplines.length === 0 ? (
+                              <p className="text-sm text-gray-500 mt-1">No disciplines selected</p>
+                            ) : (
+                              <ul className="mt-1 space-y-1">
+                                {selectedDisciplines.map((id) => {
+                                  const d = activities.find((a) => String(a.id) === String(id));
+                                  return (
+                                    <li key={id} className="flex items-center justify-between">
+                                      <span>{d ? d.name : id}</span>
+                                      <button type="button" onClick={() => toggleDiscipline(id)} className="text-xs text-red-500">Remove</button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-xs text-gray-500">Activities</p>
+                            {selectedActivities.length === 0 ? (
+                              <p className="text-sm text-gray-500 mt-1">No activities selected</p>
+                            ) : (
+                              <ul className="mt-1 space-y-1">
+                                {selectedActivities.map((id) => {
+                                  // find activity name from activities catalogue
+                                  let found = null;
+                                  for (const disc of activities) {
+                                    const act = (disc.activities || []).find((a) => String(a.id) === String(id));
+                                    if (act) { found = act; break; }
+                                  }
+                                  return (
+                                    <li key={id} className="flex items-center justify-between">
+                                      <span>{found ? found.name : id}</span>
+                                      <button type="button" onClick={() => toggleActivity(id)} className="text-xs text-red-500">Remove</button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      </aside>
+                    </div>
                   </section>
                 )}
 

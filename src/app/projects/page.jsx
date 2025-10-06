@@ -46,6 +46,9 @@ function ProjectsInner() {
   const focusParam = searchParams.get('focus');
 
   const [projects, setProjects] = useState([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(() => (viewParam === 'calendar' ? 'calendar' : 'list'));
   const [calendarDate, setCalendarDate] = useState(() => startOfMonth(new Date()));
@@ -201,30 +204,54 @@ function ProjectsInner() {
               <p className="text-sm text-black">Manage and track your client projects</p>
             </div>
 
-            {/* Tabs */}
+            {/* Tabs (accessible) */}
             <div className="border-b border-gray-200 mb-6">
-              <nav className="-mb-px flex space-x-8">
-                <button
-                  onClick={() => setActiveTab('list')}
-                  className={`py-2 px-1 border-b-2 font-medium text-xs ${
-                    activeTab === 'list'
-                      ? 'border-accent-primary text-black'
-                      : 'border-transparent text-black hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Projects List ({projects.length})
-                </button>
-                <button
-                  onClick={() => setActiveTab('calendar')}
-                  className={`py-2 px-1 border-b-2 font-medium text-xs ${
-                    activeTab === 'calendar'
-                      ? 'border-accent-primary text-black'
-                      : 'border-transparent text-black hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Calendar View
-                </button>
-              </nav>
+              <div role="tablist" aria-label="Projects views" className="-mb-px flex space-x-2">
+                {[
+                  { id: 'list', label: `Projects List (${projects.length})` },
+                  { id: 'calendar', label: 'Calendar View' }
+                ].map((tab, idx, arr) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      role="tab"
+                      aria-selected={isActive}
+                      aria-controls={`panel-${tab.id}`}
+                      tabIndex={isActive ? 0 : -1}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        // keep search params in sync
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('view', tab.id === 'calendar' ? 'calendar' : 'list');
+                        window.history.replaceState({}, '', url);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowRight') {
+                          const next = arr[(idx + 1) % arr.length];
+                          setActiveTab(next.id);
+                          const url = new URL(window.location.href);
+                          url.searchParams.set('view', next.id === 'calendar' ? 'calendar' : 'list');
+                          window.history.replaceState({}, '', url);
+                        } else if (e.key === 'ArrowLeft') {
+                          const prev = arr[(idx - 1 + arr.length) % arr.length];
+                          setActiveTab(prev.id);
+                          const url = new URL(window.location.href);
+                          url.searchParams.set('view', prev.id === 'calendar' ? 'calendar' : 'list');
+                          window.history.replaceState({}, '', url);
+                        }
+                      }}
+                      className={`py-2 px-3 border-b-2 font-medium text-xs rounded-t-md focus:outline-none ${
+                        isActive
+                          ? 'border-accent-primary text-black'
+                          : 'border-transparent text-black hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Content */}
@@ -241,6 +268,37 @@ function ProjectsInner() {
                         <PlusIcon className="h-4 w-4" />
                         <span>New Project</span>
                       </button>
+                      <div className="ml-4 flex items-center space-x-2">
+                        <input
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="Search projects or client..."
+                          className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                        />
+                        <select
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value)}
+                          className="px-2 py-2 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">All Statuses</option>
+                          <option value="NEW">NEW</option>
+                          <option value="planning">Planning</option>
+                          <option value="in-progress">In Progress</option>
+                          <option value="on-hold">On Hold</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                        <select
+                          value={priorityFilter}
+                          onChange={(e) => setPriorityFilter(e.target.value)}
+                          className="px-2 py-2 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">All Priorities</option>
+                          <option value="HIGH">High</option>
+                          <option value="MEDIUM">Medium</option>
+                          <option value="LOW">Low</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -273,7 +331,14 @@ function ProjectsInner() {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
-                            {projects.map((project) => (
+                            {projects
+                              .filter((p) => {
+                                if (query && !(`${p.name || ''} ${p.client_name || ''}`.toLowerCase().includes(query.toLowerCase()))) return false;
+                                if (statusFilter && String((p.status || '')).toLowerCase() !== statusFilter.toLowerCase()) return false;
+                                if (priorityFilter && String((p.priority || '')).toLowerCase() !== priorityFilter.toLowerCase()) return false;
+                                return true;
+                              })
+                              .map((project) => (
                               <tr key={project.id} className="hover:bg-gray-50">
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div>

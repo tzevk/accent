@@ -23,6 +23,7 @@ export default function ProjectViewPage() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     if (!id) {
@@ -142,7 +143,37 @@ export default function ProjectViewPage() {
               </div>
             </header>
 
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            {/* Tabs */}
+            <div className="bg-white border border-gray-200 rounded-lg px-6 py-3">
+              <div role="tablist" aria-label="Project sections" className="flex space-x-2">
+                {[
+                  { id: 'overview', label: 'Overview' },
+                  { id: 'scope', label: 'Scope' },
+                  { id: 'sprint', label: 'Sprint' },
+                  { id: 'activities', label: 'Activities' },
+                  { id: 'team', label: 'Team' }
+                ].map((t) => (
+                  <button
+                    id={`tab-${t.id}`}
+                    key={t.id}
+                    role="tab"
+                    aria-selected={activeTab === t.id}
+                    onClick={() => setActiveTab(t.id)}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none ${activeTab === t.id ? 'bg-[#7F2487]/10 text-[#7F2487]' : 'text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <section
+              id="panel-overview"
+              role="tabpanel"
+              aria-labelledby="tab-overview"
+              hidden={activeTab !== 'overview'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">Basic Information</h2>
@@ -157,7 +188,13 @@ export default function ProjectViewPage() {
               </div>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <section
+              id="panel-scope"
+              role="tabpanel"
+              aria-labelledby="tab-scope"
+              hidden={activeTab !== 'scope'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <MapPinIcon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">Scope & Notes</h2>
@@ -178,7 +215,13 @@ export default function ProjectViewPage() {
               </div>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <section
+              id="panel-sprint"
+              role="tabpanel"
+              aria-labelledby="tab-sprint"
+              hidden={activeTab !== 'sprint'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <ClockIcon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">Sprint Planning Snapshot</h2>
@@ -209,7 +252,13 @@ export default function ProjectViewPage() {
               </div>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <section
+              id="panel-activities"
+              role="tabpanel"
+              aria-labelledby="tab-activities"
+              hidden={activeTab !== 'activities'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <TagIcon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">Activities by Discipline</h2>
@@ -224,7 +273,13 @@ export default function ProjectViewPage() {
               </div>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <section
+              id="panel-team"
+              role="tabpanel"
+              aria-labelledby="tab-team"
+              hidden={activeTab !== 'team'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <UserIcon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">Team & Ownership</h2>
