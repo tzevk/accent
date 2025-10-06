@@ -4,11 +4,18 @@ import Navbar from '@/components/Navbar';
 import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
-// Empty discipline object
-const EMPTY_DISCIPLINE = {
-  name: "",
-  description: "",
-};
+// Fixed disciplines (cannot be edited)
+const FIXED_DISCIPLINES = [
+  { name: 'PROCESS ENGINEERING' },
+  { name: 'CIVIL/STRUCTURAL' },
+  { name: 'MECHANICAL', children: ['STATIC', 'ROTATING'] },
+  { name: 'PIPING' },
+  { name: 'FIREFIGHTING' },
+  { name: 'HVAC' },
+  { name: 'ELECTRICAL' },
+  { name: 'INSTRUMENTATION' },
+  { name: 'PROJECT MANAGEMENT' },
+];
 
 // Empty sub-activity object
 const EMPTY_SUB_ACTIVITY = {
@@ -19,41 +26,44 @@ const EMPTY_SUB_ACTIVITY = {
 
 export default function ActivityMasterPage() {
   const [disciplines, setDisciplines] = useState([]);
-  const [disciplineForm, setDisciplineForm] = useState(EMPTY_DISCIPLINE);
+  // disciplineForm and discipline editing removed — disciplines are fixed
+  const [disciplineForm, setDisciplineForm] = useState({ name: '', description: '' });
   const [subActivityForm, setSubActivityForm] = useState(EMPTY_SUB_ACTIVITY);
   const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
-  const [editingDisciplineId, setEditingDisciplineId] = useState(null);
   const [editingSubId, setEditingSubId] = useState(null);
-  const [showDisciplineForm, setShowDisciplineForm] = useState(false);
+  const [showDisciplineForm, setShowDisciplineForm] = useState(false); // unused but kept for safety
   const [showSubActivityForm, setShowSubActivityForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ Fetch disciplines
+  // Use fixed disciplines list (non-editable)
   useEffect(() => {
-    async function loadFunctions() {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/functions");
-        if (!res.ok) throw new Error("Failed to fetch functions");
-        const data = await res.json();
-        const mapped = data.map((fn) => ({
-          id: fn.id,
-          name: fn.function_name,
-          description: fn.description,
-          activityCount: fn.activity_count || 0,
-          subActivities: [],
-        }));
-        setDisciplines(mapped);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadFunctions();
+    setLoading(true);
+    const mapped = FIXED_DISCIPLINES.flatMap((entry, index) => {
+      const parentId = `fixed_${index}`;
+      const parent = {
+        id: parentId,
+        name: entry.name,
+        description: '',
+        activityCount: 0,
+        subActivities: [],
+        children: [],
+      };
+      const children = (entry.children || []).map((c, ci) => ({
+        id: `${parentId}_child_${ci}`,
+        name: c,
+        parentId,
+        description: '',
+        activityCount: 0,
+        subActivities: [],
+      }));
+      parent.children = children;
+      return [parent, ...children];
+    });
+    setDisciplines(mapped);
+    setLoading(false);
   }, []);
 
   // ✅ Fetch sub-activities when discipline selected
@@ -61,6 +71,19 @@ export default function ActivityMasterPage() {
     if (!selectedDisciplineId) return;
     async function loadSubActivities() {
       try {
+        // If the selected discipline is one of the fixed entries (string id), do not call server
+        if (String(selectedDisciplineId).startsWith('fixed_')) {
+          const local = disciplines.find((d) => d.id === selectedDisciplineId);
+          const data = local?.subActivities || [];
+          setActivities(data.map((a) => ({
+            id: a.id || `local_${Math.random().toString(36).slice(2, 9)}`,
+            name: a.activity_name || a.name,
+            defaultDuration: a.default_duration || a.defaultDuration || "",
+            defaultManhours: a.default_manhours || a.defaultManhours || "",
+          })));
+          return;
+        }
+
         const res = await fetch(`/api/activities?function_id=${selectedDisciplineId}`);
         if (!res.ok) throw new Error("Failed to fetch sub-activities");
         const data = await res.json();
@@ -105,74 +128,7 @@ export default function ActivityMasterPage() {
     [disciplines, selectedDisciplineId]
   );
 
-  // ✅ Open Discipline form
-  const openDisciplineForm = () => {
-    setDisciplineForm(EMPTY_DISCIPLINE);
-    setEditingDisciplineId(null);
-    setShowDisciplineForm(true);
-  };
-
-  // ✅ Edit Discipline
-  const handleEditDiscipline = (id) => {
-    const discipline = disciplines.find((d) => d.id === id);
-    if (!discipline) return;
-    setDisciplineForm({ name: discipline.name, description: discipline.description });
-    setEditingDisciplineId(id);
-    setShowDisciplineForm(true);
-  };
-
-  // ✅ Delete Discipline
-  const handleDeleteDiscipline = async (id) => {
-    if (!confirm("Delete this discipline?")) return;
-    try {
-      await fetch(`/api/functions/${id}`, { method: "DELETE" });
-      setDisciplines((prev) => prev.filter((d) => d.id !== id));
-      if (id === selectedDisciplineId) {
-        setSelectedDisciplineId(null);
-        setActivities([]);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // ✅ Save Discipline
-  const handleDisciplineSubmit = async (e) => {
-    e.preventDefault();
-    const payload = {
-      function_name: disciplineForm.name,
-      description: disciplineForm.description,
-      status: "active",
-    };
-
-    const method = editingDisciplineId ? "PUT" : "POST";
-    const url = editingDisciplineId
-      ? `/api/functions/${editingDisciplineId}`
-      : "/api/functions";
-
-    await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    setShowDisciplineForm(false);
-    setDisciplineForm(EMPTY_DISCIPLINE);
-    setEditingDisciplineId(null);
-
-    // Reload updated list
-    const res = await fetch("/api/functions");
-    const data = await res.json();
-    setDisciplines(
-      data.map((fn) => ({
-        id: fn.id,
-        name: fn.function_name,
-        description: fn.description,
-        activityCount: fn.activity_count || 0,
-        subActivities: [],
-      }))
-    );
-  };
+  // Discipline management removed — disciplines are fixed list
 
   // ✅ Create Sub-Activity
   const handleCreateSubActivity = (disciplineId) => {
@@ -196,6 +152,23 @@ export default function ActivityMasterPage() {
   // ✅ Delete Sub-Activity
   const handleDeleteSubActivity = async (subId) => {
     if (!confirm("Delete this sub-activity?")) return;
+    // If fixed discipline (string id) treat as local delete
+    if (String(selectedDisciplineId).startsWith('fixed_')) {
+      setActivities((prev) => prev.filter((a) => a.id !== subId));
+      setDisciplines((prev) =>
+        prev.map((d) =>
+          d.id === selectedDisciplineId
+            ? {
+                ...d,
+                subActivities: d.subActivities.filter((a) => String(a.id) !== String(subId)),
+                activityCount: Math.max(0, d.activityCount - 1),
+              }
+            : d
+        )
+      );
+      return;
+    }
+
     await fetch(`/api/activities/${subId}`, { method: "DELETE" });
     setActivities((prev) => prev.filter((a) => a.id !== subId));
     setDisciplines((prev) =>
@@ -215,6 +188,26 @@ export default function ActivityMasterPage() {
   const handleSubActivitySubmit = async (e) => {
     e.preventDefault();
     if (!selectedDisciplineId || !subActivityForm.name.trim()) return;
+    // If fixed discipline, add locally
+    if (String(selectedDisciplineId).startsWith('fixed_')) {
+      const newLocal = {
+        id: `local_${Math.random().toString(36).slice(2, 9)}`,
+        name: subActivityForm.name,
+        defaultDuration: subActivityForm.defaultDuration,
+        defaultManhours: subActivityForm.defaultManhours,
+      };
+      setActivities((prev) => [...prev, newLocal]);
+      setDisciplines((prev) =>
+        prev.map((d) =>
+          d.id === selectedDisciplineId
+            ? { ...d, subActivities: [...(d.subActivities || []), newLocal], activityCount: (d.activityCount || 0) + 1 }
+            : d
+        )
+      );
+      setSubActivityForm(EMPTY_SUB_ACTIVITY);
+      setShowSubActivityForm(false);
+      return;
+    }
 
     const payload = {
       function_id: selectedDisciplineId,
@@ -268,13 +261,6 @@ export default function ActivityMasterPage() {
                   placeholder="Search disciplines or activities…"
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                 />
-                <button
-                  onClick={openDisciplineForm}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors"
-                >
-                  <PlusIcon className="h-4 w-4" />
-                  New Discipline
-                </button>
               </div>
             </div>
 
@@ -294,47 +280,60 @@ export default function ActivityMasterPage() {
                     No disciplines yet. Create your first discipline.
                   </div>
                 ) : (
-                  filteredDisciplines.map((discipline) => (
-                    <div
-                      key={discipline.id}
-                      className={`border rounded-lg px-4 py-3 cursor-pointer ${
-                        selectedDisciplineId === discipline.id
-                          ? "border-[#7F2487] bg-[#7F2487]/10"
-                          : "border-gray-200 hover:bg-gray-50"
-                      }`}
-                      onClick={() => setSelectedDisciplineId(discipline.id)}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-sm font-semibold text-black">{discipline.name}</p>
-                          <p className="text-xs text-gray-500">{discipline.description}</p>
+                  // Render parents with their children nested beneath
+                  filteredDisciplines
+                    .filter((d) => !d.parentId)
+                    .map((parent) => {
+                      const children = filteredDisciplines.filter((c) => c.parentId === parent.id);
+                      return (
+                        <div key={parent.id} className="space-y-2">
+                          <div
+                            className={`border rounded-lg px-4 py-3 cursor-pointer ${
+                              selectedDisciplineId === parent.id
+                                ? "border-[#7F2487] bg-[#7F2487]/10"
+                                : "border-gray-200 hover:bg-gray-50"
+                            }`}
+                            onClick={() => setSelectedDisciplineId(parent.id)}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-semibold text-black">{parent.name}</p>
+                                <p className="text-xs text-gray-500">{parent.description}</p>
+                              </div>
+                              <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                                {parent.activityCount} activities
+                              </span>
+                            </div>
+                            <div className="mt-2 text-xs text-gray-500">{parent.children?.length ? 'Discipline group' : 'Fixed discipline'}</div>
+                          </div>
+
+                          {children.length > 0 && (
+                            <div className="pl-6 space-y-2">
+                              {children.map((child) => (
+                                <div
+                                  key={child.id}
+                                  className={`border rounded-lg px-3 py-2 cursor-pointer text-sm ${
+                                    selectedDisciplineId === child.id
+                                      ? "border-[#7F2487] bg-[#7F2487]/10"
+                                      : "border-gray-200 hover:bg-gray-50"
+                                  }`}
+                                  onClick={() => setSelectedDisciplineId(child.id)}
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="font-semibold text-black">{child.name}</p>
+                                    </div>
+                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                                      {child.activityCount} activities
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
-                          {discipline.activityCount} activities
-                        </span>
-                      </div>
-                      <div className="mt-2 flex gap-2 text-xs">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditDiscipline(discipline.id);
-                          }}
-                          className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteDiscipline(discipline.id);
-                          }}
-                          className="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                      );
+                    })
                 )}
 
                 {showDisciplineForm && (
