@@ -320,6 +320,7 @@ function ProjectsInner() {
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50">
                             <tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Project No.</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Project</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Client</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Timeline</th>
@@ -338,8 +339,20 @@ function ProjectsInner() {
                                 if (priorityFilter && String((p.priority || '')).toLowerCase() !== priorityFilter.toLowerCase()) return false;
                                 return true;
                               })
+                              .sort((a, b) => {
+                                // Sort by project_id in descending order (newest first)
+                                const idA = a.project_id || '';
+                                const idB = b.project_id || '';
+                                // Compare strings in reverse order for descending
+                                return idB.localeCompare(idA);
+                              })
                               .map((project) => (
                               <tr key={project.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <div className="text-sm font-mono text-gray-900">
+                                    {project.project_id || '-'}
+                                  </div>
+                                </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div>
                                     <div className="text-sm font-medium text-black">{project.name}</div>
