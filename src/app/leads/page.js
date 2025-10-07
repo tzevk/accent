@@ -122,6 +122,7 @@ export default function Leads() {
       if (result.success) {
         // Reset form
         setFormData({
+          lead_id: '',
           company_id: '',
           company_name: '',
           contact_name: '',
@@ -141,11 +142,11 @@ export default function Leads() {
         fetchLeads();
         alert('Lead created successfully!');
       } else {
-        alert('Error creating lead: ' + result.error);
+        alert('Error creating lead: ' + (result.error || 'Unknown error') + (result.details ? '\nDetails: ' + result.details : ''));
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error creating lead');
+      alert('Error creating lead: ' + error.message);
     } finally {
       setLoading(false);
     }

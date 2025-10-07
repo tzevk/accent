@@ -131,12 +131,16 @@ export async function POST(request) {
 
     const db = await dbConnect();
     
-    // Add lead_id column if it doesn't exist
+    // Add columns if they don't exist
     try {
       await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_id VARCHAR(50)');
+      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_id INT');
     } catch (err) {
-      console.warn('lead_id column might already exist:', err);
+      console.warn('Columns might already exist:', err.message);
     }
+    
+    // Convert empty company_id to null
+    const companyIdValue = company_id && company_id !== '' ? company_id : null;
     
     // Auto-generate lead_id in format: serial-month-year (e.g., 001-10-2024)
     let generatedLeadId = lead_id;
@@ -174,7 +178,7 @@ export async function POST(request) {
         lead_source, priority, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      generatedLeadId, company_id, company_name, contact_name, contact_email, phone, city,
+      generatedLeadId, companyIdValue, company_name, contact_name, contact_email, phone, city,
       project_description, enquiry_type, enquiry_status, enquiry_date,
       lead_source, priority, notes
     ]);
@@ -192,7 +196,8 @@ export async function POST(request) {
     console.error('Database error:', error);
     return Response.json({ 
       success: false, 
-      error: 'Failed to create lead' 
+      error: 'Failed to create lead',
+      details: error.message 
     }, { status: 500 });
   }
 }
