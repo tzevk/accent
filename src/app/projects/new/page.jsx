@@ -13,7 +13,6 @@ const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 const INITIAL_FORM = {
   project_id: '',
   name: '',
-  client_name: '',
   company_id: '',
   project_manager: '',
   start_date: '',
@@ -105,8 +104,8 @@ function NewProjectForm() {
       alert('Project name is required');
       return;
     }
-    if (!form.client_name.trim()) {
-      alert('Client name is required');
+    if (!form.company_id) {
+      alert('Company is required');
       return;
     }
 
@@ -116,8 +115,7 @@ function NewProjectForm() {
         project_id: form.project_id || null,
         name: form.name,
         description: form.description || '',
-        company_id: form.company_id || null,
-        client_name: form.client_name,
+        company_id: form.company_id,
         project_manager: form.project_manager || null,
         start_date: form.start_date || null,
         end_date: form.end_date || null,
@@ -208,25 +206,15 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Client Name *</label>
-                  <input
-                    type="text"
-                    name="client_name"
-                    value={form.client_name}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-black mb-1">Linked Company</label>
+                  <label className="block text-xs font-medium text-black mb-1">Company Name *</label>
                   <select
                     name="company_id"
                     value={form.company_id}
                     onChange={handleChange}
+                    required
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                   >
-                    <option value="">No company linked</option>
+                    <option value="">Select a company</option>
                     {companies.map((company) => (
                       <option key={company.id} value={company.id}>
                         {company.company_name || company.name}

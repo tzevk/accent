@@ -80,7 +80,6 @@ export async function POST(request) {
       name,
       description,
       company_id,
-      client_name,
       project_manager,
       start_date,
       end_date,
@@ -95,14 +94,30 @@ export async function POST(request) {
       notes
     } = data;
 
-    if (!name || !client_name) {
+    if (!name || !company_id) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Project name and client name are required' 
+        error: 'Project name and company are required' 
       }, { status: 400 });
     }
 
     const db = await dbConnect();
+    
+    // Fetch company name from company_id
+    const [companyRows] = await db.execute(
+      'SELECT company_name FROM companies WHERE id = ?',
+      [company_id]
+    );
+    
+    if (companyRows.length === 0) {
+      await db.end();
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Selected company not found' 
+      }, { status: 400 });
+    }
+    
+    const client_name = companyRows[0].company_name;
     
     let projectId;
     
@@ -210,7 +225,6 @@ export async function PUT(request) {
       name,
       description,
       company_id,
-      client_name,
       project_manager,
       start_date,
       end_date,
@@ -225,14 +239,30 @@ export async function PUT(request) {
       proposal_id
     } = data;
 
-    if (!id || !name || !client_name) {
+    if (!id || !name || !company_id) {
       return NextResponse.json({ 
         success: false, 
-        error: 'ID, project name and client name are required' 
+        error: 'ID, project name and company are required' 
       }, { status: 400 });
     }
 
     const db = await dbConnect();
+    
+    // Fetch company name from company_id
+    const [companyRows] = await db.execute(
+      'SELECT company_name FROM companies WHERE id = ?',
+      [company_id]
+    );
+    
+    if (companyRows.length === 0) {
+      await db.end();
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Selected company not found' 
+      }, { status: 400 });
+    }
+    
+    const client_name = companyRows[0].company_name;
     
     // Check if project exists
     const [existing] = await db.execute(

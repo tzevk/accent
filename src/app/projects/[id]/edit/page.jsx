@@ -128,7 +128,6 @@ const generateProjectNumber = async () => {
 const INITIAL_FORM = {
   name: '',
   project_id: '',
-  client_name: '',
   client_contact_details: '',
   project_location_country: '',
   project_location_city: '',
@@ -594,14 +593,21 @@ export default function EditProjectPage() {
                         <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Client Information</h3>
                         <div className="grid md:grid-cols-2 gap-6">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Client Name</label>
-                            <input
-                              type="text"
-                              name="client_name"
-                              value={form.client_name || ''}
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                            <select
+                              name="company_id"
+                              value={form.company_id || ''}
                               onChange={handleChange}
+                              required
                               className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                            />
+                            >
+                              <option value="">Select a company</option>
+                              {companies.map((company) => (
+                                <option key={company.id} value={company.id}>
+                                  {company.company_name || company.name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Client Contact Details</label>

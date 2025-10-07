@@ -334,7 +334,7 @@ function ProjectsInner() {
                           <tbody className="bg-white divide-y divide-gray-200">
                             {projects
                               .filter((p) => {
-                                if (query && !(`${p.name || ''} ${p.client_name || ''}`.toLowerCase().includes(query.toLowerCase()))) return false;
+                                if (query && !(`${p.name || ''} ${p.company_name || ''}`.toLowerCase().includes(query.toLowerCase()))) return false;
                                 if (statusFilter && String((p.status || '')).toLowerCase() !== statusFilter.toLowerCase()) return false;
                                 if (priorityFilter && String((p.priority || '')).toLowerCase() !== priorityFilter.toLowerCase()) return false;
                                 return true;
@@ -363,7 +363,7 @@ function ProjectsInner() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <div className="text-sm text-black">{project.client_name}</div>
+                                  <div className="text-sm text-black">{project.company_name || '-'}</div>
                                   <div className="text-xs text-black">PM: {project.project_manager || 'Not assigned'}</div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
