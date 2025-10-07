@@ -35,6 +35,7 @@ export default function Leads() {
   const [companies, setCompanies] = useState([]);
   // follow-ups are managed in the Edit Lead view; keep this page focused on list/add
   const [formData, setFormData] = useState({
+    lead_id: '',
     company_id: '',
     company_name: '',
     contact_name: '',
@@ -523,6 +524,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Lead ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Sr
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -545,6 +549,11 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
               <tbody className="bg-white divide-y divide-gray-200">
                 {leads.map((lead, index) => (
                   <tr key={lead.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-mono font-medium text-gray-900">
+                        {lead.lead_id || '-'}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {(currentPage - 1) * 20 + index + 1}
@@ -689,6 +698,24 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           
           {/* Form Grid Layout */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+            {/* Lead ID */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Lead ID
+              </label>
+              <input
+                type="text"
+                name="lead_id"
+                value={formData.lead_id}
+                onChange={handleFormChange}
+                placeholder="e.g., 001-10-2025 (auto-generated if empty)"
+                pattern="\d{3}-\d{2}-\d{4}"
+                title="Format: 001-10-2025 (serial-month-year)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm font-mono"
+              />
+              <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year. Leave empty to auto-generate.</p>
+            </div>
+            
             {/* Company Information */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

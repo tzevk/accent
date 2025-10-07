@@ -45,6 +45,7 @@ export async function PUT(request, { params }) {
     // Update the lead
     const [result] = await db.execute(`
       UPDATE leads SET 
+        lead_id = ?,
         company_name = ?,
         contact_name = ?,
         contact_email = ?,
@@ -60,6 +61,7 @@ export async function PUT(request, { params }) {
         updated_at = NOW()
       WHERE id = ?
     `, [
+      data.lead_id || null,
       data.company_name,
       data.contact_name,
       data.contact_email,

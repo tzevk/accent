@@ -16,6 +16,13 @@ export async function GET(request) {
     
     const db = await dbConnect();
     
+    // Add lead_id column if it doesn't exist
+    try {
+      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_id VARCHAR(50)');
+    } catch (err) {
+      console.warn('lead_id column might already exist:', err);
+    }
+    
     // Build WHERE clause for filtering
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -99,6 +106,7 @@ export async function POST(request) {
     const data = await request.json();
     
     const {
+      lead_id,
       company_id,
       company_name,
       contact_name,
@@ -123,14 +131,50 @@ export async function POST(request) {
 
     const db = await dbConnect();
     
+    // Add lead_id column if it doesn't exist
+    try {
+      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_id VARCHAR(50)');
+    } catch (err) {
+      console.warn('lead_id column might already exist:', err);
+    }
+    
+    // Auto-generate lead_id in format: serial-month-year (e.g., 001-10-2024)
+    let generatedLeadId = lead_id;
+    if (!generatedLeadId || !generatedLeadId.trim()) {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const currentPattern = `-${month}-${year}`;
+      
+      // Find highest lead_id serial number for current month/year
+      const [leads] = await db.execute(
+        'SELECT lead_id FROM leads WHERE lead_id LIKE ? ORDER BY lead_id DESC',
+        [`%${currentPattern}`]
+      );
+      
+      let maxSerial = 0;
+      leads.forEach(l => {
+        if (l.lead_id && l.lead_id.endsWith(currentPattern)) {
+          const serialPart = l.lead_id.split('-')[0];
+          const serial = parseInt(serialPart, 10);
+          if (!isNaN(serial) && serial > maxSerial) {
+            maxSerial = serial;
+          }
+        }
+      });
+      
+      const nextSerial = String(maxSerial + 1).padStart(3, '0');
+      generatedLeadId = `${nextSerial}-${month}-${year}`;
+    }
+    
     const [result] = await db.execute(`
       INSERT INTO leads (
-        company_id, company_name, contact_name, contact_email, phone, city,
+        lead_id, company_id, company_name, contact_name, contact_email, phone, city,
         project_description, enquiry_type, enquiry_status, enquiry_date,
         lead_source, priority, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      company_id, company_name, contact_name, contact_email, phone, city,
+      generatedLeadId, company_id, company_name, contact_name, contact_email, phone, city,
       project_description, enquiry_type, enquiry_status, enquiry_date,
       lead_source, priority, notes
     ]);

@@ -15,6 +15,7 @@ export default function EditLead({ params }) {
   const [saving, setSaving] = useState(false);
   const router = useRouter();
   const [formData, setFormData] = useState({
+    lead_id: '',
     company_name: '',
     contact_name: '',
     contact_email: '',
@@ -48,6 +49,7 @@ export default function EditLead({ params }) {
           const leadData = result.data;
           setLead(leadData);
           setFormData({
+            lead_id: leadData.lead_id || '',
             company_name: leadData.company_name || '',
             contact_name: leadData.contact_name || '',
             contact_email: leadData.contact_email || '',
