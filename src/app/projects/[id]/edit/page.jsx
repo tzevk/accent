@@ -14,6 +14,32 @@ const STATUS_OPTIONS = ['NEW', 'planning', 'in-progress', 'on-hold', 'completed'
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 
+const INDUSTRY_OPTIONS = [
+  'Oil & Gas', 'Petrochemical', 'Solar', 'Power', 'Infrastructure',
+  'Water Treatment', 'Manufacturing', 'Mining', 'Chemical', 'Other'
+];
+
+const CONTRACT_TYPE_OPTIONS = [
+  'EPC (Engineering, Procurement, Construction)',
+  'Consultancy', 'PMC (Project Management Consultancy)',
+  'Lump Sum', 'Reimbursable',
+  'EPCC (Engineering, Procurement, Construction, Commissioning)',
+  'FEED (Front End Engineering Design)', 'Detailed Engineering'
+];
+
+const CURRENCY_OPTIONS = [
+  { value: 'USD', label: 'USD - US Dollar' },
+  { value: 'EUR', label: 'EUR - Euro' },
+  { value: 'GBP', label: 'GBP - British Pound' },
+  { value: 'INR', label: 'INR - Indian Rupee' },
+  { value: 'AED', label: 'AED - UAE Dirham' },
+  { value: 'SAR', label: 'SAR - Saudi Riyal' },
+  { value: 'QAR', label: 'QAR - Qatari Riyal' }
+];
+
+const COMMON_INPUT_CLASS = "w-full px-4 py-3 text-sm border border-gray-300 rounded-md";
+const LABEL_CLASS = "block text-sm font-medium text-gray-700 mb-2";
+
 const ORGANIZATIONAL_POSITIONS = [
   // Engineering Hierarchy
   'Engineering Head',
@@ -61,14 +87,61 @@ const REPORTING_STRUCTURE = {
   'Associate - E&D': ['Head - Business Development & Projects']
 };
 
+// Auto-generate project number with serial sequence
+const generateProjectNumber = async () => {
+  try {
+    // Get the latest project to determine next serial number
+    const response = await fetch('/api/projects');
+    const data = await response.json();
+    
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    
+    // Find the highest serial number for current month/year
+    let maxSerial = 0;
+    if (data.success && Array.isArray(data.data)) {
+      const currentPattern = `-${month}-${year}`;
+      data.data.forEach(project => {
+        if (project.project_id && project.project_id.endsWith(currentPattern)) {
+          const serialPart = project.project_id.split('-')[0];
+          const serial = parseInt(serialPart, 10);
+          if (!isNaN(serial) && serial > maxSerial) {
+            maxSerial = serial;
+          }
+        }
+      });
+    }
+    
+    const nextSerial = String(maxSerial + 1).padStart(3, '0');
+    return `${nextSerial}-${month}-${year}`;
+  } catch (error) {
+    // Fallback to timestamp-based serial if API fails
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const srno = String(Date.now() % 999 + 1).padStart(3, '0');
+    return `${srno}-${month}-${year}`;
+  }
+};
+
 const INITIAL_FORM = {
   name: '',
+  project_id: '',
   client_name: '',
+  client_contact_details: '',
+  project_location_country: '',
+  project_location_city: '',
+  project_location_site: '',
+  industry: '',
+  contract_type: '',
   company_id: '',
   project_manager: '',
   start_date: '',
   end_date: '',
   target_date: '',
+  project_duration_planned: '',
+  project_duration_actual: '',
   budget: '',
   status: 'NEW',
   priority: 'MEDIUM',
@@ -78,6 +151,32 @@ const INITIAL_FORM = {
   description: '',
   notes: '',
   proposal_id: '',
+  // Commercial Details
+  project_value: '',
+  currency: 'USD',
+  payment_terms: '',
+  invoicing_status: '',
+  cost_to_company: '',
+  profitability_estimate: '',
+  subcontractors_vendors: '',
+  // Procurement & Material
+  procurement_status: '',
+  material_delivery_schedule: '',
+  vendor_management: '',
+  // Construction / Site
+  mobilization_date: '',
+  site_readiness: '',
+  construction_progress: '',
+  // Risk & Issues
+  major_risks: '',
+  mitigation_plans: '',
+  change_orders: '',
+  claims_disputes: '',
+  // Project Closeout
+  final_documentation_status: '',
+  lessons_learned: '',
+  client_feedback: '',
+  actual_profit_loss: '',
 };
 
 export default function EditProjectPage() {
@@ -132,37 +231,32 @@ export default function EditProjectPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        console.log('🔄 Loading project data and related resources...');
-        
         // Fetch core data in parallel
         const [projectRes, companyRes, employeesRes, usersRes, activitiesRes] = await Promise.all([
-          fetch(`/api/projects/${id}`).catch(err => {
-            console.error('❌ Failed to fetch project:', err);
-            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch project' }) };
-          }),
-          fetch('/api/companies').catch(err => {
-            console.error('❌ Failed to fetch companies:', err);
-            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch companies' }) };
-          }),
-          fetch('/api/employee-master').catch(err => {
-            console.error('❌ Failed to fetch employees from employee master:', err);
-            return { 
-              ok: false, 
-              json: () => Promise.resolve({ 
-                success: false, 
-                error: 'Failed to fetch employees from employee-master',
-                data: []
-              })
-            };
-          }),
-          fetch('/api/users').catch(err => {
-            console.error('❌ Failed to fetch users:', err);
-            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch users' }) };
-          }),
-          fetch('/api/activities').catch(err => {
-            console.error('❌ Failed to fetch activities:', err);
-            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch activities' }) };
-          })
+          fetch(`/api/projects/${id}`).catch(() => ({
+            ok: false, 
+            json: () => ({ success: false, error: 'Failed to fetch project' })
+          })),
+          fetch('/api/companies').catch(() => ({
+            ok: false, 
+            json: () => ({ success: false, error: 'Failed to fetch companies' })
+          })),
+          fetch('/api/employee-master').catch(() => ({
+            ok: false, 
+            json: () => Promise.resolve({ 
+              success: false, 
+              error: 'Failed to fetch employees from employee-master',
+              data: []
+            })
+          })),
+          fetch('/api/users').catch(() => ({
+            ok: false, 
+            json: () => ({ success: false, error: 'Failed to fetch users' })
+          })),
+          fetch('/api/activities').catch(() => ({
+            ok: false, 
+            json: () => ({ success: false, error: 'Failed to fetch activities' })
+          }))
         ]);
 
         // Process responses with safe JSON parsing
@@ -189,93 +283,63 @@ export default function EditProjectPage() {
           })
         ]);
 
-        // Set data with enhanced error handling
+        // Set data with error handling
         if (companyJson.success) {
-          console.log('✅ Companies loaded:', companyJson.data?.length || 0);
           setCompanies(companyJson.data || []);
-        } else {
-          console.warn('⚠️ Companies API failed:', companyJson.error);
         }
 
-        // Employee Master API handling
-        console.log('🔄 Processing employees response from employee master...', employeesJson);
-        
+        // Employee API handling
         if (employeesJson.success && employeesJson.data && Array.isArray(employeesJson.data)) {
-          console.log('✅ Employees loaded from employee master:', employeesJson.data.length);
           setEmployees(employeesJson.data);
         } else if (Array.isArray(employeesJson) && employeesJson.length > 0) {
-          // Handle direct array response from employee master
-          console.log('✅ Employees loaded from employee master (direct array):', employeesJson.length);
           setEmployees(employeesJson);
         } else {
-          console.warn('⚠️ Employee master API failed or returned invalid data:', employeesJson);
           
-          // Try fallback endpoints if employee master fails
-          const fallbackEndpoints = [
-            '/api/employees',
-            '/api/masters/employees'
-          ];
-          
+          // Try fallback endpoints
+          const fallbackEndpoints = ['/api/employees', '/api/masters/employees'];
           let employeesLoaded = false;
           
           for (const endpoint of fallbackEndpoints) {
             if (employeesLoaded) break;
-            
             try {
-              console.log(`🔄 Trying fallback endpoint: ${endpoint}`);
               const altRes = await fetch(endpoint);
               const altJson = await altRes.json();
               
-              console.log(`📋 Response from ${endpoint}:`, altJson);
-              
               if (altJson.success && altJson.data && Array.isArray(altJson.data) && altJson.data.length > 0) {
-                console.log(`✅ Employees loaded from ${endpoint}:`, altJson.data.length);
                 setEmployees(altJson.data);
                 employeesLoaded = true;
               } else if (Array.isArray(altJson) && altJson.length > 0) {
-                console.log(`✅ Employees loaded from ${endpoint} (direct array):`, altJson.length);
                 setEmployees(altJson);
                 employeesLoaded = true;
               }
             } catch (altErr) {
-              console.error(`❌ Failed to fetch from ${endpoint}:`, altErr);
+              // Continue to next endpoint
             }
           }
           
           if (!employeesLoaded) {
-            console.error('❌ All employee API endpoints failed');
             setEmployees([]);
           }
         }
 
         if (usersJson.success) {
-          console.log('✅ Users loaded:', usersJson.data?.length || 0);
           setUsers(usersJson.data || []);
-        } else {
-          console.warn('⚠️ Users API failed:', usersJson.error);
         }
 
         if (activitiesJson.success) {
-          console.log('✅ Activities loaded:', activitiesJson.data?.length || 0);
           setActivities(activitiesJson.data || []);
-        } else {
-          console.warn('⚠️ Activities API failed:', activitiesJson.error);
         }
         
-        // Try to fetch documents, but don't fail if API doesn't exist
+        // Try to fetch documents
         try {
-          console.log('🔄 Loading documents...');
           const documentsRes = await fetch('/api/documents');
           const documentsJson = await documentsRes.json();
           if (documentsJson.success) {
-            console.log('✅ Documents loaded:', documentsJson.data?.length || 0);
             setDocuments(documentsJson.data || []);
           } else {
-            console.log('ℹ️ Documents API returned no data');
             setDocuments([]);
           }
         } catch (err) {
-          console.log('ℹ️ Documents API not available:', err.message);
           setDocuments([]);
         }
 
@@ -300,12 +364,17 @@ export default function EditProjectPage() {
           const parsedDisciplines = safeParse(project.disciplines, []);
           const parsedAssignments = safeParse(project.assignments, []);
 
+          // Auto-generate project number if not exists
+          const projectId = project.project_id || (await generateProjectNumber());
+          
           setForm({
             ...INITIAL_FORM,
             ...project,
+            project_id: projectId,
             start_date: project.start_date?.slice(0, 10) || '',
             end_date: project.end_date?.slice(0, 10) || '',
             target_date: project.target_date?.slice(0, 10) || '',
+            mobilization_date: project.mobilization_date?.slice(0, 10) || '',
             disciplineDescriptions: project.discipline_descriptions || {},
           });
 
@@ -331,45 +400,31 @@ export default function EditProjectPage() {
     fetchData();
   }, [id]);
 
-  // Separate effect to ensure employees are loaded
+  // Ensure employees are loaded
   useEffect(() => {
     const ensureEmployeesLoaded = async () => {
-      if (employees.length > 0) return; // Already loaded
+      if (employees.length > 0) return;
       
-      console.log('🔄 Ensuring employees are loaded...');
-      
-      const employeeEndpoints = [
-        '/api/employee-master',
-        '/api/employees',
-        '/api/masters/employees'
-      ];
+      const employeeEndpoints = ['/api/employee-master', '/api/employees', '/api/masters/employees'];
       
       for (const endpoint of employeeEndpoints) {
         try {
-          console.log(`🔄 Fetching employees from: ${endpoint}`);
           const response = await fetch(endpoint);
           const data = await response.json();
           
-          console.log(`📋 Employee data from ${endpoint}:`, data);
-          
           if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-            console.log(`✅ Successfully loaded ${data.data.length} employees from ${endpoint}`);
             setEmployees(data.data);
             return;
           } else if (Array.isArray(data) && data.length > 0) {
-            console.log(`✅ Successfully loaded ${data.length} employees from ${endpoint} (direct array)`);
             setEmployees(data);
             return;
           }
         } catch (error) {
-          console.error(`❌ Error fetching from ${endpoint}:`, error);
+          // Continue to next endpoint
         }
       }
-      
-      console.error('❌ Failed to load employees from all endpoints');
     };
     
-    // Run after a short delay to allow main data loading to complete
     const timer = setTimeout(ensureEmployeesLoaded, 2000);
     return () => clearTimeout(timer);
   }, [employees.length]);
@@ -433,8 +488,12 @@ export default function EditProjectPage() {
 
   const tabs = [
     { key: 'basic', label: 'Basic Info' },
-    { key: 'dates', label: 'Dates' },
+    { key: 'commercial', label: 'Commercial Details' },
+    { key: 'procurement', label: 'Procurement & Material' },
+    { key: 'construction', label: 'Construction / Site' },
+    { key: 'risk', label: 'Risk & Issues' },
     { key: 'assign', label: 'Assignments' },
+    { key: 'closeout', label: 'Project Closeout' },
     { key: 'notes', label: 'Description & Notes' },
     { key: 'meta', label: 'Activities' },
   ];
@@ -455,7 +514,17 @@ export default function EditProjectPage() {
                   <ArrowLeftIcon className="h-4 w-4 mr-1" />
                   Back to Projects
                 </button>
-                <h1 className="mt-3 text-2xl font-bold text-black">Edit Project</h1>
+                <div className="mt-3">
+                  <h1 className="text-2xl font-bold text-black">
+                    Edit Project
+                    {form.project_id && (
+                      <span className="ml-2 text-lg font-medium text-gray-600">#{form.project_id}</span>
+                    )}
+                  </h1>
+                  {form.name && (
+                    <h2 className="mt-1 text-lg font-medium text-gray-800">{form.name}</h2>
+                  )}
+                </div>
                 <p className="text-sm text-gray-600">
                   Update the project details stored in the CRM database.
                 </p>
@@ -485,165 +554,750 @@ export default function EditProjectPage() {
 
                 {/* BASIC INFO */}
                 {activeTab === 'basic' && (
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-8">
                     <h2 className="text-base font-semibold text-black">Basic Info</h2>
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={form.name || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        />
+                    <div className="space-y-8">
+                      
+                      {/* Project Identification */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Project Identification</h3>
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <label className={LABEL_CLASS}>Project Number</label>
+                            <input
+                              type="text"
+                              name="project_id"
+                              value={form.project_id || ''}
+                              readOnly
+                              className={`${COMMON_INPUT_CLASS} bg-gray-50`}
+                              placeholder="Auto-generated on save"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Auto-generated format: Serial Number - Month - Year</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
+                            <input
+                              type="text"
+                              name="name"
+                              value={form.name || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Client Name</label>
-                        <input
-                          type="text"
-                          name="client_name"
-                          value={form.client_name || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        />
+
+                      {/* Client Information */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Client Information</h3>
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Client Name</label>
+                            <input
+                              type="text"
+                              name="client_name"
+                              value={form.client_name || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Client Contact Details</label>
+                            <textarea
+                              name="client_contact_details"
+                              value={form.client_contact_details || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                              rows="3"
+                              placeholder="Contact person, phone, email, address"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Company</label>
-                        <select
-                          name="company_id"
-                          value={form.company_id || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        >
-                          <option value="">Select Company</option>
-                          {(companies || []).map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.company_name || c.name || c.companyName || 'Unnamed Company'}
-                            </option>
-                          ))}
-                        </select>
+
+                      {/* Project Location */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Project Location</h3>
+                        <div className="grid md:grid-cols-3 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                            <input
+                              type="text"
+                              name="project_location_country"
+                              value={form.project_location_country || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                              placeholder="e.g., India, UAE, Saudi Arabia"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                            <input
+                              type="text"
+                              name="project_location_city"
+                              value={form.project_location_city || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                              placeholder="e.g., Mumbai, Dubai, Riyadh"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Site</label>
+                            <input
+                              type="text"
+                              name="project_location_site"
+                              value={form.project_location_site || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                              placeholder="e.g., Refinery, Plant, Office Complex"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Project Classification */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Project Classification</h3>
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Industry</label>
+                            <select
+                              name="industry"
+                              value={form.industry || ''}
+                              onChange={handleChange}
+                              className={COMMON_INPUT_CLASS}
+                            >
+                              <option value="">Select Industry</option>
+                              {INDUSTRY_OPTIONS.map(industry => (
+                                <option key={industry} value={industry}>{industry}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Contract Type</label>
+                            <select
+                              name="contract_type"
+                              value={form.contract_type || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="">Select Contract Type</option>
+                              <option value="EPC">EPC (Engineering, Procurement, Construction)</option>
+                              <option value="Consultancy">Consultancy</option>
+                              <option value="PMC">PMC (Project Management Consultancy)</option>
+                              <option value="Lump Sum">Lump Sum</option>
+                              <option value="Reimbursable">Reimbursable</option>
+                              <option value="EPCC">EPCC (Engineering, Procurement, Construction, Commissioning)</option>
+                              <option value="FEED">FEED (Front End Engineering Design)</option>
+                              <option value="Detailed Engineering">Detailed Engineering</option>
+                              <option value="Construction Management">Construction Management</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Project Timeline */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Project Timeline</h3>
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Project Start Date</label>
+                            <input
+                              type="date"
+                              name="start_date"
+                              value={form.start_date || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Project End Date</label>
+                            <input
+                              type="date"
+                              name="end_date"
+                              value={form.end_date || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Project Duration (Planned) - Months</label>
+                            <input
+                              type="number"
+                              name="planned_duration"
+                              value={form.planned_duration || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                              placeholder="e.g., 18"
+                              min="0"
+                              step="0.1"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Project Duration (Actual) - Months</label>
+                            <input
+                              type="number"
+                              name="actual_duration"
+                              value={form.actual_duration || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                              placeholder="e.g., 20"
+                              min="0"
+                              step="0.1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Project Status & Management */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Project Status & Management</h3>
+                        <div className="grid md:grid-cols-3 gap-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                            <select
+                              name="status"
+                              value={form.status || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="NEW">New</option>
+                              <option value="Ongoing">Ongoing</option>
+                              <option value="Completed">Completed</option>
+                              <option value="On Hold">On Hold</option>
+                              <option value="Cancelled">Cancelled</option>
+                              <option value="planning">Planning</option>
+                              <option value="in-progress">In Progress</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                            <select
+                              name="priority"
+                              value={form.priority || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="LOW">Low</option>
+                              <option value="MEDIUM">Medium</option>
+                              <option value="HIGH">High</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Company</label>
+                            <select
+                              name="company_id"
+                              value={form.company_id || ''}
+                              onChange={handleChange}
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="">Select Company</option>
+                              {(companies || []).map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.company_name || c.name || c.companyName || 'Unnamed Company'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </section>
                 )}
 
-                {/* DATES */}
-                {activeTab === 'dates' && (
-                  <section className="bg-white border border-gray-200 rounded-lg p-8 space-y-8">
-                    <h2 className="text-base font-semibold text-black">Dates</h2>
-                    
-                    {/* Planning, Execution & Delivery Timelines */}
+                {/* COMMERCIAL DETAILS */}
+                {activeTab === 'commercial' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Commercial Details</h2>
                     <div className="space-y-6">
-                      <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Planning, Execution & Delivery Timelines</h3>
-                      <div className="grid md:grid-cols-3 gap-6">
+                      <div className="grid md:grid-cols-2 gap-6">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Project Start Date (Planned)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Project Value (Contract Price)</label>
                           <input
-                            type="date"
-                            name="planned_start_date"
-                            value={form.planned_start_date || ''}
+                            type="number"
+                            name="project_value"
+                            value={form.project_value || ''}
                             onChange={handleChange}
                             className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            placeholder="Enter contract value"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Actual Start Date</label>
-                          <input
-                            type="date"
-                            name="actual_start_date"
-                            value={form.actual_start_date || ''}
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                          <select
+                            name="currency"
+                            value={form.currency || 'USD'}
                             onChange={handleChange}
                             className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          >
+                            <option value="USD">USD - US Dollar</option>
+                            <option value="INR">INR - Indian Rupee</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+                        <select
+                          name="payment_terms"
+                          value={form.payment_terms || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Payment Terms</option>
+                          <option value="Milestones">Milestones</option>
+                          <option value="Monthly">Monthly</option>
+                          <option value="% Completion">% Completion</option>
+                          <option value="Advance + Milestones">Advance + Milestones</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Invoicing Status</label>
+                        <select
+                          name="invoicing_status"
+                          value={form.invoicing_status || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Raised">Raised</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Paid">Paid</option>
+                          <option value="Partially Paid">Partially Paid</option>
+                        </select>
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Cost to Company</label>
+                          <input
+                            type="number"
+                            name="cost_to_company"
+                            value={form.cost_to_company || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            placeholder="Enter total cost"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Planned End Date / Target Completion</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Profitability Estimate (%)</label>
                           <input
-                            type="date"
-                            name="planned_end_date"
-                            value={form.planned_end_date || ''}
+                            type="number"
+                            name="profitability_estimate"
+                            value={form.profitability_estimate || ''}
                             onChange={handleChange}
                             className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Actual End Date</label>
-                          <input
-                            type="date"
-                            name="actual_end_date"
-                            value={form.actual_end_date || ''}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Baseline Start Date</label>
-                          <input
-                            type="date"
-                            name="baseline_start_date"
-                            value={form.baseline_start_date || ''}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Baseline End Date</label>
-                          <input
-                            type="date"
-                            name="baseline_end_date"
-                            value={form.baseline_end_date || ''}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            placeholder="Enter percentage"
+                            min="0"
+                            max="100"
                           />
                         </div>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Subcontractors / Vendors List</label>
+                        <textarea
+                          name="subcontractors_vendors"
+                          value={form.subcontractors_vendors || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="List subcontractors/vendors with scope and contract value..."
+                        />
+                      </div>
                     </div>
+                  </section>
+                )}
 
-                    {/* Client & Contract Dates */}
+                {/* PROCUREMENT & MATERIAL */}
+                {activeTab === 'procurement' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Procurement & Material</h2>
                     <div className="space-y-6">
-                      <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Client & Contract Dates</h3>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Procurement Status</label>
+                        <select
+                          name="procurement_status"
+                          value={form.procurement_status || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Not Started">Not Started</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Completed">Completed</option>
+                          <option value="On Hold">On Hold</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Material Delivery Schedule</label>
+                        <textarea
+                          name="material_delivery_schedule"
+                          value={form.material_delivery_schedule || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe material delivery timeline and milestones..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Vendor Management</label>
+                        <textarea
+                          name="vendor_management"
+                          value={form.vendor_management || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Vendor management details, contracts, performance..."
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* CONSTRUCTION / SITE */}
+                {activeTab === 'construction' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Construction / Site</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Mobilization Date</label>
+                        <input
+                          type="date"
+                          name="mobilization_date"
+                          value={form.mobilization_date || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Site Readiness</label>
+                        <select
+                          name="site_readiness"
+                          value={form.site_readiness || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Ready">Ready</option>
+                          <option value="Preparing">Preparing</option>
+                          <option value="Delayed">Delayed</option>
+                          <option value="Not Ready">Not Ready</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Construction Progress</label>
+                        <textarea
+                          name="construction_progress"
+                          value={form.construction_progress || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe current construction status, milestones achieved..."
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* RISK & ISSUES */}
+                {activeTab === 'risk' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Risk & Issues</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Major Risks Identified</label>
+                        <textarea
+                          name="major_risks"
+                          value={form.major_risks || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="List and describe major project risks..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Mitigation Plans</label>
+                        <textarea
+                          name="mitigation_plans"
+                          value={form.mitigation_plans || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe risk mitigation strategies and action plans..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Change Orders / Variations</label>
+                        <textarea
+                          name="change_orders"
+                          value={form.change_orders || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Document change orders, variations, and their impact..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Claims / Disputes</label>
+                        <textarea
+                          name="claims_disputes"
+                          value={form.claims_disputes || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Record any claims, disputes, or legal issues..."
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+                    
+
+                {/* COMMERCIAL DETAILS */}
+                {activeTab === 'commercial' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Commercial Details</h2>
+                    <div className="space-y-6">
                       <div className="grid md:grid-cols-2 gap-6">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Client Delivery Date</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Project Value (Contract Price)</label>
                           <input
-                            type="date"
-                            name="client_delivery_date"
-                            value={form.client_delivery_date || ''}
+                            type="number"
+                            name="project_value"
+                            value={form.project_value || ''}
                             onChange={handleChange}
                             className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            placeholder="Enter contract value"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Contract Start Date</label>
-                          <input
-                            type="date"
-                            name="contract_start_date"
-                            value={form.contract_start_date || ''}
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                          <select
+                            name="currency"
+                            value={form.currency || 'USD'}
                             onChange={handleChange}
                             className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          >
+                            <option value="USD">USD - US Dollar</option>
+                            <option value="EUR">EUR - Euro</option>
+                            <option value="GBP">GBP - British Pound</option>
+                            <option value="INR">INR - Indian Rupee</option>
+                            <option value="AED">AED - UAE Dirham</option>
+                            <option value="SAR">SAR - Saudi Riyal</option>
+                            <option value="QAR">QAR - Qatari Riyal</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
+                        <select
+                          name="payment_terms"
+                          value={form.payment_terms || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Payment Terms</option>
+                          <option value="Milestones">Milestones</option>
+                          <option value="Monthly">Monthly</option>
+                          <option value="% Completion">% Completion</option>
+                          <option value="Advance + Milestones">Advance + Milestones</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Invoicing Status</label>
+                        <select
+                          name="invoicing_status"
+                          value={form.invoicing_status || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Raised">Raised</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Paid">Paid</option>
+                          <option value="Partially Paid">Partially Paid</option>
+                        </select>
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Cost to Company</label>
+                          <input
+                            type="number"
+                            name="cost_to_company"
+                            value={form.cost_to_company || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            placeholder="Enter total cost"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Extension Date (if applicable)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Profitability Estimate (%)</label>
                           <input
-                            type="date"
-                            name="extension_date"
-                            value={form.extension_date || ''}
+                            type="number"
+                            name="profitability_estimate"
+                            value={form.profitability_estimate || ''}
                             onChange={handleChange}
                             className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                            placeholder="Enter percentage"
+                            min="0"
+                            max="100"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Revised Delivery Date</label>
-                          <input
-                            type="date"
-                            name="revised_delivery_date"
-                            value={form.revised_delivery_date || ''}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                          />
-                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Subcontractors / Vendors List</label>
+                        <textarea
+                          name="subcontractors_vendors"
+                          value={form.subcontractors_vendors || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="List subcontractors/vendors with scope and contract value..."
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* PROCUREMENT & MATERIAL */}
+                {activeTab === 'procurement' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Procurement & Material</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Procurement Status</label>
+                        <select
+                          name="procurement_status"
+                          value={form.procurement_status || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Not Started">Not Started</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Completed">Completed</option>
+                          <option value="On Hold">On Hold</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Material Delivery Schedule</label>
+                        <textarea
+                          name="material_delivery_schedule"
+                          value={form.material_delivery_schedule || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe material delivery timeline and milestones..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Vendor Management</label>
+                        <textarea
+                          name="vendor_management"
+                          value={form.vendor_management || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Vendor management details, contracts, performance..."
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* CONSTRUCTION / SITE */}
+                {activeTab === 'construction' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Construction / Site</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Mobilization Date</label>
+                        <input
+                          type="date"
+                          name="mobilization_date"
+                          value={form.mobilization_date || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Site Readiness</label>
+                        <select
+                          name="site_readiness"
+                          value={form.site_readiness || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Ready">Ready</option>
+                          <option value="Preparing">Preparing</option>
+                          <option value="Delayed">Delayed</option>
+                          <option value="Not Ready">Not Ready</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Construction Progress</label>
+                        <textarea
+                          name="construction_progress"
+                          value={form.construction_progress || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe current construction status, milestones achieved..."
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* RISK & ISSUES */}
+                {activeTab === 'risk' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Risk & Issues</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Major Risks Identified</label>
+                        <textarea
+                          name="major_risks"
+                          value={form.major_risks || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="List and describe major project risks..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Mitigation Plans</label>
+                        <textarea
+                          name="mitigation_plans"
+                          value={form.mitigation_plans || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe risk mitigation strategies and action plans..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Change Orders / Variations</label>
+                        <textarea
+                          name="change_orders"
+                          value={form.change_orders || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Document change orders, variations, and their impact..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Claims / Disputes</label>
+                        <textarea
+                          name="claims_disputes"
+                          value={form.claims_disputes || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Record any claims, disputes, or legal issues..."
+                        />
                       </div>
                     </div>
                   </section>
@@ -1441,6 +2095,94 @@ export default function EditProjectPage() {
                           </div>
                         </div>
                       </aside>
+                    </div>
+                  </section>
+                )}
+
+                {/* PROJECT CLOSEOUT */}
+                {activeTab === 'closeout' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Project Closeout</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Final Documentation Status</label>
+                        <select
+                          name="final_documentation_status"
+                          value={form.final_documentation_status || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Status</option>
+                          <option value="Complete">Complete</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Not Started">Not Started</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Lessons Learned</label>
+                        <textarea
+                          name="lessons_learned"
+                          value={form.lessons_learned || ''}
+                          onChange={handleChange}
+                          rows={5}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Document key lessons learned, best practices, and recommendations for future projects..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Client Feedback</label>
+                        <textarea
+                          name="client_feedback"
+                          value={form.client_feedback || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Record client feedback, satisfaction ratings, testimonials..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Actual Profit/Loss</label>
+                        <input
+                          type="number"
+                          name="actual_profit_loss"
+                          value={form.actual_profit_loss || ''}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Enter final profit or loss amount"
+                        />
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* DESCRIPTION & NOTES */}
+                {activeTab === 'notes' && (
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
+                    <h2 className="text-base font-semibold text-black">Description & Notes</h2>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Project Description</label>
+                        <textarea
+                          name="description"
+                          value={form.description || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Describe the project scope, objectives, and key details..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Additional Notes</label>
+                        <textarea
+                          name="notes"
+                          value={form.notes || ''}
+                          onChange={handleChange}
+                          rows={4}
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          placeholder="Any additional notes, comments, or observations..."
+                        />
+                      </div>
                     </div>
                   </section>
                 )}
