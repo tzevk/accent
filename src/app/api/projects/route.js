@@ -76,6 +76,7 @@ export async function POST(request) {
   try {
     const data = await request.json();
     const {
+      project_id,
       name,
       description,
       company_id,
@@ -103,17 +104,63 @@ export async function POST(request) {
 
     const db = await dbConnect();
     
-    // Generate project ID
-    const [lastProject] = await db.execute(
-      'SELECT project_id FROM projects ORDER BY id DESC LIMIT 1'
-    );
-    
     let projectId;
-    if (lastProject.length > 0 && lastProject[0].project_id) {
-      const lastId = parseInt(lastProject[0].project_id.replace('PRJ', ''));
-      projectId = `PRJ${String(lastId + 1).padStart(5, '0')}`;
+    
+    // If project_id is provided manually, validate and use it
+    if (project_id && project_id.trim()) {
+      const trimmedId = project_id.trim();
+      
+      // Validate format: should be serial-month-year (e.g., 001-10-2024)
+      const projectIdPattern = /^\d{3}-\d{2}-\d{4}$/;
+      if (!projectIdPattern.test(trimmedId)) {
+        await db.end();
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Invalid project number format. Use format: 001-10-2024 (serial-month-year)' 
+        }, { status: 400 });
+      }
+      
+      // Check if project_id already exists
+      const [existing] = await db.execute(
+        'SELECT id FROM projects WHERE project_id = ?',
+        [trimmedId]
+      );
+      
+      if (existing.length > 0) {
+        await db.end();
+        return NextResponse.json({ 
+          success: false, 
+          error: `Project number ${trimmedId} already exists` 
+        }, { status: 400 });
+      }
+      
+      projectId = trimmedId;
     } else {
-      projectId = 'PRJ00001';
+      // Auto-generate project ID in format: serial-month-year (e.g., 001-10-2024)
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const currentPattern = `-${month}-${year}`;
+      
+      // Find highest serial number for current month/year
+      const [projects] = await db.execute(
+        'SELECT project_id FROM projects WHERE project_id LIKE ? ORDER BY project_id DESC',
+        [`%${currentPattern}`]
+      );
+      
+      let maxSerial = 0;
+      projects.forEach(p => {
+        if (p.project_id && p.project_id.endsWith(currentPattern)) {
+          const serialPart = p.project_id.split('-')[0];
+          const serial = parseInt(serialPart, 10);
+          if (!isNaN(serial) && serial > maxSerial) {
+            maxSerial = serial;
+          }
+        }
+      });
+      
+      const nextSerial = String(maxSerial + 1).padStart(3, '0');
+      projectId = `${nextSerial}-${month}-${year}`;
     }
     
     // Insert the new project (include activities/disciplines JSON)

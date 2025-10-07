@@ -568,11 +568,13 @@ export default function EditProjectPage() {
                               type="text"
                               name="project_id"
                               value={form.project_id || ''}
-                              readOnly
-                              className={`${COMMON_INPUT_CLASS} bg-gray-50`}
-                              placeholder="Auto-generated on save"
+                              onChange={handleChange}
+                              className={COMMON_INPUT_CLASS}
+                              placeholder="e.g., 001-10-2024 (auto-generated if left empty)"
+                              pattern="\d{3}-\d{2}-\d{4}"
+                              title="Format: 001-10-2024 (serial-month-year)"
                             />
-                            <p className="text-xs text-gray-500 mt-1">Auto-generated format: Serial Number - Month - Year</p>
+                            <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year (e.g., 001-10-2024). Leave empty to auto-generate.</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Project Name</label>

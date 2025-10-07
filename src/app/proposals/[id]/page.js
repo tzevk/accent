@@ -327,8 +327,8 @@ export default function ProposalPage() {
                       const data = await res.json();
                       if (!res.ok) throw new Error(data?.error || 'Failed to create project');
 
-                      alert('Project created successfully!');
-                      router.push(`/projects/${data.id}`);
+                      alert('Project created successfully! Redirecting to edit page...');
+                      router.push(`/projects/${data.data.id}/edit`);
                     } catch (err) {
                       console.error(err);
                       alert('Failed to create project: ' + err.message);

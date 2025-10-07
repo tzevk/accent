@@ -11,6 +11,7 @@ const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 
 const INITIAL_FORM = {
+  project_id: '',
   name: '',
   client_name: '',
   company_id: '',
@@ -112,6 +113,7 @@ function NewProjectForm() {
     setSubmitting(true);
     try {
       const payload = {
+        project_id: form.project_id || null,
         name: form.name,
         description: form.description || '',
         company_id: form.company_id || null,
@@ -138,7 +140,8 @@ function NewProjectForm() {
 
       const result = await response.json();
       if (result.success) {
-        router.push('/projects?view=list');
+        // Navigate to edit page with the newly created project
+        router.push(`/projects/${result.data.id}/edit`);
       } else {
         alert(result.error || 'Failed to create project');
       }
@@ -179,6 +182,20 @@ function NewProjectForm() {
                 <p className="text-xs text-gray-500">Project identity, client alignment, and ownership.</p>
               </div>
               <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-black mb-1">Project Number</label>
+                  <input
+                    type="text"
+                    name="project_id"
+                    value={form.project_id}
+                    onChange={handleChange}
+                    placeholder="e.g., 001-10-2024 (auto-generated if empty)"
+                    pattern="\d{3}-\d{2}-\d{4}"
+                    title="Format: 001-10-2024 (serial-month-year)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year. Leave empty to auto-generate.</p>
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-black mb-1">Project Name *</label>
                   <input
