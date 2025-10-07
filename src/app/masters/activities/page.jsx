@@ -30,96 +30,81 @@ export default function ActivityMasterPage() {
   const [disciplineForm, setDisciplineForm] = useState({ name: '', description: '' });
   const [subActivityForm, setSubActivityForm] = useState(EMPTY_SUB_ACTIVITY);
   const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
+  const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [editingSubId, setEditingSubId] = useState(null);
+  const [editingActivityId, setEditingActivityId] = useState(null);
   const [showDisciplineForm, setShowDisciplineForm] = useState(false); // unused but kept for safety
+  const [showActivityForm, setShowActivityForm] = useState(false);
   const [showSubActivityForm, setShowSubActivityForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activities, setActivities] = useState([]);
+  const [subActivities, setSubActivities] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [activityForm, setActivityForm] = useState({ activity_name: '' });
+  
 
-  // Use fixed disciplines list (non-editable)
+  // Fetch disciplines with nested activities and sub-activities
   useEffect(() => {
     setLoading(true);
-    const mapped = FIXED_DISCIPLINES.flatMap((entry, index) => {
-      const parentId = `fixed_${index}`;
-      const parent = {
-        id: parentId,
-        name: entry.name,
-        description: '',
-        activityCount: 0,
-        subActivities: [],
-        children: [],
-      };
-      const children = (entry.children || []).map((c, ci) => ({
-        id: `${parentId}_child_${ci}`,
-        name: c,
-        parentId,
-        description: '',
-        activityCount: 0,
-        subActivities: [],
-      }));
-      parent.children = children;
-      return [parent, ...children];
-    });
-    setDisciplines(mapped);
-    setLoading(false);
+    (async () => {
+      try {
+        const res = await fetch('/api/activity-master');
+        const json = await res.json();
+        if (json.success && json.data) {
+          // Expected shape: [{ id, function_name, activities: [{ id, activity_name, subActivities: [...] }] }]
+          setDisciplines(json.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch activity master', err);
+        setDisciplines([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  // ✅ Fetch sub-activities when discipline selected
+  
+
+  // Load activities when discipline is selected
   useEffect(() => {
-    if (!selectedDisciplineId) return;
-    async function loadSubActivities() {
-      try {
-        // If the selected discipline is one of the fixed entries (string id), do not call server
-        if (String(selectedDisciplineId).startsWith('fixed_')) {
-          const local = disciplines.find((d) => d.id === selectedDisciplineId);
-          const data = local?.subActivities || [];
-          setActivities(data.map((a) => ({
-            id: a.id || `local_${Math.random().toString(36).slice(2, 9)}`,
-            name: a.activity_name || a.name,
-            defaultDuration: a.default_duration || a.defaultDuration || "",
-            defaultManhours: a.default_manhours || a.defaultManhours || "",
-          })));
-          return;
-        }
-
-        const res = await fetch(`/api/activities?function_id=${selectedDisciplineId}`);
-        if (!res.ok) throw new Error("Failed to fetch sub-activities");
-        const data = await res.json();
-        setActivities(data.map((a) => ({
-          id: a.id,
-          name: a.activity_name,
-          defaultDuration: a.default_duration || "",
-          defaultManhours: a.default_manhours || "",
-        })));
-
-        // Update discipline list with sub-activities
-        setDisciplines((prev) =>
-          prev.map((d) =>
-            d.id === selectedDisciplineId
-              ? { ...d, subActivities: data, activityCount: data.length }
-              : d
-          )
-        );
-      } catch (err) {
-        console.error(err);
-      }
+    if (!selectedDisciplineId) {
+      setActivities([]);
+      setSelectedActivityId(null);
+      return;
     }
-    loadSubActivities();
-  }, [selectedDisciplineId]);
+    const discipline = disciplines.find((d) => d.id === selectedDisciplineId);
+    if (discipline) {
+      setActivities(discipline.activities || []);
+    }
+  }, [selectedDisciplineId, disciplines]);
 
-  // ✅ Filter disciplines by search term
+  // Load sub-activities when activity is selected
+  useEffect(() => {
+    if (!selectedActivityId) {
+      setSubActivities([]);
+      return;
+    }
+    const activity = activities.find((a) => a.id === selectedActivityId);
+    if (activity) {
+      setSubActivities(activity.subActivities || []);
+    }
+  }, [selectedActivityId, activities]);
+
+  // Filter disciplines by search term
   const filteredDisciplines = useMemo(() => {
+    if (!searchTerm) return disciplines;
     const term = searchTerm.toLowerCase();
     return disciplines.filter((discipline) => {
-      const matchDiscipline =
-        discipline.name.toLowerCase().includes(term) ||
-        (discipline.description || "").toLowerCase().includes(term);
-      const matchSub = discipline.subActivities?.some((sub) =>
-        sub.name.toLowerCase().includes(term)
-      );
-      return matchDiscipline || matchSub;
+      const matchDiscipline = String(discipline.function_name || discipline.name || '').toLowerCase().includes(term);
+      const matchActivity = (discipline.activities || []).some((activity) => {
+        const activityMatch = String(activity.activity_name || activity.name || '').toLowerCase().includes(term);
+        const subActivityMatch = (activity.subActivities || []).some((sub) => {
+          return String(sub.name || '').toLowerCase().includes(term);
+        });
+        return activityMatch || subActivityMatch;
+      });
+      return matchDiscipline || matchActivity;
     });
   }, [disciplines, searchTerm]);
 
@@ -128,114 +113,161 @@ export default function ActivityMasterPage() {
     [disciplines, selectedDisciplineId]
   );
 
+  const selectedActivity = useMemo(
+    () => activities.find((a) => a.id === selectedActivityId) || null,
+    [activities, selectedActivityId]
+  );
+
   // Discipline management removed — disciplines are fixed list
 
-  // ✅ Create Sub-Activity
-  const handleCreateSubActivity = (disciplineId) => {
+  // Create Activity
+  const handleCreateActivity = (disciplineId) => {
     setSelectedDisciplineId(disciplineId);
+    setActivityForm({ activity_name: '' });
+    setShowActivityForm(true);
+  };
+
+  // Create Sub-Activity
+  const handleCreateSubActivity = (activityId) => {
+    setSelectedActivityId(activityId);
     setSubActivityForm(EMPTY_SUB_ACTIVITY);
     setEditingSubId(null);
     setShowSubActivityForm(true);
   };
 
-  // ✅ Edit Sub-Activity
-  const handleEditSubActivity = (disciplineId, subId) => {
-    setSelectedDisciplineId(disciplineId);
-    const discipline = disciplines.find((d) => d.id === disciplineId);
-    const sub = discipline?.subActivities.find((s) => s.id === subId);
-    if (!sub) return;
-    setSubActivityForm(sub);
-    setEditingSubId(subId);
-    setShowSubActivityForm(true);
+  // Edit Activity
+  const handleEditActivity = (activityId) => {
+    const activity = activities.find(a => a.id === activityId);
+    if (activity) {
+      setActivityForm({ activity_name: activity.activity_name });
+      setEditingActivityId(activityId);
+      setShowActivityForm(true);
+    }
   };
 
-  // ✅ Delete Sub-Activity
+  // Delete Activity
+  const handleDeleteActivity = async (activityId) => {
+    if (!confirm("Delete this activity and all its sub-activities?")) return;
+    try {
+      const res = await fetch(`/api/activities?id=${activityId}`, { method: "DELETE" });
+      if (res.ok) {
+        // Refresh disciplines to get updated data
+        const disciplinesRes = await fetch('/api/activity-master');
+        const disciplinesJson = await disciplinesRes.json();
+        if (disciplinesJson.success) {
+          setDisciplines(disciplinesJson.data);
+          // Clear selected activity if it was deleted
+          if (selectedActivityId === activityId) {
+            setSelectedActivityId(null);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete activity', err);
+    }
+  };
+
+  // Edit and delete handlers for sub-activities
+  const handleEditSubActivity = (subId) => {
+    // TODO: Implement edit functionality
+    console.log('Edit sub-activity:', subId);
+  };
+
   const handleDeleteSubActivity = async (subId) => {
     if (!confirm("Delete this sub-activity?")) return;
-    // If fixed discipline (string id) treat as local delete
-    if (String(selectedDisciplineId).startsWith('fixed_')) {
-      setActivities((prev) => prev.filter((a) => a.id !== subId));
-      setDisciplines((prev) =>
-        prev.map((d) =>
-          d.id === selectedDisciplineId
-            ? {
-                ...d,
-                subActivities: d.subActivities.filter((a) => String(a.id) !== String(subId)),
-                activityCount: Math.max(0, d.activityCount - 1),
-              }
-            : d
-        )
-      );
-      return;
+    try {
+      const res = await fetch(`/api/activity-master/subactivities?id=${subId}`, { method: "DELETE" });
+      if (res.ok) {
+        // Refresh disciplines to get updated data
+        const disciplinesRes = await fetch('/api/activity-master');
+        const disciplinesJson = await disciplinesRes.json();
+        if (disciplinesJson.success) {
+          setDisciplines(disciplinesJson.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete sub-activity', err);
     }
-
-    await fetch(`/api/activities/${subId}`, { method: "DELETE" });
-    setActivities((prev) => prev.filter((a) => a.id !== subId));
-    setDisciplines((prev) =>
-      prev.map((d) =>
-        d.id === selectedDisciplineId
-          ? {
-              ...d,
-              subActivities: d.subActivities.filter((a) => a.id !== subId),
-              activityCount: d.activityCount - 1,
-            }
-          : d
-      )
-    );
   };
 
-  // ✅ Save Sub-Activity
-  const handleSubActivitySubmit = async (e) => {
+  // Save Activity (create or update)
+  const handleActivitySubmit = async (e) => {
     e.preventDefault();
-    if (!selectedDisciplineId || !subActivityForm.name.trim()) return;
-    // If fixed discipline, add locally
-    if (String(selectedDisciplineId).startsWith('fixed_')) {
-      const newLocal = {
-        id: `local_${Math.random().toString(36).slice(2, 9)}`,
-        name: subActivityForm.name,
-        defaultDuration: subActivityForm.defaultDuration,
-        defaultManhours: subActivityForm.defaultManhours,
-      };
-      setActivities((prev) => [...prev, newLocal]);
-      setDisciplines((prev) =>
-        prev.map((d) =>
-          d.id === selectedDisciplineId
-            ? { ...d, subActivities: [...(d.subActivities || []), newLocal], activityCount: (d.activityCount || 0) + 1 }
-            : d
-        )
-      );
-      setSubActivityForm(EMPTY_SUB_ACTIVITY);
-      setShowSubActivityForm(false);
-      return;
+    if (!selectedDisciplineId || !activityForm.activity_name.trim()) return;
+
+    try {
+      if (editingActivityId) {
+        // Update existing activity
+        const res = await fetch('/api/activities', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingActivityId, activity_name: activityForm.activity_name }),
+        });
+        
+        if (res.ok) {
+          // Refresh disciplines to get updated activities
+          const disciplinesRes = await fetch('/api/activity-master');
+          const disciplinesJson = await disciplinesRes.json();
+          if (disciplinesJson.success) {
+            setDisciplines(disciplinesJson.data);
+          }
+        }
+      } else {
+        // Create new activity
+        const res = await fetch('/api/activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ function_id: selectedDisciplineId, activity_name: activityForm.activity_name }),
+        });
+        
+        if (res.ok) {
+          // Refresh disciplines to get updated activities
+          const disciplinesRes = await fetch('/api/activity-master');
+          const disciplinesJson = await disciplinesRes.json();
+          if (disciplinesJson.success) {
+            setDisciplines(disciplinesJson.data);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to save activity', err);
     }
 
-    const payload = {
-      function_id: selectedDisciplineId,
-      activity_name: subActivityForm.name,
-      default_duration: subActivityForm.defaultDuration,
-      default_manhours: subActivityForm.defaultManhours,
-    };
+    setActivityForm({ activity_name: '' });
+    setEditingActivityId(null);
+    setShowActivityForm(false);
+  };
 
-    await fetch("/api/activities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  // Save Sub-Activity
+  const handleSubActivitySubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedActivityId || !subActivityForm.name.trim()) return;
+
+    try {
+      const res = await fetch('/api/activity-master/subactivities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          activity_id: selectedActivityId, 
+          name: subActivityForm.name,
+          default_duration: subActivityForm.defaultDuration,
+          default_manhours: subActivityForm.defaultManhours
+        }),
+      });
+      if (res.ok) {
+        // Refresh disciplines to get updated sub-activities
+        const disciplinesRes = await fetch('/api/activity-master');
+        const disciplinesJson = await disciplinesRes.json();
+        if (disciplinesJson.success) {
+          setDisciplines(disciplinesJson.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to create sub-activity', err);
+    }
 
     setSubActivityForm(EMPTY_SUB_ACTIVITY);
     setShowSubActivityForm(false);
-
-    // Refresh activities
-    const res = await fetch(`/api/activities?function_id=${selectedDisciplineId}`);
-    const data = await res.json();
-    setActivities(data);
-    setDisciplines((prev) =>
-      prev.map((d) =>
-        d.id === selectedDisciplineId
-          ? { ...d, subActivities: data, activityCount: data.length }
-          : d
-      )
-    );
   };
 
   return (
@@ -261,6 +293,7 @@ export default function ActivityMasterPage() {
                   placeholder="Search disciplines or activities…"
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                 />
+                {/* push button removed - disciplines are synced automatically from backend on load */}
               </div>
             </div>
 
@@ -270,228 +303,255 @@ export default function ActivityMasterPage() {
               </div>
             )}
 
-            {/* Main Grid */}
+            {/* Three Column Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left - Discipline List */}
+              {/* Column 1 - Disciplines */}
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
                 <h2 className="text-sm font-semibold text-black">Disciplines</h2>
                 {filteredDisciplines.length === 0 ? (
                   <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
-                    No disciplines yet. Create your first discipline.
+                    No disciplines found.
                   </div>
                 ) : (
-                  // Render parents with their children nested beneath
-                  filteredDisciplines
-                    .filter((d) => !d.parentId)
-                    .map((parent) => {
-                      const children = filteredDisciplines.filter((c) => c.parentId === parent.id);
-                      return (
-                        <div key={parent.id} className="space-y-2">
-                          <div
-                            className={`border rounded-lg px-4 py-3 cursor-pointer ${
-                              selectedDisciplineId === parent.id
-                                ? "border-[#7F2487] bg-[#7F2487]/10"
-                                : "border-gray-200 hover:bg-gray-50"
-                            }`}
-                            onClick={() => setSelectedDisciplineId(parent.id)}
-                          >
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="text-sm font-semibold text-black">{parent.name}</p>
-                                <p className="text-xs text-gray-500">{parent.description}</p>
-                              </div>
-                              <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
-                                {parent.activityCount} activities
-                              </span>
-                            </div>
-                            <div className="mt-2 text-xs text-gray-500">{parent.children?.length ? 'Discipline group' : 'Fixed discipline'}</div>
-                          </div>
-
-                          {children.length > 0 && (
-                            <div className="pl-6 space-y-2">
-                              {children.map((child) => (
-                                <div
-                                  key={child.id}
-                                  className={`border rounded-lg px-3 py-2 cursor-pointer text-sm ${
-                                    selectedDisciplineId === child.id
-                                      ? "border-[#7F2487] bg-[#7F2487]/10"
-                                      : "border-gray-200 hover:bg-gray-50"
-                                  }`}
-                                  onClick={() => setSelectedDisciplineId(child.id)}
-                                >
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <p className="font-semibold text-black">{child.name}</p>
-                                    </div>
-                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
-                                      {child.activityCount} activities
-                                    </span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                  filteredDisciplines.map((discipline) => (
+                    <div
+                      key={discipline.id}
+                      className={`border rounded-lg px-4 py-3 cursor-pointer ${
+                        selectedDisciplineId === discipline.id
+                          ? "border-[#7F2487] bg-[#7F2487]/10"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                      onClick={() => {
+                        setSelectedDisciplineId(discipline.id);
+                        setSelectedActivityId(null);
+                      }}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-sm font-semibold text-black">{discipline.function_name}</p>
+                          <p className="text-xs text-gray-500">{discipline.description}</p>
                         </div>
-                      );
-                    })
+                        <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                          {(discipline.activities || []).length} activities
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </section>
+
+              {/* Column 2 - Activities */}
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-sm font-semibold text-black">Activities</h2>
+                  {selectedDisciplineId && (
+                    <button
+                      onClick={() => handleCreateActivity(selectedDisciplineId)}
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
+                    >
+                      <PlusIcon className="h-3 w-3" /> Add Activity
+                    </button>
+                  )}
+                </div>
+                {!selectedDisciplineId ? (
+                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
+                    Select a discipline to view activities.
+                  </div>
+                ) : activities.length === 0 ? (
+                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
+                    No activities yet. Add your first activity.
+                  </div>
+                ) : (
+                  activities.map((activity) => (
+                    <div
+                      key={activity.id}
+                      className={`border rounded-lg px-4 py-3 ${
+                        selectedActivityId === activity.id
+                          ? "border-[#7F2487] bg-[#7F2487]/10"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div 
+                          className="flex-1 cursor-pointer"
+                          onClick={() => setSelectedActivityId(activity.id)}
+                        >
+                          <p className="text-sm font-semibold text-black">{activity.activity_name}</p>
+                          <span className="text-xs bg-gray-100 px-2 py-1 rounded-full inline-block mt-1">
+                            {(activity.subActivities || []).length} sub-activities
+                          </span>
+                        </div>
+                        <div className="flex gap-1 ml-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditActivity(activity.id);
+                            }}
+                            className="p-1 text-gray-600 hover:text-gray-800"
+                            title="Edit activity"
+                          >
+                            <PencilIcon className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteActivity(activity.id);
+                            }}
+                            className="p-1 text-red-600 hover:text-red-800"
+                            title="Delete activity"
+                          >
+                            <TrashIcon className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
                 )}
 
-                {showDisciplineForm && (
-                  <form onSubmit={handleDisciplineSubmit} className="space-y-3 border-t pt-4 mt-4">
+                {showActivityForm && (
+                  <form onSubmit={handleActivitySubmit} className="space-y-3 border-t pt-4 mt-4">
                     <input
                       type="text"
-                      value={disciplineForm.name}
-                      onChange={(e) =>
-                        setDisciplineForm((prev) => ({ ...prev, name: e.target.value }))
-                      }
-                      placeholder="Discipline Name"
+                      value={activityForm.activity_name}
+                      onChange={(e) => setActivityForm({ activity_name: e.target.value })}
+                      placeholder="Activity Name"
                       required
-                      className="w-full px-3 py-2 border rounded-md text-sm"
-                    />
-                    <textarea
-                      value={disciplineForm.description}
-                      onChange={(e) =>
-                        setDisciplineForm((prev) => ({ ...prev, description: e.target.value }))
-                      }
-                      placeholder="Description"
-                      rows={3}
                       className="w-full px-3 py-2 border rounded-md text-sm"
                     />
                     <div className="flex justify-end gap-3">
                       <button
                         type="button"
-                        onClick={() => setShowDisciplineForm(false)}
-                        className="px-4 py-2 bg-gray-100 rounded-md"
+                        onClick={() => {
+                          setShowActivityForm(false);
+                          setEditingActivityId(null);
+                          setActivityForm({ activity_name: '' });
+                        }}
+                        className="px-4 py-2 bg-gray-100 rounded-md text-sm"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-5 py-2 bg-[#7F2487] text-white rounded-md"
+                        className="px-5 py-2 bg-[#7F2487] text-white rounded-md text-sm"
                       >
-                        {editingDisciplineId ? "Update" : "Save"}
+                        {editingActivityId ? 'Update Activity' : 'Save Activity'}
                       </button>
                     </div>
                   </form>
                 )}
               </section>
 
-              {/* Right - Sub-Activities */}
-              <section className="lg:col-span-2 space-y-4">
-                {!selectedDiscipline ? (
-                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center text-sm text-gray-500">
-                    Select a discipline to view its activities.
+              {/* Column 3 - Sub-Activities */}
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-sm font-semibold text-black">Sub-Activities</h2>
+                  {selectedActivityId && (
+                    <button
+                      onClick={() => handleCreateSubActivity(selectedActivityId)}
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
+                    >
+                      <PlusIcon className="h-3 w-3" /> Add Sub-Activity
+                    </button>
+                  )}
+                </div>
+                {!selectedActivityId ? (
+                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
+                    Select an activity to view sub-activities.
+                  </div>
+                ) : subActivities.length === 0 ? (
+                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
+                    No sub-activities yet. Add your first sub-activity.
                   </div>
                 ) : (
-                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div className="px-6 py-5 border-b flex justify-between items-center">
-                      <h3 className="text-lg font-semibold text-black">{selectedDiscipline.name}</h3>
-                      <button
-                        onClick={() => handleCreateSubActivity(selectedDiscipline.id)}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7F2487] text-white rounded-md"
+                  <div className="space-y-2">
+                    {subActivities.map((subActivity) => (
+                      <div
+                        key={subActivity.id}
+                        className="border rounded-lg px-4 py-3 border-gray-200 hover:bg-gray-50"
                       >
-                        <PlusIcon className="h-4 w-4" /> Add Sub-Activity
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-black">{subActivity.name}</p>
+                            <div className="mt-1 text-xs text-gray-500 space-y-1">
+                              {subActivity.default_duration && (
+                                <div>Duration: {subActivity.default_duration}hrs</div>
+                              )}
+                              {subActivity.default_manhours && (
+                                <div>Manhours: {subActivity.default_manhours}hrs</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleEditSubActivity(subActivity.id)}
+                              className="p-1 text-gray-600 hover:text-gray-800"
+                            >
+                              <PencilIcon className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSubActivity(subActivity.id)}
+                              className="p-1 text-red-600 hover:text-red-800"
+                            >
+                              <TrashIcon className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {showSubActivityForm && (
+                  <form onSubmit={handleSubActivitySubmit} className="space-y-3 border-t pt-4 mt-4">
+                    <input
+                      value={subActivityForm.name}
+                      onChange={(e) =>
+                        setSubActivityForm((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                      placeholder="Sub-Activity Name"
+                      required
+                      className="w-full px-3 py-2 border rounded-md text-sm"
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <input
+                        value={subActivityForm.defaultDuration}
+                        onChange={(e) =>
+                          setSubActivityForm((prev) => ({
+                            ...prev,
+                            defaultDuration: e.target.value,
+                          }))
+                        }
+                        placeholder="Duration (hrs)"
+                        className="w-full px-3 py-2 border rounded-md text-sm"
+                      />
+                      <input
+                        value={subActivityForm.defaultManhours}
+                        onChange={(e) =>
+                          setSubActivityForm((prev) => ({
+                            ...prev,
+                            defaultManhours: e.target.value,
+                          }))
+                        }
+                        placeholder="Manhours (hrs)"
+                        className="w-full px-3 py-2 border rounded-md text-sm"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowSubActivityForm(false)}
+                        className="px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 text-sm rounded-md bg-[#7F2487] text-white"
+                      >
+                        Save Sub-Activity
                       </button>
                     </div>
-
-                    {/* Activities Table */}
-                    <div className="p-6">
-                      {activities.length === 0 ? (
-                        <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-8 text-center">
-                          No sub-activities added yet.
-                        </div>
-                      ) : (
-                        <table className="min-w-full text-xs border border-gray-200 rounded-lg">
-                          <thead className="bg-gray-50 text-gray-600 uppercase">
-                            <tr>
-                              <th className="px-3 py-2 text-left">Sub-Activity</th>
-                              <th className="px-3 py-2 text-left">Duration</th>
-                              <th className="px-3 py-2 text-left">Manhours</th>
-                              <th className="px-3 py-2 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {activities.map((sub) => (
-                              <tr key={sub.id} className="border-t hover:bg-gray-50">
-                                <td className="px-3 py-2">{sub.name}</td>
-                                <td className="px-3 py-2">{sub.defaultDuration || "—"}</td>
-                                <td className="px-3 py-2">{sub.defaultManhours || "—"}</td>
-                                <td className="px-3 py-2 text-right">
-                                  <button
-                                    onClick={() =>
-                                      handleEditSubActivity(selectedDiscipline.id, sub.id)
-                                    }
-                                    className="p-1.5 text-gray-600 hover:text-gray-800"
-                                  >
-                                    <PencilIcon className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteSubActivity(sub.id)}
-                                    className="p-1.5 text-red-600 hover:text-red-800"
-                                  >
-                                    <TrashIcon className="h-4 w-4" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-
-                      {showSubActivityForm && (
-                        <form onSubmit={handleSubActivitySubmit} className="space-y-3 border-t pt-4 mt-4">
-                          <input
-                            value={subActivityForm.name}
-                            onChange={(e) =>
-                              setSubActivityForm((prev) => ({ ...prev, name: e.target.value }))
-                            }
-                            placeholder="Sub-Activity Name"
-                            required
-                            className="w-full px-3 py-2 border rounded-md text-sm"
-                          />
-                          <div className="grid grid-cols-2 gap-4">
-                            <input
-                              value={subActivityForm.defaultDuration}
-                              onChange={(e) =>
-                                setSubActivityForm((prev) => ({
-                                  ...prev,
-                                  defaultDuration: e.target.value,
-                                }))
-                              }
-                              placeholder="Default Duration (hrs)"
-                              className="w-full px-3 py-2 border rounded-md text-sm"
-                            />
-                            <input
-                              value={subActivityForm.defaultManhours}
-                              onChange={(e) =>
-                                setSubActivityForm((prev) => ({
-                                  ...prev,
-                                  defaultManhours: e.target.value,
-                                }))
-                              }
-                              placeholder="Default Manhours (hrs)"
-                              className="w-full px-3 py-2 border rounded-md text-sm"
-                            />
-                          </div>
-                          <div className="flex justify-end gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setShowSubActivityForm(false)}
-                              className="px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="px-5 py-2 text-sm rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors font-medium"
-                            >
-                              {editingSubId ? "Update Sub-Activity" : "Save Sub-Activity"}
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  </div>
+                  </form>
                 )}
               </section>
             </div>

@@ -14,6 +14,53 @@ const STATUS_OPTIONS = ['NEW', 'planning', 'in-progress', 'on-hold', 'completed'
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 
+const ORGANIZATIONAL_POSITIONS = [
+  // Engineering Hierarchy
+  'Engineering Head',
+  'Manager - Engineering',
+  'Project Manager - Engineering', 
+  'Head - Business Development & Projects',
+  // Engineering Roles
+  'Lead Engineer',
+  'Area Engineer', 
+  'Sr. Engineer',
+  'Trainee Engineer',
+  // Design Roles
+  'Lead 3D/2D Designer',
+  'Sr. 3D/2D Designer',
+  'Trainee 3D/2D Designer',
+  // QA/QC Roles
+  'QA/QC',
+  'Doc Controller',
+  'Checker',
+  // Associates by Discipline
+  'Associate - Process',
+  'Associate - Mech. Static',
+  'Associate - Civil/Structural',
+  'Associate - E&D'
+];
+
+const REPORTING_STRUCTURE = {
+  'Engineering Head': [],
+  'Manager - Engineering': ['Engineering Head'],
+  'Project Manager - Engineering': ['Engineering Head'],
+  'Head - Business Development & Projects': ['Engineering Head'],
+  'Lead Engineer': ['Manager - Engineering'],
+  'Area Engineer': ['Manager - Engineering'],
+  'Sr. Engineer': ['Manager - Engineering'],
+  'Trainee Engineer': ['Manager - Engineering'],
+  'Lead 3D/2D Designer': ['Manager - Engineering'],
+  'Sr. 3D/2D Designer': ['Manager - Engineering'],
+  'Trainee 3D/2D Designer': ['Manager - Engineering'],
+  'QA/QC': ['Manager - Engineering'],
+  'Doc Controller': ['Manager - Engineering'],
+  'Checker': ['Manager - Engineering'],
+  'Associate - Process': ['Head - Business Development & Projects'],
+  'Associate - Mech. Static': ['Head - Business Development & Projects'],
+  'Associate - Civil/Structural': ['Head - Business Development & Projects'],
+  'Associate - E&D': ['Head - Business Development & Projects']
+};
+
 const INITIAL_FORM = {
   name: '',
   client_name: '',
@@ -48,23 +95,211 @@ export default function EditProjectPage() {
   const [activities, setActivities] = useState([]); // catalogue
   const [selectedActivities, setSelectedActivities] = useState([]); // project-level
   const [selectedDisciplines, setSelectedDisciplines] = useState([]); // project-level disciplines
+  
+  // Assignment management
+  const [employees, setEmployees] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(null);
+  const [assignmentForm, setAssignmentForm] = useState({
+    employee_id: '',
+    discipline_id: '',
+    activity_id: '',
+    sub_activity_id: '',
+    organizational_position: '',
+    reporting_manager: '',
+    assigned_date: new Date().toISOString().slice(0, 10),
+    assignment_status: 'Active',
+    progress_percentage: '',
+    budgeted_cost: '',
+    actual_cost: '',
+    resource_category: 'Internal',
+    vendor_subcontractor: '',
+    raci_role: 'Responsible',
+    deliverables: [],
+    manhours_estimated: '',
+    manhours_actual: '',
+    start_date: '',
+    end_date: '',
+    notes: ''
+  });
 
-  // Fetch project + companies
+  // Fetch project + companies + employees + users + activities
   useEffect(() => {
     if (!id) return;
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [projectRes, companyRes] = await Promise.all([
-          fetch(`/api/projects/${id}`),
-          fetch('/api/companies'),
+        console.log('🔄 Loading project data and related resources...');
+        
+        // Fetch core data in parallel
+        const [projectRes, companyRes, employeesRes, usersRes, activitiesRes] = await Promise.all([
+          fetch(`/api/projects/${id}`).catch(err => {
+            console.error('❌ Failed to fetch project:', err);
+            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch project' }) };
+          }),
+          fetch('/api/companies').catch(err => {
+            console.error('❌ Failed to fetch companies:', err);
+            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch companies' }) };
+          }),
+          fetch('/api/employee-master').catch(err => {
+            console.error('❌ Failed to fetch employees from employee master:', err);
+            return { 
+              ok: false, 
+              json: () => Promise.resolve({ 
+                success: false, 
+                error: 'Failed to fetch employees from employee-master',
+                data: []
+              })
+            };
+          }),
+          fetch('/api/users').catch(err => {
+            console.error('❌ Failed to fetch users:', err);
+            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch users' }) };
+          }),
+          fetch('/api/activities').catch(err => {
+            console.error('❌ Failed to fetch activities:', err);
+            return { ok: false, json: () => ({ success: false, error: 'Failed to fetch activities' }) };
+          })
         ]);
-        const projectJson = await projectRes.json();
-        const companyJson = await companyRes.json();
 
-        if (companyJson.success) setCompanies(companyJson.data || []);
+        // Process responses with safe JSON parsing
+        const [projectJson, companyJson, employeesJson, usersJson, activitiesJson] = await Promise.all([
+          projectRes.json().catch(err => {
+            console.error('❌ Failed to parse project JSON:', err);
+            return { success: false, error: 'Invalid JSON response from project API' };
+          }),
+          companyRes.json().catch(err => {
+            console.error('❌ Failed to parse company JSON:', err);
+            return { success: false, error: 'Invalid JSON response from company API', data: [] };
+          }),
+          employeesRes.json().catch(err => {
+            console.error('❌ Failed to parse employees JSON:', err);
+            return { success: false, error: 'Invalid JSON response from employee-master API', data: [] };
+          }),
+          usersRes.json().catch(err => {
+            console.error('❌ Failed to parse users JSON:', err);
+            return { success: false, error: 'Invalid JSON response from users API', data: [] };
+          }),
+          activitiesRes.json().catch(err => {
+            console.error('❌ Failed to parse activities JSON:', err);
+            return { success: false, error: 'Invalid JSON response from activities API', data: [] };
+          })
+        ]);
+
+        // Set data with enhanced error handling
+        if (companyJson.success) {
+          console.log('✅ Companies loaded:', companyJson.data?.length || 0);
+          setCompanies(companyJson.data || []);
+        } else {
+          console.warn('⚠️ Companies API failed:', companyJson.error);
+        }
+
+        // Employee Master API handling
+        console.log('🔄 Processing employees response from employee master...', employeesJson);
+        
+        if (employeesJson.success && employeesJson.data && Array.isArray(employeesJson.data)) {
+          console.log('✅ Employees loaded from employee master:', employeesJson.data.length);
+          setEmployees(employeesJson.data);
+        } else if (Array.isArray(employeesJson) && employeesJson.length > 0) {
+          // Handle direct array response from employee master
+          console.log('✅ Employees loaded from employee master (direct array):', employeesJson.length);
+          setEmployees(employeesJson);
+        } else {
+          console.warn('⚠️ Employee master API failed or returned invalid data:', employeesJson);
+          
+          // Try fallback endpoints if employee master fails
+          const fallbackEndpoints = [
+            '/api/employees',
+            '/api/masters/employees'
+          ];
+          
+          let employeesLoaded = false;
+          
+          for (const endpoint of fallbackEndpoints) {
+            if (employeesLoaded) break;
+            
+            try {
+              console.log(`🔄 Trying fallback endpoint: ${endpoint}`);
+              const altRes = await fetch(endpoint);
+              const altJson = await altRes.json();
+              
+              console.log(`📋 Response from ${endpoint}:`, altJson);
+              
+              if (altJson.success && altJson.data && Array.isArray(altJson.data) && altJson.data.length > 0) {
+                console.log(`✅ Employees loaded from ${endpoint}:`, altJson.data.length);
+                setEmployees(altJson.data);
+                employeesLoaded = true;
+              } else if (Array.isArray(altJson) && altJson.length > 0) {
+                console.log(`✅ Employees loaded from ${endpoint} (direct array):`, altJson.length);
+                setEmployees(altJson);
+                employeesLoaded = true;
+              }
+            } catch (altErr) {
+              console.error(`❌ Failed to fetch from ${endpoint}:`, altErr);
+            }
+          }
+          
+          if (!employeesLoaded) {
+            console.error('❌ All employee API endpoints failed');
+            setEmployees([]);
+          }
+        }
+
+        if (usersJson.success) {
+          console.log('✅ Users loaded:', usersJson.data?.length || 0);
+          setUsers(usersJson.data || []);
+        } else {
+          console.warn('⚠️ Users API failed:', usersJson.error);
+        }
+
+        if (activitiesJson.success) {
+          console.log('✅ Activities loaded:', activitiesJson.data?.length || 0);
+          setActivities(activitiesJson.data || []);
+        } else {
+          console.warn('⚠️ Activities API failed:', activitiesJson.error);
+        }
+        
+        // Try to fetch documents, but don't fail if API doesn't exist
+        try {
+          console.log('🔄 Loading documents...');
+          const documentsRes = await fetch('/api/documents');
+          const documentsJson = await documentsRes.json();
+          if (documentsJson.success) {
+            console.log('✅ Documents loaded:', documentsJson.data?.length || 0);
+            setDocuments(documentsJson.data || []);
+          } else {
+            console.log('ℹ️ Documents API returned no data');
+            setDocuments([]);
+          }
+        } catch (err) {
+          console.log('ℹ️ Documents API not available:', err.message);
+          setDocuments([]);
+        }
+
         if (projectJson.success && projectJson.data) {
           const project = projectJson.data;
+
+          // Safe JSON parse helper for fields that may be stored as strings in the DB
+          const safeParse = (val, fallback) => {
+            if (val == null) return fallback;
+            if (typeof val === 'string') {
+              try {
+                return JSON.parse(val);
+              } catch (err) {
+                // if it's not valid JSON, return fallback
+                return fallback;
+              }
+            }
+            return val;
+          };
+
+          const parsedActivities = safeParse(project.activities, []);
+          const parsedDisciplines = safeParse(project.disciplines, []);
+          const parsedAssignments = safeParse(project.assignments, []);
+
           setForm({
             ...INITIAL_FORM,
             ...project,
@@ -73,11 +308,20 @@ export default function EditProjectPage() {
             target_date: project.target_date?.slice(0, 10) || '',
             disciplineDescriptions: project.discipline_descriptions || {},
           });
-          if (project.activities) {
-            setSelectedActivities(project.activities.map((a) => String(a.id)));
+
+          // Load existing assignments
+          if (Array.isArray(parsedAssignments)) {
+            setAssignments(parsedAssignments);
           }
-          if (project.disciplines) {
-            setSelectedDisciplines(project.disciplines.map((d) => String(d.id || d)));
+
+          // Load existing activities
+          if (Array.isArray(parsedActivities) && parsedActivities.length > 0) {
+            setSelectedActivities(parsedActivities.map((a) => String(a.id || a.activity_id || a)));
+          }
+
+          // Load existing disciplines
+          if (Array.isArray(parsedDisciplines) && parsedDisciplines.length > 0) {
+            setSelectedDisciplines(parsedDisciplines.map((d) => String(d.id || d)));
           }
         }
       } finally {
@@ -87,19 +331,50 @@ export default function EditProjectPage() {
     fetchData();
   }, [id]);
 
-  // Fetch activities catalogue
+  // Separate effect to ensure employees are loaded
   useEffect(() => {
-    const fetchActivities = async () => {
-      try {
-        const res = await fetch('/api/activities');
-        const json = await res.json();
-        if (json.success) setActivities(json.data);
-      } catch (err) {
-        console.error('Failed to fetch activities', err);
+    const ensureEmployeesLoaded = async () => {
+      if (employees.length > 0) return; // Already loaded
+      
+      console.log('🔄 Ensuring employees are loaded...');
+      
+      const employeeEndpoints = [
+        '/api/employee-master',
+        '/api/employees',
+        '/api/masters/employees'
+      ];
+      
+      for (const endpoint of employeeEndpoints) {
+        try {
+          console.log(`🔄 Fetching employees from: ${endpoint}`);
+          const response = await fetch(endpoint);
+          const data = await response.json();
+          
+          console.log(`📋 Employee data from ${endpoint}:`, data);
+          
+          if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+            console.log(`✅ Successfully loaded ${data.data.length} employees from ${endpoint}`);
+            setEmployees(data.data);
+            return;
+          } else if (Array.isArray(data) && data.length > 0) {
+            console.log(`✅ Successfully loaded ${data.length} employees from ${endpoint} (direct array)`);
+            setEmployees(data);
+            return;
+          }
+        } catch (error) {
+          console.error(`❌ Error fetching from ${endpoint}:`, error);
+        }
       }
+      
+      console.error('❌ Failed to load employees from all endpoints');
     };
-    fetchActivities();
-  }, []);
+    
+    // Run after a short delay to allow main data loading to complete
+    const timer = setTimeout(ensureEmployeesLoaded, 2000);
+    return () => clearTimeout(timer);
+  }, [employees.length]);
+
+
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -145,6 +420,7 @@ export default function EditProjectPage() {
             Number.isFinite(Number(v)) ? Number(v) : v
           ),
           discipline_descriptions: form.disciplineDescriptions || {},
+          assignments: assignments,
         }),
       });
       if (res.ok) router.push('/projects?view=list');
@@ -157,7 +433,7 @@ export default function EditProjectPage() {
 
   const tabs = [
     { key: 'basic', label: 'Basic Info' },
-    { key: 'dates', label: 'Dates & Budget' },
+    { key: 'dates', label: 'Dates' },
     { key: 'assign', label: 'Assignments' },
     { key: 'notes', label: 'Description & Notes' },
     { key: 'meta', label: 'Activities' },
@@ -168,7 +444,7 @@ export default function EditProjectPage() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <form onSubmit={handleSubmit} className="px-8 pt-22 pb-8 space-y-6">
+          <form onSubmit={handleSubmit} className="px-4 pt-22 pb-8 space-y-6 max-w-[95vw] mx-auto">
             <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <button
@@ -252,50 +528,122 @@ export default function EditProjectPage() {
                   </section>
                 )}
 
-                {/* DATES & BUDGET */}
+                {/* DATES */}
                 {activeTab === 'dates' && (
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
-                    <h2 className="text-base font-semibold text-black">Dates & Budget</h2>
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
-                        <input
-                          type="date"
-                          name="start_date"
-                          value={form.start_date || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        />
+                  <section className="bg-white border border-gray-200 rounded-lg p-8 space-y-8">
+                    <h2 className="text-base font-semibold text-black">Dates</h2>
+                    
+                    {/* Planning, Execution & Delivery Timelines */}
+                    <div className="space-y-6">
+                      <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Planning, Execution & Delivery Timelines</h3>
+                      <div className="grid md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Project Start Date (Planned)</label>
+                          <input
+                            type="date"
+                            name="planned_start_date"
+                            value={form.planned_start_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Actual Start Date</label>
+                          <input
+                            type="date"
+                            name="actual_start_date"
+                            value={form.actual_start_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Planned End Date / Target Completion</label>
+                          <input
+                            type="date"
+                            name="planned_end_date"
+                            value={form.planned_end_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Actual End Date</label>
+                          <input
+                            type="date"
+                            name="actual_end_date"
+                            value={form.actual_end_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Baseline Start Date</label>
+                          <input
+                            type="date"
+                            name="baseline_start_date"
+                            value={form.baseline_start_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Baseline End Date</label>
+                          <input
+                            type="date"
+                            name="baseline_end_date"
+                            value={form.baseline_end_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
-                        <input
-                          type="date"
-                          name="end_date"
-                          value={form.end_date || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Target Date</label>
-                        <input
-                          type="date"
-                          name="target_date"
-                          value={form.target_date || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Budget (INR)</label>
-                        <input
-                          type="number"
-                          name="budget"
-                          value={form.budget || ''}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
-                        />
+                    </div>
+
+                    {/* Client & Contract Dates */}
+                    <div className="space-y-6">
+                      <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2">Client & Contract Dates</h3>
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Client Delivery Date</label>
+                          <input
+                            type="date"
+                            name="client_delivery_date"
+                            value={form.client_delivery_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Contract Start Date</label>
+                          <input
+                            type="date"
+                            name="contract_start_date"
+                            value={form.contract_start_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Extension Date (if applicable)</label>
+                          <input
+                            type="date"
+                            name="extension_date"
+                            value={form.extension_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Revised Delivery Date</label>
+                          <input
+                            type="date"
+                            name="revised_delivery_date"
+                            value={form.revised_delivery_date || ''}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          />
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -303,48 +651,646 @@ export default function EditProjectPage() {
 
                 {/* ASSIGNMENTS */}
                 {activeTab === 'assign' && (
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 space-y-6">
-                    <h2 className="text-base font-semibold text-black">Assignments</h2>
-                    <div className="grid md:grid-cols-2 gap-6">
+                  <section className="bg-white border border-gray-200 rounded-lg p-8 space-y-8">
+                    <div className="flex justify-between items-center">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                        <h2 className="text-base font-semibold text-black">Project Assignments & Team Builder</h2>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Manage team assignments, resources, costs, and deliverables
+                          {employees.length === 0 && (
+                            <span className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">
+                              Loading employees... ({employees.length} loaded)
+                            </span>
+                          )}
+                          {employees.length > 0 && (
+                            <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                              {employees.length} employees loaded
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssignmentForm({
+                            employee_id: '',
+                            discipline_id: '',
+                            activity_id: '',
+                            sub_activity_id: '',
+                            organizational_position: '',
+                            reporting_manager: '',
+                            assigned_date: new Date().toISOString().slice(0, 10),
+                            assignment_status: 'Active',
+                            progress_percentage: '',
+                            budgeted_cost: '',
+                            actual_cost: '',
+                            resource_category: 'Internal',
+                            vendor_subcontractor: '',
+                            raci_role: 'Responsible',
+                            deliverables: [],
+                            manhours_estimated: '',
+                            manhours_actual: '',
+                            start_date: '',
+                            end_date: '',
+                            notes: ''
+                          });
+                          setEditingAssignment(null);
+                          setShowAssignmentForm(true);
+                        }}
+                        className="px-4 py-2 bg-[#7F2487] text-white rounded-md text-sm hover:bg-[#6b1e72] flex items-center gap-2"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        Add Assignment
+                      </button>
+                    </div>
+
+                    {/* Project Core Details */}
+                    <div className="grid md:grid-cols-2 gap-6 p-6 bg-gray-50 rounded-lg">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Project Manager - Engineering</label>
+                        <select
+                          name="project_manager"
+                          value={form.project_manager || ''}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">
+                            {employees.length === 0 ? 'Loading employees...' : 'Select Project Manager - Engineering'}
+                          </option>
+                          {employees.length === 0 ? (
+                            <option value="" disabled>No employees loaded - check console for errors</option>
+                          ) : (
+                            employees.map((emp) => (
+                              <option key={emp.id || emp.employee_id} value={emp.id || emp.employee_id}>
+                                {emp.first_name || emp.firstName || 'Unknown'} {emp.last_name || emp.lastName || 'Name'} ({emp.employee_id || emp.id || 'No ID'})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Engineering Head</label>
+                        <select
+                          name="assigned_to"
+                          value={form.assigned_to || ''}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">
+                            {employees.length === 0 ? 'Loading employees...' : 'Select Engineering Head'}
+                          </option>
+                          {employees.length === 0 ? (
+                            <option value="" disabled>No employees loaded - check console for errors</option>
+                          ) : (
+                            employees.map((emp) => (
+                              <option key={emp.id || emp.employee_id} value={emp.id || emp.employee_id}>
+                                {emp.first_name || emp.firstName || 'Unknown'} {emp.last_name || emp.lastName || 'Name'} ({emp.employee_id || emp.id || 'No ID'})
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Project Status</label>
                         <select
                           name="status"
                           value={form.status || ''}
                           onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                         >
                           {STATUS_OPTIONS.map((s) => (
-                            <option key={s}>{s}</option>
+                            <option key={s} value={s}>{s.toUpperCase()}</option>
                           ))}
                         </select>
                       </div>
+                      
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Priority Level</label>
                         <select
                           name="priority"
                           value={form.priority || ''}
                           onChange={handleChange}
-                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-md"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                         >
                           {PRIORITY_OPTIONS.map((p) => (
-                            <option key={p}>{p}</option>
+                            <option key={p} value={p}>{p}</option>
                           ))}
                         </select>
                       </div>
+                      
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Overall Progress</label>
+                        <select
+                          name="progress"
+                          value={form.progress || ''}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Progress Level</option>
+                          <option value="30">30% - Initial Phase</option>
+                          <option value="60">60% - Mid Phase</option>
+                          <option value="90">90% - Final Phase</option>
+                        </select>
+                      </div>
                     </div>
+
+                    {/* Assignment Form */}
+                    {showAssignmentForm && (
+                      <div className="border border-gray-200 rounded-lg p-6 bg-blue-50">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                          {editingAssignment ? 'Edit Assignment' : 'New Assignment'}
+                        </h3>
+                        
+                        <div className="grid md:grid-cols-3 gap-4 mb-6">
+                          {/* Core Assignment Details */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+                            <select
+                              value={assignmentForm.employee_id}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, employee_id: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              required
+                            >
+                              <option value="">
+                                {employees.length === 0 ? 'Loading employees...' : 'Select Employee'}
+                              </option>
+                              {employees.length === 0 ? (
+                                <option value="" disabled>No employees available - API may be down</option>
+                              ) : (
+                                employees.map((emp) => (
+                                  <option key={emp.id || emp.employee_id} value={emp.id || emp.employee_id}>
+                                    {emp.first_name || emp.firstName || 'Unknown'} {emp.last_name || emp.lastName || 'Name'} ({emp.employee_id || emp.id || 'No ID'})
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Organizational Position</label>
+                            <select
+                              value={assignmentForm.organizational_position}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, organizational_position: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              required
+                            >
+                              <option value="">Select Position</option>
+                              {ORGANIZATIONAL_POSITIONS.map((position) => (
+                                <option key={position} value={position}>
+                                  {position}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Reporting Manager</label>
+                            <select
+                              value={assignmentForm.reporting_manager}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, reporting_manager: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              disabled={!assignmentForm.organizational_position}
+                            >
+                              <option value="">Select Reporting Manager</option>
+                              {assignmentForm.organizational_position && REPORTING_STRUCTURE[assignmentForm.organizational_position]?.map((managerPosition) => (
+                                <option key={managerPosition} value={managerPosition}>
+                                  {managerPosition}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Assignment Status</label>
+                            <select
+                              value={assignmentForm.assignment_status}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, assignment_status: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="Active">Active</option>
+                              <option value="Pending">Pending</option>
+                              <option value="Completed">Completed</option>
+                              <option value="On-hold">On-hold</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Progress Percentage</label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                value={assignmentForm.progress_percentage}
+                                onChange={(e) => setAssignmentForm({...assignmentForm, progress_percentage: e.target.value})}
+                                min="0"
+                                max="100"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md pr-8"
+                                placeholder="0"
+                              />
+                              <span className="absolute right-3 top-2 text-gray-500 text-sm">%</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Date</label>
+                            <input
+                              type="date"
+                              value={assignmentForm.assigned_date}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, assigned_date: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Work Assignment Section */}
+                        <div className="grid md:grid-cols-3 gap-4 mb-6 p-4 bg-white rounded-lg border">
+                          <div className="md:col-span-3">
+                            <h4 className="font-medium text-gray-800 mb-3">Work Assignment</h4>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Discipline</label>
+                            <select
+                              value={assignmentForm.discipline_id}
+                              onChange={(e) => {
+                                setAssignmentForm({...assignmentForm, discipline_id: e.target.value, activity_id: '', sub_activity_id: ''});
+                              }}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="">Select Discipline</option>
+                              {activities.map((discipline) => (
+                                <option key={discipline.id} value={discipline.id}>
+                                  {discipline.discipline || discipline.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Activity</label>
+                            <select
+                              value={assignmentForm.activity_id}
+                              onChange={(e) => {
+                                setAssignmentForm({...assignmentForm, activity_id: e.target.value, sub_activity_id: ''});
+                              }}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              disabled={!assignmentForm.discipline_id}
+                            >
+                              <option value="">Select Activity</option>
+                              {assignmentForm.discipline_id && activities
+                                .find(d => d.id === assignmentForm.discipline_id)?.activities
+                                ?.map((activity) => (
+                                  <option key={activity.id} value={activity.id}>
+                                    {activity.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Sub-Activity</label>
+                            <select
+                              value={assignmentForm.sub_activity_id}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, sub_activity_id: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              disabled={!assignmentForm.activity_id}
+                            >
+                              <option value="">Select Sub-Activity (Optional)</option>
+                              {assignmentForm.activity_id && activities
+                                .find(d => d.id === assignmentForm.discipline_id)?.activities
+                                ?.find(a => a.id === assignmentForm.activity_id)?.subActivities
+                                ?.map((subActivity) => (
+                                  <option key={subActivity.id} value={subActivity.id}>
+                                    {subActivity.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Resource & Cost Tracking */}
+                        <div className="grid md:grid-cols-4 gap-4 mb-6 p-4 bg-white rounded-lg border">
+                          <div className="md:col-span-4">
+                            <h4 className="font-medium text-gray-800 mb-3">Resource & Cost Tracking</h4>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Budgeted Cost (INR)</label>
+                            <input
+                              type="number"
+                              value={assignmentForm.budgeted_cost}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, budgeted_cost: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              placeholder="0.00"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Actual Cost (INR)</label>
+                            <input
+                              type="number"
+                              value={assignmentForm.actual_cost}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, actual_cost: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              placeholder="0.00"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Resource Category</label>
+                            <select
+                              value={assignmentForm.resource_category}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, resource_category: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="Internal">Internal</option>
+                              <option value="Subcontractor">Subcontractor</option>
+                              <option value="Consultant">Consultant</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Vendor/Subcontractor</label>
+                            <input
+                              type="text"
+                              value={assignmentForm.vendor_subcontractor}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, vendor_subcontractor: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              placeholder="Enter vendor name if applicable"
+                            />
+                          </div>
+                        </div>
+
+                        {/* RACI Matrix & Time Tracking */}
+                        <div className="grid md:grid-cols-4 gap-4 mb-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">RACI Role</label>
+                            <select
+                              value={assignmentForm.raci_role}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, raci_role: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            >
+                              <option value="Responsible">Responsible</option>
+                              <option value="Accountable">Accountable</option>
+                              <option value="Consulted">Consulted</option>
+                              <option value="Informed">Informed</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Manhours</label>
+                            <input
+                              type="number"
+                              value={assignmentForm.manhours_estimated}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, manhours_estimated: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              placeholder="0"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Actual Manhours</label>
+                            <input
+                              type="number"
+                              value={assignmentForm.manhours_actual}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, manhours_actual: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                              placeholder="0"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                            <input
+                              type="date"
+                              value={assignmentForm.start_date}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, start_date: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                            <input
+                              type="date"
+                              value={assignmentForm.end_date}
+                              onChange={(e) => setAssignmentForm({...assignmentForm, end_date: e.target.value})}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Deliverables Assignment */}
+                        <div className="mb-6 p-4 bg-white rounded-lg border">
+                          <h4 className="font-medium text-gray-800 mb-3">Deliverables Assignment</h4>
+                          <div className="space-y-2">
+                            {documents.length > 0 ? (
+                              documents.slice(0, 5).map((doc) => (
+                                <label key={doc.id} className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={assignmentForm.deliverables.includes(doc.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setAssignmentForm({
+                                          ...assignmentForm,
+                                          deliverables: [...assignmentForm.deliverables, doc.id]
+                                        });
+                                      } else {
+                                        setAssignmentForm({
+                                          ...assignmentForm,
+                                          deliverables: assignmentForm.deliverables.filter(id => id !== doc.id)
+                                        });
+                                      }
+                                    }}
+                                    className="rounded text-[#7F2487] focus:ring-[#7F2487]"
+                                  />
+                                  <span className="text-sm">{doc.document_name || doc.name}</span>
+                                </label>
+                              ))
+                            ) : (
+                              <p className="text-sm text-gray-500">No documents available. Create documents in Document Master first.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Notes */}
+                        <div className="mb-6">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                          <textarea
+                            value={assignmentForm.notes}
+                            onChange={(e) => setAssignmentForm({...assignmentForm, notes: e.target.value})}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                            rows={3}
+                            placeholder="Additional notes about this assignment..."
+                          />
+                        </div>
+
+                        {/* Form Actions */}
+                        <div className="flex justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAssignmentForm(false);
+                              setEditingAssignment(null);
+                            }}
+                            className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const selectedEmployee = employees.find(e => e.id === assignmentForm.employee_id);
+                              const newAssignment = {
+                                id: editingAssignment?.id || Date.now(),
+                                ...assignmentForm,
+                                employee_name: selectedEmployee ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}` : '',
+                                employee_id_display: selectedEmployee?.employee_id || '',
+                                discipline_name: activities.find(d => d.id === assignmentForm.discipline_id)?.discipline || activities.find(d => d.id === assignmentForm.discipline_id)?.name,
+                                activity_name: activities.find(d => d.id === assignmentForm.discipline_id)?.activities?.find(a => a.id === assignmentForm.activity_id)?.name,
+                                sub_activity_name: activities.find(d => d.id === assignmentForm.discipline_id)?.activities?.find(a => a.id === assignmentForm.activity_id)?.subActivities?.find(s => s.id === assignmentForm.sub_activity_id)?.name
+                              };
+
+                              if (editingAssignment) {
+                                setAssignments(assignments.map(a => a.id === editingAssignment.id ? newAssignment : a));
+                              } else {
+                                setAssignments([...assignments, newAssignment]);
+                              }
+
+                              setAssignmentForm({
+                                employee_id: '',
+                                discipline_id: '',
+                                activity_id: '',
+                                sub_activity_id: '',
+                                organizational_position: '',
+                                reporting_manager: '',
+                                assigned_date: new Date().toISOString().slice(0, 10),
+                                assignment_status: 'Active',
+                                progress_percentage: '',
+                                budgeted_cost: '',
+                                actual_cost: '',
+                                resource_category: 'Internal',
+                                vendor_subcontractor: '',
+                                raci_role: 'Responsible',
+                                deliverables: [],
+                                manhours_estimated: '',
+                                manhours_actual: '',
+                                start_date: '',
+                                end_date: '',
+                                notes: ''
+                              });
+                              setEditingAssignment(null);
+                              setShowAssignmentForm(false);
+                            }}
+                            className="px-4 py-2 bg-[#7F2487] text-white rounded-md text-sm hover:bg-[#6b1e72]"
+                          >
+                            {editingAssignment ? 'Update Assignment' : 'Add Assignment'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Current Assignments List */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Progress (%)</label>
-                      <input
-                        type="range"
-                        name="progress"
-                        value={form.progress || 0}
-                        min="0"
-                        max="100"
-                        onChange={handleProgressChange}
-                        className="w-full accent-[#7F2487]"
-                      />
-                      <p className="text-sm text-gray-600 mt-2">{form.progress}% complete</p>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Current Team Assignments</h3>
+                      {assignments.length === 0 ? (
+                        <div className="text-center py-8 bg-gray-50 rounded-lg">
+                          <p className="text-gray-500">No assignments created yet.</p>
+                          <p className="text-sm text-gray-400">Use the 'Add Assignment' button to start building your project team.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {assignments.map((assignment) => (
+                            <div key={assignment.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                              <div className="flex justify-between items-start mb-3">
+                                <div>
+                                  <h4 className="font-medium text-gray-800">
+                                    {assignment.employee_name} ({assignment.employee_id_display})
+                                    <span className={`ml-2 px-2 py-1 text-xs rounded-full ${
+                                      assignment.assignment_status === 'Active' ? 'bg-green-100 text-green-800' :
+                                      assignment.assignment_status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                                      assignment.assignment_status === 'Completed' ? 'bg-blue-100 text-blue-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {assignment.assignment_status}
+                                    </span>
+                                  </h4>
+                                  <p className="text-sm text-gray-600">
+                                    <strong>Position:</strong> {assignment.organizational_position || 'Not specified'}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    <strong>Reports to:</strong> {assignment.reporting_manager || 'Not specified'}
+                                  </p>
+                                  {(assignment.discipline_name || assignment.activity_name) && (
+                                    <p className="text-sm text-gray-600">
+                                      <strong>Work:</strong> {assignment.discipline_name}{assignment.activity_name && ` → ${assignment.activity_name}`}{assignment.sub_activity_name && ` → ${assignment.sub_activity_name}`}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAssignmentForm(assignment);
+                                      setEditingAssignment(assignment);
+                                      setShowAssignmentForm(true);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-800 text-sm"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAssignments(assignments.filter(a => a.id !== assignment.id));
+                                    }}
+                                    className="text-red-600 hover:text-red-800 text-sm"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              <div className="grid md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="font-medium">RACI Role:</span>
+                                  <span className={`ml-1 px-2 py-1 text-xs rounded ${
+                                    assignment.raci_role === 'Responsible' ? 'bg-red-100 text-red-800' :
+                                    assignment.raci_role === 'Accountable' ? 'bg-blue-100 text-blue-800' :
+                                    assignment.raci_role === 'Consulted' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                                    {assignment.raci_role}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="font-medium">Progress:</span> {assignment.progress_percentage || '0'}%
+                                </div>
+                                <div>
+                                  <span className="font-medium">Resource:</span> {assignment.resource_category}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Budget:</span> ₹{assignment.budgeted_cost || '0'}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Manhours:</span> {assignment.manhours_estimated || '0'}h (Est.)
+                                </div>
+                                <div>
+                                  <span className="font-medium">Assigned:</span> {assignment.assigned_date}
+                                </div>
+                              </div>
+                              
+                              {assignment.notes && (
+                                <div className="mt-2 p-2 bg-gray-100 rounded text-sm">
+                                  <span className="font-medium">Notes:</span> {assignment.notes}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </section>
                 )}

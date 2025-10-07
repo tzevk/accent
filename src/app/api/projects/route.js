@@ -35,6 +35,7 @@ export async function GET() {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT \'ONGOING\'');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS proposal_id INT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
       await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
 
       // Update enum fields to use VARCHAR instead for more flexibility
@@ -115,16 +116,18 @@ export async function POST(request) {
       projectId = 'PRJ00001';
     }
     
-    // Insert the new project (include manhours and cost_breakup)
+    // Insert the new project (include activities/disciplines JSON)
     const [result] = await db.execute(
       `INSERT INTO projects (
         project_id, name, description, company_id, client_name, project_manager,
-        start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
+        activities, disciplines, discipline_descriptions, assignments
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         projectId, name, description, company_id || null, client_name, project_manager || null,
         start_date || null, end_date || null, target_date || null, budget || null, assigned_to || null,
-        status || 'NEW', type || 'ONGOING', priority || 'MEDIUM', progress || 0, proposal_id || null, notes || null
+        status || 'NEW', type || 'ONGOING', priority || 'MEDIUM', progress || 0, proposal_id || null, notes || null,
+        JSON.stringify(data.activities || []), JSON.stringify(data.disciplines || []), JSON.stringify(data.discipline_descriptions || {}), JSON.stringify(data.assignments || [])
       ]
     );
     
@@ -216,7 +219,11 @@ export async function PUT(request) {
         notes = ?,
         assigned_to = ?,
         type = ?,
-        proposal_id = ?
+        proposal_id = ?,
+        activities = ?,
+        disciplines = ?,
+        discipline_descriptions = ?,
+        assignments = ?
       WHERE id = ?`,
       [
         name,
@@ -235,6 +242,10 @@ export async function PUT(request) {
         assigned_to || null,
         type || 'ONGOING',
         proposal_id || null,
+        JSON.stringify(data.activities || []),
+        JSON.stringify(data.disciplines || []),
+        JSON.stringify(data.discipline_descriptions || {}),
+        JSON.stringify(data.assignments || []),
         id
       ]
     );

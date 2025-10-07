@@ -81,34 +81,37 @@ export async function PUT(request, { params }) {
       projectId
     ]);
 
-    // Ensure columns exist to store assigned disciplines/activities and per-discipline descriptions
+    // Ensure columns exist to store assigned disciplines/activities/assignments and per-discipline descriptions
     try {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_disciplines TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_activities TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS discipline_descriptions TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
     } catch (err) {
       // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
       console.warn('Could not ensure project assignment columns exist:', err.message || err);
     }
 
-    // Persist disciplines/activities/descriptions if provided in payload
+    // Persist disciplines/activities/descriptions/assignments if provided in payload
     try {
       const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : null;
       const assignedActivities = data.activities ? JSON.stringify(data.activities) : null;
       const disciplineDescriptions = data.discipline_descriptions ? JSON.stringify(data.discipline_descriptions) : null;
+      const assignments = data.assignments ? JSON.stringify(data.assignments) : null;
 
-      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null) {
+      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || assignments !== null) {
         await db.execute(
           `UPDATE projects SET 
              assigned_disciplines = COALESCE(?, assigned_disciplines),
              assigned_activities = COALESCE(?, assigned_activities),
-             discipline_descriptions = COALESCE(?, discipline_descriptions)
+             discipline_descriptions = COALESCE(?, discipline_descriptions),
+             assignments = COALESCE(?, assignments)
            WHERE id = ?`,
-          [assignedDisciplines, assignedActivities, disciplineDescriptions, projectId]
+          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, projectId]
         );
       }
     } catch (err) {
-      console.error('Failed to persist project discipline/activity assignments:', err);
+      console.error('Failed to persist project discipline/activity/assignment data:', err);
     }
 
     await db.end();

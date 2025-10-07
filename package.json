@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "clear-leads": "node scripts/clear-leads.js",
-    "setup": "node setup-backend.js"
+    "setup": "node setup-backend.js",
+    "update-dates": "node scripts/update-projects-dates.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

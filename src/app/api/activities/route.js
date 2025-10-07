@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { randomUUID } from 'crypto';
 
 export async function GET() {
   try {
@@ -13,6 +14,16 @@ export async function GET() {
       'SELECT id, function_id, activity_name FROM activities_master ORDER BY activity_name'
     );
 
+    // fetch sub_activities if available
+    let subActivities = [];
+    try {
+      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours FROM sub_activities');
+      subActivities = subs;
+    } catch {
+      // table might not exist yet; that's fine
+      subActivities = [];
+    }
+
     await db.end();
 
     // Group activities by function
@@ -20,12 +31,90 @@ export async function GET() {
       id: func.id,
       discipline: func.function_name,
       name: func.function_name,
-      activities: activities.filter((a) => a.function_id === func.id).map((a) => ({ id: a.id, name: a.activity_name }))
+      activities: activities
+        .filter((a) => a.function_id === func.id)
+        .map((a) => ({
+          id: a.id,
+          name: a.activity_name,
+          subActivities: subActivities.filter((s) => String(s.activity_id) === String(a.id)).map((s) => ({ id: s.id, name: s.name, defaultDuration: s.default_duration, defaultManhours: s.default_manhours }))
+        }))
     }));
 
     return NextResponse.json({ success: true, data: grouped });
   } catch (error) {
     console.error('GET /api/activities error:', error);
     return NextResponse.json({ success: false, error: 'Failed to load activities', details: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(request) {
+  try {
+    const { function_id, activity_name } = await request.json();
+
+    if (!function_id || !activity_name) {
+      return NextResponse.json({ success: false, error: 'Function ID and activity name are required' }, { status: 400 });
+    }
+
+    const id = randomUUID();
+    const db = await dbConnect();
+    await db.execute(
+      'INSERT INTO activities_master (id, function_id, activity_name) VALUES (?, ?, ?)',
+      [id, function_id, activity_name]
+    );
+    await db.end();
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Activity created successfully',
+      id: id 
+    });
+  } catch (error) {
+    console.error('POST /api/activities error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to create activity', details: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(request) {
+  try {
+    const { id, activity_name } = await request.json();
+
+    if (!id || !activity_name) {
+      return NextResponse.json({ success: false, error: 'ID and activity name are required' }, { status: 400 });
+    }
+
+    const db = await dbConnect();
+    await db.execute('UPDATE activities_master SET activity_name = ? WHERE id = ?', [activity_name, id]);
+    await db.end();
+
+    return NextResponse.json({ success: true, message: 'Activity updated successfully' });
+  } catch (error) {
+    console.error('PUT /api/activities error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to update activity', details: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Activity ID is required' }, { status: 400 });
+    }
+
+    const db = await dbConnect();
+    
+    // First delete all sub-activities that belong to this activity
+    await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
+    
+    // Then delete the activity itself
+    await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
+    
+    await db.end();
+
+    return NextResponse.json({ success: true, message: 'Activity and its sub-activities deleted successfully' });
+  } catch (error) {
+    console.error('DELETE /api/activities error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to delete activity', details: error.message }, { status: 500 });
   }
 }

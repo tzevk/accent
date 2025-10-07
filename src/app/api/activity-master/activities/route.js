@@ -68,7 +68,7 @@ export async function DELETE(request) {
     }
 
     const db = await dbConnect();
-    await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
+    await db.execute('DELETE FROM sub_activities WHERE id = ?', [id]);
     await db.end();
 
     return NextResponse.json({ success: true, message: 'Sub-activity deleted' });
