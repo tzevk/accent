@@ -33,6 +33,7 @@ const mastersNavigation = [
   { name: 'User Master', href: '/masters/users', icon: UsersIcon },
   { name: 'Activity Master', href: '/masters/activities', icon: DocumentTextIcon },
   { name: 'Company Master', href: '/company', icon: BuildingOfficeIcon },
+  { name: 'Vendor Master', href: '/vendors', icon: BuildingOfficeIcon },
   { name: 'Document Master', href: '/masters/documents', icon: DocumentDuplicateIcon },
 ];
 
