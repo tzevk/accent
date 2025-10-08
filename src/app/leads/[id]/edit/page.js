@@ -19,6 +19,8 @@ export default function EditLead({ params }) {
     company_name: '',
     contact_name: '',
     contact_email: '',
+    inquiry_email: '',
+    cc_emails: '',
     phone: '',
     city: '',
     project_description: '',
@@ -53,6 +55,8 @@ export default function EditLead({ params }) {
             company_name: leadData.company_name || '',
             contact_name: leadData.contact_name || '',
             contact_email: leadData.contact_email || '',
+            inquiry_email: leadData.inquiry_email || '',
+            cc_emails: leadData.cc_emails || '',
             phone: leadData.phone || '',
             city: leadData.city || '',
             project_description: leadData.project_description || '',
@@ -282,6 +286,37 @@ export default function EditLead({ params }) {
                         onChange={handleInputChange}
                         className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                       />
+                    </div>
+
+                    {/* Inquiry Email */}
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Inquiry Email
+                      </label>
+                      <input
+                        type="email"
+                        name="inquiry_email"
+                        value={formData.inquiry_email}
+                        onChange={handleInputChange}
+                        className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-0.5">Email ID of person from whom inquiry was received</p>
+                    </div>
+
+                    {/* CC Emails */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-black mb-1">
+                        CC Emails
+                      </label>
+                      <input
+                        type="text"
+                        name="cc_emails"
+                        value={formData.cc_emails}
+                        onChange={handleInputChange}
+                        placeholder="email1@example.com, email2@example.com, email3@example.com"
+                        className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-0.5">Additional email IDs (2-6 emails, comma-separated)</p>
                     </div>
 
                     {/* Phone */}

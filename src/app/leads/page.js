@@ -40,6 +40,8 @@ export default function Leads() {
     company_name: '',
     contact_name: '',
     contact_email: '',
+    inquiry_email: '',
+    cc_emails: '',
     phone: '',
     city: '',
     project_description: '',
@@ -127,6 +129,8 @@ export default function Leads() {
           company_name: '',
           contact_name: '',
           contact_email: '',
+          inquiry_email: '',
+          cc_emails: '',
           phone: '',
           city: '',
           project_description: '',
@@ -787,6 +791,36 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
                 placeholder="Enter email address"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Inquiry Email
+              </label>
+              <input
+                type="email"
+                name="inquiry_email"
+                value={formData.inquiry_email}
+                onChange={handleFormChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                placeholder="Email from whom inquiry was received"
+              />
+              <p className="text-xs text-gray-500 mt-1">Email ID of the person from whom the inquiry was received</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                CC Emails (2-6 emails)
+              </label>
+              <input
+                type="text"
+                name="cc_emails"
+                value={formData.cc_emails}
+                onChange={handleFormChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                placeholder="email1@example.com, email2@example.com, email3@example.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">Enter 2-6 additional email IDs separated by commas</p>
             </div>
 
             <div>

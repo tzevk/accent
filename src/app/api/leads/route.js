@@ -111,6 +111,8 @@ export async function POST(request) {
       company_name,
       contact_name,
       contact_email,
+      inquiry_email,
+      cc_emails,
       phone,
       city,
       project_description,
@@ -135,6 +137,8 @@ export async function POST(request) {
     try {
       await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_id VARCHAR(50)');
       await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_id INT');
+      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS inquiry_email VARCHAR(255)');
+      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS cc_emails TEXT');
     } catch (err) {
       console.warn('Columns might already exist:', err.message);
     }
@@ -173,13 +177,13 @@ export async function POST(request) {
     
     const [result] = await db.execute(`
       INSERT INTO leads (
-        lead_id, company_id, company_name, contact_name, contact_email, phone, city,
-        project_description, enquiry_type, enquiry_status, enquiry_date,
+        lead_id, company_id, company_name, contact_name, contact_email, inquiry_email, cc_emails,
+        phone, city, project_description, enquiry_type, enquiry_status, enquiry_date,
         lead_source, priority, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      generatedLeadId, companyIdValue, company_name, contact_name, contact_email, phone, city,
-      project_description, enquiry_type, enquiry_status, enquiry_date,
+      generatedLeadId, companyIdValue, company_name, contact_name, contact_email, inquiry_email, cc_emails,
+      phone, city, project_description, enquiry_type, enquiry_status, enquiry_date,
       lead_source, priority, notes
     ]);
     

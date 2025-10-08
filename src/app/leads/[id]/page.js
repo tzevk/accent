@@ -215,7 +215,7 @@ export default function LeadDetails({ params }) {
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
                       <p className="text-sm text-gray-900 flex items-center">
                         <EnvelopeIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.contact_email || 'N/A'}
@@ -234,6 +234,22 @@ export default function LeadDetails({ params }) {
                         <MapPinIcon className="h-4 w-4 mr-1 text-gray-400" />
                         {lead.city || 'N/A'}
                       </p>
+                    </div>
+                    <div className="lg:col-span-2 xl:col-span-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Inquiry Email</label>
+                      <p className="text-sm text-gray-900 flex items-center">
+                        <EnvelopeIcon className="h-4 w-4 mr-1 text-gray-400" />
+                        {lead.inquiry_email || 'N/A'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">Email ID of person from whom inquiry was received</p>
+                    </div>
+                    <div className="lg:col-span-2 xl:col-span-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">CC Emails</label>
+                      <p className="text-sm text-gray-900 flex items-start">
+                        <EnvelopeIcon className="h-4 w-4 mr-1 mt-0.5 text-gray-400 flex-shrink-0" />
+                        <span className="break-all">{lead.cc_emails || 'N/A'}</span>
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">Additional email IDs (comma-separated)</p>
                     </div>
                   </div>
                 </div>
