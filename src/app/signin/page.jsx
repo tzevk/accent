@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { Poppins } from 'next/font/google';
 
-// Poppins font (page-scoped)
+// Font setup
 const poppins = Poppins({
   subsets: ['latin'],
   weight: ['400', '500', '600'],
@@ -16,30 +16,49 @@ export default function SignIn() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
+  // 🪄 Adaptive gradient style (fixes Windows color dullness)
+  const [gradientStyle, setGradientStyle] = useState({
+    background:
+      'radial-gradient(1000px 700px at 50% 35%, #d3a9ce 0%, #b177c1 35%, #9041a0 65%, #6c1b7a 100%)',
+    filter: 'saturate(1.05) brightness(1.08)',
+    transition: 'background 0.4s ease, filter 0.4s ease',
+  });
+
+  useEffect(() => {
+    const platform = navigator.userAgent;
+    const isWindows = platform.includes('Windows');
+    if (isWindows) {
+      setGradientStyle({
+        background:
+          'radial-gradient(1000px 700px at 50% 35%, #d8afd2 0%, #b87ec8 35%, #9747a8 65%, #752087 100%)',
+        filter: 'saturate(1.1) brightness(1.12)',
+        transition: 'background 0.4s ease, filter 0.4s ease',
+      });
+    }
+  }, []);
+
+  // Handle login
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch('/api/login', {
+      const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: email, email, password }),
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      if (data.success) {
-        router.push('/dashboard');
-      } else {
-        setError(data.message || 'Login failed');
-      }
-    } catch (err) {
+      if (data?.success) router.push('/dashboard');
+      else setError(data?.message || 'Invalid credentials');
+    } catch {
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
@@ -48,131 +67,102 @@ export default function SignIn() {
 
   return (
     <div
-      className={`${poppins.className} min-h-screen w-full flex items-center justify-center px-4 py-8 sm:py-12`}
-      style={{
-        background:
-          'radial-gradient(circle at 50% 40%, #b77fc7 0%, #9b5db2 35%, #7a2e92 65%, #61156f 100%)',
-        filter: 'saturate(0.95) brightness(1.05)',
-      }}
+      className={`${poppins.className} min-h-screen flex items-center justify-center px-4 relative overflow-hidden`}
+      style={gradientStyle}
     >
-      <div className="w-full max-w-[340px] sm:max-w-[370px] mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 sm:p-7">
-          {/* Logo */}
-          <div className="flex flex-col items-center">
-            <img
-              src="/accent-logo.png"
-              alt="Accent Techno Solutions"
-              className="h-20 sm:h-24 mb-1.5 object-contain"
-            />
-          </div>
+      {/* Soft glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.15)_0%,transparent_70%)]" />
 
-          <h2 className="mt-5 text-2xl font-semibold text-[#5f146d] text-center tracking-tight">
+      {/* Card */}
+      <div className="relative bg-white rounded-[28px] p-10 w-[420px] sm:w-[440px] text-center shadow-[0_20px_60px_rgba(93,0,132,0.25)] border border-[#f0e6f3] backdrop-blur-sm transition-transform duration-300 hover:-translate-y-[2px] hover:shadow-[0_24px_70px_rgba(93,0,132,0.3)]">
+        {/* Logo */}
+        <div className="flex justify-center mb-6">
+          <img
+            src="/accent-logo.png"
+            alt="Accent Techno Solutions"
+            className="h-[110px] sm:h-[120px] object-contain"
+          />
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="text-left space-y-5">
+          {/* Title */}
+          <h2 className="text-[22px] font-semibold text-[#5F146D] mb-4">
             Sign In
           </h2>
 
-          {/* Sign In Form */}
-          <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
-            {/* Email Field */}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-[#5f146d] mb-2"
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="username"
-                required
-                className="w-full h-11 text-black border border-gray-200 rounded-lg px-4 focus:outline-none focus:ring-2 focus:ring-[#5f146d] text-sm placeholder:text-gray-400"
-                placeholder="username@gmail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            {/* Password Field */}
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-[#5f146d] mb-2"
-              >
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  className="w-full h-11 text-black border border-gray-200 rounded-lg px-4 pr-10 focus:outline-none focus:ring-2 focus:ring-[#5f146d] text-sm placeholder:text-gray-400"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeSlashIcon className="h-5 w-5" />
-                  ) : (
-                    <EyeIcon className="h-5 w-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 text-sm">
-                {error}
-              </div>
-            )}
-
-            {/* Sign In Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 bg-[#5f146d] hover:bg-[#4e0f58] text-white h-11 rounded-lg transition-colors text-sm font-semibold disabled:opacity-60"
+          {/* Email */}
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-[#5F146D] mb-2"
             >
-              {loading ? (
-                <span className="inline-flex items-center">
-                  <svg
-                    className="animate-spin -ml-0.5 mr-2 h-4 w-4"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                    />
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign in'
-              )}
-            </button>
-          </form>
-        </div>
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              required
+              placeholder="username@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full h-[42px] rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent transition-all duration-200 shadow-sm"
+            />
+          </div>
+
+          {/* Password */}
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-[#5F146D] mb-2"
+            >
+              Password
+            </label>
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full h-[42px] rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent pr-10 shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                {showPassword ? (
+                  <EyeSlashIcon className="h-5 w-5" />
+                ) : (
+                  <EyeIcon className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="bg-red-50 text-red-600 border border-red-200 rounded-md px-3 py-2 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-[44px] bg-[#5F146D] hover:bg-[#4E0F58] text-white rounded-md font-semibold text-sm tracking-wide transition-all duration-200 shadow-[0_3px_6px_rgba(95,20,109,0.3)] hover:shadow-[0_4px_10px_rgba(95,20,109,0.4)] disabled:opacity-60"
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
 
         {/* Footer */}
-        <div className="mt-6 text-center">
-          <p className="text-xs text-white/80">© 2025 All rights reserved.</p>
-        </div>
+        <p className="text-xs text-[#7d6295] mt-8 text-center">
+          © 2025 Accent Techno Solutions. All rights reserved.
+        </p>
       </div>
     </div>
   );
