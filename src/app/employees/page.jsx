@@ -3,9 +3,9 @@
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 
-import { 
-  UserGroupIcon, 
-  PlusIcon, 
+import {
+  UserGroupIcon,
+  PlusIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
   PencilIcon,
@@ -13,16 +13,7 @@ import {
   EyeIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  BuildingOfficeIcon,
-  PhoneIcon,
-  EnvelopeIcon,
-  CalendarIcon,
-  BanknotesIcon,
-  XMarkIcon,
-  ExclamationTriangleIcon,
-  DocumentArrowUpIcon,
-  DocumentArrowDownIcon,
-  CloudArrowUpIcon
+  DocumentArrowDownIcon
 } from '@heroicons/react/24/outline';
 
 export default function EmployeesPage() {
@@ -427,7 +418,7 @@ export default function EmployeesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 animate-fade-in">
       <Navbar />
       
       <div className="px-4 sm:px-6 lg:px-8 py-8 mt-16">
@@ -469,7 +460,6 @@ export default function EmployeesPage() {
               >
                 Employee List ({employees.length})
               </button>
-              {/* Removed Add Employee tab; using header Add button instead */}
               <button
                 onClick={() => {
                   setActiveTab('import');
@@ -565,11 +555,14 @@ export default function EmployeesPage() {
               </div>
 
               {/* Employee Table */}
-              <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden animate-slide-up">
                 {loading ? (
-                  <div className="p-8 text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-700 mx-auto"></div>
-                    <p className="text-gray-600 mt-4">Loading employees...</p>
+                  <div className="p-6">
+                    <div className="space-y-4">
+                      {[...Array(6)].map((_, i) => (
+                        <div key={i} className="skeleton h-12 w-full rounded-lg"></div>
+                      ))}
+                    </div>
                   </div>
                 ) : employees.length === 0 ? (
                   <div className="text-center py-16">
@@ -612,7 +605,7 @@ export default function EmployeesPage() {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {employees.map((employee) => (
-                            <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-200">
+                            <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-200 motion-safe:hover:scale-[1.01]">
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <div className="h-10 w-10 rounded-full bg-gradient-to-r from-[#64126D] to-[#86288F] flex items-center justify-center">
