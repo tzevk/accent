@@ -20,20 +20,23 @@ import {
 export default function Sidebar() {
   const pathname = usePathname();
   const isSignin = pathname.startsWith('/signin');
+  const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
 
+  useEffect(() => { setMounted(true); }, []);
+
   useEffect(() => {
-    if (isSignin) return;
+    if (!mounted || isSignin) return;
     try {
       const saved = localStorage.getItem('sidebarPinned');
       if (saved) setPinned(saved === 'true');
     } catch {}
-  }, [isSignin]);
+  }, [mounted, isSignin]);
 
   useEffect(() => {
-    if (isSignin) return;
+    if (!mounted || isSignin) return;
     try { localStorage.setItem('sidebarPinned', String(pinned)); } catch {}
-  }, [pinned, isSignin]);
+  }, [pinned, mounted, isSignin]);
 
   const NavRow = ({ icon: Icon, label, href = '#', active = false, badge, caret }) => (
     <Link
@@ -58,7 +61,7 @@ export default function Sidebar() {
     </Link>
   );
 
-  if (isSignin) return null;
+  if (isSignin || !mounted) return null;
 
   return (
     <aside

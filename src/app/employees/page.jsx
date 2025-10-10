@@ -22,22 +22,56 @@ export default function EmployeesPage() {
   const Avatar = ({ src, firstName, lastName, size = 40, priority = false }) => {
     const initials = `${(firstName || '').charAt(0) || ''}${(lastName || '').charAt(0) || ''}`.toUpperCase();
     const sizeNum = typeof size === 'number' ? size : parseInt(size, 10) || 40;
-    if (src) {
+
+    // Prefer thumbnail for small sizes to improve list performance
+    const shouldUseThumb = sizeNum <= 64;
+    const deriveThumb = (url) => {
+      if (!url || typeof url !== 'string') return null;
+      if (!url.includes('/uploads/')) return null;
+      // replace last extension with -thumb.png
+      const i = url.lastIndexOf('.');
+      const base = i > -1 ? url.slice(0, i) : url;
+      return `${base}-thumb.png`;
+    };
+
+    const originalSrc = src || '';
+    const defaultThumb = shouldUseThumb ? deriveThumb(originalSrc) : null;
+    const [imgSrc, setImgSrc] = useState(defaultThumb || originalSrc);
+
+    // Keep imgSrc in sync when src or size changes
+    useEffect(() => {
+      const nextThumb = shouldUseThumb ? deriveThumb(originalSrc) : null;
+      setImgSrc(nextThumb || originalSrc);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [originalSrc, sizeNum]);
+
+    if (imgSrc) {
       const intrinsic = sizeNum * 2; // 2x pixels for crispness
       return (
         <Image
-          src={src}
+          src={imgSrc}
           alt={initials || 'Avatar'}
           width={intrinsic}
           height={intrinsic}
-          quality={95}
+          quality={85}
           sizes={`${sizeNum}px`}
           priority={priority}
+          unoptimized
           className="rounded-full object-cover bg-gray-100"
           style={{ width: sizeNum, height: sizeNum }}
+          onError={() => {
+            // If thumbnail 404s, fall back to original
+            if (imgSrc !== originalSrc) {
+              setImgSrc(originalSrc);
+            } else {
+              // both thumb and original failed; show initials fallback
+              setImgSrc('');
+            }
+          }}
         />
       );
     }
+
     return (
       <div
         style={{ width: sizeNum, height: sizeNum }}
@@ -159,6 +193,9 @@ export default function EmployeesPage() {
   const [importFile, setImportFile] = useState(null);
   const [importResults, setImportResults] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  // Add Employee sub-tabs (like Projects edit tabs)
+  const addSubTabOrder = ['personal','contact','work','statutory','academic','govt','bank','attendance','salary'];
+  const [addSubTab, setAddSubTab] = useState('personal');
 
   // Fetch employees
   const fetchEmployees = async () => {
@@ -455,6 +492,7 @@ export default function EmployeesPage() {
   const openAddForm = () => {
     setFormData(defaultFormData);
     setFormErrors({});
+    setAddSubTab('personal');
     setActiveTab('add');
   };
 
@@ -464,6 +502,17 @@ export default function EmployeesPage() {
     if (!file) return;
     try {
       setPhotoUploading(true);
+  // Client-side checks: ensure it's an image and within size limits (15 MB)
+      const isImage = (file.type && file.type.startsWith('image/'));
+  const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+      if (!isImage) {
+        setFormErrors((prev) => ({ ...prev, general: 'Please upload an image file (PNG, JPG, GIF, WebP, BMP, HEIC/HEIF, or SVG).' }));
+        return;
+      }
+      if (file.size > MAX_BYTES) {
+        setFormErrors((prev) => ({ ...prev, general: 'Image is too large. Please upload a file up to 15 MB.' }));
+        return;
+      }
       // Read file as base64
       const b64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -471,11 +520,12 @@ export default function EmployeesPage() {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const base64String = String(b64).split(',')[1] || '';
+      const dataUrl = String(b64);
+      const base64String = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
       const res = await fetch('/api/uploads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, b64: base64String })
+        body: JSON.stringify({ filename: file.name || 'upload.png', b64: base64String })
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
@@ -484,10 +534,12 @@ export default function EmployeesPage() {
       const fileUrl = data?.data?.fileUrl;
       if (fileUrl) {
         setFormData((prev) => ({ ...prev, profile_photo_url: fileUrl }));
+        // Also update selectedEmployee preview if present
+        setSelectedEmployee((prev) => prev ? { ...prev, profile_photo_url: fileUrl } : prev);
       }
     } catch (err) {
       console.error('Photo upload error:', err);
-      setFormErrors((prev) => ({ ...prev, general: 'Failed to upload photo. Please try again.' }));
+      setFormErrors((prev) => ({ ...prev, general: err?.message || 'Failed to upload photo. Please try again.' }));
     } finally {
       setPhotoUploading(false);
     }
@@ -512,7 +564,7 @@ export default function EmployeesPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 animate-fade-in">
       <Navbar />
       
-      <div className="px-4 sm:px-6 lg:px-8 py-8 mt-16">
+  <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
         {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
@@ -888,6 +940,36 @@ export default function EmployeesPage() {
                     <h3 className="text-2xl font-semibold text-gray-900">Add Employee</h3>
                   </div>
 
+                  {/* Sub Tabs */}
+                  <div className="border-b border-gray-200 mb-6">
+                    <nav className="flex flex-wrap gap-4" aria-label="Employee Sections">
+                      {[
+                        { key: 'personal', label: 'Personal Information' },
+                        { key: 'contact', label: 'Contact Information' },
+                        { key: 'work', label: 'Work Details' },
+                        { key: 'statutory', label: 'Statutory' },
+                        { key: 'academic', label: 'Academic & Experience' },
+                        { key: 'govt', label: 'Government IDs' },
+                        { key: 'bank', label: 'Bank Details' },
+                        { key: 'attendance', label: 'Attendance & Exit' },
+                        { key: 'salary', label: 'Salary Structure' },
+                      ].map((t) => (
+                        <button
+                          key={t.key}
+                          type="button"
+                          onClick={() => setAddSubTab(t.key)}
+                          className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+                            addSubTab === t.key
+                              ? 'border-[#86288F] text-[#64126D]'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+
                   {successMessage && (
                     <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
                       {successMessage}
@@ -901,6 +983,7 @@ export default function EmployeesPage() {
                       </div>
                     )}
                     {/* Personal Information */}
+                    {addSubTab === 'personal' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Personal Information</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -910,7 +993,7 @@ export default function EmployeesPage() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
-                            <input type="file" accept="image/*" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
+                            <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
                             {photoUploading && <p className="text-xs text-purple-600 mt-1">Uploading...</p>}
                           </div>
                         </div>
@@ -955,10 +1038,11 @@ export default function EmployeesPage() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">Marital Status</label>
                           <select value={formData.marital_status || ''} onChange={(e) => setFormData({ ...formData, marital_status: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
                             <option value="">Select</option>
-                            <option value="single">Single</option>
-                            <option value="married">Married</option>
-                            <option value="divorced">Divorced</option>
-                            <option value="widowed">Widowed</option>
+                            <option value="Single">Single</option>
+                            <option value="Married">Married</option>
+                            {/* Map these to Other in DB representation */}
+                            <option value="Other">Divorced</option>
+                            <option value="Other">Widowed</option>
                           </select>
                         </div>
                         <div>
@@ -971,8 +1055,10 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Contact Information */}
+                    {addSubTab === 'contact' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Contact Information</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1010,8 +1096,10 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Work Details */}
+                    {addSubTab === 'work' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Work Details</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1066,9 +1154,11 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Actions */}
                     {/* Statutory */}
+                    {addSubTab === 'statutory' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Statutory</h4>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -1087,8 +1177,10 @@ export default function EmployeesPage() {
                         ))}
                       </div>
                     </div>
+                    )}
 
                     {/* Academic & Experience */}
+                    {addSubTab === 'academic' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Academic & Experience</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1110,8 +1202,10 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Government IDs */}
+                    {addSubTab === 'govt' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Government IDs</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1137,8 +1231,10 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Bank Details */}
+                    {addSubTab === 'bank' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Bank Details</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1164,8 +1260,10 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Attendance & Exit */}
+                    {addSubTab === 'attendance' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Attendance & Exit</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1187,8 +1285,10 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
                     {/* Salary Structure Summary */}
+                    {addSubTab === 'salary' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Salary Structure</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1222,10 +1322,37 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </div>
+                    )}
 
-                    <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-                      <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
-                      <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Saving...' : 'Save Employee'}</button>
+                    <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const idx = addSubTabOrder.indexOf(addSubTab);
+                            if (idx > 0) setAddSubTab(addSubTabOrder[idx - 1]);
+                          }}
+                          disabled={addSubTabOrder.indexOf(addSubTab) === 0}
+                          className="px-5 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const idx = addSubTabOrder.indexOf(addSubTab);
+                            if (idx < addSubTabOrder.length - 1) setAddSubTab(addSubTabOrder[idx + 1]);
+                          }}
+                          disabled={addSubTabOrder.indexOf(addSubTab) === addSubTabOrder.length - 1}
+                          className="px-5 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Next
+                        </button>
+                      </div>
+                      <div className="flex gap-3">
+                        <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Saving...' : 'Save Employee'}</button>
+                      </div>
                     </div>
                   </form>
                 </div>
@@ -1354,7 +1481,7 @@ export default function EmployeesPage() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
-                        <input type="file" accept="image/*" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
+                        <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
                         {photoUploading && <p className="text-xs text-purple-600 mt-1">Uploading...</p>}
                       </div>
                     </div>
@@ -1399,10 +1526,10 @@ export default function EmployeesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Marital Status</label>
                       <select value={formData.marital_status || ''} onChange={(e) => setFormData({ ...formData, marital_status: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
                         <option value="">Select</option>
-                        <option value="single">Single</option>
-                        <option value="married">Married</option>
-                        <option value="divorced">Divorced</option>
-                        <option value="widowed">Widowed</option>
+                        <option value="Single">Single</option>
+                        <option value="Married">Married</option>
+                        <option value="Other">Divorced</option>
+                        <option value="Other">Widowed</option>
                       </select>
                     </div>
                     <div>

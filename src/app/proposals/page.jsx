@@ -161,7 +161,7 @@ export default function Proposals() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <div className="px-4 sm:px-6 lg:px-8 py-8 mt-16">
+  <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Proposals</h1>
