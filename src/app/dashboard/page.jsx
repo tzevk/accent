@@ -10,7 +10,10 @@ import {
   FolderIcon,
   ChartBarIcon,
   PlusIcon,
-  EyeIcon
+  EyeIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 
 export default function Dashboard() {
@@ -21,10 +24,60 @@ export default function Dashboard() {
     projects: { total: 0, in_progress: 0, completed: 0 }
   });
   const [loading, setLoading] = useState(true);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsList, setLeadsList] = useState([]);
+  const [leadsTotal, setLeadsTotal] = useState(0);
+  const [leadsPage, setLeadsPage] = useState(1);
+  const rowsPerPage = 10;
+  const [followupsByLead, setFollowupsByLead] = useState({});
+  const [deltas, setDeltas] = useState({ leads: 0, proposals: 0, companies: 0, projects: 0 });
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('Weekly'); // Weekly | Monthly | Quarterly
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const fmtNum = new Intl.NumberFormat('en-IN');
+  const [leadsError, setLeadsError] = useState(null);
+
+  // Compact Indian currency formatter (K, Lakh, Crore)
+  const formatINRCompact = (n, withSymbol = true) => {
+    const num = Number(n) || 0;
+    const abs = Math.abs(num);
+    let value = num;
+    let suffix = '';
+    if (abs >= 1e7) { // Crore
+      value = num / 1e7;
+      suffix = 'Cr';
+    } else if (abs >= 1e5) { // Lakh
+      value = num / 1e5;
+      suffix = 'L';
+    } else if (abs >= 1e3) { // Thousand
+      value = num / 1e3;
+      suffix = 'K';
+    }
+    const fixed = Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1);
+    const sign = num < 0 ? '-' : '';
+    return `${withSymbol ? '₹' : ''}${sign}${fixed}${suffix}`;
+  };
 
   useEffect(() => {
     fetchStats();
   }, []);
+
+  useEffect(() => {
+    fetchLeadsPage(leadsPage);
+  }, [leadsPage, sortBy, sortOrder]);
+
+  // Persist analytics period across visits
+  useEffect(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('analyticsPeriod') : null;
+      if (saved) setAnalyticsPeriod(saved);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') localStorage.setItem('analyticsPeriod', analyticsPeriod);
+    } catch {}
+  }, [analyticsPeriod]);
 
   const fetchStats = async () => {
     try {
@@ -46,7 +99,7 @@ export default function Dashboard() {
       const projectsResponse = await fetch('/api/projects');
       const projectsData = await projectsResponse.json();
       
-      if (leadsData.success && proposalsData.success && companiesData.success && projectsData.success) {
+  if (leadsData.success && proposalsData.success && companiesData.success && projectsData.success) {
         // Calculate proposal stats
         const proposals = proposalsData.data || [];
         const proposalStats = {
@@ -70,6 +123,55 @@ export default function Dashboard() {
           companies: { total: companiesData.data?.length || 0 },
           projects: projectStats
         });
+
+        // Compute real week-over-week deltas (last 7 days vs previous 7 days)
+        const now = new Date();
+        const last7Start = new Date(now);
+        last7Start.setDate(now.getDate() - 7);
+        const prev7Start = new Date(now);
+        prev7Start.setDate(now.getDate() - 14);
+
+        const pickDate = (obj) => {
+          const fields = ['created_at', 'createdAt', 'enquiry_date', 'enquiryDate', 'date'];
+          for (const f of fields) {
+            if (obj && obj[f]) return new Date(obj[f]);
+          }
+          return null;
+        };
+        const inRange = (d, start, end) => d && d >= start && d < end;
+        const countWoW = (arr) => {
+          const curr = arr.reduce((acc, it) => {
+            const d = pickDate(it);
+            return acc + (inRange(d, last7Start, now) ? 1 : 0);
+          }, 0);
+          const prev = arr.reduce((acc, it) => {
+            const d = pickDate(it);
+            return acc + (inRange(d, prev7Start, last7Start) ? 1 : 0);
+          }, 0);
+          if (prev === 0) return curr > 0 ? 100 : 0;
+          return ((curr - prev) / prev) * 100;
+        };
+
+        // Leads: fetch a larger page to compute counts
+        let leadsArr = [];
+        try {
+          const leadsAllRes = await fetch('/api/leads?limit=10000&sortBy=created_at&sortOrder=desc');
+          const leadsAll = await leadsAllRes.json();
+          leadsArr = leadsAll.success ? (leadsAll.data?.leads || []) : [];
+        } catch (e) {
+          console.warn('Could not fetch full leads for deltas:', e);
+        }
+
+        const proposalsArr = proposals;
+        const companiesArr = companiesData.data || [];
+        const projectsArr = projects;
+
+        setDeltas({
+          leads: countWoW(leadsArr),
+          proposals: countWoW(proposalsArr),
+          companies: countWoW(companiesArr),
+          projects: countWoW(projectsArr)
+        });
       }
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -78,253 +180,391 @@ export default function Dashboard() {
     }
   };
 
+  const fetchLeadsPage = async (page) => {
+    try {
+      setLeadsLoading(true);
+      setLeadsError(null);
+      const res = await fetch(`/api/leads?page=${page}&limit=${rowsPerPage}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`);
+      const data = await res.json();
+      if (data.success) {
+        setLeadsList(data.data.leads || []);
+        setLeadsTotal(data.data.pagination?.total || 0);
+        setLeadsError(null);
+      } else {
+        setLeadsError(data.error || 'Failed to fetch leads');
+        setLeadsList([]);
+        setLeadsTotal(0);
+      }
+      // Fetch followups once per page load to compute visiting counts
+      try {
+        const fuRes = await fetch('/api/followups');
+        const fuData = await fuRes.json();
+        const map = {};
+        (fuData.data || []).forEach(f => {
+          map[f.lead_id] = (map[f.lead_id] || 0) + 1;
+        });
+        setFollowupsByLead(map);
+      } catch (e) {
+        console.warn('Followups fetch failed (optional):', e);
+      }
+    } catch (e) {
+      console.error('Failed to fetch leads page', e);
+      setLeadsError('Failed to fetch leads');
+      setLeadsList([]);
+      setLeadsTotal(0);
+    } finally {
+      setLeadsLoading(false);
+    }
+  };
+
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+    setLeadsPage(1);
+  };
+
+  const progressFromStatus = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s.includes('closed won') || s.includes('won')) return 100;
+    if (s.includes('proposal')) return 75;
+    if (s.includes('follow')) return 60;
+    if (s.includes('discussion')) return 45;
+    if (s.includes('lost')) return 10;
+    return 25;
+  };
+
+  const conversionFromStatus = (status) => {
+    const s = String(status || '').toLowerCase();
+    if (s.includes('closed won') || s.includes('won')) return 90;
+    if (s.includes('proposal')) return 65;
+    if (s.includes('follow')) return 55;
+    if (s.includes('discussion')) return 35;
+    if (s.includes('lost')) return 8;
+    return 20;
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '-';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return '-';
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const yyyy = dt.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
       <div className="px-4 sm:px-6 lg:px-8 py-8 mt-16">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-          <p className="text-gray-600">Welcome to AccentCRM! Manage your leads, proposals, and companies efficiently.</p>
-        </div>
-
-        {/* Quick Stats Cards */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-          {/* Leads Card */}
-          <div className="bg-white overflow-hidden shadow-lg rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-3 rounded-xl">
-                    <UserGroupIcon className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Total Leads
-                    </dt>
-                    <dd className="text-2xl font-bold text-gray-900">
-                      {loading ? '...' : stats.leads.total_leads}
-                    </dd>
-                    <dd className="text-xs text-gray-600 mt-1">
-                      {loading ? '' : `${stats.leads.under_discussion} under discussion, ${stats.leads.closed_won} won`}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-3">
-              <div className="text-sm">
-                <Link href="/leads" className="font-semibold text-blue-600 hover:text-blue-700 flex items-center transition-colors">
-                  <EyeIcon className="h-4 w-4 mr-1" />
-                  View leads
-                </Link>
-              </div>
-            </div>
+        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+              <ol className="inline-flex items-center gap-2">
+                <li>Home</li>
+                <li className="text-gray-300">/</li>
+                <li className="text-gray-700">Dashboard</li>
+              </ol>
+            </nav>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           </div>
-
-          {/* Proposals Card */}
-          <div className="bg-white overflow-hidden shadow-lg rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="bg-gradient-to-r from-green-500 to-green-600 p-3 rounded-xl">
-                    <DocumentTextIcon className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Proposals
-                    </dt>
-                    <dd className="text-2xl font-bold text-gray-900">
-                      {loading ? '...' : stats.proposals.total}
-                    </dd>
-                    <dd className="text-xs text-gray-600 mt-1">
-                      {loading ? '' : `${stats.proposals.pending} pending, ${stats.proposals.approved} approved`}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-            <div className="bg-gradient-to-r from-green-50 to-green-100 px-6 py-3">
-              <div className="text-sm">
-                <Link href="/proposals" className="font-semibold text-green-600 hover:text-green-700 flex items-center transition-colors">
-                  <EyeIcon className="h-4 w-4 mr-1" />
-                  View proposals
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Companies Card */}
-          <div className="bg-white overflow-hidden shadow-lg rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="bg-gradient-to-r from-[#64126D] to-[#86288F] p-3 rounded-xl">
-                    <BuildingOfficeIcon className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Companies
-                    </dt>
-                    <dd className="text-2xl font-bold text-gray-900">
-                      {loading ? '...' : stats.companies.total}
-                    </dd>
-                    <dd className="text-xs text-gray-600 mt-1">
-                      {loading ? '' : 'Registered companies'}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-            <div className="bg-gradient-to-r from-purple-50 to-purple-100 px-6 py-3">
-              <div className="text-sm">
-                <Link href="/company" className="font-semibold text-[#64126D] hover:text-[#86288F] flex items-center transition-colors">
-                  <EyeIcon className="h-4 w-4 mr-1" />
-                  View companies
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Projects Card */}
-          <div className="bg-white overflow-hidden shadow-lg rounded-xl border border-gray-200 hover:shadow-xl transition-all duration-300">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 p-3 rounded-xl">
-                    <FolderIcon className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Projects
-                    </dt>
-                    <dd className="text-2xl font-bold text-gray-900">
-                      {loading ? '...' : stats.projects.total}
-                    </dd>
-                    <dd className="text-xs text-gray-600 mt-1">
-                      {loading ? '' : `${stats.projects.in_progress} active, ${stats.projects.completed} completed`}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-            <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 px-6 py-3">
-              <div className="text-sm">
-                <Link href="/projects" className="font-semibold text-indigo-600 hover:text-indigo-700 flex items-center transition-colors">
-                  <EyeIcon className="h-4 w-4 mr-1" />
-                  View projects
-                </Link>
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <button className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white text-sm px-3.5 py-2 shadow-sm hover:bg-[#5a1161]">
+              <PlusIcon className="h-4 w-4" />
+              Add Product
+            </button>
+            <button className="inline-flex items-center justify-center rounded-lg border border-purple-200 text-[#64126D] px-3 py-2 hover:bg-purple-50">
+              <ChartBarIcon className="h-5 w-5" />
+            </button>
           </div>
         </div>
 
-        {/* Performance Overview */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Recent Activity */}
-          <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <div className="bg-green-100 rounded-full p-2 mr-3">
-                    <UserGroupIcon className="h-4 w-4 text-green-600" />
+        {/* Quick Stats Cards - Reference UI */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+          {(() => {
+            const cards = [
+              {
+                title: 'TOTAL LEADS',
+                value: stats.leads.total_leads,
+                hint: 'View leads',
+                href: '/leads',
+                delta: deltas.leads,
+                Icon: UserGroupIcon,
+                deltaColor: '',
+                iconBg: 'bg-white border border-purple-200',
+                iconColor: 'text-[#64126D]'
+              },
+              {
+                title: 'PROPOSALS',
+                value: stats.proposals.total,
+                hint: 'View Proposals',
+                href: '/proposals',
+                delta: deltas.proposals,
+                Icon: DocumentTextIcon,
+                deltaColor: '',
+                iconBg: 'bg-white border border-purple-200',
+                iconColor: 'text-[#64126D]'
+              },
+              {
+                title: 'COMPANIES',
+                value: stats.companies.total,
+                hint: 'View Companies',
+                href: '/company',
+                delta: deltas.companies,
+                Icon: BuildingOfficeIcon,
+                deltaColor: '',
+                iconBg: 'bg-white border border-purple-200',
+                iconColor: 'text-[#64126D]'
+              },
+              {
+                title: 'PROJECTS',
+                value: stats.projects.total,
+                hint: 'View Projects',
+                href: '/projects',
+                delta: deltas.projects,
+                Icon: FolderIcon,
+                deltaColor: '',
+                iconBg: 'bg-white border border-purple-200',
+                iconColor: 'text-[#64126D]'
+              }
+            ];
+            const formatDelta = (n) => {
+              if (typeof n !== 'number' || isNaN(n)) return '0.0%';
+              const sign = n > 0 ? '+' : n < 0 ? '' : '';
+              return `${sign}${Math.abs(n).toFixed(1)}%`;
+            };
+            const deltaBadgeColor = (n) => {
+              if (n > 0) return 'text-green-700 bg-green-50 border-green-200';
+              if (n < 0) return 'text-red-700 bg-red-50 border-red-200';
+              return 'text-gray-600 bg-gray-50 border-gray-200';
+            };
+            return cards.map((c, i) => {
+              const Icon = c.Icon;
+              return (
+                <div key={i} className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2 min-h-[120px]">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-semibold text-gray-500 tracking-widest">{c.title}</span>
+                      <span className="text-2xl font-bold text-gray-900">{loading ? '…' : fmtNum.format(c.value || 0)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold border rounded px-2 py-0.5 ${deltaBadgeColor(c.delta)}`}>{formatDelta(c.delta)}</span>
+                      <span className={`ml-2 h-9 w-9 rounded-lg flex items-center justify-center ${c.iconBg}`}>
+                        <Icon className={`h-5 w-5 ${c.iconColor}`} />
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">New leads added</p>
-                    <p className="text-xs text-gray-500">Track your growing pipeline</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <Link href={c.href} className="inline-flex items-center gap-1 text-xs text-[#64126D] font-semibold hover:underline">
+                      {c.hint}
+                    </Link>
                   </div>
-                  <span className="text-sm font-semibold text-green-600">{loading ? '...' : stats.leads.total_leads}</span>
                 </div>
-                <div className="flex items-center">
-                  <div className="bg-blue-100 rounded-full p-2 mr-3">
-                    <DocumentTextIcon className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">Proposals created</p>
-                    <p className="text-xs text-gray-500">Converting leads to opportunities</p>
-                  </div>
-                  <span className="text-sm font-semibold text-blue-600">{loading ? '...' : stats.proposals.total}</span>
+              );
+            });
+          })()}
+        </div>
+
+
+        {/* Analytics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {[{ title: 'Project Analytics' }, { title: 'Sales Analytics' }].map((card, idx) => {
+            // Bar series depend on period
+            const weeklyA = idx === 0 ? [6, 4, 5, 3, 4, 10, 2] : [3, 5, 2, 4, 3, 8, 6];
+            const monthlyA = idx === 0 ? [12, 9, 11, 7, 10, 16, 8] : [8, 13, 7, 9, 8, 15, 12];
+            const quarterlyA = idx === 0 ? [18, 14, 19, 12, 16, 22, 15] : [12, 18, 10, 13, 12, 20, 17];
+            const series = analyticsPeriod === 'Weekly' ? weeklyA : analyticsPeriod === 'Monthly' ? monthlyA : quarterlyA;
+            const labels = analyticsPeriod === 'Weekly' ? ['M','T','W','T','F','S','S'] : ['1','2','3','4','5','6','7'];
+            // Metrics scaled by period (rough heuristic)
+            const scale = analyticsPeriod === 'Weekly' ? 1 : analyticsPeriod === 'Monthly' ? 4 : 12;
+            const income = (stats.projects.total || 0) * 44 * scale;
+            const sales = (stats.proposals.total || 0) * 3 * scale;
+            const conv = stats.proposals.total > 0 ? Math.round((stats.proposals.approved / stats.proposals.total) * 100) : 0;
+            const leadsCount = stats.leads.total_leads || 0;
+            return (
+              <div key={idx} className="bg-white rounded-xl border border-purple-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">{card.title}</h3>
+                  <select
+                    value={analyticsPeriod}
+                    onChange={(e) => setAnalyticsPeriod(e.target.value)}
+                    className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D] bg-white focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option value="Weekly">Weekly</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Quarterly">Quarterly</option>
+                  </select>
                 </div>
-                <div className="flex items-center">
-                  <div className="bg-purple-100 rounded-full p-2 mr-3">
-                    <BuildingOfficeIcon className="h-4 w-4 text-[#64126D]" />
+                <div className="p-6">
+                  <div className="grid grid-cols-7 gap-3 items-end h-48">
+                    {series.map((v, i) => (
+                      <div key={i} className="flex flex-col items-center">
+                        <div className="w-6 bg-[#64126D] rounded-md" style={{ height: `${v * 9}px` }}></div>
+                        <span className="text-[10px] text-gray-500 mt-2">{labels[i]}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">Companies registered</p>
-                    <p className="text-xs text-gray-500">Expanding your network</p>
+                  <div className="mt-4 grid grid-cols-4 gap-4 text-sm text-gray-700">
+                    <div><span className="font-bold">{formatINRCompact(income, true)}</span> Income</div>
+                    <div><span className="font-bold">{formatINRCompact(sales, true)}</span> Sales</div>
+                    <div><span className="font-bold">{conv}%</span> Conversion Ratio</div>
+                    <div><span className="font-bold">{leadsCount}</span> Leads</div>
                   </div>
-                  <span className="text-sm font-semibold text-[#64126D]">{loading ? '...' : stats.companies.total}</span>
                 </div>
               </div>
-            </div>
+            );
+          })}
+        </div>
+        {/* Leads */}
+        <div className="bg-white rounded-xl border border-purple-200 overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Leads</h3>
+            <button className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D] inline-flex items-center gap-1">Progress <ChevronDownIcon className="h-3.5 w-3.5" /></button>
           </div>
-
-          {/* Pipeline Status */}
-          <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Pipeline Status</h3>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                {/* Leads Progress */}
-                <div>
-                  <div className="flex justify-between text-sm font-medium text-gray-900 mb-1">
-                    <span>Leads Under Discussion</span>
-                    <span>{loading ? '...' : `${stats.leads.under_discussion}/${stats.leads.total_leads}`}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300" 
-                      style={{ 
-                        width: loading ? '0%' : `${stats.leads.total_leads > 0 ? (stats.leads.under_discussion / stats.leads.total_leads) * 100 : 0}%` 
-                      }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Proposals Progress */}
-                <div>
-                  <div className="flex justify-between text-sm font-medium text-gray-900 mb-1">
-                    <span>Proposals Approved</span>
-                    <span>{loading ? '...' : `${stats.proposals.approved}/${stats.proposals.total}`}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-300" 
-                      style={{ 
-                        width: loading ? '0%' : `${stats.proposals.total > 0 ? (stats.proposals.approved / stats.proposals.total) * 100 : 0}%` 
-                      }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Projects Progress */}
-                <div>
-                  <div className="flex justify-between text-sm font-medium text-gray-900 mb-1">
-                    <span>Projects Completed</span>
-                    <span>{loading ? '...' : `${stats.projects.completed}/${stats.projects.total}`}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-[#64126D] to-[#86288F] h-2 rounded-full transition-all duration-300" 
-                      style={{ 
-                        width: loading ? '0%' : `${stats.projects.total > 0 ? (stats.projects.completed / stats.projects.total) * 100 : 0}%` 
-                      }}
-                    ></div>
-                  </div>
-                </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-[#64126D] text-white">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium w-10"><input type="checkbox" className="accent-[#64126D]" /></th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    <button onClick={() => toggleSort('city')} className="inline-flex items-center gap-1">
+                      Location
+                      <span className="text-[10px]">{sortBy==='city' ? (sortOrder==='asc' ? '▲' : '▼') : ''}</span>
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    <button onClick={() => toggleSort('contact_name')} className="inline-flex items-center gap-1">
+                      Director
+                      <span className="text-[10px]">{sortBy==='contact_name' ? (sortOrder==='asc' ? '▲' : '▼') : ''}</span>
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium">Progress %</th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    <button onClick={() => toggleSort('enquiry_date')} className="inline-flex items-center gap-1">
+                      Deadline
+                      <span className="text-[10px]">{sortBy==='enquiry_date' ? (sortOrder==='asc' ? '▲' : '▼') : ''}</span>
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium">Conversion %</th>
+                  <th className="px-4 py-3 text-left font-medium">Visiting</th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    <button onClick={() => toggleSort('enquiry_status')} className="inline-flex items-center gap-1">
+                      Status
+                      <span className="text-[10px]">{sortBy==='enquiry_status' ? (sortOrder==='asc' ? '▲' : '▼') : ''}</span>
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {leadsLoading ? (
+                  [...Array(rowsPerPage)].map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-4 py-4"><div className="h-4 w-4 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-4 w-28 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-4 w-40 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-3 w-24 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-4 w-24 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-3 w-20 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-4 w-20 bg-gray-100 rounded animate-pulse" /></td>
+                      <td className="px-4 py-4"><div className="h-6 w-20 bg-gray-100 rounded-full animate-pulse" /></td>
+                    </tr>
+                  ))
+                ) : leadsError ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-6 text-center text-red-700 bg-red-50">
+                      <div className="flex items-center justify-center gap-3">
+                        <span>{String(leadsError)}</span>
+                        <button
+                          onClick={() => fetchLeadsPage(leadsPage)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#64126D] text-white border border-[#64126D]"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : leadsList.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-gray-600">
+                      <div className="flex flex-col items-center gap-2">
+                        <EyeIcon className="h-6 w-6 text-gray-400" />
+                        <div className="font-medium">No leads found</div>
+                        <div className="text-xs">Get started by creating a new lead.</div>
+                        <Link href="/leads/new" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-50 text-[#64126D] border border-purple-200 hover:bg-purple-100 mt-2">Add Lead</Link>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  leadsList.map((lead) => {
+                    const progress = progressFromStatus(lead.enquiry_status);
+                    const conversion = conversionFromStatus(lead.enquiry_status);
+                    const visiting = followupsByLead[lead.id] || 0;
+                    const initials = (lead.contact_name || '-').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase();
+                    return (
+                      <tr key={lead.id} className="hover:bg-purple-50/40">
+                        <td className="px-4 py-4"><input type="checkbox" className="accent-[#64126D]" /></td>
+                        <td className="px-4 py-4 text-gray-900">
+                          <Link href={`/leads/${lead.id}`} className="hover:underline inline-flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-[#64126D]" />
+                            {lead.city || '-'}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-4 text-gray-700">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-purple-100 text-[#64126D] text-[10px] font-semibold border border-purple-200">{initials || '?'}</span>
+                            {lead.contact_name || '-'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-2 bg-[#64126D]" style={{ width: `${progress}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-700 font-medium">{progress}%</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-gray-700">{formatDate(lead.enquiry_date || lead.created_at)}</td>
+                        <td className="px-4 py-4 text-gray-700">{conversion}%</td>
+                        <td className="px-4 py-4 text-gray-700">{visiting} {visiting === 1 ? 'person' : 'people'}</td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border ${String(lead.enquiry_status||'').toLowerCase().includes('progress') ? 'bg-purple-50 text-[#64126D] border-purple-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>
+                            {lead.enquiry_status || '-'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-6 py-4 border-t border-purple-200 flex items-center justify-between text-xs">
+            <div className="text-gray-600">Rows per page: {rowsPerPage}</div>
+            <div className="flex items-center gap-4 text-gray-600">
+              <span>
+                {leadsList.length === 0 ? '0-0' : `${(leadsPage - 1) * rowsPerPage + 1}-${(leadsPage - 1) * rowsPerPage + leadsList.length}`} of {leadsTotal}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setLeadsPage(Math.max(1, leadsPage - 1))}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-50 text-[#64126D] border border-purple-200 disabled:opacity-50"
+                  disabled={leadsPage === 1}
+                >
+                  <ArrowLeftIcon className="h-4 w-4" /> Previous
+                </button>
+                <button
+                  onClick={() => setLeadsPage(leadsPage + 1)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#64126D] text-white border border-[#64126D] disabled:opacity-50"
+                  disabled={(leadsPage * rowsPerPage) >= leadsTotal}
+                >
+                  Next <ArrowRightIcon className="h-4 w-4" />
+                </button>
               </div>
             </div>
           </div>
