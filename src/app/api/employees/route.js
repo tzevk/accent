@@ -50,6 +50,7 @@ async function ensureEmployeesTable(connection) {
     ['bank_ifsc', "VARCHAR(20)"],
     ['bank_name', "VARCHAR(100)"],
     ['bank_branch', "VARCHAR(100)"],
+    ['account_holder_name', "VARCHAR(150)"],
     ['pan', "VARCHAR(20)"],
     ['aadhar', "VARCHAR(20)"],
     ['gratuity_no', "VARCHAR(50)"],
@@ -258,7 +259,7 @@ export async function POST(request) {
       'pf_no','dob','marital_status','role','profile_photo_url','emergency_contact_name','emergency_contact_phone','notes',
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
       'qualification','institute','passing_year','work_experience','leave_structure','salary_structure',
-      'gross_salary','total_deductions','net_salary','bank_account_no','bank_ifsc','bank_name','bank_branch','pan','aadhar','gratuity_no','uan','esi_no',
+      'gross_salary','total_deductions','net_salary','bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
       'attendance_id','biometric_code','exit_date','exit_reason'
     ];
     // Only include columns that actually exist in DB
@@ -387,16 +388,19 @@ export async function PUT(request) {
       'pf_no','dob','marital_status','role','profile_photo_url','emergency_contact_name','emergency_contact_phone','notes',
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
       'qualification','institute','passing_year','work_experience','leave_structure','salary_structure',
-      'gross_salary','total_deductions','net_salary','bank_account_no','bank_ifsc','bank_name','bank_branch','pan','aadhar','gratuity_no','uan','esi_no',
+      'gross_salary','total_deductions','net_salary','bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
       'attendance_id','biometric_code','exit_date','exit_reason'
     ];
     const existingCols = await getExistingColumns(connection);
     const updatable = allowedFields.filter(f => existingCols.has(f));
 
     updatable.forEach(field => {
-      if (data.hasOwnProperty(field)) {
+      if (Object.prototype.hasOwnProperty.call(data, field)) {
+        const val = data[field];
+        // Skip empty string or null to avoid wiping existing DB values unintentionally
+        if (val === '' || val === null || typeof val === 'undefined') return;
         updateFields.push(`${field} = ?`);
-        values.push(data[field]);
+        values.push(val);
       }
     });
 

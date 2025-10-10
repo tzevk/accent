@@ -145,6 +145,7 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
@@ -163,6 +164,7 @@ export default function EmployeesPage() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
+      setErrorMsg('');
       const s = (searchTerm || '').trim();
       const params = new URLSearchParams({
         page: currentPage,
@@ -171,8 +173,11 @@ export default function EmployeesPage() {
         ...(selectedDepartment && { department: selectedDepartment }),
         ...(selectedStatus && { status: selectedStatus })
       });
-
-      const response = await fetch(`/api/employees?${params}`);
+      // Add a client-side timeout to avoid hanging forever on network issues
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 12000);
+      const response = await fetch(`/api/employees?${params}`, { signal: controller.signal });
+      clearTimeout(t);
       const data = await response.json();
 
       if (response.ok) {
@@ -181,9 +186,11 @@ export default function EmployeesPage() {
         setPagination(data.pagination);
       } else {
         console.error('Error fetching employees:', data.error);
+        setErrorMsg(data.error || 'Failed to fetch employees');
       }
     } catch (error) {
       console.error('Error fetching employees:', error);
+      setErrorMsg(error?.message || 'Failed to fetch employees');
     } finally {
       setLoading(false);
     }
@@ -217,19 +224,8 @@ export default function EmployeesPage() {
       // Mirror status to employment_status if only one is set
       if (payload.employment_status && !payload.status) payload.status = payload.employment_status;
       if (payload.status && !payload.employment_status) payload.employment_status = payload.status;
-      // Coerce salary-related numeric fields
-      ['salary','basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives','deductions']
-        .forEach((k) => { if (payload[k] === '') delete payload[k]; else if (payload[k] != null) payload[k] = Number(payload[k]); });
-      // Compute salary summary if parts provided
-      const parts = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives']
-        .map(k => Number(payload[k] || 0));
-      const gross = parts.reduce((a,b) => a + b, 0);
-      const ded = Number(payload.deductions || 0);
-      if (gross) payload.gross_salary = gross;
-      if (ded) payload.total_deductions = ded;
-      if (gross || ded) payload.net_salary = Math.max(0, gross - ded);
-      // Serialize salary_structure if granular parts present
-      const salaryStructObj = {
+      // Prepare salary structure merging logic
+      const rawParts = {
         basic_salary: payload.basic_salary,
         hra: payload.hra,
         conveyance: payload.conveyance,
@@ -238,13 +234,37 @@ export default function EmployeesPage() {
         incentives: payload.incentives,
         deductions: payload.deductions
       };
-      if (Object.values(salaryStructObj).some(v => v != null && v !== '' && !Number.isNaN(v))) {
-        payload.salary_structure = JSON.stringify(salaryStructObj);
+      // Filter to only numeric values user actually provided
+      const providedParts = Object.fromEntries(
+        Object.entries(rawParts)
+          .filter(([_, v]) => v !== '' && v != null && !Number.isNaN(Number(v)))
+          .map(([k, v]) => [k, Number(v)])
+      );
+      let mergedStruct = null;
+      if (Object.keys(providedParts).length > 0) {
+        if (method === 'PUT' && selectedEmployee?.salary_structure) {
+          try {
+            const existing = typeof selectedEmployee.salary_structure === 'string'
+              ? JSON.parse(selectedEmployee.salary_structure)
+              : (selectedEmployee.salary_structure || {});
+            mergedStruct = { ...(existing || {}), ...providedParts };
+          } catch {
+            mergedStruct = { ...providedParts };
+          }
+        } else {
+          mergedStruct = { ...providedParts };
+        }
+        payload.salary_structure = JSON.stringify(mergedStruct);
+        // Compute salary summary from merged values
+        const gross = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives']
+          .map(k => Number((mergedStruct && mergedStruct[k]) || 0))
+          .reduce((a,b) => a + b, 0);
+        const ded = Number((mergedStruct && mergedStruct.deductions) || 0);
+        if (gross) payload.gross_salary = gross;
+        if (ded) payload.total_deductions = ded;
+        if (gross || ded) payload.net_salary = Math.max(0, gross - ded);
       }
-      // Rename bank fields to match API
-      if (payload.account_holder_name && !payload.account_holder) {
-        // Keep account_holder_name as UI only field, API doesn't accept; embed inside salary_structure or remove
-      }
+      // Bank fields: API supports account_holder_name
       if (payload.bank_account_no === '') delete payload.bank_account_no;
       if (payload.bank_ifsc === '') delete payload.bank_ifsc;
       // Cleanup UI-only fields
@@ -259,6 +279,24 @@ export default function EmployeesPage() {
       // PUT requires `id` in body (API reads from body, not query)
       if (selectedEmployee?.id && method === 'PUT') {
         payload.id = selectedEmployee.id;
+      }
+
+      // Do not overwrite date fields if user left them empty; normalize valid dates
+      ['hire_date','joining_date','dob','exit_date'].forEach((k) => {
+        if (payload[k] == null || payload[k] === '') {
+          if (method === 'PUT') delete payload[k];
+        } else if (typeof payload[k] === 'string') {
+          payload[k] = payload[k].slice(0, 10);
+        }
+      });
+
+      // For updates, avoid sending empty strings/nulls for any field to prevent clearing existing DB values
+      if (method === 'PUT') {
+        Object.keys(payload).forEach((k) => {
+          if (k === 'id') return; // required for PUT
+          const v = payload[k];
+          if (v === '' || v === null || v === undefined) delete payload[k];
+        });
       }
 
       const response = await fetch(url, {
@@ -320,10 +358,33 @@ export default function EmployeesPage() {
   };
 
   const openEditForm = (employee) => {
+    // Parse salary_structure JSON (if present) into granular fields so user sees current values
+    let salaryParts = {};
+    try {
+      if (employee?.salary_structure) {
+        const parsed = typeof employee.salary_structure === 'string'
+          ? JSON.parse(employee.salary_structure)
+          : employee.salary_structure;
+        if (parsed && typeof parsed === 'object') {
+          salaryParts = {
+            basic_salary: parsed.basic_salary ?? '',
+            hra: parsed.hra ?? '',
+            conveyance: parsed.conveyance ?? '',
+            medical_allowance: parsed.medical_allowance ?? '',
+            special_allowance: parsed.special_allowance ?? '',
+            incentives: parsed.incentives ?? '',
+            deductions: parsed.deductions ?? ''
+          };
+        }
+      }
+    } catch {}
+
     setFormData({
       ...defaultFormData,
       ...employee,
+      ...salaryParts,
       hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '',
+      joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '',
       dob: employee.dob ? employee.dob.split('T')[0] : ''
     });
     setSelectedEmployee(employee);
@@ -592,6 +653,13 @@ export default function EmployeesPage() {
                       {[...Array(6)].map((_, i) => (
                         <div key={i} className="skeleton h-12 w-full rounded-lg"></div>
                       ))}
+                    </div>
+                  </div>
+                ) : errorMsg ? (
+                  <div className="p-6 text-center">
+                    <div className="mb-2 text-red-700 bg-red-50 border border-red-200 inline-block px-3 py-2 rounded">{errorMsg}</div>
+                    <div>
+                      <button onClick={fetchEmployees} className="mt-2 inline-flex items-center px-4 py-2 rounded-lg bg-[#64126D] text-white">Retry</button>
                     </div>
                   </div>
                 ) : employees.length === 0 ? (

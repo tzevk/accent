@@ -26,6 +26,37 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html, body, #__next, :root {
+  background-color: #fff;
+}
+
+/* Avoid flicker outlines and ensure seamless layout */
+.content-with-sidebar,
+.group\/sidebar {
+  will-change: padding-left, width;
+  background-color: #fff;
+}
+
+.content-with-sidebar { transition: padding-left .2s ease-out; }
+.group\/sidebar { transition: width .2s ease-out; }
+
+/* Remove default focus rings causing line flashes during quick hover */
+.group\/sidebar:focus { outline: none; box-shadow: none; }
+.content-with-sidebar:focus { outline: none; box-shadow: none; }
+
+/* Seam guard: overlay a 2px strip on the sidebar's right edge to mask transient gaps */
+.group\/sidebar { position: fixed; }
+.group\/sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -1px; /* extend slightly into content */
+  width: 2px;
+  height: 100%;
+  background: #fff; /* match content background */
+  pointer-events: none;
+}
+
 /* Ensure all form field text renders in black */
 input,
 textarea,
@@ -77,3 +108,23 @@ textarea::placeholder {
   0% { background-position: 100% 0 }
   100% { background-position: 0 0 }
 }
+
+/* Sidebar hover expansion and layout padding without styled-jsx */
+@media (min-width: 640px) {
+  .content-with-sidebar { padding-left: 64px; padding-top: 64px; }
+  /* Expand content padding only when the actual sidebar is hovered */
+  .group\/sidebar:hover + .content-with-sidebar { padding-left: 260px; }
+  /* When pinned via data attribute, keep content padded */
+  .group\/sidebar[data-pinned="true"] + .content-with-sidebar { padding-left: 260px; }
+}
+
+/* Utilities for showing label content only when sidebar is hovered */
+.group\/sidebar:hover .sidebar-open\:inline { display: inline; }
+.group\/sidebar:hover .sidebar-open\:block { display: block; }
+.group\/sidebar:hover .sidebar-open\:inline-flex { display: inline-flex; }
+.group\/sidebar:hover .sidebar-open\:flex { display: flex; }
+/* Also show labels when pinned */
+.group\/sidebar[data-pinned="true"] .sidebar-open\:inline { display: inline; }
+.group\/sidebar[data-pinned="true"] .sidebar-open\:block { display: block; }
+.group\/sidebar[data-pinned="true"] .sidebar-open\:inline-flex { display: inline-flex; }
+.group\/sidebar[data-pinned="true"] .sidebar-open\:flex { display: flex; }
