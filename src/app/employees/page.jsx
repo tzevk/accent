@@ -740,8 +740,8 @@ export default function EmployeesPage() {
             <div className="grid grid-cols-12 gap-6">
               {/* Left Pane: Employee list */}
               <aside className="col-span-12 lg:col-span-3">
-                <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-4 border-b border-gray-200">
+                <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden max-h-[calc(100vh-220px)] flex flex-col">
+                  <div className="px-4 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-base font-semibold text-gray-900 tracking-tight">EMPLOYEE</h2>
@@ -767,7 +767,7 @@ export default function EmployeesPage() {
                       <svg className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l4.387 4.387a1 1 0 01-1.414 1.414l-4.387-4.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
                     </div>
                   </div>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+                  <div className="overflow-y-auto">
                     {employees.map(emp => (
                       <div key={emp.id} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                         <div className="flex items-center">
@@ -791,7 +791,7 @@ export default function EmployeesPage() {
 
               {/* Right Pane: Add Employee form */}
               <section className="col-span-12 lg:col-span-9">
-                <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-6 lg:p-8">
+                <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-6 lg:p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-2xl font-semibold text-gray-900">Add Employee</h3>
                   </div>
@@ -932,7 +932,7 @@ export default function EmployeesPage() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
                           <input type="text" value={formData.department || ''} onChange={(e) => setFormData({ ...formData, department: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                         </div>
-                        <div>̀
+                        <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
                           <input type="text" value={formData.position || ''} onChange={(e) => setFormData({ ...formData, position: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                         </div>
@@ -986,12 +986,12 @@ export default function EmployeesPage() {
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Statutory</h4>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         {[
-                          { key: 'bonus_applicable', label: 'Bonus Applicable' },
-                          { key: 'pf_applicable', label: 'PF Applicable' },
-                          { key: 'mlwf_applicable', label: 'MLWF Applicable' },
-                          { key: 'pt_applicable', label: 'PT Applicable' },
-                          { key: 'esic_applicable', label: 'ESIC Applicable' },
-                          { key: 'tds_applicable', label: 'TDS Applicable' },
+                          { key: 'bonus_eligible', label: 'Bonus Applicable' },
+                          { key: 'stat_pf', label: 'PF Applicable' },
+                          { key: 'stat_mlwf', label: 'MLWF Applicable' },
+                          { key: 'stat_pt', label: 'PT Applicable' },
+                          { key: 'stat_esic', label: 'ESIC Applicable' },
+                          { key: 'stat_tds', label: 'TDS Applicable' },
                         ].map((opt) => (
                           <label key={opt.key} className="inline-flex items-center gap-2 text-sm text-gray-700">
                             <input type="checkbox" checked={!!formData[opt.key]} onChange={(e) => setFormData({ ...formData, [opt.key]: e.target.checked })} className="h-4 w-4 text-purple-600 border-gray-300 rounded" />
@@ -1147,7 +1147,7 @@ export default function EmployeesPage() {
           )}
 
           {activeTab === 'import' && (
-            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8">
+            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
               <h3 className="text-xl font-semibold text-gray-900 mb-6">Import Employees</h3>
               
               {/* Instructions */}
@@ -1248,7 +1248,7 @@ export default function EmployeesPage() {
           )}
 
           {activeTab === 'edit' && selectedEmployee && (
-            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8">
+            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
               <h3 className="text-xl font-semibold text-gray-900 mb-6">Edit Employee</h3>
               <form onSubmit={handleSubmit} className="space-y-8">
                 {formErrors.general && (
@@ -1363,7 +1363,7 @@ export default function EmployeesPage() {
                       <input type="text" value={formData.state || ''} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                     </div>
                     <div>
-                      <label className="block text sm font-medium text-gray-700 mb-2">Country</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
                       <input type="text" value={formData.country || ''} onChange={(e) => setFormData({ ...formData, country: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                     </div>
                     <div>
@@ -1593,7 +1593,7 @@ export default function EmployeesPage() {
           )}
 
           {activeTab === 'view' && selectedEmployee && (
-            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8">
+            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
               <h3 className="text-xl font-semibold text-gray-900 mb-6">Employee Details</h3>
               
               <div className="space-y-6">
