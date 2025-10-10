@@ -19,18 +19,21 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const isSignin = pathname.startsWith('/signin');
   const [pinned, setPinned] = useState(false);
 
   useEffect(() => {
+    if (isSignin) return;
     try {
       const saved = localStorage.getItem('sidebarPinned');
       if (saved) setPinned(saved === 'true');
     } catch {}
-  }, []);
+  }, [isSignin]);
 
   useEffect(() => {
+    if (isSignin) return;
     try { localStorage.setItem('sidebarPinned', String(pinned)); } catch {}
-  }, [pinned]);
+  }, [pinned, isSignin]);
 
   const NavRow = ({ icon: Icon, label, href = '#', active = false, badge, caret }) => (
     <Link
@@ -54,6 +57,8 @@ export default function Sidebar() {
       ) : null}
     </Link>
   );
+
+  if (isSignin) return null;
 
   return (
     <aside

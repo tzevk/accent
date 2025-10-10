@@ -67,7 +67,7 @@ export default function SignIn() {
 
   return (
     <div
-      className={`${poppins.className} min-h-screen flex items-center justify-center px-4 relative overflow-hidden`}
+      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
       style={gradientStyle}
     >
       {/* Soft glow */}

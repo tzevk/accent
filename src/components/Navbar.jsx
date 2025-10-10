@@ -13,7 +13,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   UserCircleIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -27,6 +28,7 @@ const navigation = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const isSignin = pathname.startsWith('/signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   // Masters dropdown removed; handled in sidebar
@@ -49,6 +51,8 @@ export default function Navbar() {
   const handleSignOut = () => {
     window.location.href = '/signin';
   };
+
+  if (isSignin) return null;
 
   return (
     <>
