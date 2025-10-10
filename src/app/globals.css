@@ -3,13 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* Map Next font variables to Tailwind v4 tokens without using @theme */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Optional color aliases if referenced */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
 }
 
 @media (prefers-color-scheme: dark) {

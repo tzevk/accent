@@ -121,29 +121,32 @@ export async function GET(request) {
   // Do not let schema changes block reads
   try { await ensureEmployeesTable(connection); } catch {}
 
-    // Build WHERE clause for filtering
+    // Build WHERE clause for filtering (use alias to avoid ambiguity with self-join)
     let whereClause = 'WHERE 1=1';
     const params = [];
 
     if (search) {
-      whereClause += ' AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR employee_id LIKE ?)';
+      whereClause += ' AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.email LIKE ? OR e.employee_id LIKE ?)';
       const searchPattern = `%${search}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
 
     if (department) {
-      whereClause += ' AND department = ?';
+      whereClause += ' AND e.department = ?';
       params.push(department);
     }
 
     if (status) {
-      whereClause += ' AND status = ?';
+      whereClause += ' AND e.status = ?';
       params.push(status);
     }
 
     // Get total count for pagination
     const [countResult] = await connection.execute(
-      `SELECT COUNT(*) as total FROM employees ${whereClause}`,
+      `SELECT COUNT(*) as total
+       FROM employees e
+       LEFT JOIN employees m ON e.manager_id = m.id
+       ${whereClause}`,
       params
     );
     const total = countResult[0].total;
