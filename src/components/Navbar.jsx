@@ -13,12 +13,7 @@ import {
   Bars3Icon,
   XMarkIcon,
   UserCircleIcon,
-  ChevronDownIcon,
-  UsersIcon,
-  MapPinIcon,
-  DocumentDuplicateIcon,
-  CogIcon,
-  Cog6ToothIcon
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -28,21 +23,13 @@ const navigation = [
   { name: 'Projects', href: '/projects', icon: BriefcaseIcon },
 ];
 
-const mastersNavigation = [
-  { name: 'Employee Master', href: '/employees', icon: UserGroupIcon },
-  { name: 'User Master', href: '/masters/users', icon: UsersIcon },
-  { name: 'Activity Master', href: '/masters/activities', icon: DocumentTextIcon },
-  { name: 'Company Master', href: '/company', icon: BuildingOfficeIcon },
-  { name: 'Vendor Master', href: '/vendors', icon: BuildingOfficeIcon },
-  { name: 'Document Master', href: '/masters/documents', icon: DocumentDuplicateIcon },
-];
+// Masters moved to sidebar; removed from header
 
 export default function Navbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [isMastersMenuOpen, setIsMastersMenuOpen] = useState(false);
-  const [selectedMasterIndex, setSelectedMasterIndex] = useState(0);
+  // Masters dropdown removed; handled in sidebar
   const [scrolled, setScrolled] = useState(false);
 
   // Handle scroll effect
@@ -150,43 +137,7 @@ export default function Navbar() {
                 );
               })}
               
-              {/* Masters Dropdown (nested) */}
-              <div className="relative">
-                <button
-                  onClick={() => setIsMastersMenuOpen(!isMastersMenuOpen)}
-                  className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden text-white/90 hover:text-white`}
-                  style={{ background: 'transparent' }}
-                >
-                  <CogIcon className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
-                  <span className="font-medium">Masters</span>
-                  <svg
-                    className={`ml-1 h-4 w-4 transition-transform ${
-                      isMastersMenuOpen ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {isMastersMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-2">
-                    {mastersNavigation.map((item) => (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-900 transition-colors"
-                        onClick={() => setIsMastersMenuOpen(false)}
-                      >
-                        <item.icon className="h-5 w-5 text-gray-600" />
-                        <span>{item.name}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Masters dropdown removed */}
             </div>
 
             {/* Profile Menu and Mobile Button */}
@@ -273,47 +224,7 @@ export default function Navbar() {
                 );
               })}
               
-              {/* Mobile Masters Section (collapsible per category) */}
-              <div className="space-y-2">
-                <button
-                  onClick={() => setIsMastersMenuOpen(!isMastersMenuOpen)}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white transition-all duration-200"
-                >
-                  <div className="flex items-center space-x-3">
-                    <CogIcon className="h-5 w-5" />
-                    <span>Masters</span>
-                  </div>
-                  <svg
-                    className={`h-4 w-4 transition-transform ${
-                      isMastersMenuOpen ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {isMastersMenuOpen && (
-                  <div className="pl-4 space-y-1">
-                    {mastersNavigation.map((item) => (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        className="flex items-center space-x-2 px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
-                        onClick={() => {
-                          setIsMastersMenuOpen(false);
-                          setIsMobileMenuOpen(false);
-                        }}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.name}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Masters removed on mobile too */}
               
               {/* Mobile Profile Section */}
               <div className="pt-4 mt-4 border-t border-white/20">
@@ -353,13 +264,7 @@ export default function Navbar() {
         />
       )}
 
-      {/* Overlay for masters menu */}
-      {isMastersMenuOpen && (
-        <div 
-          className="fixed inset-0 z-40 hidden md:block"
-          onClick={() => setIsMastersMenuOpen(false)}
-        />
-      )}
+      {/* Masters overlay removed */}
     </>
   );
 }
