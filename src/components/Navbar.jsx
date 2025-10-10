@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { 
@@ -8,7 +9,6 @@ import {
   DocumentTextIcon, 
   UserGroupIcon, 
   BriefcaseIcon,
-  BuildingOfficeIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   XMarkIcon,
@@ -64,31 +64,17 @@ export default function Navbar() {
       >
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Logo and Brand */}
+            {/* Logo */}
             <div className="flex items-center">
-              <Link 
-                href="/dashboard" 
-                className="flex-shrink-0 flex items-center group"
-              >
-                <div 
-                  className="h-10 w-10 rounded-xl mr-3 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-200"
-                  style={{
-                    background: `linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)`
-                  }}
-                >
-                  <BuildingOfficeIcon 
-                    className="h-6 w-6" 
-                    style={{ color: '#64126D' }}
-                  />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-white group-hover:text-gray-100 transition-colors">
-                    AccentCRM
-                  </h1>
-                  <p className="text-xs text-white/70 hidden sm:block">
-                    Business Management
-                  </p>
-                </div>
+              <Link href="/dashboard" className="flex-shrink-0 flex items-center group">
+                <Image
+                  src="/accent-logo.png"
+                  alt="Accent"
+                  width={160}
+                  height={40}
+                  priority
+                  className="h-10 w-auto object-contain"
+                />
               </Link>
             </div>
 

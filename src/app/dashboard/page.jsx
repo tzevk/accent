@@ -36,6 +36,13 @@ export default function Dashboard() {
   const [sortOrder, setSortOrder] = useState('desc');
   const fmtNum = new Intl.NumberFormat('en-IN');
   const [leadsError, setLeadsError] = useState(null);
+  const [analytics, setAnalytics] = useState({
+    funnel: { new: 0, discussion: 0, proposal: 0, won: 0, lost: 0 },
+    topCities: [],
+    series: { leads: [], proposals: [], companies: [], projects: [] },
+    activity: { followupsThisWeek: 0, followupsPrevWeek: 0 }
+  });
+  const [leadsAll, setLeadsAll] = useState([]);
 
   // Compact Indian currency formatter (K, Lakh, Crore)
   const formatINRCompact = (n, withSymbol = true) => {
@@ -158,6 +165,7 @@ export default function Dashboard() {
           const leadsAllRes = await fetch('/api/leads?limit=10000&sortBy=created_at&sortOrder=desc');
           const leadsAll = await leadsAllRes.json();
           leadsArr = leadsAll.success ? (leadsAll.data?.leads || []) : [];
+          setLeadsAll(leadsArr);
         } catch (e) {
           console.warn('Could not fetch full leads for deltas:', e);
         }
@@ -172,6 +180,77 @@ export default function Dashboard() {
           companies: countWoW(companiesArr),
           projects: countWoW(projectsArr)
         });
+
+        // Build executive analytics
+        const normStatus = (s='') => String(s).toLowerCase();
+        const funnel = leadsArr.reduce((acc, l) => {
+          const s = normStatus(l.enquiry_status || l.status);
+          if (!s) acc.new++;
+          else if (s.includes('discussion')) acc.discussion++;
+          else if (s.includes('proposal')) acc.proposal++;
+          else if (s.includes('won')) acc.won++;
+          else if (s.includes('lost')) acc.lost++;
+          else acc.new++;
+          return acc;
+        }, { new: 0, discussion: 0, proposal: 0, won: 0, lost: 0 });
+
+        const cityMap = leadsArr.reduce((m, l) => {
+          const c = (l.city || 'Unknown').trim();
+          m[c] = (m[c] || 0) + 1; return m;
+        }, {});
+        const topCities = Object.entries(cityMap)
+          .sort((a,b)=>b[1]-a[1])
+          .slice(0, 5)
+          .map(([city, count]) => ({ city, count }));
+
+        // Build simple daily series for last 7 days
+        const lastNDays = (n) => {
+          const arr = [];
+          const base = new Date();
+          for (let i=n-1;i>=0;i--) {
+            const d = new Date(base);
+            d.setDate(base.getDate()-i);
+            d.setHours(0,0,0,0);
+            arr.push(d);
+          }
+          return arr;
+        };
+        const days = lastNDays(7);
+        const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+        const bucketCounts = (arr) => {
+          const buckets = Object.fromEntries(days.map(d=>[dayKey(d),0]));
+          arr.forEach(it=>{
+            const d = pickDate(it);
+            if (!d) return;
+            const k = dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+            if (k in buckets) buckets[k]++;
+          });
+          return Object.values(buckets);
+        };
+        const series = {
+          leads: bucketCounts(leadsArr),
+          proposals: bucketCounts(proposalsArr),
+          companies: bucketCounts(companiesArr),
+          projects: bucketCounts(projectsArr)
+        };
+
+        // Optional: followups snapshot
+        let activity = { followupsThisWeek: 0, followupsPrevWeek: 0 };
+        try {
+          const fuRes = await fetch('/api/followups');
+          const fuData = await fuRes.json();
+          const fu = fuData?.data || [];
+          const now = new Date();
+          const last7 = new Date(now); last7.setDate(now.getDate()-7);
+          const prev7 = new Date(now); prev7.setDate(now.getDate()-14);
+          const inR = (d, s, e) => d && d>=s && d<e;
+          const toDate = (x) => x?.created_at ? new Date(x.created_at) : (x?.date ? new Date(x.date) : null);
+          const curr = fu.reduce((a,f)=> a + (inR(toDate(f), last7, now) ? 1 : 0), 0);
+          const prev = fu.reduce((a,f)=> a + (inR(toDate(f), prev7, last7) ? 1 : 0), 0);
+          activity = { followupsThisWeek: curr, followupsPrevWeek: prev };
+        } catch {}
+
+        setAnalytics({ funnel, topCities, series, activity });
       }
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -225,6 +304,46 @@ export default function Dashboard() {
       setSortOrder('asc');
     }
     setLeadsPage(1);
+  };
+
+  // Tiny SVG sparkline
+  const Sparkline = ({ values = [], color = '#64126D' }) => {
+    const w = 80, h = 28, pad = 2;
+    if (!values || values.length === 0) return <svg width={w} height={h} />;
+    const min = Math.min(...values), max = Math.max(...values);
+    const range = max - min || 1;
+    const step = (w - pad*2) / (values.length - 1);
+    const pts = values.map((v, i) => {
+      const x = pad + i * step;
+      const y = h - pad - ((v - min) / range) * (h - pad*2);
+      return `${x},${y}`;
+    }).join(' ');
+    return (
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="opacity-80">
+        <polyline fill="none" stroke={color} strokeWidth="2" points={pts} />
+      </svg>
+    );
+  };
+
+  const downloadLeadsCSV = () => {
+    try {
+      const rows = leadsAll.length ? leadsAll : leadsList;
+      if (!rows || !rows.length) return;
+      const cols = ['id','company','contact_name','city','enquiry_status','enquiry_date','created_at'];
+      const header = cols.join(',');
+      const esc = (s) => `"${String(s ?? '').replaceAll('"','""')}"`;
+      const lines = rows.map(r => cols.map(c => esc(r[c])).join(','));
+      const csv = [header, ...lines].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'leads_snapshot.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) { console.error('CSV export failed', e); }
   };
 
   const progressFromStatus = (status) => {
@@ -285,7 +404,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Quick Stats Cards - Reference UI */}
+        {/* Executive KPI Cards with Trends */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
           {(() => {
             const cards = [
@@ -298,7 +417,8 @@ export default function Dashboard() {
                 Icon: UserGroupIcon,
                 deltaColor: '',
                 iconBg: 'bg-white border border-purple-200',
-                iconColor: 'text-[#64126D]'
+                iconColor: 'text-[#64126D]',
+                series: analytics.series.leads
               },
               {
                 title: 'PROPOSALS',
@@ -309,7 +429,8 @@ export default function Dashboard() {
                 Icon: DocumentTextIcon,
                 deltaColor: '',
                 iconBg: 'bg-white border border-purple-200',
-                iconColor: 'text-[#64126D]'
+                iconColor: 'text-[#64126D]',
+                series: analytics.series.proposals
               },
               {
                 title: 'COMPANIES',
@@ -320,7 +441,8 @@ export default function Dashboard() {
                 Icon: BuildingOfficeIcon,
                 deltaColor: '',
                 iconBg: 'bg-white border border-purple-200',
-                iconColor: 'text-[#64126D]'
+                iconColor: 'text-[#64126D]',
+                series: analytics.series.companies
               },
               {
                 title: 'PROJECTS',
@@ -331,7 +453,8 @@ export default function Dashboard() {
                 Icon: FolderIcon,
                 deltaColor: '',
                 iconBg: 'bg-white border border-purple-200',
-                iconColor: 'text-[#64126D]'
+                iconColor: 'text-[#64126D]',
+                series: analytics.series.projects
               }
             ];
             const formatDelta = (n) => {
@@ -359,6 +482,10 @@ export default function Dashboard() {
                         <Icon className={`h-5 w-5 ${c.iconColor}`} />
                       </span>
                     </div>
+                  </div>
+                  {/* sparkline */}
+                  <div className="mt-1">
+                    <Sparkline values={c.series} />
                   </div>
                   <div className="flex items-center justify-between mt-2">
                     <Link href={c.href} className="inline-flex items-center gap-1 text-xs text-[#64126D] font-semibold hover:underline">
@@ -420,6 +547,99 @@ export default function Dashboard() {
               </div>
             );
           })}
+        </div>
+
+        {/* Executive Insights: Funnel, Top Locations, Activity */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+          {/* Sales Funnel */}
+          <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Sales Funnel</h3>
+              <button onClick={downloadLeadsCSV} className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D]">Export CSV</button>
+            </div>
+            <div className="p-6">
+              {(() => {
+                const total = Object.values(analytics.funnel).reduce((a,b)=>a+b,0) || 1;
+                const rows = [
+                  { label: 'New', key: 'new', color: 'bg-gray-100', text: 'text-gray-700' },
+                  { label: 'Under Discussion', key: 'discussion', color: 'bg-purple-100', text: 'text-[#64126D]' },
+                  { label: 'Proposal Sent', key: 'proposal', color: 'bg-indigo-100', text: 'text-indigo-700' },
+                  { label: 'Won', key: 'won', color: 'bg-green-100', text: 'text-green-700' },
+                  { label: 'Lost', key: 'lost', color: 'bg-red-100', text: 'text-red-700' },
+                ];
+                return (
+                  <div className="space-y-3">
+                    {rows.map((r, idx) => {
+                      const v = analytics.funnel[r.key] || 0;
+                      const pct = Math.round((v/total)*100);
+                      return (
+                        <div key={idx} className="">
+                          <div className="flex items-center justify-between text-sm mb-1">
+                            <span className="font-medium text-gray-800">{r.label}</span>
+                            <span className="text-gray-600">{v} ({pct}%)</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                            <div className={`h-2 ${r.color}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Top Locations */}
+          <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-purple-200">
+              <h3 className="text-lg font-semibold text-gray-900">Top Locations</h3>
+            </div>
+            <div className="p-6">
+              {analytics.topCities.length === 0 ? (
+                <div className="text-sm text-gray-600">Not enough data</div>
+              ) : (
+                <ul className="space-y-3">
+                  {analytics.topCities.map((c, i) => (
+                    <li key={c.city} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-2 w-2 rounded-full bg-[#64126D]" />
+                        <span className="text-gray-800 font-medium">{c.city}</span>
+                      </div>
+                      <span className="text-gray-600 text-sm">{c.count} leads</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          {/* Activity Snapshot */}
+          <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-purple-200">
+              <h3 className="text-lg font-semibold text-gray-900">Activity Snapshot</h3>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="text-xs text-gray-600">Follow-ups (7d)</div>
+                <div className="text-2xl font-bold text-[#64126D]">{analytics.activity.followupsThisWeek}</div>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="text-xs text-gray-600">Previous (7d)</div>
+                <div className="text-2xl font-bold text-gray-700">{analytics.activity.followupsPrevWeek}</div>
+              </div>
+              <div className="col-span-2 text-xs text-gray-600">
+                {(() => {
+                  const a = analytics.activity.followupsThisWeek;
+                  const b = analytics.activity.followupsPrevWeek || 0;
+                  if (b === 0 && a === 0) return 'No activity recorded in the last two weeks';
+                  const chg = b === 0 ? 100 : Math.round(((a-b)/b)*100);
+                  const sign = chg >= 0 ? '+' : '';
+                  return `Week over week change: ${sign}${chg}%`;
+                })()}
+              </div>
+            </div>
+          </div>
         </div>
         {/* Leads */}
         <div className="bg-white rounded-xl border border-purple-200 overflow-hidden mb-8">
