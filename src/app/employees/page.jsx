@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 import {
   UserGroupIcon,
@@ -17,6 +18,35 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function EmployeesPage() {
+  // Avatar: shows profile photo (crisp on HiDPI) or initials fallback
+  const Avatar = ({ src, firstName, lastName, size = 40, priority = false }) => {
+    const initials = `${(firstName || '').charAt(0) || ''}${(lastName || '').charAt(0) || ''}`.toUpperCase();
+    const sizeNum = typeof size === 'number' ? size : parseInt(size, 10) || 40;
+    if (src) {
+      const intrinsic = sizeNum * 2; // 2x pixels for crispness
+      return (
+        <Image
+          src={src}
+          alt={initials || 'Avatar'}
+          width={intrinsic}
+          height={intrinsic}
+          quality={95}
+          sizes={`${sizeNum}px`}
+          priority={priority}
+          className="rounded-full object-cover bg-gray-100"
+          style={{ width: sizeNum, height: sizeNum }}
+        />
+      );
+    }
+    return (
+      <div
+        style={{ width: sizeNum, height: sizeNum }}
+        className="rounded-full bg-gradient-to-r from-[#64126D] to-[#86288F] text-white flex items-center justify-center text-xs font-semibold"
+      >
+        {initials || 'NA'}
+      </div>
+    );
+  };
   // Default form data with extended fields supported by the API
   const defaultFormData = {
     // Core identifiers
@@ -608,11 +638,7 @@ export default function EmployeesPage() {
                             <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-200 motion-safe:hover:scale-[1.01]">
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
-                                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-[#64126D] to-[#86288F] flex items-center justify-center">
-                                    <span className="text-sm font-medium text-white">
-                                      {employee.first_name[0]}{employee.last_name[0]}
-                                    </span>
-                                  </div>
+                                  <Avatar src={employee.profile_photo_url} firstName={employee.first_name} lastName={employee.last_name} size={48} />
                                   <div className="ml-4">
                                     <div className="text-sm font-medium text-gray-900">
                                       {employee.first_name} {employee.last_name}
@@ -771,9 +797,7 @@ export default function EmployeesPage() {
                     {employees.map(emp => (
                       <div key={emp.id} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                         <div className="flex items-center">
-                          <div className="h-9 w-9 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-semibold">
-                            {(emp.first_name?.[0] || 'E')}{(emp.last_name?.[0] || '')}
-                          </div>
+                          <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
                           <div className="ml-3 min-w-0">
                             <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
                             <p className="text-xs text-gray-500 truncate">{emp.email}</p>
@@ -813,13 +837,8 @@ export default function EmployeesPage() {
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Personal Information</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="md:col-span-3 flex items-center gap-4">
-                          <div className="relative h-16 w-16 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center text-gray-500">
-                            {formData.profile_photo_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={formData.profile_photo_url} alt="Profile" className="h-full w-full object-cover" />
-                            ) : (
-                              <span className="text-xs">No Photo</span>
-                            )}
+                          <div className="relative">
+                            <Avatar src={formData.profile_photo_url} firstName={formData.first_name} lastName={formData.last_name} size={80} />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
@@ -1262,13 +1281,8 @@ export default function EmployeesPage() {
                   <h4 className="text-lg font-semibold text-gray-900 mb-3">Personal Information</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-3 flex items-center gap-4">
-                      <div className="relative h-16 w-16 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center text-gray-500">
-                        {formData.profile_photo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={formData.profile_photo_url} alt="Profile" className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="text-xs">No Photo</span>
-                        )}
+                      <div className="relative">
+                        <Avatar src={formData.profile_photo_url} firstName={formData.first_name} lastName={formData.last_name} size={80} />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
@@ -1594,7 +1608,13 @@ export default function EmployeesPage() {
 
           {activeTab === 'view' && selectedEmployee && (
             <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">Employee Details</h3>
+              <div className="flex items-center gap-4 mb-6">
+                <Avatar src={selectedEmployee.profile_photo_url} firstName={selectedEmployee.first_name} lastName={selectedEmployee.last_name} size={72} />
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Employee Details</h3>
+                  <p className="text-sm text-gray-500">{selectedEmployee.first_name} {selectedEmployee.last_name} • {selectedEmployee.employee_id}</p>
+                </div>
+              </div>
               
               <div className="space-y-6">
                 {/* Basic Info */}
