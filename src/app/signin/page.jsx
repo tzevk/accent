@@ -93,15 +93,15 @@ export default function SignIn() {
 
           {/* Email */}
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-[#5F146D] mb-2"
-            >
-              Email
-            </label>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-[#5F146D] mb-2"
+              >
+                Username or Email
+              </label>
             <input
               id="email"
-              type="email"
+                type="text"
               required
               placeholder="username@gmail.com"
               value={email}

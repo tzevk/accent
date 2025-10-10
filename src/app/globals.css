@@ -26,3 +26,18 @@ body {
   color-scheme: light;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Ensure all form field text renders in black */
+input,
+textarea,
+select {
+  color: #000 !important;
+  caret-color: #000;
+}
+
+/* Optional: readable placeholder color */
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280; /* gray-500 */
+  opacity: 1;
+}
