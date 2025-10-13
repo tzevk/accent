@@ -2,6 +2,24 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 
+export async function GET() {
+  try {
+    const db = await dbConnect();
+    const [activities] = await db.execute(
+      'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
+    );
+    await db.end();
+
+    return NextResponse.json({ success: true, data: activities });
+  } catch (error) {
+    console.error('Activities GET error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch activities', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();

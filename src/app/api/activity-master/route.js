@@ -5,12 +5,34 @@ import { dbConnect } from '@/utils/database';
 export async function GET() {
   try {
     const db = await dbConnect();
+    // Ensure base tables exist
+    await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
+      id VARCHAR(36) PRIMARY KEY,
+      function_name VARCHAR(255) NOT NULL,
+      status VARCHAR(20) DEFAULT 'active',
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
+      id VARCHAR(36) PRIMARY KEY,
+      function_id VARCHAR(36) NOT NULL,
+      activity_name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
     const [functions] = await db.execute(
       'SELECT id, function_name, status, description, created_at, updated_at FROM functions_master ORDER BY function_name'
     );
-    const [activities] = await db.execute(
-      'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
-    );
+    let activities = [];
+    try {
+      const [acts] = await db.execute(
+        'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
+      );
+      activities = acts;
+    } catch {
+      activities = [];
+    }
 
     // try fetching sub_activities (may not exist yet)
     let subActivities = [];
@@ -63,6 +85,14 @@ export async function POST(request) {
 
     const id = randomUUID();
     const db = await dbConnect();
+    await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
+      id VARCHAR(36) PRIMARY KEY,
+      function_name VARCHAR(255) NOT NULL,
+      status VARCHAR(20) DEFAULT 'active',
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
     await db.execute(
       'INSERT INTO functions_master (id, function_name, status, description) VALUES (?, ?, ?, ?)',
       [id, function_name, status, description]
@@ -119,7 +149,11 @@ export async function DELETE(request) {
     }
 
     const db = await dbConnect();
-    await db.execute('DELETE FROM activities_master WHERE function_id = ?', [id]);
+    try {
+      await db.execute('DELETE FROM activities_master WHERE function_id = ?', [id]);
+    } catch {
+      // ignore if table missing
+    }
     await db.execute('DELETE FROM functions_master WHERE id = ?', [id]);
     await db.end();
 

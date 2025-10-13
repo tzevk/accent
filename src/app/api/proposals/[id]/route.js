@@ -52,13 +52,13 @@ export async function PUT(request, context) {
 
     const db = await dbConnect();
     
-    // Ensure undefined => null for SQL parameters (mysql2 forbids undefined)
-    // Normalize parameters: mysql2 rejects `undefined`; also convert empty date strings to null
+    // Normalize parameters: mysql2 rejects `undefined`; also convert empty strings to null for numeric/date fields
+    const normalizedValue = (value === undefined || value === '' || value === null) ? null : value;
     const normalizedDueDate = (due_date === undefined || (typeof due_date === 'string' && due_date.trim() === '')) ? null : due_date;
 
     const params = [
       title === undefined ? null : title,
-      value === undefined ? null : value,
+      normalizedValue,
       normalizedDueDate,
       notes === undefined ? null : notes,
       status === undefined ? null : status,

@@ -15,18 +15,35 @@ export async function GET(request, { params }) {
       WHERE p.id = ?
     `, [projectId]);
     
-    await db.end();
-    
     if (rows.length === 0) {
+      await db.end();
       return Response.json({ 
         success: false, 
         error: 'Project not found' 
       }, { status: 404 });
     }
+
+    // Fetch associated project activities
+    let projectActivities = [];
+    try {
+      const [activities] = await db.execute(
+        `SELECT * FROM project_activities WHERE project_id = ? ORDER BY created_at DESC`,
+        [projectId]
+      );
+      projectActivities = activities;
+    } catch (actError) {
+      console.warn('Could not fetch project activities:', actError.message);
+      // Continue without activities if table doesn't exist yet
+    }
+    
+    await db.end();
     
     return Response.json({ 
       success: true, 
-      data: rows[0] 
+      data: {
+        ...rows[0],
+        project_activities: projectActivities
+      }
     });
   } catch (error) {
     console.error('Database error:', error);
@@ -99,6 +116,18 @@ export async function PUT(request, { params }) {
     } = data;
 
     const db = await dbConnect();
+    
+    // Helper function to normalize decimal/numeric fields (convert empty strings to null)
+    const normalizeDecimal = (value) => {
+      if (value === undefined || value === null || value === '') return null;
+      return value;
+    };
+    
+    // Helper function to normalize date fields (convert empty strings to null)
+    const normalizeDate = (value) => {
+      if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
+      return value;
+    };
     
     // First ensure all new columns exist
     try {
@@ -211,12 +240,12 @@ export async function PUT(request, { params }) {
       company_id === undefined ? null : company_id,
       project_manager === undefined ? null : project_manager,
       type === undefined ? null : type,
-      start_date === undefined ? null : start_date,
-      end_date === undefined ? null : end_date,
-      target_date === undefined ? null : target_date,
-      project_duration_planned === undefined ? null : project_duration_planned,
-      project_duration_actual === undefined ? null : project_duration_actual,
-      budget === undefined ? null : budget,
+      normalizeDate(start_date),
+      normalizeDate(end_date),
+      normalizeDate(target_date),
+      normalizeDecimal(project_duration_planned),
+      normalizeDecimal(project_duration_actual),
+      normalizeDecimal(budget),
       progress === undefined ? null : progress,
       status === undefined ? null : status,
       priority === undefined ? null : priority,
@@ -224,17 +253,17 @@ export async function PUT(request, { params }) {
       description === undefined ? null : description,
       notes === undefined ? null : notes,
       proposal_id === undefined ? null : proposal_id,
-      project_value === undefined ? null : project_value,
+      normalizeDecimal(project_value),
       currency === undefined ? null : currency,
       payment_terms === undefined ? null : payment_terms,
       invoicing_status === undefined ? null : invoicing_status,
-      cost_to_company === undefined ? null : cost_to_company,
-      profitability_estimate === undefined ? null : profitability_estimate,
+      normalizeDecimal(cost_to_company),
+      normalizeDecimal(profitability_estimate),
       subcontractors_vendors === undefined ? null : subcontractors_vendors,
       procurement_status === undefined ? null : procurement_status,
       material_delivery_schedule === undefined ? null : material_delivery_schedule,
       vendor_management === undefined ? null : vendor_management,
-      mobilization_date === undefined ? null : mobilization_date,
+      normalizeDate(mobilization_date),
       site_readiness === undefined ? null : site_readiness,
       construction_progress === undefined ? null : construction_progress,
       major_risks === undefined ? null : major_risks,
@@ -244,7 +273,7 @@ export async function PUT(request, { params }) {
       final_documentation_status === undefined ? null : final_documentation_status,
       lessons_learned === undefined ? null : lessons_learned,
       client_feedback === undefined ? null : client_feedback,
-      actual_profit_loss === undefined ? null : actual_profit_loss,
+      normalizeDecimal(actual_profit_loss),
       projectId
     ]);
 
@@ -254,31 +283,37 @@ export async function PUT(request, { params }) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_activities TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS discipline_descriptions TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_members JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_activities_list JSON');
     } catch (err) {
       // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
       console.warn('Could not ensure project assignment columns exist:', err.message || err);
     }
 
-    // Persist disciplines/activities/descriptions/assignments if provided in payload
+    // Persist disciplines/activities/descriptions/assignments/team_members/project_activities_list if provided in payload
     try {
       const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : null;
       const assignedActivities = data.activities ? JSON.stringify(data.activities) : null;
       const disciplineDescriptions = data.discipline_descriptions ? JSON.stringify(data.discipline_descriptions) : null;
       const assignments = data.assignments ? JSON.stringify(data.assignments) : null;
+      const teamMembers = data.team_members || null;
+      const projectActivitiesList = data.project_activities_list || null;
 
-      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || assignments !== null) {
+      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || assignments !== null || teamMembers !== null || projectActivitiesList !== null) {
         await db.execute(
           `UPDATE projects SET 
              assigned_disciplines = COALESCE(?, assigned_disciplines),
              assigned_activities = COALESCE(?, assigned_activities),
              discipline_descriptions = COALESCE(?, discipline_descriptions),
-             assignments = COALESCE(?, assignments)
+             assignments = COALESCE(?, assignments),
+             team_members = COALESCE(?, team_members),
+             project_activities_list = COALESCE(?, project_activities_list)
            WHERE id = ?`,
-          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, projectId]
+          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, teamMembers, projectActivitiesList, projectId]
         );
       }
     } catch (err) {
-      console.error('Failed to persist project discipline/activity/assignment data:', err);
+      console.error('Failed to persist project discipline/activity/assignment/team data:', err);
     }
 
     await db.end();

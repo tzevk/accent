@@ -2,6 +2,33 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 
+export async function GET() {
+  try {
+    const db = await dbConnect();
+    await db.execute(`CREATE TABLE IF NOT EXISTS sub_activities (
+      id VARCHAR(36) PRIMARY KEY,
+      activity_id VARCHAR(36) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      default_duration DECIMAL(10,2) DEFAULT 0,
+      default_manhours DECIMAL(10,2) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
+    const [subActivities] = await db.execute(
+      'SELECT id, activity_id, name, default_duration, default_manhours, created_at, updated_at FROM sub_activities ORDER BY name'
+    );
+    await db.end();
+
+    return NextResponse.json({ success: true, data: subActivities });
+  } catch (error) {
+    console.error('Sub-activities GET error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch sub-activities', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -13,6 +40,15 @@ export async function POST(request) {
 
     const id = randomUUID();
     const db = await dbConnect();
+    await db.execute(`CREATE TABLE IF NOT EXISTS sub_activities (
+      id VARCHAR(36) PRIMARY KEY,
+      activity_id VARCHAR(36) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      default_duration DECIMAL(10,2) DEFAULT 0,
+      default_manhours DECIMAL(10,2) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
     await db.execute(
       'INSERT INTO sub_activities (id, activity_id, name, default_duration, default_manhours) VALUES (?, ?, ?, ?, ?)',
       [id, activity_id, name, default_duration, default_manhours]

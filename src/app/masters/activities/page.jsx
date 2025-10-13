@@ -27,13 +27,13 @@ const EMPTY_SUB_ACTIVITY = {
 export default function ActivityMasterPage() {
   const [disciplines, setDisciplines] = useState([]);
   // disciplineForm and discipline editing removed — disciplines are fixed
-  const [disciplineForm, setDisciplineForm] = useState({ name: '', description: '' });
+  const [disciplineForm, setDisciplineForm] = useState({ name: '', description: '', status: 'active' });
   const [subActivityForm, setSubActivityForm] = useState(EMPTY_SUB_ACTIVITY);
   const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [editingSubId, setEditingSubId] = useState(null);
   const [editingActivityId, setEditingActivityId] = useState(null);
-  const [showDisciplineForm, setShowDisciplineForm] = useState(false); // unused but kept for safety
+  const [showDisciplineForm, setShowDisciplineForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showSubActivityForm, setShowSubActivityForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -119,6 +119,40 @@ export default function ActivityMasterPage() {
   );
 
   // Discipline management removed — disciplines are fixed list
+  const handleCreateDiscipline = () => {
+    setDisciplineForm({ name: '', description: '', status: 'active' });
+    setShowDisciplineForm(true);
+  };
+
+  const handleDisciplineSubmit = async (e) => {
+    e.preventDefault();
+    const name = disciplineForm.name?.trim();
+    if (!name) return;
+
+    try {
+      const res = await fetch('/api/activity-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          function_name: name,
+          description: disciplineForm.description || '',
+          status: disciplineForm.status || 'active',
+        }),
+      });
+      if (res.ok) {
+        // Refresh list and close form
+        const disciplinesRes = await fetch('/api/activity-master');
+        const disciplinesJson = await disciplinesRes.json();
+        if (disciplinesJson.success) {
+          setDisciplines(disciplinesJson.data);
+        }
+        setShowDisciplineForm(false);
+        setDisciplineForm({ name: '', description: '', status: 'active' });
+      }
+    } catch (err) {
+      console.error('Failed to create discipline', err);
+    }
+  };
 
   // Create Activity
   const handleCreateActivity = (disciplineId) => {
@@ -307,7 +341,71 @@ export default function ActivityMasterPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Column 1 - Disciplines */}
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <h2 className="text-sm font-semibold text-black">Disciplines</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-black">Disciplines</h2>
+                  <button
+                    onClick={handleCreateDiscipline}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
+                  >
+                    <PlusIcon className="h-3 w-3" /> Add Discipline
+                  </button>
+                </div>
+
+                {showDisciplineForm && (
+                  <form onSubmit={handleDisciplineSubmit} className="space-y-3 border border-gray-200 rounded-md p-3">
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-700 mb-1">Name</label>
+                        <input
+                          type="text"
+                          value={disciplineForm.name}
+                          onChange={(e) => setDisciplineForm({ ...disciplineForm, name: e.target.value })}
+                          placeholder="e.g., ELECTRICAL"
+                          required
+                          className="w-full px-3 py-2 border rounded-md text-sm"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-700 mb-1">Status</label>
+                          <select
+                            value={disciplineForm.status}
+                            onChange={(e) => setDisciplineForm({ ...disciplineForm, status: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-md text-sm"
+                          >
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-700 mb-1">Description</label>
+                          <input
+                            type="text"
+                            value={disciplineForm.description}
+                            onChange={(e) => setDisciplineForm({ ...disciplineForm, description: e.target.value })}
+                            placeholder="Optional short description"
+                            className="w-full px-3 py-2 border rounded-md text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDisciplineForm(false);
+                          setDisciplineForm({ name: '', description: '', status: 'active' });
+                        }}
+                        className="px-3 py-2 bg-gray-100 rounded-md text-xs"
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" className="px-4 py-2 bg-[#7F2487] text-white rounded-md text-xs">
+                        Save Discipline
+                      </button>
+                    </div>
+                  </form>
+                )}
                 {filteredDisciplines.length === 0 ? (
                   <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
                     No disciplines found.

@@ -304,6 +304,19 @@ export default function ProposalPage() {
                       if (!proposal?.id) throw new Error('Proposal not loaded');
                       if (!proposal?.title) throw new Error('Proposal title is required');
                       if (!proposal?.client) throw new Error('Client is required in the proposal');
+                      
+                      // Get company_id from linked lead if available
+                      let companyId = linkedLead?.company_id || null;
+                      
+                      // If no company_id from lead, try to get it from the proposal itself
+                      if (!companyId && proposal?.company_id) {
+                        companyId = proposal.company_id;
+                      }
+                      
+                      if (!companyId) {
+                        throw new Error('Company information is missing. Please ensure the proposal is linked to a lead with company details.');
+                      }
+                      
                       if (!window.confirm('Convert this proposal to a project?')) return;
 
                       const res = await fetch('/api/projects', {
@@ -313,6 +326,7 @@ export default function ProposalPage() {
                           name: proposal.title,
                           description: proposal.project_description || '',
                           client_name: proposal.client,
+                          company_id: companyId,
                           start_date: new Date().toISOString().split('T')[0],
                           status: 'NEW',
                           type: 'PROPOSAL',

@@ -5,6 +5,31 @@ import { randomUUID } from 'crypto';
 export async function GET() {
   try {
     const db = await dbConnect();
+    // Ensure tables exist
+    await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
+      id VARCHAR(36) PRIMARY KEY,
+      function_name VARCHAR(255) NOT NULL,
+      status VARCHAR(20) DEFAULT 'active',
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
+      id VARCHAR(36) PRIMARY KEY,
+      function_id VARCHAR(36) NOT NULL,
+      activity_name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS sub_activities (
+      id VARCHAR(36) PRIMARY KEY,
+      activity_id VARCHAR(36) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      default_duration DECIMAL(10,2) DEFAULT 0,
+      default_manhours DECIMAL(10,2) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
 
     const [functions] = await db.execute(
       'SELECT id, function_name FROM functions_master ORDER BY function_name'
@@ -57,6 +82,13 @@ export async function POST(request) {
 
     const id = randomUUID();
     const db = await dbConnect();
+    await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
+      id VARCHAR(36) PRIMARY KEY,
+      function_id VARCHAR(36) NOT NULL,
+      activity_name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
     await db.execute(
       'INSERT INTO activities_master (id, function_id, activity_name) VALUES (?, ?, ?)',
       [id, function_id, activity_name]
