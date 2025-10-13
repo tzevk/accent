@@ -33,6 +33,7 @@ export default function Navbar() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   // Masters dropdown removed; handled in sidebar
   const [scrolled, setScrolled] = useState(false);
+  const [isWindows, setIsWindows] = useState(false);
 
   // Handle scroll effect
   useEffect(() => {
@@ -41,6 +42,11 @@ export default function Navbar() {
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Detect Windows to compensate gradient rendering differences
+  useEffect(() => {
+    setIsWindows(navigator.userAgent.includes('Windows'));
   }, []);
 
   // Close mobile menu when route changes
@@ -60,12 +66,18 @@ export default function Navbar() {
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
           scrolled ? 'shadow-xl backdrop-blur-lg' : 'shadow-lg'
         }`}
-        style={{
-          background: scrolled 
-            ? `linear-gradient(135deg, rgba(100, 18, 109, 0.95) 0%, rgba(134, 40, 143, 0.95) 100%)`
-            : `linear-gradient(135deg, #64126D 0%, #86288F 100%)`
-        }}
       >
+        {/* Background overlay to avoid filtering text; adjust only on Windows */}
+        <div
+          className="absolute inset-0 -z-10 pointer-events-none"
+          style={{
+            background: scrolled
+              ? 'linear-gradient(135deg, rgba(100, 18, 109, 0.95) 0%, rgba(134, 40, 143, 0.95) 100%)'
+              : 'linear-gradient(135deg, #64126D 0%, #86288F 100%)',
+            filter: isWindows ? 'saturate(1.08) brightness(1.06)' : undefined,
+            transition: 'filter 200ms ease, background 200ms ease'
+          }}
+        />
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
@@ -190,7 +202,8 @@ export default function Navbar() {
           <div 
             className="md:hidden border-t border-white/20"
             style={{
-              background: `linear-gradient(135deg, #64126D 0%, #86288F 100%)`
+              background: `linear-gradient(135deg, #64126D 0%, #86288F 100%)`,
+              filter: isWindows ? 'saturate(1.06) brightness(1.05)' : undefined
             }}
           >
             <div className="px-4 py-4 space-y-2">
