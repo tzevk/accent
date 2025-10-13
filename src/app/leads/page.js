@@ -9,6 +9,7 @@ import {
   PhoneIcon,
   EnvelopeIcon,
   ArrowRightIcon,
+  ArrowLeftIcon,
   StarIcon,
   MagnifyingGlassIcon,
   DocumentArrowUpIcon,
@@ -16,7 +17,10 @@ import {
   ArrowDownTrayIcon,
   EyeIcon,
   PencilIcon,
-  TrashIcon
+  TrashIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 
 export default function Leads() {
@@ -33,6 +37,7 @@ export default function Leads() {
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
   const [companies, setCompanies] = useState([]);
+  const [showImport, setShowImport] = useState(false);
   // follow-ups are managed in the Edit Lead view; keep this page focused on list/add
   const [formData, setFormData] = useState({
     lead_id: '',
@@ -105,6 +110,15 @@ export default function Leads() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, statusFilter, cityFilter, sortBy, sortOrder, activeTab]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('');
+    setCityFilter('');
+    setSortBy('enquiry_date');
+    setSortOrder('desc');
+    setCurrentPage(1);
+  };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -381,7 +395,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           <div className="flex items-center">
             <UserGroupIcon className="h-8 w-8 text-accent-purple" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Leads</p>
+              <p className="text-sm font-medium text-black">Total Leads</p>
               <p className="text-2xl font-semibold text-gray-900">
                 {stats.total_leads || 0}
               </p>
@@ -393,7 +407,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           <div className="flex items-center">
             <StarIcon className="h-8 w-8 text-blue-500" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Leads</p>
+              <p className="text-sm font-medium text-black">Active Leads</p>
               <p className="text-2xl font-semibold text-gray-900">
                 {stats.active_leads || 0}
               </p>
@@ -405,7 +419,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           <div className="flex items-center">
             <ArrowRightIcon className="h-8 w-8 text-green-500" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Won Leads</p>
+              <p className="text-sm font-medium text-black">Won Leads</p>
               <p className="text-2xl font-semibold text-gray-900">
                 {stats.won_leads || 0}
               </p>
@@ -414,36 +428,55 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
         </div>
       </div>
 
-      {/* Excel Import Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Import Leads</h3>
-        <div className="flex gap-3">
-          <button
-            onClick={downloadTemplate}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-            Download Template
-          </button>
-          
-          <label className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors cursor-pointer">
-            <DocumentArrowUpIcon className="h-4 w-4 mr-2" />
-            {uploading ? 'Uploading...' : 'Import Excel/CSV'}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleCsvUpload}
-              className="hidden"
-              disabled={uploading}
-            />
-          </label>
-        </div>
+      {/* Import Section (Collapsible) */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <button
+          type="button"
+          onClick={() => setShowImport((s) => !s)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <DocumentArrowUpIcon className="h-5 w-5 text-accent-purple" />
+            <h3 className="text-base font-medium text-gray-900">Import Leads</h3>
+            <span className="ml-2 text-xs text-gray-500">CSV template supported</span>
+          </div>
+          {showImport ? (
+            <ChevronUpIcon className="h-5 w-5 text-gray-500" />
+          ) : (
+            <ChevronDownIcon className="h-5 w-5 text-gray-500" />
+          )}
+        </button>
+        {showImport && (
+          <div className="px-4 pb-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={downloadTemplate}
+                className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                Download Template
+              </button>
+              
+              <label className="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors cursor-pointer">
+                <DocumentArrowUpIcon className="h-4 w-4 mr-2" />
+                {uploading ? 'Uploading...' : 'Import Excel/CSV'}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCsvUpload}
+                  className="hidden"
+                  disabled={uploading}
+                />
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
           <div className="flex-1">
             <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -505,6 +538,16 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
               <option value="enquiry_status-asc">Status A-Z</option>
             </select>
           </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50"
+            >
+              <FunnelIcon className="h-4 w-4 mr-1 text-gray-500" />
+              Clear
+            </button>
+          </div>
         </div>
       </div>
 
@@ -526,24 +569,24 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/75">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Lead ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Sr
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Company & Contact
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Project Details
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Status & Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Date & Source
                   </th>
                   <th className="relative px-6 py-3">
@@ -551,9 +594,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200">
                 {leads.map((lead, index) => (
-                  <tr key={lead.id} className="hover:bg-gray-50">
+                  <tr key={lead.id} className="hover:bg-gray-50 odd:bg-white even:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-mono font-medium text-gray-900">
                         {lead.lead_id || '-'}
@@ -564,7 +607,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                         {(currentPage - 1) * 20 + index + 1}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap max-w-sm">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
                           {lead.company_name}
@@ -576,7 +619,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
                           {lead.contact_email && (
                             <div className="flex items-center text-xs text-gray-400">
                               <EnvelopeIcon className="h-3 w-3 mr-1" />
-                              <span className="truncate max-w-32">{lead.contact_email}</span>
+                              <span className="truncate max-w-[9rem]">{lead.contact_email}</span>
                             </div>
                           )}
                           {lead.phone && (
@@ -674,8 +717,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 inline-flex items-center gap-1"
             >
+              <ArrowLeftIcon className="h-4 w-4" />
               Previous
             </button>
             <span className="px-3 py-1 text-sm text-gray-700">
@@ -684,9 +728,10 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
             <button
               onClick={() => setCurrentPage(currentPage + 1)}
               disabled={currentPage * 20 >= (stats.total_leads || 0)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 inline-flex items-center gap-1"
             >
               Next
+              <ArrowRightIcon className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -985,7 +1030,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
       {/* Fixed header section */}
       <div className="flex-shrink-0 pt-24 px-8 pb-4">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-accent-primary mb-2">
+          <h1 className="text-3xl font-bold text-black mb-2">
             Leads Management
           </h1>
           <p className="text-gray-600">
@@ -997,9 +1042,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
         <div className="flex border-b border-gray-200 bg-white rounded-t-lg px-6 pt-4">
           <button
             onClick={() => setActiveTab('list')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
               activeTab === 'list'
-                ? 'border-accent-purple text-accent-purple'
+                ? 'border-black text-black bg-gray-50'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
@@ -1008,9 +1053,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           </button>
           <button
             onClick={() => setActiveTab('add')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
               activeTab === 'add'
-                ? 'border-accent-purple text-accent-purple'
+                ? 'border-black text-black bg-gray-50'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
