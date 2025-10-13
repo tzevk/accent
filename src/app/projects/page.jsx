@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { fetchJSON } from '@/utils/http';
 import { 
   PlusIcon, 
   FolderIcon,
@@ -77,8 +78,7 @@ function ProjectsInner() {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('/api/projects');
-      const result = await response.json();
+      const result = await fetchJSON('/api/projects');
       if (result.success) setProjects(result.data);
       else console.error('Error fetching projects:', result.error);
     } catch (error) {
@@ -93,13 +93,12 @@ function ProjectsInner() {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this project?')) return;
     try {
-      const response = await fetch(`/api/projects?id=${id}`, { method: 'DELETE' });
-      const result = await response.json();
+      const result = await fetchJSON(`/api/projects?id=${id}`, { method: 'DELETE' });
       if (result.success) fetchProjects();
       else alert('Error deleting project: ' + result.error);
     } catch (error) {
       console.error('Error deleting project:', error);
-      alert('Error deleting project');
+      alert('Error deleting project: ' + error.message);
     }
   };
 

@@ -3,6 +3,7 @@
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchJSON } from '@/utils/http';
 import { 
   ArrowLeftIcon,
   CheckIcon,
@@ -44,8 +45,7 @@ export default function EditLead({ params }) {
     const fetchLead = async () => {
       try {
         const leadId = await params;
-        const response = await fetch(`/api/leads/${leadId.id}`);
-        const result = await response.json();
+        const result = await fetchJSON(`/api/leads/${leadId.id}`);
         
         if (result.success) {
           const leadData = result.data;
@@ -89,8 +89,7 @@ export default function EditLead({ params }) {
     if (!lead) return;
     const fetchFollowUps = async () => {
       try {
-        const res = await fetch(`/api/followups?lead_id=${lead.id}`);
-        const result = await res.json();
+        const result = await fetchJSON(`/api/followups?lead_id=${lead.id}`);
         if (result.success) setFollowUps(result.data);
   } catch { /* ignore */ }
     };
@@ -116,15 +115,13 @@ export default function EditLead({ params }) {
     setSaving(true);
 
     try {
-      const response = await fetch(`/api/leads/${lead.id}`, {
+      const result = await fetchJSON(`/api/leads/${lead.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
       });
-
-      const result = await response.json();
       
       if (result.success) {
         alert('Lead updated successfully!');
@@ -134,7 +131,7 @@ export default function EditLead({ params }) {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error updating lead');
+      alert(error?.message || 'Error updating lead');
     } finally {
       setSaving(false);
     }
@@ -152,7 +149,7 @@ export default function EditLead({ params }) {
         return;
       }
 
-      const res = await fetch('/api/followups', {
+      const result = await fetchJSON('/api/followups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -163,8 +160,6 @@ export default function EditLead({ params }) {
           status: 'Scheduled'
         })
       });
-
-      const result = await res.json();
       if (result.success) {
         // Optimistically append the created follow-up to the list
         setFollowUps(prev => [result.data, ...prev]);

@@ -4,6 +4,7 @@ import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { fetchJSON } from '@/utils/http';
 import {
   CalendarIcon,
   MapPinIcon,
@@ -34,16 +35,15 @@ export default function ProjectViewPage() {
 
     const loadProject = async () => {
       try {
-        const response = await fetch(`/api/projects/${id}`);
-        const json = await response.json();
-        if (json.success) {
-          setProject(json.data);
+        const result = await fetchJSON(`/api/projects/${id}`);
+        if (result?.success) {
+          setProject(result.data);
         } else {
-          setError(json.error || 'Failed to load project');
+          setError(result?.error || 'Failed to load project');
         }
       } catch (err) {
         console.error('Project view error', err);
-        setError('Unable to load project details');
+        setError(err?.message || 'Unable to load project details');
       } finally {
         setLoading(false);
       }
