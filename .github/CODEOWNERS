@@ -1,0 +1,7 @@
+# Use GitHub handles. Example owners; adjust as needed.
+* @tzevk
+
+# Folders (optional granularity)
+/src/app/** @tzevk
+/src/components/** @tzevk
+/src/app/api/** @tzevk
