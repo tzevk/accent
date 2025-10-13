@@ -59,6 +59,36 @@ export default function Leads() {
   });
   const fileInputRef = useRef(null);
 
+  // Robust JSON handling helpers to avoid SyntaxError when server returns HTML/text (e.g., Internal Server Error)
+  const parseJSONSafe = async (response) => {
+    try {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        return await response.json();
+      }
+      // Fallback to text and surface as error
+      const text = await response.text();
+      throw new Error(text?.slice(0, 200) || `HTTP ${response.status}`);
+    } catch (e) {
+      // If JSON parsing itself fails, propagate a readable error
+      if (e instanceof SyntaxError) {
+        throw new Error('Received a non-JSON response from server');
+      }
+      throw e;
+    }
+  };
+
+  const fetchJSON = async (url, options) => {
+    const res = await fetch(url, options);
+    const data = await parseJSONSafe(res);
+    if (!res.ok || data?.success === false) {
+      const errMsg = data?.error || data?.message || `Request failed (${res.status})`;
+      const details = data?.details;
+      throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+    }
+    return data;
+  };
+
   const fetchLeads = async () => {
     try {
       setLoading(true);
@@ -72,8 +102,7 @@ export default function Leads() {
         ...(cityFilter && { city: cityFilter })
       });
 
-      const response = await fetch(`/api/leads?${params}`);
-      const result = await response.json();
+      const result = await fetchJSON(`/api/leads?${params}`);
       
       if (result.success) {
         setLeads(result.data.leads);
@@ -81,6 +110,9 @@ export default function Leads() {
       }
     } catch (error) {
       console.error('Error fetching leads:', error);
+      // Ensure UI remains consistent on failure
+      setLeads([]);
+      setStats({});
     } finally {
       setLoading(false);
     }
@@ -90,8 +122,7 @@ export default function Leads() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await fetch('/api/companies');
-      const result = await response.json();
+      const result = await fetchJSON('/api/companies');
       
       if (result.success) {
         setCompanies(result.data);
@@ -125,15 +156,13 @@ export default function Leads() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/leads', {
+      const result = await fetchJSON('/api/leads', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
       });
-
-      const result = await response.json();
       
       if (result.success) {
         // Reset form
@@ -216,11 +245,9 @@ export default function Leads() {
     }
 
     try {
-      const response = await fetch(`/api/leads/${leadId}`, {
+      const result = await fetchJSON(`/api/leads/${leadId}`, {
         method: 'DELETE',
       });
-
-      const result = await response.json();
       
       if (result.success) {
         alert('Lead deleted successfully!');
@@ -230,7 +257,7 @@ export default function Leads() {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error deleting lead');
+      alert('Error deleting lead: ' + error.message);
     }
   };
 
@@ -254,13 +281,11 @@ export default function Leads() {
         notes: lead.notes || null
       };
 
-      const res = await fetch('/api/proposals', {
+      const result = await fetchJSON('/api/proposals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, lead_id: lead.id })
       });
-
-      const result = await res.json();
       if (!result.success) {
         alert('Failed to create proposal: ' + (result.error || 'Unknown'));
         return;
@@ -300,13 +325,11 @@ export default function Leads() {
         notes: lead.notes || null
       };
 
-      const upd = await fetch(`/api/leads/${lead.id}`, {
+      const updResult = await fetchJSON(`/api/leads/${lead.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateBody)
       });
-
-      const updResult = await upd.json();
       if (!updResult.success) {
         alert('Proposal created but failed to update lead status: ' + (updResult.error || 'Unknown'));
       } else {
@@ -323,7 +346,7 @@ export default function Leads() {
       }
     } catch (error) {
       console.error('Error converting lead:', error);
-      alert('Error converting lead to proposal');
+      alert('Error converting lead to proposal: ' + error.message);
     }
   };
 
@@ -352,12 +375,10 @@ export default function Leads() {
 
     try {
       setUploading(true);
-      const response = await fetch('/api/leads/import', {
+      const result = await fetchJSON('/api/leads/import', {
         method: 'POST',
         body: formData,
       });
-      
-      const result = await response.json();
       if (result.success) {
         alert(`Successfully imported ${result.imported} leads!`);
         fetchLeads(); // Refresh the leads list
@@ -367,7 +388,7 @@ export default function Leads() {
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Error uploading file');
+      alert('Error uploading file: ' + error.message);
     } finally {
       setUploading(false);
     }
@@ -393,7 +414,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center">
-            <UserGroupIcon className="h-8 w-8 text-accent-purple" />
+            <div className="h-10 w-10 rounded-full bg-violet-100 ring-1 ring-violet-200 flex items-center justify-center">
+              <UserGroupIcon className="h-6 w-6 text-violet-600" />
+            </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-black">Total Leads</p>
               <p className="text-2xl font-semibold text-gray-900">

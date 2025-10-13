@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
+import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeftIcon,
@@ -57,8 +58,7 @@ export default function EditVendor({ params }) {
     const fetchVendor = async () => {
       try {
         const vendorId = await params;
-        const response = await fetch(`/api/vendors/${vendorId.id}`);
-        const result = await response.json();
+  const result = await fetchJSON(`/api/vendors/${vendorId.id}`);
         
         if (result.success) {
           const vendorData = result.data;
@@ -130,15 +130,13 @@ export default function EditVendor({ params }) {
     setSaving(true);
 
     try {
-      const response = await fetch(`/api/vendors/${vendor.id}`, {
+      const result = await fetchJSON(`/api/vendors/${vendor.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
       });
-
-      const result = await response.json();
       
       if (result.success) {
         alert('Vendor updated successfully!');
@@ -148,7 +146,7 @@ export default function EditVendor({ params }) {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error updating vendor');
+      alert('Error updating vendor: ' + error.message);
     } finally {
       setSaving(false);
     }

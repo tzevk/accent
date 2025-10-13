@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import { fetchJSON } from '@/utils/http';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
@@ -61,8 +62,7 @@ function NewProjectForm() {
   useEffect(() => {
     const fetchCompanies = async () => {
       try {
-        const response = await fetch('/api/companies');
-        const json = await response.json();
+        const json = await fetchJSON('/api/companies');
         if (json.success) setCompanies(json.data);
       } catch (error) {
         console.error('Failed to fetch companies', error);
@@ -130,13 +130,11 @@ function NewProjectForm() {
         notes: form.notes || null
       };
 
-      const response = await fetch('/api/projects', {
+      const result = await fetchJSON('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      const result = await response.json();
       if (result.success) {
         // Navigate to edit page with the newly created project
         router.push(`/projects/${result.data.id}/edit`);
