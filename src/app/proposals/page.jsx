@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
+import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -41,8 +42,7 @@ export default function Proposals() {
 
   const fetchCompanies = async () => {
     try {
-      const res = await fetch('/api/companies');
-      const json = await res.json();
+  const json = await fetchJSON('/api/companies');
       if (json.success) setCompanies(json.data || []);
     } catch (err) {
       console.error('Error fetching companies', err);
@@ -51,8 +51,7 @@ export default function Proposals() {
 
   const fetchProposals = async () => {
     try {
-      const response = await fetch('/api/proposals');
-      const result = await response.json();
+  const result = await fetchJSON('/api/proposals');
       
       if (result.success) {
         setProposals(result.data);
@@ -79,15 +78,13 @@ export default function Proposals() {
     setSubmitting(true);
 
     try {
-      const response = await fetch('/api/proposals', {
+      const result = await fetchJSON('/api/proposals', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
       });
-
-      const result = await response.json();
       
       if (result.success) {
         alert(`Proposal created successfully!\nProposal ID: ${result.data.proposalId}`);
@@ -114,7 +111,7 @@ export default function Proposals() {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error creating proposal');
+      alert('Error creating proposal: ' + error.message);
     } finally {
       setSubmitting(false);
     }

@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState } from 'react';
+import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeftIcon,
@@ -64,15 +65,13 @@ export default function NewVendor() {
     setSaving(true);
 
     try {
-      const response = await fetch('/api/vendors', {
+      const result = await fetchJSON('/api/vendors', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
       });
-
-      const result = await response.json();
       
       if (result.success) {
         alert('Vendor created successfully!');
@@ -82,7 +81,7 @@ export default function NewVendor() {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error creating vendor');
+      alert('Error creating vendor: ' + error.message);
     } finally {
       setSaving(false);
     }

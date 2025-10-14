@@ -3,6 +3,7 @@
 import Navbar from '@/components/Navbar';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { fetchJSON } from '@/utils/http';
 import { 
   ArrowLeftIcon,
   DocumentTextIcon,
@@ -47,8 +48,7 @@ export default function ProposalPage() {
       if (!routeId) return;
       setLoading(true);
       try {
-        const response = await fetch(`/api/proposals/${routeId}`);
-        const result = await response.json();
+  const result = await fetchJSON(`/api/proposals/${routeId}`);
 
         if (result?.success && result?.data) {
           const proposalData = result.data;
@@ -56,8 +56,7 @@ export default function ProposalPage() {
 
           if (proposalData?.lead_id) {
             try {
-              const leadRes = await fetch(`/api/leads/${proposalData.lead_id}`);
-              const leadJson = await leadRes.json();
+              const leadJson = await fetchJSON(`/api/leads/${proposalData.lead_id}`);
               if (leadJson?.success) setLinkedLead(leadJson.data);
             } catch {
               /* ignore lead fetch errors */
@@ -92,13 +91,11 @@ export default function ProposalPage() {
   const handleSave = async () => {
     try {
       if (!proposal?.id) return alert('Proposal not loaded');
-      const response = await fetch(`/api/proposals/${proposal.id}`, {
+      const result = await fetchJSON(`/api/proposals/${proposal.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-
-      const result = await response.json();
       if (result?.success) {
         setProposal(prev => ({ ...prev, ...formData }));
         setIsEditing(false);
@@ -115,8 +112,7 @@ export default function ProposalPage() {
   const fetchVersions = useCallback(async () => {
     if (!proposal?.id) return;
     try {
-      const res = await fetch(`/api/proposals/${proposal.id}/versions`);
-      const j = await res.json();
+  const j = await fetchJSON(`/api/proposals/${proposal.id}/versions`);
       if (j?.success) setVersions(j.data || []);
     } catch (e) { console.error('versions fetch', e); }
   }, [proposal]);
@@ -124,8 +120,7 @@ export default function ProposalPage() {
   const fetchApprovals = useCallback(async () => {
     if (!proposal?.id) return;
     try {
-      const res = await fetch(`/api/proposals/${proposal.id}/approvals`);
-      const j = await res.json();
+  const j = await fetchJSON(`/api/proposals/${proposal.id}/approvals`);
       if (j?.success) setApprovals(j.data || []);
     } catch (e) { console.error('approvals fetch', e); }
   }, [proposal]);
@@ -209,8 +204,7 @@ export default function ProposalPage() {
         await fetchApprovals();
 
         // refresh proposal to get updated approval_stage
-        const pr = await fetch(`/api/proposals/${proposal.id}`);
-        const prj = await pr.json();
+  const prj = await fetchJSON(`/api/proposals/${proposal.id}`);
         if (prj?.success) setProposal(prj.data);
       } else {
         alert('Failed to record approval: ' + (j?.error || 'unknown'));

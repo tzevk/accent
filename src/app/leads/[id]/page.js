@@ -3,6 +3,7 @@
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchJSON } from '@/utils/http';
 import { 
   ArrowLeftIcon,
   PencilIcon,
@@ -26,8 +27,7 @@ export default function LeadDetails({ params }) {
     const fetchLead = async () => {
       try {
         const leadId = await params;
-        const response = await fetch(`/api/leads/${leadId.id}`);
-        const result = await response.json();
+        const result = await fetchJSON(`/api/leads/${leadId.id}`);
         
         if (result.success) {
           setLead(result.data);
@@ -100,11 +100,9 @@ export default function LeadDetails({ params }) {
   const handleDelete = async () => {
     if (window.confirm(`Are you sure you want to delete this lead from "${lead.company_name}"?`)) {
       try {
-        const response = await fetch(`/api/leads/${lead.id}`, {
+        const result = await fetchJSON(`/api/leads/${lead.id}`, {
           method: 'DELETE',
         });
-
-        const result = await response.json();
         
         if (result.success) {
           alert('Lead deleted successfully!');
@@ -114,7 +112,7 @@ export default function LeadDetails({ params }) {
         }
       } catch (error) {
         console.error('Error:', error);
-        alert('Error deleting lead');
+        alert(error?.message || 'Error deleting lead');
       }
     }
   };

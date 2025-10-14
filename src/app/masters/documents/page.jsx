@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import { fetchJSON } from '@/utils/http';
 import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
@@ -27,8 +28,7 @@ export default function DocumentMasterPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/document-master');
-      const json = await res.json();
+  const json = await fetchJSON('/api/document-master');
       if (json.success) {
         setDocs(json.data || []);
         if (!selectedId && (json.data || []).length > 0) setSelectedId((json.data || [])[0].id);
@@ -38,7 +38,7 @@ export default function DocumentMasterPage() {
       }
     } catch (err) {
       console.error('Document master fetch error', err);
-      setError('Failed to load document master');
+      setError(err.message || 'Failed to load document master');
       setDocs([]);
     } finally {
       setLoading(false);
@@ -70,9 +70,9 @@ export default function DocumentMasterPage() {
     try {
       const payload = { doc_key: form.doc_key, name: form.name, description: form.description || '', status: form.status || 'active' };
       if (editingId) {
-        await fetch('/api/document-master', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...payload }) });
+        await fetchJSON('/api/document-master', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...payload }) });
       } else {
-        await fetch('/api/document-master', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        await fetchJSON('/api/document-master', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       }
       setShowForm(false);
       setForm(EMPTY_DOC);
@@ -80,19 +80,19 @@ export default function DocumentMasterPage() {
       await loadDocs();
     } catch (err) {
       console.error('Save document error', err);
-      alert('Failed to save document');
+      alert('Failed to save document: ' + (err.message || 'unknown'));
     }
   };
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this document type?')) return;
     try {
-      await fetch(`/api/document-master?id=${id}`, { method: 'DELETE' });
+      await fetchJSON(`/api/document-master?id=${id}`, { method: 'DELETE' });
       if (selectedId === id) setSelectedId(null);
       await loadDocs();
     } catch (err) {
       console.error('Delete document error', err);
-      alert('Failed to delete document');
+      alert('Failed to delete document: ' + (err.message || 'unknown'));
     }
   };
 

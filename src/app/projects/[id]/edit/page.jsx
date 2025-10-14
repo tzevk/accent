@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState, Fragment } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { fetchJSON } from '@/utils/http';
 
 const STATUS_OPTIONS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled'];
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
@@ -134,29 +135,19 @@ function EditProjectForm() {
       try {
         // Fetch companies
         try {
-          const companiesRes = await fetch('/api/companies');
-          if (companiesRes.ok) {
-            const companiesData = await companiesRes.json();
-            if (companiesData.success) setCompanies(companiesData.data || []);
-          }
+          const companiesData = await fetchJSON('/api/companies');
+          if (companiesData.success) setCompanies(companiesData.data || []);
         } catch (err) {
           console.warn('Failed to fetch companies', err);
         }
 
         // Fetch functions (disciplines)
         try {
-          const functionsRes = await fetch('/api/activity-master');
-          if (functionsRes.ok) {
-            const functionsData = await functionsRes.json();
-            if (functionsData.success) {
-              console.log('Functions loaded:', functionsData.data);
-              console.log('Number of functions:', functionsData.data?.length);
-              setFunctions(functionsData.data || []);
-            } else {
-              console.error('Functions API returned error:', functionsData.error);
-            }
-          } else {
-            console.error('Functions API error:', functionsRes.status, functionsRes.statusText);
+          const functionsData = await fetchJSON('/api/activity-master');
+          if (functionsData.success) {
+            console.log('Functions loaded:', functionsData.data);
+            console.log('Number of functions:', functionsData.data?.length);
+            setFunctions(functionsData.data || []);
           }
         } catch (err) {
           console.warn('Failed to fetch functions', err);
@@ -164,15 +155,10 @@ function EditProjectForm() {
 
         // Fetch activities
         try {
-          const activitiesRes = await fetch('/api/activity-master/activities');
-          if (activitiesRes.ok) {
-            const activitiesData = await activitiesRes.json();
-            if (activitiesData.success) {
-              console.log('Activities loaded:', activitiesData.data);
-              setActivities(activitiesData.data || []);
-            }
-          } else {
-            console.error('Activities API error:', activitiesRes.status);
+          const activitiesData = await fetchJSON('/api/activity-master/activities');
+          if (activitiesData.success) {
+            console.log('Activities loaded:', activitiesData.data);
+            setActivities(activitiesData.data || []);
           }
         } catch (err) {
           console.warn('Failed to fetch activities', err);
@@ -180,15 +166,10 @@ function EditProjectForm() {
 
         // Fetch sub-activities
         try {
-          const subActivitiesRes = await fetch('/api/activity-master/subactivities');
-          if (subActivitiesRes.ok) {
-            const subActivitiesData = await subActivitiesRes.json();
-            if (subActivitiesData.success) {
-              console.log('Sub-activities loaded:', subActivitiesData.data);
-              setSubActivities(subActivitiesData.data || []);
-            }
-          } else {
-            console.error('Sub-activities API error:', subActivitiesRes.status);
+          const subActivitiesData = await fetchJSON('/api/activity-master/subactivities');
+          if (subActivitiesData.success) {
+            console.log('Sub-activities loaded:', subActivitiesData.data);
+            setSubActivities(subActivitiesData.data || []);
           }
         } catch (err) {
           console.warn('Failed to fetch sub-activities', err);
@@ -196,15 +177,10 @@ function EditProjectForm() {
 
         // Fetch employees
         try {
-          const employeesRes = await fetch('/api/employees');
-          if (employeesRes.ok) {
-            const employeesData = await employeesRes.json();
-            if (employeesData.success) {
-              console.log('Employees loaded:', employeesData.data);
-              setEmployees(employeesData.data || []);
-            }
-          } else {
-            console.error('Employees API error:', employeesRes.status);
+          const employeesData = await fetchJSON('/api/employees');
+          if (employeesData.success) {
+            console.log('Employees loaded:', employeesData.data);
+            setEmployees(employeesData.data || []);
           }
         } catch (err) {
           console.warn('Failed to fetch employees', err);
@@ -226,11 +202,10 @@ function EditProjectForm() {
 
     const fetchProject = async () => {
       try {
-        const response = await fetch(`/api/projects/${id}`);
-        const json = await response.json();
+        const result = await fetchJSON(`/api/projects/${id}`);
         
-        if (json.success && json.data) {
-          const project = json.data;
+        if (result.success && result.data) {
+          const project = result.data;
           setForm({
             project_id: project.project_id || '',
             name: project.name || '',
@@ -304,11 +279,11 @@ function EditProjectForm() {
             }
           }
         } else {
-          setError(json.error || 'Failed to load project');
+          setError(result.error || 'Failed to load project');
         }
       } catch (error) {
         console.error('Failed to fetch project', error);
-        setError('Unable to load project');
+        setError(error?.message || 'Unable to load project');
       } finally {
         setLoading(false);
       }
@@ -460,13 +435,12 @@ function EditProjectForm() {
         project_activities_list: JSON.stringify(projectActivities)
       };
 
-      const response = await fetch(`/api/projects/${id}`, {
+      const result = await fetchJSON(`/api/projects/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      const result = await response.json();
       if (result.success) {
         router.push(`/projects/${id}`);
       } else {
@@ -474,7 +448,7 @@ function EditProjectForm() {
       }
     } catch (error) {
       console.error('Project update error', error);
-      alert('Failed to update project');
+      alert(error?.message || 'Failed to update project');
     } finally {
       setSubmitting(false);
     }

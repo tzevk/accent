@@ -123,20 +123,16 @@ export default function Dashboard() {
       setLoading(true);
       
       // Fetch leads stats
-      const leadsResponse = await fetch('/api/leads?limit=1');
-      const leadsData = await leadsResponse.json();
+  const leadsData = await fetchJSON('/api/leads?limit=1');
       
       // Fetch proposals stats
-      const proposalsResponse = await fetch('/api/proposals');
-      const proposalsData = await proposalsResponse.json();
+  const proposalsData = await fetchJSON('/api/proposals');
       
       // Fetch companies stats
-      const companiesResponse = await fetch('/api/companies');
-      const companiesData = await companiesResponse.json();
+  const companiesData = await fetchJSON('/api/companies');
       
       // Fetch projects stats
-      const projectsResponse = await fetch('/api/projects');
-      const projectsData = await projectsResponse.json();
+  const projectsData = await fetchJSON('/api/projects');
       
   if (leadsData.success && proposalsData.success && companiesData.success && projectsData.success) {
         // Calculate proposal stats
@@ -194,8 +190,7 @@ export default function Dashboard() {
         // Leads: fetch a larger page to compute counts
         let leadsArr = [];
         try {
-          const leadsAllRes = await fetch('/api/leads?limit=10000&sortBy=created_at&sortOrder=desc');
-          const leadsAll = await leadsAllRes.json();
+          const leadsAll = await fetchJSON('/api/leads?limit=10000&sortBy=created_at&sortOrder=desc');
           leadsArr = leadsAll.success ? (leadsAll.data?.leads || []) : [];
           setLeadsAll(leadsArr);
         } catch (e) {

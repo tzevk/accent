@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchJSON } from '@/utils/http';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { Poppins } from 'next/font/google';
 
@@ -54,7 +55,7 @@ export default function SignIn() {
     setError('');
 
     try {
-      const res = await fetch('/api/login', {
+      const data = await fetchJSON('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -70,8 +71,8 @@ export default function SignIn() {
         router.push(from && from !== '/signin' ? from : '/dashboard');
       }
       else setError(data?.message || 'Invalid credentials');
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (e) {
+      setError(e?.message || 'Network error. Please try again.');
     } finally {
       setLoading(false);
     }

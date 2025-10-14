@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
+import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
 import { 
   PlusIcon, 
@@ -26,8 +27,7 @@ export default function Vendors() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/vendors');
-      const result = await response.json();
+  const result = await fetchJSON('/api/vendors');
       
       if (result.success) {
         setVendors(result.data);
@@ -46,11 +46,7 @@ export default function Vendors() {
   const handleDelete = async (id, vendorName) => {
     if (window.confirm(`Are you sure you want to delete vendor "${vendorName}"?`)) {
       try {
-        const response = await fetch(`/api/vendors/${id}`, {
-          method: 'DELETE',
-        });
-
-        const result = await response.json();
+        const result = await fetchJSON(`/api/vendors/${id}`, { method: 'DELETE' });
         
         if (result.success) {
           alert('Vendor deleted successfully!');
@@ -60,7 +56,7 @@ export default function Vendors() {
         }
       } catch (error) {
         console.error('Error:', error);
-        alert('Error deleting vendor');
+        alert('Error deleting vendor: ' + error.message);
       }
     }
   };

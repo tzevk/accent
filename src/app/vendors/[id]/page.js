@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
+import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeftIcon,
@@ -27,8 +28,7 @@ export default function VendorDetails({ params }) {
     const fetchVendor = async () => {
       try {
         const vendorId = await params;
-        const response = await fetch(`/api/vendors/${vendorId.id}`);
-        const result = await response.json();
+  const result = await fetchJSON(`/api/vendors/${vendorId.id}`);
         
         if (result.success) {
           setVendor(result.data);
@@ -78,11 +78,7 @@ export default function VendorDetails({ params }) {
   const handleDelete = async () => {
     if (window.confirm(`Are you sure you want to delete vendor "${vendor.vendor_name}"?`)) {
       try {
-        const response = await fetch(`/api/vendors/${vendor.id}`, {
-          method: 'DELETE',
-        });
-
-        const result = await response.json();
+        const result = await fetchJSON(`/api/vendors/${vendor.id}`, { method: 'DELETE' });
         
         if (result.success) {
           alert('Vendor deleted successfully!');
@@ -92,7 +88,7 @@ export default function VendorDetails({ params }) {
         }
       } catch (error) {
         console.error('Error:', error);
-        alert('Error deleting vendor');
+        alert('Error deleting vendor: ' + error.message);
       }
     }
   };
