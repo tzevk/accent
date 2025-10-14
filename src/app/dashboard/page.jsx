@@ -2,7 +2,8 @@
 
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { 
   UserGroupIcon,
   DocumentTextIcon,
@@ -15,8 +16,11 @@ import {
   ArrowRightIcon,
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
-import DonutChart from '@/components/DonutChart';
-import InteractiveDonut from '@/components/InteractiveDonut';
+// const DonutChart = dynamic(() => import('@/components/DonutChart'), { ssr: false });
+const InteractiveDonut = dynamic(() => import('@/components/InteractiveDonut'), {
+  ssr: false,
+  loading: () => <div className="w-full h-64 animate-pulse rounded-lg bg-gray-100" />
+});
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
@@ -35,6 +39,7 @@ export default function Dashboard() {
   const [followupsByLead, setFollowupsByLead] = useState({});
   const [deltas, setDeltas] = useState({ leads: 0, proposals: 0, companies: 0, projects: 0 });
   const [analyticsPeriod, setAnalyticsPeriod] = useState('Weekly'); // Weekly | Monthly | Quarterly
+  const [salesMetric, setSalesMetric] = useState('count'); // 'count' | 'value'
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const fmtNum = new Intl.NumberFormat('en-IN');
@@ -46,6 +51,30 @@ export default function Dashboard() {
     activity: { followupsThisWeek: 0, followupsPrevWeek: 0 }
   });
   const [leadsAll, setLeadsAll] = useState([]);
+  // Real Sales Analytics from backend
+  const [salesData, setSalesData] = useState([]);
+  const [salesTotals, setSalesTotals] = useState({ total: 0, conversion: 0 });
+  useEffect(() => {
+    let abort = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`);
+        const json = await res.json();
+        if (!abort && json?.success) {
+          setSalesData(json.data || []);
+          setSalesTotals({ total: json.total || 0, conversion: json.conversion || 0 });
+        }
+      } catch (e) {
+        if (!abort) {
+          // Fallback to zeros on error
+          setSalesData([]);
+          setSalesTotals({ total: 0, conversion: 0 });
+        }
+      }
+    };
+    load();
+    return () => { abort = true; };
+  }, [analyticsPeriod, salesMetric]);
 
   // Compact Indian currency formatter (K, Lakh, Crore)
   const formatINRCompact = (n, withSymbol = true) => {
@@ -561,56 +590,58 @@ export default function Dashboard() {
 
           {/* Sales Analytics - Donut chart for proposal distribution */}
           {(() => {
-            const proposals = stats.proposals || { total: 0, pending: 0, approved: 0, draft: 0 };
-            const base = {
-              pending: proposals.pending || 0,
-              approved: proposals.approved || 0,
-              draft: proposals.draft || 0,
-            };
-            // Scale or reshape per period so selection is meaningful
-            const scale = analyticsPeriod === 'Weekly' ? 1 : analyticsPeriod === 'Monthly' ? 4 : 12;
-            const data = [
-              { label: 'Pending', value: Math.round(base.pending * scale), color: '#FBBF24' },
-              { label: 'Approved', value: Math.round(base.approved * scale), color: '#10B981' },
-              { label: 'Draft', value: Math.round(base.draft * scale), color: '#60A5FA' },
-            ];
-            const total = data.reduce((a, d) => a + d.value, 0);
-            const conv = total > 0 ? Math.round((data.find(d=>d.label==='Approved')?.value || 0) / total * 100) : 0;
+            const data = salesData;
+            const total = salesTotals.total;
+            const conv = salesTotals.conversion;
             return (
               <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900">Sales Analytics</h3>
-                  <select
-                    value={analyticsPeriod}
-                    onChange={(e) => setAnalyticsPeriod(e.target.value)}
-                    className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D] bg-white focus:outline-none focus:ring-2 focus:ring-purple-300"
-                  >
-                    <option value="Weekly">Weekly</option>
-                    <option value="Monthly">Monthly</option>
-                    <option value="Quarterly">Quarterly</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={analyticsPeriod}
+                      onChange={(e) => setAnalyticsPeriod(e.target.value)}
+                      className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D] bg-white focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    >
+                      <option value="Weekly">Weekly</option>
+                      <option value="Monthly">Monthly</option>
+                      <option value="Quarterly">Quarterly</option>
+                    </select>
+                    <select
+                      value={salesMetric}
+                      onChange={(e) => setSalesMetric(e.target.value)}
+                      className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D] bg-white focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    >
+                      <option value="count">Count</option>
+                      <option value="value">Value</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                <div className="relative p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                   <InteractiveDonut
-                    data={data.map(d=>({ name: d.label, value: d.value, color: d.color }))}
+                    data={data}
                     totalLabel="Proposals"
                     showLegend={false}
                     showTotalBelow={false}
+                    animationBegin={60}
+                    animationDuration={520}
+                    animationEasing="ease-out"
+                    valueFormatter={salesMetric === 'value' ? formatINRCompact : undefined}
                   />
                   <div>
                     <div className="space-y-2">
                       {data.map((d) => (
-                        <div key={d.label} className="flex items-center justify-between text-sm">
+                        <div key={d.name} className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2">
                             <span className="inline-block h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                            <span className="text-gray-800 font-medium">{d.label}</span>
+                            <span className="text-gray-800 font-medium">{d.name}</span>
                           </div>
-                          <span className="text-gray-600">{d.value}</span>
+                          <span className="text-gray-600">{salesMetric === 'value' ? formatINRCompact(d.value) : d.value}</span>
                         </div>
                       ))}
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-700">
-                      <div><span className="font-bold">{total}</span> Total</div>
+                      <div><span className="font-bold">{salesMetric === 'value' ? formatINRCompact(total) : total}</span> Total</div>
                       <div><span className="font-bold">{conv}%</span> Conversion</div>
                     </div>
                   </div>
