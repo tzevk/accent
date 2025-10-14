@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database'
+import { NextResponse } from 'next/server'
 
 
 export async function POST(req) {
@@ -9,7 +10,7 @@ export async function POST(req) {
 
 
     if (!identifier || !password) {
-      return Response.json(
+      return NextResponse.json(
         { success: false, message: 'Username/Email and password required' },
         { status: 400 }
       )
@@ -30,17 +31,28 @@ export async function POST(req) {
 
 
     if (rows.length > 0) {
-      return Response.json({ success: true, message: 'Login successful' })
+      // Minimal auth: set an httpOnly cookie to mark authenticated session
+      // Note: For production, sign this value (HMAC/JWT). This is a simple presence check.
+      const res = NextResponse.json({ success: true, message: 'Login successful' })
+      const isProd = process.env.NODE_ENV === 'production'
+      res.cookies.set('auth', '1', {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/',
+        maxAge: 60 * 60 * 8 // 8 hours
+      })
+      return res
     }
 
 
-    return Response.json(
+    return NextResponse.json(
       { success: false, message: 'Invalid credentials' },
       { status: 401 }
     )
   } catch (error) {
     console.error('Login error:', error)
-    return Response.json(
+    return NextResponse.json(
       { success: false, message: 'Server error' },
       { status: 500 }
     )

@@ -414,9 +414,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center">
-            <div className="h-10 w-10 rounded-full bg-violet-100 ring-1 ring-violet-200 flex items-center justify-center">
-              <UserGroupIcon className="h-6 w-6 text-violet-600" />
-            </div>
+            <span className="h-10 w-10 rounded-full bg-[#64126D] border border-purple-200 flex items-center justify-center text-white shadow-sm">
+              <UserGroupIcon className="h-5 w-5" />
+            </span>
             <div className="ml-4">
               <p className="text-sm font-medium text-black">Total Leads</p>
               <p className="text-2xl font-semibold text-gray-900">

@@ -1186,7 +1186,7 @@ function EditProjectForm() {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-2 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                className="px-6 py-2 text-sm rounded-md bg-gray-100 text-black hover:bg-gray-200"
               >
                 Cancel
               </button>

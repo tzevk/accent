@@ -159,7 +159,7 @@ export default function EditCompany({ params }) {
                   <ArrowLeftIcon className="h-4 w-4" />
                 </button>
                 <div>
-                  <h1 className="text-xl font-bold text-accent-primary">
+                  <h1 className="text-xl font-bold text-gray-900">
                     Edit {company.company_name}
                   </h1>
                   <p className="text-gray-600 text-sm">Update company information</p>

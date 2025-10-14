@@ -91,6 +91,21 @@ Accent CRM is a comprehensive Customer Relationship Management system built with
    
    Open [http://localhost:3000](http://localhost:3000) in your browser to view the CRM system.
 
+### Authentication and protected routes
+
+This project uses a simple cookie-based guard via Next.js Middleware to protect application routes.
+
+- On successful login (`POST /api/login`), the server sets an `auth` httpOnly cookie.
+- Middleware (`middleware.ts`) checks that cookie for all non-public paths and:
+   - Redirects unauthenticated requests to `/signin?from=...` for page routes
+   - Returns `401 Unauthorized` JSON for API routes
+- A logout endpoint `POST /api/logout` clears the cookie.
+
+Public paths allowed without authentication include `/signin`, `/_next/*`, assets like `/favicon.ico`, `/accent-logo.png`, and static uploads under `/uploads/*`.
+
+Notes:
+- This is a minimal presence-based cookie. For production, replace it with a signed cookie or JWT containing user identity/expiry and validate it in the middleware.
+- To change which routes are public, edit the `publicPaths` list in `middleware.ts`.
 ### Available Scripts
 
 - `npm run dev` - Start development server with Turbopack
