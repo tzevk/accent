@@ -15,6 +15,9 @@ import {
   ArrowRightIcon,
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
+import DonutChart from '@/components/DonutChart';
+import InteractiveDonut from '@/components/InteractiveDonut';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -501,23 +504,36 @@ export default function Dashboard() {
 
         {/* Analytics */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {[{ title: 'Project Analytics' }, { title: 'Sales Analytics' }].map((card, idx) => {
-            // Bar series depend on period
-            const weeklyA = idx === 0 ? [6, 4, 5, 3, 4, 10, 2] : [3, 5, 2, 4, 3, 8, 6];
-            const monthlyA = idx === 0 ? [12, 9, 11, 7, 10, 16, 8] : [8, 13, 7, 9, 8, 15, 12];
-            const quarterlyA = idx === 0 ? [18, 14, 19, 12, 16, 22, 15] : [12, 18, 10, 13, 12, 20, 17];
-            const series = analyticsPeriod === 'Weekly' ? weeklyA : analyticsPeriod === 'Monthly' ? monthlyA : quarterlyA;
-            const labels = analyticsPeriod === 'Weekly' ? ['M','T','W','T','F','S','S'] : ['1','2','3','4','5','6','7'];
-            // Metrics scaled by period (rough heuristic)
-            const scale = analyticsPeriod === 'Weekly' ? 1 : analyticsPeriod === 'Monthly' ? 4 : 12;
-            const income = (stats.projects.total || 0) * 44 * scale;
-            const sales = (stats.proposals.total || 0) * 3 * scale;
-            const conv = stats.proposals.total > 0 ? Math.round((stats.proposals.approved / stats.proposals.total) * 100) : 0;
-            const leadsCount = stats.leads.total_leads || 0;
+          {/* Project Analytics - interactive bar chart */}
+          {(() => {
+            const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const quarters = ['Q1','Q2','Q3','Q4'];
+
+            // Build data arrays to exact lengths per period
+            const weeklyVals = (analytics.series?.projects && analytics.series.projects.length === 7)
+              ? analytics.series.projects
+              : [6, 4, 5, 3, 4, 10, 2];
+            const monthlyVals = Array.from({ length: 12 }, (_, i) => {
+              const base = weeklyVals[i % 7] || 0;
+              return Math.max(0, Math.round(base * (0.8 + ((i % 5) * 0.1))));
+            });
+            const quarterlyVals = Array.from({ length: 4 }, (_, i) => {
+              const chunk = weeklyVals.slice(i * 2, i * 2 + 2);
+              const sum = (chunk[0] || 0) + (chunk[1] || 0);
+              return Math.max(0, Math.round(sum * 1.5));
+            });
+
+            const data = (analyticsPeriod === 'Weekly')
+              ? days.map((d, i) => ({ label: d, value: weeklyVals[i] || 0 }))
+              : (analyticsPeriod === 'Monthly')
+                ? months.map((m, i) => ({ label: m, value: monthlyVals[i] || 0 }))
+                : quarters.map((q, i) => ({ label: q, value: quarterlyVals[i] || 0 }));
+
             return (
-              <div key={idx} className="bg-white rounded-xl border border-purple-200 overflow-hidden">
+              <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">{card.title}</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Project Analytics</h3>
                   <select
                     value={analyticsPeriod}
                     onChange={(e) => setAnalyticsPeriod(e.target.value)}
@@ -528,25 +544,80 @@ export default function Dashboard() {
                     <option value="Quarterly">Quarterly</option>
                   </select>
                 </div>
-                <div className="p-6">
-                  <div className="grid grid-cols-7 gap-3 items-end h-48">
-                    {series.map((v, i) => (
-                      <div key={i} className="flex flex-col items-center">
-                        <div className="w-6 bg-[#64126D] rounded-md" style={{ height: `${v * 9}px` }}></div>
-                        <span className="text-[10px] text-gray-500 mt-2">{labels[i]}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 grid grid-cols-4 gap-4 text-sm text-gray-700">
-                    <div><span className="font-bold">{formatINRCompact(income, true)}</span> Income</div>
-                    <div><span className="font-bold">{formatINRCompact(sales, true)}</span> Sales</div>
-                    <div><span className="font-bold">{conv}%</span> Conversion Ratio</div>
-                    <div><span className="font-bold">{leadsCount}</span> Leads</div>
+                <div className="p-4" style={{ height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6B7280' }} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#6B7280' }} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
+                      <RTooltip cursor={{ fill: 'rgba(100,18,109,0.06)' }} formatter={(v) => [v, 'Projects']} labelFormatter={(l) => `${l}`} />
+                      <Bar dataKey="value" fill="#64126D" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Sales Analytics - Donut chart for proposal distribution */}
+          {(() => {
+            const proposals = stats.proposals || { total: 0, pending: 0, approved: 0, draft: 0 };
+            const base = {
+              pending: proposals.pending || 0,
+              approved: proposals.approved || 0,
+              draft: proposals.draft || 0,
+            };
+            // Scale or reshape per period so selection is meaningful
+            const scale = analyticsPeriod === 'Weekly' ? 1 : analyticsPeriod === 'Monthly' ? 4 : 12;
+            const data = [
+              { label: 'Pending', value: Math.round(base.pending * scale), color: '#FBBF24' },
+              { label: 'Approved', value: Math.round(base.approved * scale), color: '#10B981' },
+              { label: 'Draft', value: Math.round(base.draft * scale), color: '#60A5FA' },
+            ];
+            const total = data.reduce((a, d) => a + d.value, 0);
+            const conv = total > 0 ? Math.round((data.find(d=>d.label==='Approved')?.value || 0) / total * 100) : 0;
+            return (
+              <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Sales Analytics</h3>
+                  <select
+                    value={analyticsPeriod}
+                    onChange={(e) => setAnalyticsPeriod(e.target.value)}
+                    className="text-xs px-2 py-1 rounded-md border border-purple-200 text-[#64126D] bg-white focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <option value="Weekly">Weekly</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Quarterly">Quarterly</option>
+                  </select>
+                </div>
+                <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  <InteractiveDonut
+                    data={data.map(d=>({ name: d.label, value: d.value, color: d.color }))}
+                    totalLabel="Proposals"
+                    showLegend={false}
+                    showTotalBelow={false}
+                  />
+                  <div>
+                    <div className="space-y-2">
+                      {data.map((d) => (
+                        <div key={d.label} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                            <span className="text-gray-800 font-medium">{d.label}</span>
+                          </div>
+                          <span className="text-gray-600">{d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-700">
+                      <div><span className="font-bold">{total}</span> Total</div>
+                      <div><span className="font-bold">{conv}%</span> Conversion</div>
+                    </div>
                   </div>
                 </div>
               </div>
             );
-          })}
+          })()}
         </div>
 
         {/* Executive Insights: Funnel, Top Locations, Activity */}
@@ -560,12 +631,13 @@ export default function Dashboard() {
             <div className="p-6">
               {(() => {
                 const total = Object.values(analytics.funnel).reduce((a,b)=>a+b,0) || 1;
+                // Brand-aligned fills and neutral track
                 const rows = [
-                  { label: 'New', key: 'new', color: 'bg-gray-100', text: 'text-gray-700' },
-                  { label: 'Under Discussion', key: 'discussion', color: 'bg-purple-100', text: 'text-[#64126D]' },
-                  { label: 'Proposal Sent', key: 'proposal', color: 'bg-indigo-100', text: 'text-indigo-700' },
-                  { label: 'Won', key: 'won', color: 'bg-green-100', text: 'text-green-700' },
-                  { label: 'Lost', key: 'lost', color: 'bg-red-100', text: 'text-red-700' },
+                  { label: 'New', key: 'new', fill: '#9CA3AF' },            // gray-400
+                  { label: 'Under Discussion', key: 'discussion', fill: '#64126D' }, // brand purple
+                  { label: 'Proposal Sent', key: 'proposal', fill: '#6366F1' },     // indigo-500
+                  { label: 'Won', key: 'won', fill: '#10B981' },                    // emerald-500
+                  { label: 'Lost', key: 'lost', fill: '#EF4444' },                  // red-500
                 ];
                 return (
                   <div className="space-y-3">
@@ -573,13 +645,16 @@ export default function Dashboard() {
                       const v = analytics.funnel[r.key] || 0;
                       const pct = Math.round((v/total)*100);
                       return (
-                        <div key={idx} className="">
+                        <div key={idx}>
                           <div className="flex items-center justify-between text-sm mb-1">
-                            <span className="font-medium text-gray-800">{r.label}</span>
+                            <span className="font-medium text-gray-800 flex items-center gap-2">
+                              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: r.fill }} />
+                              {r.label}
+                            </span>
                             <span className="text-gray-600">{v} ({pct}%)</span>
                           </div>
                           <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                            <div className={`h-2 ${r.color}`} style={{ width: `${pct}%` }} />
+                            <div className="h-2 rounded-full" style={{ width: `${pct}%`, backgroundColor: r.fill }} />
                           </div>
                         </div>
                       );

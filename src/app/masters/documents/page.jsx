@@ -134,11 +134,11 @@ export default function DocumentMasterPage() {
                           <button type="button" onClick={() => setSelectedId(d.id)} className="text-left flex-1">
                             <p className="text-sm font-semibold text-black">{d.name} <span className="text-xs text-gray-500 ml-2">{d.doc_key}</span></p>
                             <p className="text-xs text-gray-500 mt-1 line-clamp-2">{d.description || 'No description provided.'}</p>
-                            <span className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-600">Status: {d.status}</span>
+                            <span className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-[11px] text-black">Status: {d.status}</span>
                           </button>
                         </div>
                         <div className="mt-3 flex items-center gap-2 text-xs">
-                          <button type="button" onClick={() => openForm(d.id)} className="px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100">Edit</button>
+                          <button type="button" onClick={() => openForm(d.id)} className="px-3 py-1.5 rounded border border-gray-300 text-black hover:bg-gray-100">Edit</button>
                           <button type="button" onClick={() => handleDelete(d.id)} className="px-3 py-1.5 rounded border border-red-300 text-red-600 hover:bg-red-50">Delete</button>
                         </div>
                       </div>
@@ -168,7 +168,7 @@ export default function DocumentMasterPage() {
                         <textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent" />
                       </div>
                       <div className="flex justify-end gap-3">
-                        <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_DOC); }} className="px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Cancel</button>
+                        <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_DOC); }} className="px-4 py-2 text-sm rounded-md bg-gray-100 text-black hover:bg-gray-200">Cancel</button>
                         <button type="submit" className="px-5 py-2 text-sm rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors font-medium">{editingId ? 'Update' : 'Save'}</button>
                       </div>
                     </form>
@@ -178,14 +178,14 @@ export default function DocumentMasterPage() {
 
               <section className="lg:col-span-2 space-y-4">
                 {loading ? (
-                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center text-sm text-gray-500">Loading…</div>
+                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center text-sm text-gray-700">Loading…</div>
                 ) : !selectedId ? (
-                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center text-sm text-gray-500">Select a document type to view details.</div>
+                  <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8 text-center text-sm text-gray-700">Select a document type to view details.</div>
                 ) : (
                   <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-6 py-5">
                     {(() => {
                       const d = docs.find((x) => x.id === selectedId);
-                      if (!d) return <p className="text-sm text-gray-500">Document not found</p>;
+                      if (!d) return <p className="text-sm text-gray-700">Document not found</p>;
                       return (
                         <div>
                           <h3 className="text-lg font-semibold text-black">{d.name}</h3>

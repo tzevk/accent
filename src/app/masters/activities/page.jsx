@@ -396,7 +396,7 @@ export default function ActivityMasterPage() {
                           setShowDisciplineForm(false);
                           setDisciplineForm({ name: '', description: '', status: 'active' });
                         }}
-                        className="px-3 py-2 bg-gray-100 rounded-md text-xs"
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs text-black"
                       >
                         Cancel
                       </button>
@@ -429,7 +429,7 @@ export default function ActivityMasterPage() {
                           <p className="text-sm font-semibold text-black">{discipline.function_name}</p>
                           <p className="text-xs text-gray-500">{discipline.description}</p>
                         </div>
-                        <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                        <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded-full">
                           {(discipline.activities || []).length} activities
                         </span>
                       </div>
@@ -475,7 +475,7 @@ export default function ActivityMasterPage() {
                           onClick={() => setSelectedActivityId(activity.id)}
                         >
                           <p className="text-sm font-semibold text-black">{activity.activity_name}</p>
-                          <span className="text-xs bg-gray-100 px-2 py-1 rounded-full inline-block mt-1">
+                          <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded-full inline-block mt-1">
                             {(activity.subActivities || []).length} sub-activities
                           </span>
                         </div>
@@ -524,7 +524,7 @@ export default function ActivityMasterPage() {
                           setEditingActivityId(null);
                           setActivityForm({ activity_name: '' });
                         }}
-                        className="px-4 py-2 bg-gray-100 rounded-md text-sm"
+                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm text-black"
                       >
                         Cancel
                       </button>
@@ -638,7 +638,7 @@ export default function ActivityMasterPage() {
                       <button
                         type="button"
                         onClick={() => setShowSubActivityForm(false)}
-                        className="px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700"
+                        className="px-4 py-2 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-black"
                       >
                         Cancel
                       </button>

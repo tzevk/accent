@@ -283,7 +283,7 @@ export default function ProposalPage() {
                   <div className="text-sm font-medium text-blue-600 mb-1">
                     Proposal ID: {proposal.proposal_id ?? proposal.id}
                   </div>
-                  <h1 className="text-xl font-bold text-accent-primary">
+                  <h1 className="text-xl font-bold text-gray-900">
                     {proposal.title}
                   </h1>
                   <p className="text-gray-600 text-sm">{proposal.client}</p>

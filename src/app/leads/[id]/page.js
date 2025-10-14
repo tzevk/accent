@@ -169,7 +169,7 @@ export default function LeadDetails({ params }) {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-accent-primary">{lead.company_name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{lead.company_name}</h1>
                 <p className="text-gray-600">Lead Details</p>
               </div>
             </div>

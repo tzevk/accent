@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { 
   HomeIcon, 
@@ -27,6 +27,7 @@ const navigation = [
 // Masters moved to sidebar; removed from header
 
 export default function Navbar() {
+  const router = useRouter();
   const pathname = usePathname();
   const isSignin = pathname.startsWith('/signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -54,8 +55,13 @@ export default function Navbar() {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  const handleSignOut = () => {
-    window.location.href = '/signin';
+  const handleSignOut = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+    setIsProfileMenuOpen(false);
+    setIsMobileMenuOpen(false);
+    router.push('/signin');
   };
 
   if (isSignin) return null;

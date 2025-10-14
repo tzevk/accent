@@ -218,7 +218,7 @@ export default function EditVendor({ params }) {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-accent-primary">Edit Vendor</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Edit Vendor</h1>
                 <p className="text-gray-600">{vendor.vendor_name}</p>
               </div>
             </div>

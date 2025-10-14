@@ -118,37 +118,48 @@ export default function NewVendor() {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-accent-primary">Add New Vendor</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Add New Vendor</h1>
                 <p className="text-gray-600">Create a new vendor record</p>
               </div>
             </div>
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="bg-accent-primary text-white px-6 py-2 rounded-md hover:bg-accent-primary/90 flex items-center space-x-2 disabled:opacity-50"
-            >
-              <CheckIcon className="h-5 w-5" />
-              <span>{saving ? 'Saving...' : 'Save Vendor'}</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-6 py-2 rounded-md bg-gray-100 text-black hover:bg-gray-200 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                className="px-6 py-2 rounded-md flex items-center space-x-2 font-medium text-white bg-gradient-to-r from-[#64126D] to-[#86288F] shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckIcon className="h-5 w-5" />
+                <span>{saving ? 'Saving...' : 'Save Vendor'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Tabs */}
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="-mb-px flex space-x-8 overflow-x-auto">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === tab.id
-                      ? 'border-accent-primary text-accent-primary'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {tab.name}
-                </button>
-              ))}
-            </nav>
+          <div className="mb-6">
+            <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+              <nav className="flex min-w-full overflow-x-auto" aria-label="Tabs">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 whitespace-nowrap py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
+                      activeTab === tab.id
+                        ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {tab.name}
+                  </button>
+                ))}
+              </nav>
+            </div>
           </div>
 
           {/* Content */}

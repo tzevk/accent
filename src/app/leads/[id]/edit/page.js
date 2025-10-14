@@ -232,7 +232,7 @@ export default function EditLead({ params }) {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-accent-primary">Edit Lead</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Edit Lead</h1>
                 <p className="text-gray-600">{lead.company_name}</p>
               </div>
             </div>

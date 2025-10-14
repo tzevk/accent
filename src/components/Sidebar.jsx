@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   PlusIcon,
@@ -18,6 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
+  const router = useRouter();
   const pathname = usePathname();
   const isSignin = pathname.startsWith('/signin');
   const [mounted, setMounted] = useState(false);
@@ -47,7 +48,7 @@ export default function Sidebar() {
       title={label}
     >
       <Icon className={`h-5 w-5 ${active ? 'text-white' : 'text-[#64126D]'}`} />
-      <span className="ml-3 hidden sidebar-open:inline text-gray-900 group-hover/nav-row:text-inherit">
+      <span className={`ml-3 hidden sidebar-open:inline ${active ? 'text-white' : 'text-gray-900'} group-hover/nav-row:text-inherit`}>
         {label}
       </span>
       {badge ? (
@@ -121,8 +122,28 @@ export default function Sidebar() {
               </span>
             </button>
           </div>
+          {/* Logout button */}
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="group/nav-row w-full flex items-center h-11 rounded-xl px-3 text-sm font-medium text-[#64126D] hover:bg-purple-50"
+              title="Sign out"
+            >
+              {/* Reuse an icon for now */}
+              <Cog6ToothIcon className="h-5 w-5 text-[#64126D]" />
+              <span className="ml-3 hidden sidebar-open:inline text-gray-900">Sign out</span>
+            </button>
+          </div>
         </div>
       </div>
     </aside>
   );
+  async function handleLogout() {
+    try {
+      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+    router.push('/signin');
+  }
 }
+

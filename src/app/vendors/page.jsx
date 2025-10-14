@@ -100,7 +100,7 @@ export default function Vendors() {
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-accent-primary">Vendor Master</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Vendor Master</h1>
               <p className="text-gray-600">Manage suppliers, subcontractors, and service providers</p>
             </div>
             <button
@@ -118,9 +118,9 @@ export default function Vendors() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Total Vendors</p>
-                  <p className="text-2xl font-bold text-accent-primary">{vendors.length}</p>
+                  <p className="text-2xl font-bold text-gray-900">{vendors.length}</p>
                 </div>
-                <BuildingOfficeIcon className="h-10 w-10 text-accent-primary opacity-20" />
+                <BuildingOfficeIcon className="h-10 w-10 text-gray-900 opacity-10" />
               </div>
             </div>
             <div className="bg-white p-4 rounded-lg border border-gray-200">

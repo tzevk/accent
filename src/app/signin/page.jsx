@@ -57,12 +57,18 @@ export default function SignIn() {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ username: email, email, password }),
       });
 
       const data = await res.json();
 
-      if (data?.success) router.push('/dashboard');
+      if (data?.success) {
+        // If redirected here from a protected page, go back there
+        const params = new URLSearchParams(window.location.search);
+        const from = params.get('from');
+        router.push(from && from !== '/signin' ? from : '/dashboard');
+      }
       else setError(data?.message || 'Invalid credentials');
     } catch {
       setError('Network error. Please try again.');
