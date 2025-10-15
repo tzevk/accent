@@ -40,7 +40,7 @@ export default function Dashboard() {
   const [followupsByLead, setFollowupsByLead] = useState({});
   const [deltas, setDeltas] = useState({ leads: 0, proposals: 0, companies: 0, projects: 0 });
   const [analyticsPeriod, setAnalyticsPeriod] = useState('Weekly'); // Weekly | Monthly | Quarterly
-  const [salesMetric, setSalesMetric] = useState('count'); // 'count' | 'value'
+  const [salesMetric, setSalesMetric] = useState('value'); // 'count' | 'value'
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const fmtNum = new Intl.NumberFormat('en-IN');
@@ -55,19 +55,54 @@ export default function Dashboard() {
   // Real Sales Analytics from backend
   const [salesData, setSalesData] = useState([]);
   const [salesTotals, setSalesTotals] = useState({ total: 0, conversion: 0 });
+  const [projectSeries, setProjectSeries] = useState([]); // {label, value}[] for bar chart
   useEffect(() => {
+    // Load project analytics: series for counts and breakdown/status for income when metric=value
     let abort = false;
     const load = async () => {
       try {
-        const res = await fetch(`/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`);
+        const projUrl = `/api/analytics/projects?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`;
+        const res = await fetch(projUrl);
         const json = await res.json();
         if (!abort && json?.success) {
-          setSalesData(json.data || []);
-          setSalesTotals({ total: json.total || 0, conversion: json.conversion || 0 });
+          // Update bar series with project counts for the period
+          setProjectSeries(Array.isArray(json.series) ? json.series : []);
+
+          const breakdown = Array.isArray(json.breakdownByStatus) ? json.breakdownByStatus : [];
+          const hasNonZero = breakdown.some(d => (Number(d.value) || 0) > 0);
+          if (hasNonZero) {
+            const total = breakdown.reduce((a, b) => a + (Number(b.value) || 0), 0);
+            const completed = breakdown.find(d => String(d.name).toLowerCase().includes('completed'));
+            const conversion = total > 0 ? Math.round(((Number(completed?.value) || 0) / total) * 100) : 0;
+            setSalesData(breakdown);
+            setSalesTotals({ total, conversion });
+            return; // done
+          }
+        }
+
+        // Fallback to proposals analytics (legacy sales) if project data is unavailable/zero
+        try {
+          const propUrl = `/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`;
+          const pres = await fetch(propUrl);
+          const pjson = await pres.json();
+          if (!abort && pjson?.success) {
+            const pdata = Array.isArray(pjson.data) ? pjson.data : [];
+            const hasNonZeroP = pdata.some(d => (Number(d.value) || 0) > 0);
+            if (hasNonZeroP) {
+              setSalesData(pdata);
+              setSalesTotals({ total: Number(pjson.total || 0), conversion: Number(pjson.conversion || 0) });
+              return;
+            }
+          }
+        } catch {}
+
+        if (!abort) {
+          setSalesData([]);
+          setSalesTotals({ total: 0, conversion: 0 });
         }
       } catch (e) {
         if (!abort) {
-          // Fallback to zeros on error
+          setProjectSeries([]);
           setSalesData([]);
           setSalesTotals({ total: 0, conversion: 0 });
         }
@@ -535,25 +570,10 @@ export default function Dashboard() {
             const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             const quarters = ['Q1','Q2','Q3','Q4'];
 
-            // Build data arrays to exact lengths per period
-            const weeklyVals = (analytics.series?.projects && analytics.series.projects.length === 7)
-              ? analytics.series.projects
-              : [6, 4, 5, 3, 4, 10, 2];
-            const monthlyVals = Array.from({ length: 12 }, (_, i) => {
-              const base = weeklyVals[i % 7] || 0;
-              return Math.max(0, Math.round(base * (0.8 + ((i % 5) * 0.1))));
-            });
-            const quarterlyVals = Array.from({ length: 4 }, (_, i) => {
-              const chunk = weeklyVals.slice(i * 2, i * 2 + 2);
-              const sum = (chunk[0] || 0) + (chunk[1] || 0);
-              return Math.max(0, Math.round(sum * 1.5));
-            });
-
-            const data = (analyticsPeriod === 'Weekly')
-              ? days.map((d, i) => ({ label: d, value: weeklyVals[i] || 0 }))
-              : (analyticsPeriod === 'Monthly')
-                ? months.map((m, i) => ({ label: m, value: monthlyVals[i] || 0 }))
-                : quarters.map((q, i) => ({ label: q, value: quarterlyVals[i] || 0 }));
+            // Use backend-provided series directly; fallback to zeroes sized by period labels
+            const fallbackData = (labels) => labels.map(l => ({ label: l, value: 0 }));
+            const labelSet = analyticsPeriod === 'Weekly' ? days : (analyticsPeriod === 'Monthly' ? months : quarters);
+            const data = projectSeries && projectSeries.length ? projectSeries : fallbackData(labelSet);
 
             return (
               <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
@@ -613,34 +633,53 @@ export default function Dashboard() {
                     </select>
                   </div>
                 </div>
-                <div className="relative p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                  <InteractiveDonut
-                    data={data}
-                    totalLabel="Proposals"
-                    showLegend={false}
-                    showTotalBelow={false}
-                    animationBegin={60}
-                    animationDuration={520}
-                    animationEasing="ease-out"
-                    valueFormatter={salesMetric === 'value' ? formatINRCompact : undefined}
-                  />
-                  <div>
-                    <div className="space-y-2">
-                      {data.map((d) => (
-                        <div key={d.name} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: d.color }} />
-                            <span className="text-gray-800 font-medium">{d.name}</span>
-                          </div>
-                          <span className="text-gray-600">{salesMetric === 'value' ? formatINRCompact(d.value) : d.value}</span>
+                <div className="relative p-6">
+                  {(!data || data.length === 0 || data.every(d => (Number(d.value) || 0) === 0)) ? (
+                    <div className="h-64 flex flex-col items-center justify-center text-center text-gray-600">
+                      <div className="text-sm">No {salesMetric === 'value' ? 'income' : 'project'} data for the selected period.</div>
+                      <div className="text-xs mt-2">{salesMetric === 'value' ? 'Add budget to projects or switch to count' : 'Try a different period'}.</div>
+                      <div className="mt-3">
+                        {salesMetric === 'value' && (
+                          <button
+                            onClick={() => setSalesMetric('count')}
+                            className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-purple-50 text-[#64126D] border border-purple-200 hover:bg-purple-100"
+                          >
+                            View Counts
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                      <InteractiveDonut
+                        data={data}
+                        totalLabel={salesMetric === 'value' ? 'Income' : 'Projects'}
+                        showLegend={false}
+                        showTotalBelow={false}
+                        animationBegin={60}
+                        animationDuration={520}
+                        animationEasing="ease-out"
+                        valueFormatter={salesMetric === 'value' ? formatINRCompact : undefined}
+                      />
+                      <div>
+                        <div className="space-y-2">
+                          {data.map((d) => (
+                            <div key={d.name} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-block h-3 w-3 rounded-sm" style={{ background: d.color }} />
+                                <span className="text-gray-800 font-medium">{d.name}</span>
+                              </div>
+                              <span className="text-gray-600">{salesMetric === 'value' ? formatINRCompact(d.value) : d.value}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-700">
+                          <div><span className="font-bold">{salesMetric === 'value' ? formatINRCompact(total) : total}</span> Total</div>
+                          <div><span className="font-bold">{conv}%</span> Conversion</div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-700">
-                      <div><span className="font-bold">{salesMetric === 'value' ? formatINRCompact(total) : total}</span> Total</div>
-                      <div><span className="font-bold">{conv}%</span> Conversion</div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             );
