@@ -45,7 +45,6 @@ export default function Leads() {
     company_id: '',
     company_name: '',
     contact_name: '',
-    contact_email: '',
     inquiry_email: '',
     cc_emails: '',
     phone: '',
@@ -56,7 +55,12 @@ export default function Leads() {
     enquiry_date: new Date().toISOString().split('T')[0],
     lead_source: 'Website',
     priority: 'Medium',
-    notes: ''
+    notes: '',
+    // First follow-up fields
+    first_followup_date: '',
+    first_followup_type: 'Call',
+    first_followup_description: '',
+    first_followup_notes: ''
   });
   const fileInputRef = useRef(null);
 
@@ -186,13 +190,34 @@ export default function Leads() {
       });
       
       if (result.success) {
+        const newLeadId = result.data?.id;
+        
+        // Create first follow-up if provided
+        if (newLeadId && formData.first_followup_date && formData.first_followup_description) {
+          try {
+            await fetchJSON('/api/followups', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                lead_id: newLeadId,
+                follow_up_date: formData.first_followup_date,
+                follow_up_type: formData.first_followup_type || 'Call',
+                description: formData.first_followup_description,
+                notes: formData.first_followup_notes || null,
+                status: 'Scheduled'
+              })
+            });
+          } catch (followUpError) {
+            console.warn('Lead created but follow-up creation failed:', followUpError);
+          }
+        }
+        
         // Reset form
         setFormData({
           lead_id: '',
           company_id: '',
           company_name: '',
           contact_name: '',
-          contact_email: '',
           inquiry_email: '',
           cc_emails: '',
           phone: '',
@@ -203,7 +228,12 @@ export default function Leads() {
           enquiry_date: new Date().toISOString().split('T')[0],
           lead_source: 'Website',
           priority: 'Medium',
-          notes: ''
+          notes: '',
+          // First follow-up fields
+          first_followup_date: '',
+          first_followup_type: 'Call',
+          first_followup_description: '',
+          first_followup_notes: ''
         });
         // Switch back to list view and refresh
         setActiveTab('list');
@@ -885,258 +915,344 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
   );
 
   const renderAddLeadForm = () => (
-    <div>
-      <form onSubmit={handleFormSubmit} className="space-y-2">
-        {/* Main Form Content - Single Card */}
-        <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
-          <h3 className="text-base font-medium text-gray-900 mb-2">Add New Lead</h3>
-          
-          {/* Form Grid Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
-            {/* Lead ID */}
+    <div className="h-full">
+      <form onSubmit={handleFormSubmit} className="h-full flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 mb-6">
+          <div className="flex items-center justify-between">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Lead ID
-              </label>
-              <input
-                type="text"
-                name="lead_id"
-                value={formData.lead_id}
-                onChange={handleFormChange}
-                placeholder="e.g., 001-10-2025 (auto-generated if empty)"
-                pattern="\d{3}-\d{2}-\d{4}"
-                title="Format: 001-10-2025 (serial-month-year)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm font-mono"
-              />
-              <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year. Leave empty to auto-generate.</p>
+              <h2 className="text-2xl font-bold text-gray-900">Add New Lead</h2>
+              <p className="text-gray-600 mt-1">Create a new lead and set up initial follow-up</p>
             </div>
-            
-            {/* Company Information */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Company *
-              </label>
-              <div className="space-y-2">
-                <select
-                  name="company_id"
-                  value={formData.company_id}
-                  onChange={handleCompanyChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                >
-                  <option value="">Select a company</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.company_name}
-                    </option>
-                  ))}
-                </select>
+            <div className="text-sm text-gray-500">
+              <span className="text-red-500">*</span> Required fields
+            </div>
+          </div>
+        </div>
+
+        {/* Form Container - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-6">
+          
+          {/* Lead Information Section */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-blue-100">
+              Lead Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Lead ID */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Lead ID
+                </label>
                 <input
                   type="text"
-                  name="company_name"
-                  value={formData.company_name}
+                  name="lead_id"
+                  value={formData.lead_id}
                   onChange={handleFormChange}
-                  placeholder="Or enter new company name"
+                  placeholder="e.g., 001-10-2025 (auto-generated if empty)"
+                  pattern="\d{3}-\d{2}-\d{4}"
+                  title="Format: 001-10-2025 (serial-month-year)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year. Leave empty to auto-generate.</p>
+              </div>
+              
+              {/* Company Information */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Company *
+                </label>
+                <div className="space-y-2">
+                  <select
+                    name="company_id"
+                    value={formData.company_id}
+                    onChange={handleCompanyChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  >
+                    <option value="">Select a company</option>
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.company_name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    name="company_name"
+                    value={formData.company_name}
+                    onChange={handleFormChange}
+                    placeholder="Or enter new company name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Contact Name
+                </label>
+                <input
+                  type="text"
+                  name="contact_name"
+                  value={formData.contact_name}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Enter contact person name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Enter city"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Enter phone number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Lead Source
+                </label>
+                <input
+                  type="text"
+                  name="lead_source"
+                  value={formData.lead_source}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Enter lead source"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Email Information Section */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-green-100">
+              Email Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Inquiry Email
+                </label>
+                <input
+                  type="email"
+                  name="inquiry_email"
+                  value={formData.inquiry_email}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Email from whom inquiry was received"
+                />
+                <p className="text-xs text-gray-500 mt-1">Email ID of the person from whom the inquiry was received</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  CC Emails (2-6 emails)
+                </label>
+                <input
+                  type="text"
+                  name="cc_emails"
+                  value={formData.cc_emails}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="email1@example.com, email2@example.com, email3@example.com"
+                />
+                <p className="text-xs text-gray-500 mt-1">Enter 2-6 additional email IDs separated by commas</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Project & Lead Details Section */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-purple-100">
+              Project & Lead Details
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Priority
+                </label>
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                >
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Enquiry Type
+                </label>
+                <select
+                  name="enquiry_type"
+                  value={formData.enquiry_type}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                >
+                  <option value="Email">Email</option>
+                  <option value="Call">Call</option>
+                  <option value="Website">Website</option>
+                  <option value="Justdial">Justdial</option>
+                  <option value="Referral">Referral</option>
+                  <option value="LinkedIn">LinkedIn</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  name="enquiry_status"
+                  value={formData.enquiry_status}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                >
+                  <option value="Under Discussion">Under Discussion</option>
+                  <option value="Awaiting">Awaiting</option>
+                  <option value="Awarded">Awarded</option>
+                  <option value="Regretted">Regretted</option>
+                  <option value="Close">Close</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Enquiry Date
+                </label>
+                <input
+                  type="date"
+                  name="enquiry_date"
+                  value={formData.enquiry_date}
+                  onChange={handleFormChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
                 />
               </div>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Contact Name
-              </label>
-              <input
-                type="text"
-                name="contact_name"
-                value={formData.contact_name}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Enter contact person name"
-              />
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                City
-              </label>
-              <input
-                type="text"
-                name="city"
-                value={formData.city}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Enter city"
-              />
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Project Description
+                </label>
+                <textarea
+                  name="project_description"
+                  value={formData.project_description}
+                  onChange={handleFormChange}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Describe the project requirements"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                name="contact_email"
-                value={formData.contact_email}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Enter email address"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Inquiry Email
-              </label>
-              <input
-                type="email"
-                name="inquiry_email"
-                value={formData.inquiry_email}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Email from whom inquiry was received"
-              />
-              <p className="text-xs text-gray-500 mt-1">Email ID of the person from whom the inquiry was received</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                CC Emails (2-6 emails)
-              </label>
-              <input
-                type="text"
-                name="cc_emails"
-                value={formData.cc_emails}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="email1@example.com, email2@example.com, email3@example.com"
-              />
-              <p className="text-xs text-gray-500 mt-1">Enter 2-6 additional email IDs separated by commas</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Enter phone number"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Priority
-              </label>
-              <select
-                name="priority"
-                value={formData.priority}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              >
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Enquiry Type
-              </label>
-              <select
-                name="enquiry_type"
-                value={formData.enquiry_type}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              >
-                <option value="Email">Email</option>
-                <option value="Call">Call</option>
-                <option value="Website">Website</option>
-                <option value="Justdial">Justdial</option>
-                <option value="Referral">Referral</option>
-                <option value="LinkedIn">LinkedIn</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status
-              </label>
-              <select
-                name="enquiry_status"
-                value={formData.enquiry_status}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              >
-                <option value="Under Discussion">Under Discussion</option>
-                <option value="Awaiting">Awaiting</option>
-                <option value="Awarded">Awarded</option>
-                <option value="Regretted">Regretted</option>
-                <option value="Close">Close</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Enquiry Date
-              </label>
-              <input
-                type="date"
-                name="enquiry_date"
-                value={formData.enquiry_date}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Lead Source
-              </label>
-              <input
-                type="text"
-                name="lead_source"
-                value={formData.lead_source}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Enter lead source"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  name="notes"
+                  value={formData.notes}
+                  onChange={handleFormChange}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Add any additional notes about this lead"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Project Description - Full Width */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Project Description
-              </label>
-              <textarea
-                name="project_description"
-                value={formData.project_description}
-                onChange={handleFormChange}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Describe the project requirements"
-              />
-            </div>
+          {/* First Follow-up Section */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-orange-100">
+              First Follow-up (Optional)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Follow-up Date
+                </label>
+                <input
+                  type="date"
+                  name="first_followup_date"
+                  value={formData.first_followup_date}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleFormChange}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
-                placeholder="Add any additional notes about this lead"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Follow-up Type
+                </label>
+                <select
+                  name="first_followup_type"
+                  value={formData.first_followup_type}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                >
+                  <option value="Call">Call</option>
+                  <option value="Email">Email</option>
+                  <option value="Meeting">Meeting</option>
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Site Visit">Site Visit</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Follow-up Description
+                </label>
+                <textarea
+                  name="first_followup_description"
+                  value={formData.first_followup_description}
+                  onChange={handleFormChange}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Describe what needs to be done in this follow-up"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Follow-up Notes
+                </label>
+                <textarea
+                  name="first_followup_notes"
+                  value={formData.first_followup_notes}
+                  onChange={handleFormChange}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                  placeholder="Additional notes for this follow-up"
+                />
+              </div>
             </div>
           </div>
 
@@ -1161,6 +1277,7 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
           </div>
 
           {/* Form submission handled by both tab bar and form buttons */}
+          </div>
         </div>
       </form>
     </div>
@@ -1253,3 +1370,4 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
     </div>
   );
 }
+
