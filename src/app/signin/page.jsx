@@ -62,8 +62,6 @@ export default function SignIn() {
         body: JSON.stringify({ username: email, email, password }),
       });
 
-      const data = await res.json();
-
       if (data?.success) {
         // If redirected here from a protected page, go back there
         const params = new URLSearchParams(window.location.search);

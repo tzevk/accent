@@ -38,7 +38,8 @@ export default function Leads() {
   const [activeTab, setActiveTab] = useState('list');
   const [companies, setCompanies] = useState([]);
   const [showImport, setShowImport] = useState(false);
-  // follow-ups are managed in the Edit Lead view; keep this page focused on list/add
+  const [followUps, setFollowUps] = useState([]);
+  const [followUpsLoading, setFollowUpsLoading] = useState(false);
   const [formData, setFormData] = useState({
     lead_id: '',
     company_id: '',
@@ -138,6 +139,8 @@ export default function Leads() {
       fetchLeads();
     } else if (activeTab === 'add') {
       // nothing special for add
+    } else if (activeTab === 'followups') {
+      fetchFollowUps();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, statusFilter, cityFilter, sortBy, sortOrder, activeTab]);
@@ -149,6 +152,24 @@ export default function Leads() {
     setSortBy('enquiry_date');
     setSortOrder('desc');
     setCurrentPage(1);
+  };
+
+  const fetchFollowUps = async () => {
+    try {
+      setFollowUpsLoading(true);
+      const data = await fetchJSON('/api/followups');
+      if (data.success) {
+        setFollowUps(data.data || []);
+      } else {
+        console.error('Error fetching follow-ups:', data.error);
+        setFollowUps([]);
+      }
+    } catch (error) {
+      console.error('Error fetching follow-ups:', error);
+      setFollowUps([]);
+    } finally {
+      setFollowUpsLoading(false);
+    }
   };
 
   const handleFormSubmit = async (e) => {
@@ -762,6 +783,107 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
     </div>
   );
 
+  const renderFollowUpsList = () => (
+    <div className="space-y-6">
+      {/* Follow-ups Table */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {followUpsLoading ? (
+          <div className="p-8 text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-accent-purple"></div>
+            <p className="mt-2 text-gray-600">Loading follow-ups...</p>
+          </div>
+        ) : followUps.length === 0 ? (
+          <div className="p-8 text-center">
+            <PhoneIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No follow-ups found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Follow-ups will appear here when created from individual lead pages.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/75">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Lead ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Company & Contact
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Status & Priority
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Date & Source
+                  </th>
+                  <th className="relative px-6 py-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {followUps.map((followUp) => (
+                  <tr key={followUp.id} className="hover:bg-gray-50 odd:bg-white even:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-mono font-medium text-gray-900">
+                        {followUp.lead_id}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap max-w-sm">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {followUp.company_name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {followUp.contact_name}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="space-y-2">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          followUp.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                          followUp.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
+                          followUp.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {followUp.status}
+                        </span>
+                        <div className="text-xs font-medium text-gray-600">
+                          {followUp.follow_up_type}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {new Date(followUp.follow_up_date).toLocaleDateString()}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {followUp.description?.substring(0, 50)}...
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => router.push(`/leads/${followUp.lead_id}/edit?tab=followups&followup=${followUp.id}`)}
+                          className="text-accent-purple hover:text-accent-purple/80 p-1.5 rounded-full hover:bg-purple-50 transition-colors"
+                          title="Edit Follow-up"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const renderAddLeadForm = () => (
     <div>
       <form onSubmit={handleFormSubmit} className="space-y-2">
@@ -1085,7 +1207,17 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
             <PlusIcon className="h-5 w-5 inline mr-2" />
             Add Lead
           </button>
-          {/* Follow Ups tab removed — follow-ups are now managed in the Edit Lead view */}
+          <button
+            onClick={() => setActiveTab('followups')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+              activeTab === 'followups'
+                ? 'border-black text-black bg-gray-50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <PhoneIcon className="h-5 w-5 inline mr-2" />
+            Follow Ups
+          </button>
           
           {/* Save Button - Only show on Add Lead tab */}
           {activeTab === 'add' && (
@@ -1112,7 +1244,9 @@ Example Corp,John Smith,john@example.com,+91 9876543210,Mumbai,Website Developme
       <div className="flex-1 px-8 overflow-hidden">
         <div className="h-full overflow-y-auto bg-white rounded-b-lg">
           <div className="p-6">
-            {activeTab === 'list' ? renderLeadsList() : renderAddLeadForm()}
+            {activeTab === 'list' ? renderLeadsList() : 
+             activeTab === 'followups' ? renderFollowUpsList() : 
+             renderAddLeadForm()}
           </div>
         </div>
       </div>

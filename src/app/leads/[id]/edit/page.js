@@ -2,12 +2,19 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { 
   ArrowLeftIcon,
   CheckIcon,
-  XMarkIcon
+  XMarkIcon,
+  UserIcon,
+  PhoneIcon,
+  PencilIcon,
+  TrashIcon,
+  PlusIcon,
+  ClockIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
 
 export default function EditLead({ params }) {
@@ -15,6 +22,10 @@ export default function EditLead({ params }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState('details');
+  const [editingFollowUp, setEditingFollowUp] = useState(null);
+  const [showAddFollowUp, setShowAddFollowUp] = useState(false);
   const [formData, setFormData] = useState({
     lead_id: '',
     company_name: '',
@@ -37,7 +48,12 @@ export default function EditLead({ params }) {
   const [followUps, setFollowUps] = useState([]);
   const [followUpForm, setFollowUpForm] = useState({
     follow_up_date: new Date().toISOString().split('T')[0],
-    details: ''
+    follow_up_type: 'Call',
+    description: '',
+    status: 'Scheduled',
+    next_action: '',
+    next_follow_up_date: '',
+    notes: ''
   });
   const [addingFollowUp, setAddingFollowUp] = useState(false);
 
@@ -84,6 +100,20 @@ export default function EditLead({ params }) {
     fetchLead();
   }, [params, router]);
 
+  // Initialize tab and follow-up editing from URL parameters
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    const followupId = searchParams.get('followup');
+    
+    if (tab === 'followups') {
+      setActiveTab('followups');
+    }
+    
+    if (followupId && tab === 'followups') {
+      setEditingFollowUp(parseInt(followupId));
+    }
+  }, [searchParams]);
+
   // Fetch follow-ups for this lead
   useEffect(() => {
     if (!lead) return;
@@ -91,10 +121,38 @@ export default function EditLead({ params }) {
       try {
         const result = await fetchJSON(`/api/followups?lead_id=${lead.id}`);
         if (result.success) setFollowUps(result.data);
-  } catch { /* ignore */ }
+      } catch { /* ignore */ }
     };
     fetchFollowUps();
   }, [lead]);
+
+  // Load specific follow-up for editing
+  useEffect(() => {
+    if (!editingFollowUp) return;
+    
+    const loadFollowUp = async () => {
+      try {
+        const data = await fetchJSON(`/api/followups/${editingFollowUp}`);
+        if (data.success) {
+          const followUp = data.data;
+          setFollowUpForm({
+            follow_up_date: followUp.follow_up_date,
+            follow_up_type: followUp.follow_up_type || 'Call',
+            description: followUp.description || '',
+            status: followUp.status || 'Scheduled',
+            next_action: followUp.next_action || '',
+            next_follow_up_date: followUp.next_follow_up_date || '',
+            notes: followUp.notes || ''
+          });
+        }
+      } catch (error) {
+        console.error('Error loading follow-up:', error);
+        alert('Error loading follow-up: ' + error.message);
+      }
+    };
+
+    loadFollowUp();
+  }, [editingFollowUp]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -141,41 +199,95 @@ export default function EditLead({ params }) {
   const handleFollowUpSubmit = async (e) => {
     e.preventDefault();
     setAddingFollowUp(true);
+    
     try {
       // Basic client-side validation
-      if (!followUpForm.follow_up_date || !followUpForm.details) {
-        alert('Please provide a date and details for the follow-up.');
+      if (!followUpForm.follow_up_date || !followUpForm.description) {
+        alert('Please provide a date and description for the follow-up.');
         setAddingFollowUp(false);
         return;
       }
 
-      const result = await fetchJSON('/api/followups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lead_id: lead.id,
-          follow_up_date: followUpForm.follow_up_date,
-          follow_up_type: followUpForm.type || 'Call',
-          description: followUpForm.details,
-          status: 'Scheduled'
-        })
-      });
-      if (result.success) {
-        // Optimistically append the created follow-up to the list
-        setFollowUps(prev => [result.data, ...prev]);
-        setFollowUpForm({ follow_up_date: new Date().toISOString().split('T')[0], details: '' });
+      if (editingFollowUp) {
+        // Update existing follow-up
+        const result = await fetchJSON(`/api/followups/${editingFollowUp}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(followUpForm)
+        });
+        
+        if (result.success) {
+          // Update in local state
+          setFollowUps(prev => prev.map(f => f.id === editingFollowUp ? result.data : f));
+          setEditingFollowUp(null);
+          alert('Follow-up updated successfully!');
+        } else {
+          alert(result.error || 'Error updating follow-up');
+        }
       } else {
-        alert(result.error || 'Error adding follow-up');
+        // Create new follow-up
+        const result = await fetchJSON('/api/followups', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...followUpForm,
+            lead_id: lead.id
+          })
+        });
+        
+        if (result.success) {
+          setFollowUps(prev => [result.data, ...prev]);
+          setShowAddFollowUp(false);
+          alert('Follow-up created successfully!');
+        } else {
+          alert(result.error || 'Error adding follow-up');
+        }
       }
-    } catch {
-      alert('Error adding follow-up');
+      
+      // Reset form
+      setFollowUpForm({
+        follow_up_date: new Date().toISOString().split('T')[0],
+        follow_up_type: 'Call',
+        description: '',
+        status: 'Scheduled',
+        next_action: '',
+        next_follow_up_date: '',
+        notes: ''
+      });
+      
+    } catch (error) {
+      console.error('Error saving follow-up:', error);
+      alert('Error saving follow-up: ' + error.message);
     } finally {
       setAddingFollowUp(false);
     }
   };
 
+  const handleDeleteFollowUp = async (followUpId) => {
+    if (!confirm('Are you sure you want to delete this follow-up?')) return;
+    
+    try {
+      const result = await fetchJSON(`/api/followups/${followUpId}`, {
+        method: 'DELETE'
+      });
+      
+      if (result.success) {
+        setFollowUps(prev => prev.filter(f => f.id !== followUpId));
+        if (editingFollowUp === followUpId) {
+          setEditingFollowUp(null);
+        }
+        alert('Follow-up deleted successfully!');
+      } else {
+        alert(result.error || 'Error deleting follow-up');
+      }
+    } catch (error) {
+      console.error('Error deleting follow-up:', error);
+      alert('Error deleting follow-up: ' + error.message);
+    }
+  };
+
   const handleCancel = () => {
-    router.push(`/leads/${lead?.id || ''}`);
+    router.push('/leads');
   };
 
   if (loading) {
@@ -215,31 +327,74 @@ export default function EditLead({ params }) {
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full pl-4 pt-22">
-          {/* Header */}
-          <div className="mb-6 flex items-center justify-between pr-4">
-            <div className="flex items-center space-x-4">
+      
+      {/* Fixed header section */}
+      <div className="flex-shrink-0 pt-24 px-8 pb-4">
+        <div className="mb-6">
+          <div className="flex items-center space-x-4 mb-4">
+            <button
+              onClick={handleCancel}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-black mb-2">Edit Lead</h1>
+              <p className="text-gray-600">{lead.company_name}</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Tab Navigation - Fixed */}
+        <div className="flex border-b border-gray-200 bg-white rounded-t-lg px-6 pt-4">
               <button
-                onClick={handleCancel}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                onClick={() => setActiveTab('details')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                  activeTab === 'details'
+                    ? 'border-black text-black bg-gray-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
               >
-                <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+                <UserIcon className="h-5 w-5 inline mr-2" />
+                Lead Details
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Edit Lead</h1>
-                <p className="text-gray-600">{lead.company_name}</p>
-              </div>
+              <button
+                onClick={() => setActiveTab('followups')}
+                className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                  activeTab === 'followups'
+                    ? 'border-black text-black bg-gray-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <PhoneIcon className="h-5 w-5 inline mr-2" />
+                Follow-ups ({followUps.length})
+              </button>
             </div>
           </div>
 
-          {/* Content: Side-by-side layout */}
-          <div className="h-full overflow-y-auto pb-8 pr-4">
-            <div className="w-full max-w-6xl flex flex-col lg:flex-row gap-8">
-              {/* Edit Lead Form */}
-              <div className="flex-1 min-w-0">
-                <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6">
+
+      {/* Scrollable content area */}
+      <div className="flex-1 px-8 overflow-hidden">
+        <div className="h-full overflow-y-auto bg-white rounded-b-lg">
+          <div className="p-6">
+            {activeTab === 'details' && (
+              <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Lead ID */}
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Lead ID
+                      </label>
+                      <input
+                        type="text"
+                        name="lead_id"
+                        value={formData.lead_id}
+                        onChange={handleInputChange}
+                        className="w-full px-2 py-1.5 text-sm text-black border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                        placeholder="Enter lead ID"
+                      />
+                    </div>
+
                     {/* Company Name */}
                     <div>
                       <label className="block text-xs font-medium text-black mb-1">
@@ -494,81 +649,251 @@ export default function EditLead({ params }) {
                     </button>
                   </div>
                 </form>
-              </div>
-              {/* Follow-Ups Container */}
-              <div className="w-full lg:w-96 flex-shrink-0">
-                <div className="bg-white rounded-lg border border-gray-200 p-6 h-full flex flex-col">
-                  <h2 className="text-lg font-semibold mb-4 text-accent-primary">Follow Ups</h2>
-                  {/* Add Follow Up Form */}
-                  <form onSubmit={handleFollowUpSubmit} className="mb-6">
-                    <div className="mb-2">
-                      <label className="block text-xs font-medium text-black mb-1">Date</label>
-                      <input
-                        type="date"
-                        name="follow_up_date"
-                        value={followUpForm.follow_up_date}
-                        onChange={handleFollowUpChange}
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        required
-                      />
+                )}
+                
+                {activeTab === 'followups' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-xl font-semibold text-gray-900">Follow-ups</h2>
+                      <button
+                        onClick={() => setShowAddFollowUp(true)}
+                        className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                      >
+                        <PlusIcon className="h-4 w-4 mr-2" />
+                        Add Follow-up
+                      </button>
                     </div>
-                    <div className="mb-2">
-                      <label className="block text-xs font-medium text-black mb-1">Details</label>
-                      <textarea
-                        name="details"
-                        value={followUpForm.details}
-                        onChange={handleFollowUpChange}
-                        rows={2}
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                        placeholder="Follow-up details..."
-                        required
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={addingFollowUp}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-md transition-colors disabled:opacity-50 text-xs"
-                    >
-                      {addingFollowUp ? 'Adding...' : 'Add Follow Up'}
-                    </button>
-                  </form>
-                  {/* Follow Ups List */}
-                  <div className="flex-1 overflow-y-auto">
-                    {followUps.length === 0 ? (
-                      <div className="text-gray-500 text-sm text-center mt-8">No follow-ups yet.</div>
-                    ) : (
-                      <ol className="divide-y divide-gray-200 list-decimal list-inside">
-                        {(
-                          // Ensure newest-first sort by follow_up_date then created_at
-                          [...followUps].sort((a, b) => {
-                            const da = new Date(a.follow_up_date || a.created_at || 0).getTime();
-                            const db = new Date(b.follow_up_date || b.created_at || 0).getTime();
-                            if (db !== da) return db - da;
-                            return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-                          })
-                        ).map((fu) => {
-                          const d = fu.follow_up_date ? new Date(fu.follow_up_date) : (fu.created_at ? new Date(fu.created_at) : null);
-                          const formattedDate = d ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}` : 'N/A';
-                          return (
-                            <li key={fu.id} className="py-3">
+                    
+                    {(showAddFollowUp || editingFollowUp) && (
+                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {editingFollowUp ? 'Edit Follow-up' : 'Add New Follow-up'}
+                          </h3>
+                          <button
+                            onClick={() => {
+                              setEditingFollowUp(null);
+                              setShowAddFollowUp(false);
+                              setFollowUpForm({
+                                follow_up_date: new Date().toISOString().split('T')[0],
+                                follow_up_type: 'Call',
+                                description: '',
+                                status: 'Scheduled',
+                                next_action: '',
+                                next_follow_up_date: '',
+                                notes: ''
+                              });
+                            }}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        
+                        <form onSubmit={handleFollowUpSubmit} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Follow-up Date <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                name="follow_up_date"
+                                value={followUpForm.follow_up_date}
+                                onChange={handleFollowUpChange}
+                                required
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                              <select
+                                name="follow_up_type"
+                                value={followUpForm.follow_up_type}
+                                onChange={handleFollowUpChange}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              >
+                                <option value="Call">Call</option>
+                                <option value="Email">Email</option>
+                                <option value="Meeting">Meeting</option>
+                                <option value="WhatsApp">WhatsApp</option>
+                                <option value="Site Visit">Site Visit</option>
+                              </select>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                              <select
+                                name="status"
+                                value={followUpForm.status}
+                                onChange={handleFollowUpChange}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              >
+                                <option value="Scheduled">Scheduled</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Next Follow-up Date</label>
+                              <input
+                                type="date"
+                                name="next_follow_up_date"
+                                value={followUpForm.next_follow_up_date}
+                                onChange={handleFollowUpChange}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Description <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                              name="description"
+                              value={followUpForm.description}
+                              onChange={handleFollowUpChange}
+                              required
+                              rows={3}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="Describe the follow-up activity..."
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Next Action</label>
+                            <input
+                              type="text"
+                              name="next_action"
+                              value={followUpForm.next_action}
+                              onChange={handleFollowUpChange}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="What should be done next?"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                            <textarea
+                              name="notes"
+                              value={followUpForm.notes}
+                              onChange={handleFollowUpChange}
+                              rows={2}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="Additional notes..."
+                            />
+                          </div>
+                          
+                          <div className="flex justify-end space-x-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingFollowUp(null);
+                                setShowAddFollowUp(false);
+                              }}
+                              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={addingFollowUp}
+                              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
+                            >
+                              {addingFollowUp ? 'Saving...' : (editingFollowUp ? 'Update' : 'Create')} Follow-up
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
+                    
+                    <div className="bg-white rounded-lg border border-gray-200">
+                      {followUps.length === 0 ? (
+                        <div className="p-8 text-center">
+                          <PhoneIcon className="mx-auto h-12 w-12 text-gray-400" />
+                          <h3 className="mt-2 text-sm font-medium text-gray-900">No follow-ups yet</h3>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Create your first follow-up to track communication with this lead.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-200">
+                          {followUps.map((followUp) => (
+                            <div key={followUp.id} className="p-6">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
-                                  <div className="text-xs font-medium text-black">{formattedDate}</div>
-                                  <div className="text-xs text-gray-700 mt-1">{fu.description}</div>
+                                  <div className="flex items-center space-x-3">
+                                    <div className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                      followUp.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                                      followUp.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
+                                      followUp.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {followUp.status}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {followUp.follow_up_type}
+                                    </span>
+                                    <span className="text-sm text-gray-500">
+                                      {new Date(followUp.follow_up_date).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                  
+                                  <p className="mt-2 text-sm text-gray-700">
+                                    {followUp.description}
+                                  </p>
+                                  
+                                  {followUp.next_action && (
+                                    <div className="mt-2 flex items-center text-sm text-gray-600">
+                                      <ClockIcon className="h-4 w-4 mr-1" />
+                                      Next: {followUp.next_action}
+                                      {followUp.next_follow_up_date && (
+                                        <span className="ml-2">
+                                          ({new Date(followUp.next_follow_up_date).toLocaleDateString()})
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {followUp.notes && (
+                                    <div className="mt-2 text-sm text-gray-600">
+                                      <ChatBubbleLeftRightIcon className="h-4 w-4 inline mr-1" />
+                                      {followUp.notes}
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="flex items-center space-x-2 ml-4">
+                                  <button
+                                    onClick={() => setEditingFollowUp(followUp.id)}
+                                    className="text-purple-600 hover:text-purple-800 p-1"
+                                    title="Edit Follow-up"
+                                  >
+                                    <PencilIcon className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteFollowUp(followUp.id)}
+                                    className="text-red-600 hover:text-red-800 p-1"
+                                    title="Delete Follow-up"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </button>
                                 </div>
                               </div>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
             </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }

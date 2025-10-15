@@ -1,8 +1,9 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-export default function DashboardLayout({ children }) {
-  const auth = cookies().get('auth')?.value
+export default async function DashboardLayout({ children }) {
+  const cookieStore = await cookies()
+  const auth = cookieStore.get('auth')?.value
   if (!auth) {
     redirect('/signin?from=/dashboard')
   }

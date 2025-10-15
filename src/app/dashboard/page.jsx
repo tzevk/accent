@@ -3,6 +3,7 @@
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 import { useState, useEffect, useMemo } from 'react';
+import { fetchJSON } from '@/utils/http';
 import dynamic from 'next/dynamic';
 import { 
   UserGroupIcon,

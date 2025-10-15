@@ -329,11 +329,11 @@ export default function EmployeesPage() {
   const [importResults, setImportResults] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   // Add Employee sub-tabs (like Projects edit tabs)
-  const addSubTabOrder = ['personal','contact','work','statutory','academic','govt','bank','attendance','salary'];
+  const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
   const [addSubTab, setAddSubTab] = useState('personal');
   
   // Edit Employee sub-tabs (same structure as add)
-  const editSubTabOrder = ['personal','contact','work','statutory','academic','govt','bank','attendance','salary'];
+  const editSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
   const [editSubTab, setEditSubTab] = useState('personal');
   // Salary Master local state
   const [salaryInputs, setSalaryInputs] = useState({
@@ -450,9 +450,11 @@ export default function EmployeesPage() {
 
     const gross = resolved.basic + resolved.da + resolved.hra + resolved.conveyance + resolved.call_allowance + resolved.other_allowance + additionalEarnings;
 
-    resolved.pf = resolveComp('pf', def_pf);
-    resolved.pt = resolveComp('pt', def_pt);
-    resolved.mlwf = resolveComp('mlwf', def_mlwf);
+    // Apply statutory flags to deductions - only calculate if enabled
+    resolved.pf = formData.stat_pf ? resolveComp('pf', def_pf) : 0;
+    resolved.pt = formData.stat_pt ? resolveComp('pt', def_pt) : 0;
+    resolved.mlwf = formData.stat_mlwf ? resolveComp('mlwf', def_mlwf) : 0;
+    resolved.esic = formData.stat_esic ? 0 : 0; // ESIC calculation can be added later
     const totalDeductions = resolved.pf + resolved.pt + resolved.mlwf + additionalDeductions;
 
     const netSalary = gross - totalDeductions;
@@ -460,7 +462,8 @@ export default function EmployeesPage() {
     const monthlySalary = netSalary * payablePct;
     const hourlySalary = String(salaryType).toLowerCase() === 'hourly' && effectiveDays > 0 ? monthlySalary / (effectiveDays * 8) : 0;
     const annualSalary = monthlySalary * 12;
-    const tds = annualSalary > 500000 ? annualSalary * 0.05 : 0;
+    // Apply TDS only if stat_tds is enabled
+    const tds = formData.stat_tds && annualSalary > 500000 ? annualSalary * 0.05 : 0;
     const tdsMonthly = tds / 12;
     const finalPayable = monthlySalary - (loanActive ? loanEmi : 0) - advance - tdsMonthly;
 
@@ -491,6 +494,7 @@ export default function EmployeesPage() {
         pf: resolved.pf,
         pt: resolved.pt,
         mlwf: resolved.mlwf,
+        esic: resolved.esic,
         additional_deductions: additionalDeductions,
         total_deductions: totalDeductions,
       },
@@ -515,7 +519,14 @@ export default function EmployeesPage() {
     componentConfig,  // React will do deep comparison
     attendanceExtras.week_offs,
     attendanceExtras.pl_use,
-    attendanceExtras.pl_balance
+    attendanceExtras.pl_balance,
+    // Statutory flags that affect calculations
+    formData.stat_pf,
+    formData.stat_pt,
+    formData.stat_mlwf,
+    formData.stat_esic,
+    formData.stat_tds,
+    formData.bonus_eligible
   ]);
 
   // Fetch employees
@@ -1395,7 +1406,6 @@ export default function EmployeesPage() {
                         { key: 'personal', label: 'Personal Information' },
                         { key: 'contact', label: 'Contact Information' },
                         { key: 'work', label: 'Work Details' },
-                        { key: 'statutory', label: 'Statutory' },
                         { key: 'academic', label: 'Academic & Experience' },
                         { key: 'govt', label: 'Government IDs' },
                         { key: 'bank', label: 'Bank Details' },
@@ -1606,26 +1616,7 @@ export default function EmployeesPage() {
 
                     {/* Actions */}
                     {/* Statutory */}
-                    {addSubTab === 'statutory' && (
-                    <div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-3">Statutory</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        {[
-                          { key: 'bonus_eligible', label: 'Bonus Applicable' },
-                          { key: 'stat_pf', label: 'PF Applicable' },
-                          { key: 'stat_mlwf', label: 'MLWF Applicable' },
-                          { key: 'stat_pt', label: 'PT Applicable' },
-                          { key: 'stat_esic', label: 'ESIC Applicable' },
-                          { key: 'stat_tds', label: 'TDS Applicable' },
-                        ].map((opt) => (
-                          <label key={opt.key} className="inline-flex items-center gap-2 text-sm text-gray-700">
-                            <input type="checkbox" checked={!!formData[opt.key]} onChange={(e) => setFormData({ ...formData, [opt.key]: e.target.checked })} className="h-4 w-4 text-purple-600 border-gray-300 rounded" />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    )}
+
 
                     {/* Academic & Experience */}
                     {addSubTab === 'academic' && (
@@ -1771,26 +1762,48 @@ export default function EmployeesPage() {
                                 </div>
                               </div>
                               <div className="p-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Salary Type</label>
-                                    <select value={salaryInputs.salary_type} onChange={(e) => setSalaryInputs({ ...salaryInputs, salary_type: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
-                                      <option>Monthly</option>
-                                      <option>Hourly</option>
-                                      <option>TDS</option>
-                                    </select>
+                                <div className="space-y-6">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Salary Type</label>
+                                      <select value={salaryInputs.salary_type} onChange={(e) => setSalaryInputs({ ...salaryInputs, salary_type: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                                        <option>Monthly</option>
+                                        <option>Hourly</option>
+                                        <option>TDS</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Applicable</label>
+                                      <select value={salaryInputs.applicable || salaryInputs.salary_type} onChange={(e) => setSalaryInputs({ ...salaryInputs, applicable: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
+                                        <option>Monthly</option>
+                                        <option>Hourly</option>
+                                        <option>TDS</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Effective From <span className="text-red-500">*</span></label>
+                                      <input type="date" value={salaryInputs.effective_from} onChange={(e) => setSalaryInputs({ ...salaryInputs, effective_from: e.target.value })} required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                                    </div>
                                   </div>
+                                  
+                                  {/* Statutory Options */}
                                   <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Applicable</label>
-                                    <select value={salaryInputs.applicable || salaryInputs.salary_type} onChange={(e) => setSalaryInputs({ ...salaryInputs, applicable: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white">
-                                      <option>Monthly</option>
-                                      <option>Hourly</option>
-                                      <option>TDS</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Effective From <span className="text-red-500">*</span></label>
-                                    <input type="date" value={salaryInputs.effective_from} onChange={(e) => setSalaryInputs({ ...salaryInputs, effective_from: e.target.value })} required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                                    <h6 className="text-sm font-semibold text-gray-700 mb-3">Statutory Deductions</h6>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                      {[
+                                        { key: 'bonus_eligible', label: 'Bonus Applicable' },
+                                        { key: 'stat_pf', label: 'PF Applicable' },
+                                        { key: 'stat_mlwf', label: 'MLWF Applicable' },
+                                        { key: 'stat_pt', label: 'PT Applicable' },
+                                        { key: 'stat_esic', label: 'ESIC Applicable' },
+                                        { key: 'stat_tds', label: 'TDS Applicable' },
+                                      ].map((opt) => (
+                                        <label key={opt.key} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                                          <input type="checkbox" checked={!!formData[opt.key]} onChange={(e) => setFormData({ ...formData, [opt.key]: e.target.checked })} className="h-4 w-4 text-purple-600 border-gray-300 rounded" />
+                                          {opt.label}
+                                        </label>
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -2021,29 +2034,44 @@ export default function EmployeesPage() {
                                           <h6 className="text-sm font-semibold text-red-700">Deductions</h6>
                                         </div>
                                         <div className="space-y-1 text-sm">
-                                          <div className="flex justify-between">
-                                            <span>PF:</span>
-                                            <span className="font-medium">₹{(salaryComputed.deductions.pf || 0).toFixed(0)}</span>
-                                          </div>
-                                          <div className="flex justify-between">
-                                            <span>PT:</span>
-                                            <span className="font-medium">₹{(salaryComputed.deductions.pt || 0).toFixed(0)}</span>
-                                          </div>
-                                          <div className="flex justify-between">
-                                            <span>MLWF:</span>
-                                            <span className="font-medium">₹{(salaryComputed.deductions.mlwf || 0).toFixed(0)}</span>
-                                          </div>
+                                          {formData.stat_pf && (
+                                            <div className="flex justify-between">
+                                              <span>PF:</span>
+                                              <span className="font-medium">₹{(salaryComputed.deductions.pf || 0).toFixed(0)}</span>
+                                            </div>
+                                          )}
+                                          {formData.stat_pt && (
+                                            <div className="flex justify-between">
+                                              <span>PT:</span>
+                                              <span className="font-medium">₹{(salaryComputed.deductions.pt || 0).toFixed(0)}</span>
+                                            </div>
+                                          )}
+                                          {formData.stat_mlwf && (
+                                            <div className="flex justify-between">
+                                              <span>MLWF:</span>
+                                              <span className="font-medium">₹{(salaryComputed.deductions.mlwf || 0).toFixed(0)}</span>
+                                            </div>
+                                          )}
+                                          {formData.stat_esic && salaryComputed.deductions.esic > 0 && (
+                                            <div className="flex justify-between">
+                                              <span>ESIC:</span>
+                                              <span className="font-medium">₹{(salaryComputed.deductions.esic || 0).toFixed(0)}</span>
+                                            </div>
+                                          )}
                                           {salaryComputed.deductions.additional_deductions > 0 && (
                                             <div className="flex justify-between">
                                               <span>Additional:</span>
                                               <span className="font-medium">₹{(salaryComputed.deductions.additional_deductions || 0).toFixed(0)}</span>
                                             </div>
                                           )}
-                                          {salaryComputed.summary.tds_monthly > 0 && (
+                                          {formData.stat_tds && salaryComputed.summary.tds_monthly > 0 && (
                                             <div className="flex justify-between">
                                               <span>TDS:</span>
                                               <span className="font-medium">₹{(salaryComputed.summary.tds_monthly || 0).toFixed(0)}</span>
                                             </div>
+                                          )}
+                                          {!formData.stat_pf && !formData.stat_pt && !formData.stat_mlwf && !formData.stat_esic && !formData.stat_tds && salaryComputed.deductions.additional_deductions === 0 && (
+                                            <div className="text-xs text-gray-500 italic">No statutory deductions selected</div>
                                           )}
                                         </div>
                                       </div>
@@ -2294,7 +2322,6 @@ export default function EmployeesPage() {
                         { key: 'personal', label: 'Personal Information' },
                         { key: 'contact', label: 'Contact Information' },
                         { key: 'work', label: 'Work Details' },
-                        { key: 'statutory', label: 'Statutory' },
                         { key: 'academic', label: 'Academic & Experience' },
                         { key: 'govt', label: 'Government IDs' },
                         { key: 'bank', label: 'Bank Details' },
@@ -2497,26 +2524,7 @@ export default function EmployeesPage() {
                     )}
 
                     {/* Statutory */}
-                    {editSubTab === 'statutory' && (
-                      <div>
-                        <h4 className="text-lg font-semibold text-gray-900 mb-3">Statutory</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                          {[
-                            { key: 'bonus_eligible', label: 'Bonus Applicable' },
-                            { key: 'stat_pf', label: 'PF Applicable' },
-                            { key: 'stat_mlwf', label: 'MLWF Applicable' },
-                            { key: 'stat_pt', label: 'PT Applicable' },
-                            { key: 'stat_esic', label: 'ESIC Applicable' },
-                            { key: 'stat_tds', label: 'TDS Applicable' },
-                          ].map((opt) => (
-                            <label key={opt.key} className="inline-flex items-center gap-2 text-sm text-gray-700">
-                              <input type="checkbox" checked={!!formData[opt.key]} onChange={(e) => setFormData({ ...formData, [opt.key]: e.target.checked })} className="h-4 w-4 text-purple-600 border-gray-300 rounded" />
-                              {opt.label}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+
 
                     {/* Academic & Experience */}
                     {editSubTab === 'academic' && (
@@ -2632,34 +2640,56 @@ export default function EmployeesPage() {
                         {/* Original Salary Structure */}
                         <div>
                           <h4 className="text-lg font-semibold text-gray-900 mb-3">Basic Salary Structure</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Basic Salary</label>
-                              <input type="number" min="0" step="0.01" value={formData.basic_salary || ''} onChange={(e) => setFormData({ ...formData, basic_salary: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                          <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Basic Salary</label>
+                                <input type="number" min="0" step="0.01" value={formData.basic_salary || ''} onChange={(e) => setFormData({ ...formData, basic_salary: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">HRA</label>
+                                <input type="number" min="0" step="0.01" value={formData.hra || ''} onChange={(e) => setFormData({ ...formData, hra: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Conveyance</label>
+                                <input type="number" min="0" step="0.01" value={formData.conveyance || ''} onChange={(e) => setFormData({ ...formData, conveyance: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Medical Allowance</label>
+                                <input type="number" min="0" step="0.01" value={formData.medical_allowance || ''} onChange={(e) => setFormData({ ...formData, medical_allowance: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Special Allowance</label>
+                                <input type="number" min="0" step="0.01" value={formData.special_allowance || ''} onChange={(e) => setFormData({ ...formData, special_allowance: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Incentives</label>
+                                <input type="number" min="0" step="0.01" value={formData.incentives || ''} onChange={(e) => setFormData({ ...formData, incentives: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Deductions</label>
+                                <input type="number" min="0" step="0.01" value={formData.deductions || ''} onChange={(e) => setFormData({ ...formData, deductions: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              </div>
                             </div>
+                            
+                            {/* Statutory Options */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">HRA</label>
-                              <input type="number" min="0" step="0.01" value={formData.hra || ''} onChange={(e) => setFormData({ ...formData, hra: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Conveyance</label>
-                              <input type="number" min="0" step="0.01" value={formData.conveyance || ''} onChange={(e) => setFormData({ ...formData, conveyance: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Medical Allowance</label>
-                              <input type="number" min="0" step="0.01" value={formData.medical_allowance || ''} onChange={(e) => setFormData({ ...formData, medical_allowance: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Special Allowance</label>
-                              <input type="number" min="0" step="0.01" value={formData.special_allowance || ''} onChange={(e) => setFormData({ ...formData, special_allowance: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Incentives</label>
-                              <input type="number" min="0" step="0.01" value={formData.incentives || ''} onChange={(e) => setFormData({ ...formData, incentives: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Deductions</label>
-                              <input type="number" min="0" step="0.01" value={formData.deductions || ''} onChange={(e) => setFormData({ ...formData, deductions: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                              <h6 className="text-sm font-semibold text-gray-700 mb-3">Statutory Deductions</h6>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                {[
+                                  { key: 'bonus_eligible', label: 'Bonus Applicable' },
+                                  { key: 'stat_pf', label: 'PF Applicable' },
+                                  { key: 'stat_mlwf', label: 'MLWF Applicable' },
+                                  { key: 'stat_pt', label: 'PT Applicable' },
+                                  { key: 'stat_esic', label: 'ESIC Applicable' },
+                                  { key: 'stat_tds', label: 'TDS Applicable' },
+                                ].map((opt) => (
+                                  <label key={opt.key} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" checked={!!formData[opt.key]} onChange={(e) => setFormData({ ...formData, [opt.key]: e.target.checked })} className="h-4 w-4 text-purple-600 border-gray-300 rounded" />
+                                    {opt.label}
+                                  </label>
+                                ))}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2735,18 +2765,39 @@ export default function EmployeesPage() {
                                     </div>
                                     {salaryComputed ? (
                                       <div className="space-y-1 text-sm">
-                                        <div className="flex justify-between">
-                                          <span>PF:</span>
-                                          <span>₹{(salaryComputed.deductions.pf || 0).toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span>PT:</span>
-                                          <span>₹{(salaryComputed.deductions.pt || 0).toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span>MLWF:</span>
-                                          <span>₹{(salaryComputed.deductions.mlwf || 0).toFixed(2)}</span>
-                                        </div>
+                                        {formData.stat_pf && (
+                                          <div className="flex justify-between">
+                                            <span>PF:</span>
+                                            <span>₹{(salaryComputed.deductions.pf || 0).toFixed(2)}</span>
+                                          </div>
+                                        )}
+                                        {formData.stat_pt && (
+                                          <div className="flex justify-between">
+                                            <span>PT:</span>
+                                            <span>₹{(salaryComputed.deductions.pt || 0).toFixed(2)}</span>
+                                          </div>
+                                        )}
+                                        {formData.stat_mlwf && (
+                                          <div className="flex justify-between">
+                                            <span>MLWF:</span>
+                                            <span>₹{(salaryComputed.deductions.mlwf || 0).toFixed(2)}</span>
+                                          </div>
+                                        )}
+                                        {formData.stat_esic && salaryComputed.deductions.esic > 0 && (
+                                          <div className="flex justify-between">
+                                            <span>ESIC:</span>
+                                            <span>₹{(salaryComputed.deductions.esic || 0).toFixed(2)}</span>
+                                          </div>
+                                        )}
+                                        {formData.stat_tds && salaryComputed.summary.tds_monthly > 0 && (
+                                          <div className="flex justify-between">
+                                            <span>TDS:</span>
+                                            <span>₹{(salaryComputed.summary.tds_monthly || 0).toFixed(2)}</span>
+                                          </div>
+                                        )}
+                                        {!formData.stat_pf && !formData.stat_pt && !formData.stat_mlwf && !formData.stat_esic && !formData.stat_tds && (
+                                          <div className="text-xs text-gray-500 italic">No statutory deductions selected</div>
+                                        )}
                                         <div className="border-t pt-1 flex justify-between font-semibold text-red-700">
                                           <span>Total:</span>
                                           <span>₹{(salaryComputed.deductions.total_deductions || 0).toFixed(2)}</span>
