@@ -69,7 +69,7 @@ async function ensureEmployeesTable(connection) {
       try {
         await connection.execute(`ALTER TABLE employees ADD COLUMN ${name} ${type}`);
         existing.add(name);
-      } catch (e) {
+      } catch {
         // Ignore individual failures to avoid blocking; inserts/updates will intersect with existing columns
       }
     }

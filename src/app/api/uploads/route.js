@@ -53,7 +53,7 @@ export async function POST(request) {
           .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
           .png({ compressionLevel: 9, adaptiveFiltering: true })
           .toBuffer();
-      } catch (e) {
+      } catch {
         return Response.json({ success: false, error: 'Uploaded data is not a recognized or supported image' }, { status: 400 });
       }
       const base = safeName.replace(/\.[^.]+$/, '');
