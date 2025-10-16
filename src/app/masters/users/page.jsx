@@ -391,6 +391,15 @@ export default function EnhancedUsersMaster() {
           <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
           <p className="mt-1 text-sm text-gray-500">Get started by creating your first user.</p>
+          <div className="mt-4">
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 transition-colors shadow-sm"
+            >
+              <PlusIcon className="h-5 w-5" />
+              Create New User
+            </button>
+          </div>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -419,7 +428,7 @@ export default function EnhancedUsersMaster() {
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      <div className="h-10 w-10 bg-accent-purple text-white rounded-full flex items-center justify-center">
+                      <div className="h-10 w-10 bg-gray-900 text-white rounded-full flex items-center justify-center">
                         <span className="font-medium">
                           {user.full_name ? user.full_name.split(' ').map(n => n[0]).join('') : user.username[0].toUpperCase()}
                         </span>
@@ -487,8 +496,8 @@ export default function EnhancedUsersMaster() {
   // Render Add User Form
   const renderAddUserForm = () => (
     <div>
-      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
-        <PlusIcon className="h-6 w-6" />
+      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2 text-black">
+        <PlusIcon className="h-6 w-6 text-black" />
         <span>Create New User</span>
       </h2>
       
@@ -502,7 +511,7 @@ export default function EnhancedUsersMaster() {
             required
             value={form.employee_id}
             onChange={(e) => handleEmployeeChange(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="">Choose an employee...</option>
             {employees.filter(emp => !emp.user_id).map((emp) => (
@@ -526,7 +535,7 @@ export default function EnhancedUsersMaster() {
             type="text"
             value={form.username}
             onChange={(e) => setForm({...form, username: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
             placeholder="Enter username"
           />
         </div>
@@ -542,7 +551,7 @@ export default function EnhancedUsersMaster() {
               type={showPassword ? 'text' : 'password'}
               value={form.password}
               onChange={(e) => setForm({...form, password: e.target.value})}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:ring-2 focus:ring-black focus:border-transparent"
               placeholder="Enter password"
             />
             <button
@@ -568,7 +577,7 @@ export default function EnhancedUsersMaster() {
             type="email"
             value={form.email}
             onChange={(e) => setForm({...form, email: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
             placeholder="Enter email address"
           />
         </div>
@@ -581,7 +590,7 @@ export default function EnhancedUsersMaster() {
           <select
             value={selectedDepartment}
             onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="">All Departments</option>
             {departments.map((dept) => (
@@ -598,7 +607,7 @@ export default function EnhancedUsersMaster() {
           <select
             value={form.role_id}
             onChange={(e) => setForm({...form, role_id: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="">No role assigned</option>
             {filteredRoles.map((role) => (
@@ -621,7 +630,7 @@ export default function EnhancedUsersMaster() {
           <select
             value={form.status}
             onChange={(e) => setForm({...form, status: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -640,7 +649,7 @@ export default function EnhancedUsersMaster() {
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium shadow-sm"
+            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-900 transition-colors disabled:opacity-50 font-medium shadow-sm"
           >
             {submitting ? 'Creating...' : 'Create User'}
           </button>
@@ -652,8 +661,8 @@ export default function EnhancedUsersMaster() {
   // Render Edit User Form
   const renderEditUserForm = () => (
     <div>
-      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
-        <PencilIcon className="h-6 w-6" />
+      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2 text-black">
+        <PencilIcon className="h-6 w-6 text-black" />
         <span>Edit User: {editingUser.username}</span>
       </h2>
 
@@ -691,7 +700,7 @@ export default function EnhancedUsersMaster() {
             type="text"
             value={editForm.username}
             onChange={(e) => setEditForm({...editForm, username: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
             placeholder="Enter username"
           />
         </div>
@@ -706,7 +715,7 @@ export default function EnhancedUsersMaster() {
               type={showPassword ? 'text' : 'password'}
               value={editForm.password}
               onChange={(e) => setEditForm({...editForm, password: e.target.value})}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:ring-2 focus:ring-black focus:border-transparent"
               placeholder="Leave blank to keep current password"
             />
             <button
@@ -735,7 +744,7 @@ export default function EnhancedUsersMaster() {
             type="email"
             value={editForm.email}
             onChange={(e) => setEditForm({...editForm, email: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
             placeholder="Enter email address"
           />
         </div>
@@ -748,7 +757,7 @@ export default function EnhancedUsersMaster() {
           <select
             value={selectedDepartment}
             onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="">All Departments</option>
             {departments.map((dept) => (
@@ -765,7 +774,7 @@ export default function EnhancedUsersMaster() {
           <select
             value={editForm.role_id}
             onChange={(e) => setEditForm({...editForm, role_id: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="">No role assigned</option>
             {filteredRoles.map((role) => (
@@ -788,7 +797,7 @@ export default function EnhancedUsersMaster() {
           <select
             value={editForm.status}
             onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-accent-purple focus:border-transparent"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
           >
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -811,7 +820,7 @@ export default function EnhancedUsersMaster() {
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium shadow-sm"
+            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-900 transition-colors disabled:opacity-50 font-medium shadow-sm"
           >
             {submitting ? 'Updating...' : 'Update User'}
           </button>
@@ -833,7 +842,7 @@ export default function EnhancedUsersMaster() {
         </div>
         <button
           onClick={savePermissions}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium shadow-sm"
+          className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-900 transition-colors font-medium shadow-sm"
         >
           Save Permissions
         </button>
@@ -1235,9 +1244,18 @@ export default function EnhancedUsersMaster() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-8 pt-24 pb-8">
-            <div className="mb-6">
-              <h1 className="text-3xl font-bold text-black mb-2">User Management</h1>
-              <p className="text-gray-600">Create and manage user accounts with role-based permissions</p>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-black mb-2">User Management</h1>
+                <p className="text-gray-600">Create and manage user accounts with role-based permissions</p>
+              </div>
+              <button
+                onClick={openCreate}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 transition-colors shadow-sm"
+              >
+                <PlusIcon className="h-5 w-5" />
+                Create New User
+              </button>
             </div>
 
             {/* Tab Navigation - Fixed */}
@@ -1262,7 +1280,7 @@ export default function EnhancedUsersMaster() {
                 }`}
               >
                 <PlusIcon className="h-5 w-5 inline mr-2" />
-                Add User
+                Create New User
               </button>
               {editingUser && (
                 <button
