@@ -1,36 +1,51 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 
-// Ensure users table exists and has an employee_id column for mapping
+// Ensure users table exists and has proper structure for role-based system
 async function ensureUsersTable(db) {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id INT PRIMARY KEY AUTO_INCREMENT,
       username VARCHAR(50) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
-      email VARCHAR(255),
+      email VARCHAR(100),
       employee_id INT DEFAULT NULL,
-      role VARCHAR(50),
+      role_id INT DEFAULT NULL,
+      permissions JSON DEFAULT NULL,
+      department VARCHAR(100) DEFAULT NULL,
+      full_name VARCHAR(100) DEFAULT NULL,
+      status ENUM('active', 'inactive') DEFAULT 'active',
+      is_active BOOLEAN DEFAULT TRUE,
+      last_login TIMESTAMP NULL,
+      last_password_change TIMESTAMP NULL,
+      created_by INT DEFAULT NULL,
+      updated_by INT DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_username (username),
-      INDEX idx_employee_id (employee_id)
+      INDEX idx_employee_id (employee_id),
+      INDEX idx_role_id (role_id)
     )
   `);
-  // Ensure employee_id column exists for older schemas
-  try {
-    const [cols] = await db.execute("SHOW COLUMNS FROM users LIKE 'employee_id'");
-    if (!cols || cols.length === 0) {
-      await db.execute('ALTER TABLE users ADD COLUMN employee_id INT DEFAULT NULL');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_employee_id ON users (employee_id)');
-    }
-  } catch (err) {
-    // In case SHOW COLUMNS fails (permissions, older MySQL), ignore and proceed
-    console.warn('users table compatibility check failed:', err && err.message);
-  }
+  
+  // Ensure roles_master table exists
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS roles_master (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      role_code VARCHAR(50) UNIQUE NOT NULL,
+      role_name VARCHAR(255) NOT NULL,
+      role_hierarchy INT DEFAULT 0,
+      department VARCHAR(100),
+      permissions JSON,
+      description TEXT,
+      status ENUM('active', 'inactive') DEFAULT 'active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
 }
 
-// GET - list users with optional pagination
+// GET - list users with optional pagination and role information
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -42,32 +57,61 @@ export async function GET(request) {
     await ensureUsersTable(db);
 
     const [rows] = await db.execute(
-      `SELECT u.*, CONCAT(e.first_name, ' ', e.last_name) AS employee_name, e.employee_id as employee_code
+      `SELECT u.*, 
+              CONCAT(e.first_name, ' ', e.last_name) AS employee_name, 
+              e.employee_id as employee_code,
+              e.department as employee_department,
+              e.position as employee_position,
+              r.role_name,
+              r.role_code,
+              r.department as role_department,
+              r.role_hierarchy,
+              r.permissions as role_permissions
        FROM users u
        LEFT JOIN employees e ON u.employee_id = e.id
-       ORDER BY u.created_at DESC
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.is_active = TRUE
+       ORDER BY r.role_hierarchy DESC, u.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 
+    // Get total count for pagination
+    const [countResult] = await db.execute(
+      'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE'
+    );
+
     await db.end();
 
-    return NextResponse.json({ success: true, data: rows });
+    return NextResponse.json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total: countResult[0].total,
+        totalPages: Math.ceil(countResult[0].total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 });
   }
 }
 
-// POST - create user
+// POST - create user with role-based system
 export async function POST(request) {
   let db;
   try {
     const data = await request.json();
-    const { username, password, email, employee_id, role } = data;
+    const { username, password, email, employee_id, role_id, permissions, created_by } = data;
 
     if (!username || !password) {
       return NextResponse.json({ success: false, error: 'username and password are required' }, { status: 400 });
+    }
+
+    if (!employee_id) {
+      return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
     }
 
     db = await dbConnect();
@@ -80,25 +124,61 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'User with this username or email already exists' }, { status: 409 });
     }
 
-    // if employee_id is provided, ensure employee exists
-    if (employee_id) {
-      const [emp] = await db.execute('SELECT id FROM employees WHERE id = ? LIMIT 1', [employee_id]);
-      if (!emp || emp.length === 0) {
-        await db.end();
-        return NextResponse.json({ success: false, error: 'Linked employee not found' }, { status: 400 });
-      }
+    // Ensure employee exists and get employee details
+    const [emp] = await db.execute('SELECT id, first_name, last_name, email as emp_email, department FROM employees WHERE id = ? LIMIT 1', [employee_id]);
+    if (!emp || emp.length === 0) {
+      await db.end();
+      return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 400 });
     }
 
-    // For now store password raw into password_hash to match existing auth route (replace later with real hashing)
+    const employee = emp[0];
+    const fullName = `${employee.first_name} ${employee.last_name}`;
+    const userEmail = email || employee.emp_email;
+
+    // Validate role if provided
+    let roleData = null;
+    if (role_id) {
+      const [role] = await db.execute('SELECT * FROM roles_master WHERE id = ? AND status = "active" LIMIT 1', [role_id]);
+      if (!role || role.length === 0) {
+        await db.end();
+        return NextResponse.json({ success: false, error: 'Invalid role selected' }, { status: 400 });
+      }
+      roleData = role[0];
+    }
+
+    // Create the user
     const [result] = await db.execute(
-      'INSERT INTO users (username, password_hash, email, employee_id, role) VALUES (?, ?, ?, ?, ?)',
-      [username, password, email || null, employee_id || null, role || null]
+      `INSERT INTO users (username, password_hash, email, employee_id, role_id, permissions, department, full_name, created_by) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        username, 
+        password, 
+        userEmail, 
+        employee_id, 
+        role_id || null, 
+        permissions ? JSON.stringify(permissions) : null,
+        roleData ? roleData.department : employee.department,
+        fullName,
+        created_by || null
+      ]
     );
 
-    const [rows] = await db.execute('SELECT * FROM users WHERE id = ?', [result.insertId]);
+    const [rows] = await db.execute(`
+      SELECT u.*, 
+             CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+             r.role_name, r.role_code
+      FROM users u
+      LEFT JOIN employees e ON u.employee_id = e.id
+      LEFT JOIN roles_master r ON u.role_id = r.id
+      WHERE u.id = ?`, [result.insertId]);
+    
     await db.end();
 
-    return NextResponse.json({ success: true, data: rows[0], message: 'User created' }, { status: 201 });
+    return NextResponse.json({ 
+      success: true, 
+      data: rows[0], 
+      message: 'User created successfully' 
+    }, { status: 201 });
   } catch (error) {
     console.error('Error creating user:', error);
     if (db) await db.end();
