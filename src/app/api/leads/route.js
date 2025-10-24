@@ -161,8 +161,10 @@ export async function POST(request) {
       return parts.length ? parts.join(',') : null;
     }
     if (type === 'priority') {
-      const p = String(v).trim().toUpperCase();
-      return ['H', 'M', 'L'].includes(p) ? p : 'M';
+      const p = String(v).trim().toLowerCase();
+      if (p === 'h' || p.includes('high') || p.includes('urgent') || p === '1' || p === 'critical') return 'High';
+      if (p === 'l' || p.includes('low') || p === '3' || p === 'minimal') return 'Low';
+      return 'Medium';
     }
     // default: text
     return typeof v === 'string' ? v.trim() : v;

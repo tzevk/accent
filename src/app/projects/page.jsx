@@ -293,9 +293,9 @@ function ProjectsInner() {
                           className="px-2 py-2 text-sm border border-gray-300 rounded-md"
                         >
                           <option value="">All Priorities</option>
-                          <option value="HIGH">High</option>
-                          <option value="MEDIUM">Medium</option>
-                          <option value="LOW">Low</option>
+                          <option value="High">High</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Low">Low</option>
                         </select>
                       </div>
                     </div>

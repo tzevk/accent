@@ -36,7 +36,7 @@ function formatDateForMySQL(dateString) {
 
 // ✅ Helper: Normalize priority
 function normalizePriority(priorityString) {
-  if (!priorityString || priorityString.trim() === '') return 'M';
+  if (!priorityString || priorityString.trim() === '') return 'Medium';
   const priority = priorityString.toLowerCase().trim();
 
   if (
@@ -45,15 +45,15 @@ function normalizePriority(priorityString) {
     priority === '1' ||
     priority === 'critical'
   ) {
-    return 'H';
+    return 'High';
   } else if (
     priority.includes('low') ||
     priority === '3' ||
     priority === 'minimal'
   ) {
-    return 'L';
+    return 'Low';
   } else {
-    return 'M';
+    return 'Medium';
   }
 }
 
@@ -186,7 +186,7 @@ async function importLeadsFromCSV(file) {
             leadData.enquiry_status || '',
             leadData.enquiry_date || null,
             leadData.lead_source || '',
-            leadData.priority || 'M',
+            leadData.priority || 'Medium',
             leadData.notes || '',
           ]
         );
