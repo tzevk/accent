@@ -416,14 +416,28 @@ export default function Company() {
                               </div>
                             </td>
                             <td className="px-6 py-4">
-                              <div className="text-sm font-medium text-gray-900">
-                                {company.company_name}
-                              </div>
-                              {company.website && (
-                                <div className="text-sm text-blue-600">
-                                  {company.website}
+                              <div className="flex items-center">
+                                <div className="relative">
+                                  <div className="h-10 w-10 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full flex items-center justify-center">
+                                    <span className="font-medium text-sm">
+                                      {company.company_name ? company.company_name.split(' ').map(n => n[0]).join('').slice(0,2) : 'C'}
+                                    </span>
+                                  </div>
+                                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white bg-green-600 rounded-full">
+                                    {typeof company.lead_count !== 'undefined' ? company.lead_count : 0}
+                                  </span>
                                 </div>
-                              )}
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {company.company_name}
+                                  </div>
+                                  {company.website && (
+                                    <div className="text-sm text-blue-600">
+                                      {company.website}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm text-gray-900">

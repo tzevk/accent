@@ -36,7 +36,7 @@ export async function GET() {
     `);
     
     const [rows] = await db.execute(
-      `SELECT c.*, COALESCE(COUNT(f.id), 0) AS follow_up_count
+      `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
        FROM companies c
        -- leads table stores company_name (string) rather than a numeric company_id
        LEFT JOIN leads l ON l.company_name = c.company_name

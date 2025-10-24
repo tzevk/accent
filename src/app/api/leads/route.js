@@ -102,6 +102,72 @@ export async function GET(request) {
 
 // POST new lead
 export async function POST(request) {
+  // Helper: basic email validation
+  const isValidEmail = (email) => {
+    if (!email) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+  };
+
+  // Helper: format date (accepts YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY, MM/DD/YYYY)
+  const formatDateForMySQL = (dateString) => {
+    if (!dateString) return null;
+    const s = String(dateString).trim();
+    if (!s) return null;
+    // YYYY-MM-DD
+    const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+    const dmy = /^(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})$/; // DD/MM/YYYY or DD.MM.YYYY
+    const mdy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/; // MM/DD/YYYY
+    if (ymd.test(s)) return s;
+    let m;
+    if ((m = s.match(dmy))) {
+      const day = m[1].padStart(2, '0');
+      const month = m[2].padStart(2, '0');
+      const year = m[3];
+      return `${year}-${month}-${day}`;
+    }
+    if ((m = s.match(mdy))) {
+      const month = m[1].padStart(2, '0');
+      const day = m[2].padStart(2, '0');
+      const year = m[3];
+      return `${year}-${month}-${day}`;
+    }
+    return null;
+  };
+
+  // Normalize helper: return null for undefined/empty, and coerce types when requested
+  const normalize = (v, type) => {
+    if (typeof v === 'undefined' || v === null) return null;
+    if (typeof v === 'string' && v.trim() === '') return null;
+    if (type === 'int') {
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : null;
+    }
+    if (type === 'email') {
+      const s = String(v).trim();
+      return isValidEmail(s) ? s : null;
+    }
+    if (type === 'date') {
+      return formatDateForMySQL(v);
+    }
+    if (type === 'cc') {
+      // Accept array or comma-separated string; return comma-separated valid emails or null
+      if (Array.isArray(v)) {
+        const filtered = v.map(e => String(e || '').trim()).filter(e => isValidEmail(e));
+        return filtered.length ? filtered.join(',') : null;
+      }
+      const str = String(v || '').trim();
+      if (!str) return null;
+      const parts = str.split(',').map(p => p.trim()).filter(p => isValidEmail(p));
+      return parts.length ? parts.join(',') : null;
+    }
+    if (type === 'priority') {
+      const p = String(v).trim().toUpperCase();
+      return ['H', 'M', 'L'].includes(p) ? p : 'M';
+    }
+    // default: text
+    return typeof v === 'string' ? v.trim() : v;
+  };
+
   try {
     const data = await request.json();
     
@@ -175,6 +241,24 @@ export async function POST(request) {
       generatedLeadId = `${nextSerial}-${month}-${year}`;
     }
     
+    // Prepare normalized values for insert using the typed normalize helper
+    const normalizedLeadId = normalize(generatedLeadId);
+    const normalizedCompanyId = normalize(companyIdValue, 'int');
+    const normalizedCompanyName = normalize(company_name);
+    const normalizedContactName = normalize(contact_name);
+    const normalizedContactEmail = normalize(contact_email, 'email');
+    const normalizedInquiryEmail = normalize(inquiry_email, 'email');
+    const normalizedCc = normalize(cc_emails, 'cc');
+    const normalizedPhone = normalize(phone);
+    const normalizedCity = normalize(city);
+    const normalizedProject = normalize(project_description);
+    const normalizedEnquiryType = normalize(enquiry_type);
+    const normalizedEnquiryStatus = normalize(enquiry_status);
+    const normalizedEnquiryDate = normalize(enquiry_date, 'date');
+    const normalizedLeadSource = normalize(lead_source);
+    const normalizedPriority = normalize(priority, 'priority');
+    const normalizedNotes = normalize(notes);
+
     const [result] = await db.execute(`
       INSERT INTO leads (
         lead_id, company_id, company_name, contact_name, contact_email, inquiry_email, cc_emails,
@@ -182,9 +266,22 @@ export async function POST(request) {
         lead_source, priority, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      generatedLeadId, companyIdValue, company_name, contact_name, contact_email, inquiry_email, cc_emails,
-      phone, city, project_description, enquiry_type, enquiry_status, enquiry_date,
-      lead_source, priority, notes
+      normalizedLeadId,
+      normalizedCompanyId,
+      normalizedCompanyName,
+      normalizedContactName,
+      normalizedContactEmail,
+      normalizedInquiryEmail,
+      normalizedCc,
+      normalizedPhone,
+      normalizedCity,
+      normalizedProject,
+      normalizedEnquiryType,
+      normalizedEnquiryStatus,
+      normalizedEnquiryDate,
+      normalizedLeadSource,
+      normalizedPriority,
+      normalizedNotes
     ]);
     
     await db.end();
