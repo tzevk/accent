@@ -118,6 +118,14 @@ async function importLeadsFromCSV(file) {
     }
 
     const headers = lines[0].split(',').map((h) => h.trim().replace(/"/g, ''));
+    // Basic header validation: ensure company name exists
+    const lowerHeaders = headers.map(h => h.toLowerCase());
+    if (!lowerHeaders.some(h => h.includes('company'))) {
+      return Response.json(
+        { success: false, error: 'CSV must include a Company / company_name header' },
+        { status: 400 }
+      );
+    }
     const db = await dbConnect();
 
     let importedCount = 0;
@@ -128,6 +136,11 @@ async function importLeadsFromCSV(file) {
       if (!line) continue;
 
       const values = line.split(',').map((v) => v.trim().replace(/"/g, ''));
+      // Prevent mismatched columns: values length should match headers length
+      if (values.length !== headers.length) {
+        errors.push(`Row ${i + 1}: column count mismatch (expected ${headers.length} columns, got ${values.length})`);
+        continue;
+      }
       try {
         const leadData = {};
 
@@ -157,6 +170,8 @@ async function importLeadsFromCSV(file) {
             leadData.lead_source = normalizeText(value, 255);
           } else if (lowerHeader.includes('priority')) {
             leadData.priority = normalizePriority(value);
+          } else if (lowerHeader.includes('designation')) {
+            leadData.designation = normalizeText(value, 255);
           } else if (lowerHeader.includes('notes')) {
             leadData.notes = normalizeText(value, 1000);
           }
@@ -172,7 +187,7 @@ async function importLeadsFromCSV(file) {
           INSERT INTO leads (
             company_name, contact_name, contact_email, phone, city,
             project_description, enquiry_type, enquiry_status, enquiry_date,
-            lead_source, priority, notes, created_at, updated_at
+            lead_source, priority, designation, notes, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         `,
           [
@@ -187,6 +202,7 @@ async function importLeadsFromCSV(file) {
             leadData.enquiry_date || null,
             leadData.lead_source || '',
             leadData.priority || 'Medium',
+            leadData.designation || '',
             leadData.notes || '',
           ]
         );

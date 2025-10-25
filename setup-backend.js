@@ -178,6 +178,22 @@ async function runSQLScript(scriptPath, description) {
   }
 }
 
+async function runNodeScript(scriptPath, description) {
+  log(`\n📦 Running ${description} script: ${scriptPath}...`, 'blue');
+  return new Promise((resolve) => {
+    const child = spawn('node', [scriptPath], { stdio: 'inherit', shell: true });
+    child.on('close', (code) => {
+      if (code === 0) {
+        log(`✅ ${description} completed successfully`, 'green');
+        resolve(true);
+      } else {
+        log(`❌ ${description} failed with code ${code}`, 'red');
+        resolve(false);
+      }
+    });
+  });
+}
+
 async function installDependencies() {
   log('\n📦 Checking dependencies...', 'blue');
   
@@ -304,6 +320,20 @@ async function main() {
       if (!success) {
         log(`\n⚠️  Warning: Could not run ${script.description}`, 'yellow');
         log(`   Please run the SQL script manually: ${script.path}`, 'yellow');
+      }
+    }
+
+    // Step 5b: Run migration/node scripts (e.g., add designation column to leads)
+    // These are idempotent scripts located under src/utils/migrations
+    const migrations = [
+      { path: './src/utils/migrations/add-leads-designation.js', description: 'add leads designation migration' }
+    ];
+
+    for (const m of migrations) {
+      const ok = await runNodeScript(m.path, m.description);
+      if (!ok) {
+        log(`\n⚠️  Warning: Migration failed: ${m.description}`, 'yellow');
+        log(`   You can run it manually: node ${m.path}`, 'yellow');
       }
     }
     

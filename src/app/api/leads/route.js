@@ -182,6 +182,7 @@ export async function POST(request) {
       inquiry_email,
       cc_emails,
       phone,
+        designation,
       city,
       project_description,
       enquiry_type,
@@ -207,6 +208,7 @@ export async function POST(request) {
       await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_id INT');
       await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS inquiry_email VARCHAR(255)');
       await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS cc_emails TEXT');
+        await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS designation VARCHAR(255)');
     } catch (err) {
       console.warn('Columns might already exist:', err.message);
     }
@@ -252,6 +254,7 @@ export async function POST(request) {
     const normalizedInquiryEmail = normalize(inquiry_email, 'email');
     const normalizedCc = normalize(cc_emails, 'cc');
     const normalizedPhone = normalize(phone);
+      const normalizedDesignation = normalize(designation);
     const normalizedCity = normalize(city);
     const normalizedProject = normalize(project_description);
     const normalizedEnquiryType = normalize(enquiry_type);
@@ -264,9 +267,9 @@ export async function POST(request) {
     const [result] = await db.execute(`
       INSERT INTO leads (
         lead_id, company_id, company_name, contact_name, contact_email, inquiry_email, cc_emails,
-        phone, city, project_description, enquiry_type, enquiry_status, enquiry_date,
+        phone, designation, city, project_description, enquiry_type, enquiry_status, enquiry_date,
         lead_source, priority, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       normalizedLeadId,
       normalizedCompanyId,
@@ -276,6 +279,7 @@ export async function POST(request) {
       normalizedInquiryEmail,
       normalizedCc,
       normalizedPhone,
+        normalizedDesignation,
       normalizedCity,
       normalizedProject,
       normalizedEnquiryType,

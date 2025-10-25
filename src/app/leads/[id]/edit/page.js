@@ -6,15 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { 
   ArrowLeftIcon,
-  CheckIcon,
-  XMarkIcon,
   UserIcon,
   PhoneIcon,
   PencilIcon,
   TrashIcon,
   PlusIcon,
-  ClockIcon,
-  ChatBubbleLeftRightIcon
+  
 } from '@heroicons/react/24/outline';
 
 export default function EditLead({ params }) {
@@ -41,6 +38,7 @@ export default function EditLead({ params }) {
     enquiry_date: '',
     lead_source: '',
     priority: '',
+    designation: '',
     notes: ''
   });
 
@@ -81,6 +79,7 @@ export default function EditLead({ params }) {
             enquiry_date: leadData.enquiry_date ? leadData.enquiry_date.split('T')[0] : '',
             lead_source: leadData.lead_source || '',
             priority: leadData.priority || '',
+            designation: leadData.designation || '',
             notes: leadData.notes || ''
           });
         } else {
@@ -136,12 +135,12 @@ export default function EditLead({ params }) {
         if (data.success) {
           const followUp = data.data;
           setFollowUpForm({
-            follow_up_date: followUp.follow_up_date,
+            follow_up_date: followUp.follow_up_date ? followUp.follow_up_date.split('T')[0] : new Date().toISOString().split('T')[0],
             follow_up_type: followUp.follow_up_type || 'Call',
             description: followUp.description || '',
             status: followUp.status || 'Scheduled',
             next_action: followUp.next_action || '',
-            next_follow_up_date: followUp.next_follow_up_date || '',
+            next_follow_up_date: followUp.next_follow_up_date ? followUp.next_follow_up_date.split('T')[0] : '',
             notes: followUp.notes || ''
           });
         }
@@ -441,6 +440,19 @@ export default function EditLead({ params }) {
                               type="text"
                               name="contact_name"
                               value={formData.contact_name}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Designation
+                            </label>
+                            <input
+                              type="text"
+                              name="designation"
+                              value={formData.designation}
                               onChange={handleInputChange}
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm"
                             />
@@ -798,6 +810,19 @@ export default function EditLead({ params }) {
                             <option value="Completed">Completed</option>
                             <option value="Cancelled">Cancelled</option>
                           </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Next Follow-up Date
+                          </label>
+                          <input
+                            type="date"
+                            name="next_follow_up_date"
+                            value={followUpForm.next_follow_up_date}
+                            onChange={handleFollowUpChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
                         </div>
                       </div>
                       
