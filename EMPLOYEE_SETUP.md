@@ -1,4 +1,4 @@
-# Employee Management Setup Guide
+# MOVED TO archive-md/EMPLOYEE_SETUP.md
 
 ## Overview
 This guide will help you set up the employee management system for AccentCRM with CSV import functionality.

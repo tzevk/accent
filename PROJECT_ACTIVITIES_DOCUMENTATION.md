@@ -117,7 +117,9 @@ Stores activities assigned to specific projects with manhour tracking.
 ### 4. Delete Project Activity
 **Endpoint:** `DELETE /api/projects/[id]/activities?activity_record_id={uuid}`
 
-**Response:**
+## Archived Documentation
+
+This file has been archived — full contents copied to `archive-md/PROJECT_ACTIVITIES_DOCUMENTATION.md` on 2025-10-27 per request to remove Markdown files. The archive copy contains the original documentation.
 ```json
 {
   "success": true,

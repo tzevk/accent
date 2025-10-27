@@ -1,10 +1,10 @@
-# Accent CRM
+# DELETED - README
 
 [![Next.js](https://img.shields.io/badge/Built%20With-Next.js-000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![MySQL](https://img.shields.io/badge/Database-MySQL-4479A1?logo=mysql&logoColor=white)](https://mysql.com/)
 [![React](https://img.shields.io/badge/Frontend-React-61DAFB?logo=react&logoColor=black)](https://reactjs.org/)
 
-Accent CRM is a comprehensive Customer Relationship Management system built with Next.js and MySQL. It provides a complete solution for managing leads, employees, projects, proposals, vendors, and company data with a modern, responsive interface.
+This file has been archived — full contents copied to `archive-md/README.md` on 2025-10-27 per request to remove Markdown files. The archive copy contains the original documentation.
 
 ## Features
 

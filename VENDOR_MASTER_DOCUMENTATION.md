@@ -1,4 +1,4 @@
-# Vendor Master Module - Documentation
+# MOVED TO archive-md/VENDOR_MASTER_DOCUMENTATION.md
 
 ## Overview
 The Vendor Master module is a comprehensive vendor management system integrated into the AccentCRM platform. It allows you to manage suppliers, subcontractors, consultants, OEMs, and service providers with detailed information tracking across multiple categories.

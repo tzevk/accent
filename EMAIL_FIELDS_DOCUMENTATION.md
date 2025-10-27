@@ -1,9 +1,6 @@
-# Email Fields Added to Leads Table
+# MOVED TO archive-md/EMAIL_FIELDS_DOCUMENTATION.md
 
-## Overview
-Added two new email fields to the leads table to capture inquiry email information:
-1. **Inquiry Email** - Email ID of the person from whom the inquiry was received
-2. **CC Emails** - Additional email IDs (2-6 emails, comma-separated)
+This file has been archived — full contents copied to `archive-md/EMAIL_FIELDS_DOCUMENTATION.md` on 2025-10-27 per request to remove Markdown files. The archive copy contains the original documentation.
 
 ## Database Changes
 

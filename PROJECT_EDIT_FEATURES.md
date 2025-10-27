@@ -1,4 +1,4 @@
-# Project Edit Page - Comprehensive Features
+# MOVED TO archive-md/PROJECT_EDIT_FEATURES.md
 
 ## Overview
 The enhanced project edit page now includes all 7 major sections for complete project management, including a sophisticated Team Builder with activity assignments from the Activity Master.

@@ -175,12 +175,25 @@ function EditProjectForm() {
           console.warn('Failed to fetch sub-activities', err);
         }
 
-        // Fetch employees
+        // Fetch employees (request a large limit so we get all employees, not paginated)
         try {
-          const employeesData = await fetchJSON('/api/employees');
-          if (employeesData.success) {
-            console.log('Employees loaded:', employeesData.data);
-            setEmployees(employeesData.data || []);
+          const employeesData = await fetchJSON('/api/employees?limit=10000&page=1');
+          // employees API returns an object with shape { employees, departments, pagination }
+          // older/other APIs return { success: true, data: [...] } — support both shapes
+          if (employeesData) {
+            if (Array.isArray(employeesData.employees)) {
+              console.log('Employees loaded:', employeesData.employees);
+              setEmployees(employeesData.employees || []);
+            } else if (employeesData.success && Array.isArray(employeesData.data)) {
+              console.log('Employees loaded (legacy shape):', employeesData.data);
+              setEmployees(employeesData.data || []);
+            } else {
+              // Fallback: if the API returned an array directly
+              if (Array.isArray(employeesData)) {
+                console.log('Employees loaded (raw array):', employeesData);
+                setEmployees(employeesData);
+              }
+            }
           }
         } catch (err) {
           console.warn('Failed to fetch employees', err);
@@ -386,8 +399,18 @@ function EditProjectForm() {
     setTeamMembers(teamMembers.map(member => {
       if (member.id === id) {
         const updated = { ...member, [field]: value };
+        // numeric derived fields
         if (field === 'required_hours') {
           updated.manhours = parseFloat(value) || 0;
+        }
+        // when discipline changes, clear activity and sub-activity to avoid mismatches
+        if (field === 'discipline') {
+          updated.activity_id = '';
+          updated.sub_activity = '';
+        }
+        // when activity changes, clear any selected sub_activity
+        if (field === 'activity_id') {
+          updated.sub_activity = '';
         }
         return updated;
       }
@@ -924,13 +947,16 @@ function EditProjectForm() {
                         </thead>
                         <tbody>
                           {teamMembers.map((member) => {
-                            const employee = employees.find(e => e.id === parseInt(member.employee_id));
-                            const selectedActivity = projectActivities.find(pa => pa.id === parseInt(member.activity_id) && pa.type === 'activity');
-                            
-                            // Find the function/discipline for this activity
+                            const employee = employees.find(e => String(e.id) === String(member.employee_id));
+                            const selectedActivity = projectActivities.find(pa => String(pa.id) === String(member.activity_id) && pa.type === 'activity');
+
+                            // Find the function/discipline for this activity or use explicit member.discipline
                             let functionName = '—';
-                            if (selectedActivity && selectedActivity.function_id) {
-                              const func = functions.find(f => f.id === selectedActivity.function_id);
+                            if (member.discipline) {
+                              const func = functions.find(f => String(f.id) === String(member.discipline));
+                              if (func) functionName = func.function_name;
+                            } else if (selectedActivity && selectedActivity.function_id) {
+                              const func = functions.find(f => String(f.id) === String(selectedActivity.function_id));
                               if (func) functionName = func.function_name;
                             }
                             
@@ -950,28 +976,34 @@ function EditProjectForm() {
                                     ))}
                                   </select>
                                 </td>
-                                <td className="py-2 px-3">
-                                  <input
-                                    type="text"
-                                    value={functionName}
-                                    readOnly
-                                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded bg-gray-50"
-                                  />
-                                </td>
-                                <td className="py-2 px-3">
-                                  <select
-                                    value={member.activity_id}
-                                    onChange={(e) => updateTeamMember(member.id, 'activity_id', e.target.value)}
-                                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                                  >
-                                    <option value="">Select Activity</option>
-                                    {projectActivities.filter(pa => pa.type === 'activity').map((pa) => (
-                                      <option key={`${pa.id}-${pa.type}`} value={pa.id}>
-                                        {pa.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
+                                    <td className="py-2 px-3">
+                                      <select
+                                        value={member.discipline || ''}
+                                        onChange={(e) => updateTeamMember(member.id, 'discipline', e.target.value)}
+                                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                      >
+                                        <option value="">Select Discipline</option>
+                                        {functions.map((f) => (
+                                          <option key={f.id} value={f.id}>{f.function_name}</option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <select
+                                        value={member.activity_id}
+                                        onChange={(e) => updateTeamMember(member.id, 'activity_id', e.target.value)}
+                                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                      >
+                                        <option value="">Select Activity</option>
+                                        {projectActivities
+                                          .filter(pa => pa.type === 'activity' && (!member.discipline || String(pa.function_id) === String(member.discipline)))
+                                          .map((pa) => (
+                                            <option key={`${pa.id}-${pa.type}`} value={pa.id}>
+                                              {pa.name}
+                                            </option>
+                                          ))}
+                                      </select>
+                                    </td>
                                 <td className="py-2 px-3">
                                   <select
                                     value={member.sub_activity || ''}
@@ -979,11 +1011,13 @@ function EditProjectForm() {
                                     className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                   >
                                     <option value="">Select Sub-Activity</option>
-                                    {projectActivities.filter(pa => pa.type === 'subactivity' && pa.activity_id === parseInt(member.activity_id)).map((pa) => (
-                                      <option key={`${pa.id}-${pa.type}`} value={pa.id}>
-                                        {pa.name}
-                                      </option>
-                                    ))}
+                                    {projectActivities
+                                      .filter(pa => pa.type === 'subactivity' && String(pa.activity_id) === String(member.activity_id))
+                                      .map((pa) => (
+                                        <option key={`${pa.id}-${pa.type}`} value={pa.id}>
+                                          {pa.name}
+                                        </option>
+                                      ))}
                                   </select>
                                 </td>
                                 <td className="py-2 px-3">
