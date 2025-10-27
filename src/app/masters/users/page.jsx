@@ -834,9 +834,9 @@ export default function EnhancedUsersMaster() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-bold flex items-center space-x-2">
+          <h2 className="text-green-600 text-xl font-bold flex items-center space-x-2">
             <ShieldCheckIcon className="h-6 w-6" />
-            <span>Role Permissions Management</span>
+            <span className='text-black'>Role Permissions Management</span>
           </h2>
           <p className="text-gray-600 mt-1">Assign read, write, and delete permissions to organizational roles</p>
         </div>
