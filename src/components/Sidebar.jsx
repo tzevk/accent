@@ -47,8 +47,10 @@ export default function Sidebar() {
       }`}
       title={label}
     >
-      <Icon className={`h-5 w-5 ${active ? 'text-white' : 'text-[#64126D]'}`} />
-      <span className={`ml-3 hidden sidebar-open:inline ${active ? 'text-white' : 'text-gray-900'} group-hover/nav-row:text-inherit`}>
+      <Icon className={`h-5 w-5 transition-colors ${active ? 'text-white' : 'text-[#64126D] group-hover/nav-row:text-[#64126D]'}`} />
+      <span className={`ml-3 hidden sidebar-open:inline ${
+        active ? 'text-white' : 'text-gray-900 group-hover/nav-row:text-[#64126D]'
+      } group-hover/nav-row:text-inherit transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}>
         {label}
       </span>
       {badge ? (

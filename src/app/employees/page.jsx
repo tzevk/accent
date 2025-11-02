@@ -309,7 +309,10 @@ export default function EmployeesPage() {
     // Emergency and misc
     emergency_contact_name: '',
     emergency_contact_phone: '',
-    notes: ''
+    notes: '',
+    // System Role assignment (maps to roles_master.id and role_name)
+    system_role_id: '',
+    system_role_name: ''
   };
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -328,6 +331,8 @@ export default function EmployeesPage() {
   const [importFile, setImportFile] = useState(null);
   const [importResults, setImportResults] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  // Roles for System Role assignment
+  const [roles, setRoles] = useState([]);
   // Add Employee sub-tabs (like Projects edit tabs)
   const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
   const [addSubTab, setAddSubTab] = useState('personal');
@@ -569,6 +574,20 @@ export default function EmployeesPage() {
     fetchEmployees();
   }, [currentPage, searchTerm, selectedDepartment, selectedStatus]);
 
+  // Load roles for System Role assignment
+  useEffect(() => {
+    const loadRoles = async () => {
+      try {
+        const res = await fetch('/api/roles-master');
+        const json = await res.json();
+        if (res.ok && json?.success) {
+          setRoles(json.data || []);
+        }
+      } catch {}
+    };
+    loadRoles();
+  }, []);
+
   // Load latest salary snapshot when editing an employee
   useEffect(() => {
     const loadSalary = async () => {
@@ -672,6 +691,14 @@ export default function EmployeesPage() {
 
   // Prepare payload aligned with API
       const payload = { ...formData };
+      // If a System Role is selected, mirror the human-friendly role name on the employee record
+      if (formData.system_role_id) {
+        const picked = roles.find(r => String(r.id) === String(formData.system_role_id));
+        if (picked) {
+          payload.role = picked.role_name;
+          payload.system_role_name = picked.role_name;
+        }
+      }
       // Normalize enum-like fields to match DB
       if (payload.gender) {
         const g = String(payload.gender).toLowerCase();
@@ -802,6 +829,15 @@ export default function EmployeesPage() {
             }
           }
         }
+        // Apply System Role to linked user if selected
+        try {
+          const roleId = formData.system_role_id || '';
+          const employeeDbId = selectedEmployee ? selectedEmployee.id : respJson?.employeeId;
+          if (roleId && employeeDbId) {
+            await applySystemRoleToLinkedUser(employeeDbId, roleId);
+          }
+        } catch {}
+
         setSuccessMessage(selectedEmployee ? 'Employee updated successfully!' : 'Employee added successfully!');
         // Reset filters so the new record is visible
         setSearchTerm('');
@@ -878,6 +914,13 @@ export default function EmployeesPage() {
       ...defaultFormData,
       ...employee,
       ...salaryParts,
+      system_role_id: (() => {
+        try {
+          const match = roles.find(r => r.role_name === employee.role);
+          return match ? String(match.id) : '';
+        } catch { return ''; }
+      })(),
+      system_role_name: employee.role || '',
       hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '',
       joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '',
       dob: employee.dob ? employee.dob.split('T')[0] : ''
@@ -955,6 +998,26 @@ export default function EmployeesPage() {
     setActiveTab('add');
   };
 
+  // Helper: update linked user's role if a user account exists for this employee
+  const applySystemRoleToLinkedUser = async (employeeDbId, roleId) => {
+    try {
+      if (!employeeDbId || !roleId) return;
+      // Find linked user by employee id
+      const res = await fetch('/api/employees/available-for-users?include_with_users=true');
+      const json = await res.json();
+      if (!res.ok || !json?.success) return;
+      const record = (json.data || []).find(r => String(r.id) === String(employeeDbId));
+      const userId = record?.user_id;
+      if (!userId) return; // no linked user yet
+      // Update user's role_id via Users API
+      await fetch('/api/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, role_id: Number(roleId) })
+      });
+    } catch {}
+  };
+
   // Handle profile photo upload to /api/uploads
   const handleProfilePhotoChange = async (e) => {
     const file = e.target.files?.[0];
@@ -1020,7 +1083,7 @@ export default function EmployeesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 animate-fade-in">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 animate-fade-in employees-screen">
       <Navbar />
       
   <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
@@ -1243,10 +1306,10 @@ export default function EmployeesPage() {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                   employee.status === 'active' 
-                                    ? 'bg-green-100 text-green-800'
+                                    ? 'bg-green-300 text-black'
                                     : employee.status === 'inactive'
                                     ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-red-100 text-red-800'
+                                    : 'bg-red-300 text-red-800'
                                 }`}>
                                   {employee.status}
                                 </span>
@@ -1476,8 +1539,26 @@ export default function EmployeesPage() {
                           <input type="text" value={formData.username || ''} onChange={(e) => setFormData({ ...formData, username: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                          <input type="text" value={formData.role || ''} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                          <label className="block text-sm font-medium text-gray-700 mb-2">System Role</label>
+                          <select
+                            value={formData.system_role_id || ''}
+                            onChange={(e) => {
+                              const nextId = e.target.value;
+                              const picked = roles.find(r => String(r.id) === String(nextId));
+                              setFormData({
+                                ...formData,
+                                system_role_id: nextId,
+                                role: picked ? picked.role_name : '',
+                                system_role_name: picked ? picked.role_name : ''
+                              });
+                            }}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                          >
+                            <option value="">Select a role</option>
+                            {roles.map((r) => (
+                              <option key={r.id} value={r.id}>{r.role_name}</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
@@ -2310,10 +2391,30 @@ export default function EmployeesPage() {
 
               {/* Right Pane: Edit Employee form */}
               <section className="col-span-12 lg:col-span-9">
-                <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-6 lg:p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-2xl font-semibold text-gray-900">Edit Employee - {selectedEmployee.first_name} {selectedEmployee.last_name}</h3>
+                <div className="bg-white shadow-lg rounded-xl border border-gray-200 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
+                  {/* Edit Header */}
+                  <div className="px-6 lg:px-8 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-gray-50">
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="flex items-center gap-4">
+                        <Avatar src={selectedEmployee.profile_photo_url} firstName={selectedEmployee.first_name} lastName={selectedEmployee.last_name} size={56} />
+                        <div>
+                          <h3 className="text-2xl font-semibold">Editing {selectedEmployee.first_name} {selectedEmployee.last_name}</h3>
+                          <p className="text-sm mt-1">Employee ID • <span className="text-[#64126D] font-medium">{selectedEmployee.employee_id}</span></p>
+                          <p className="text-sm">{selectedEmployee.department || '—'} {selectedEmployee.position ? `• ${selectedEmployee.position}` : ''}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('list')}
+                          className="px-4 py-2 rounded-xl border border-gray-300 hover:bg-gray-50 transition-colors"
+                        >
+                          Back to List
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                  <div className="p-6 lg:p-8">
 
                   {/* Sub Tabs */}
                   <div className="border-b border-gray-200 mb-6">
@@ -2386,8 +2487,26 @@ export default function EmployeesPage() {
                             <input type="text" value={formData.username || ''} onChange={(e) => setFormData({ ...formData, username: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                            <input type="text" value={formData.role || ''} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                            <label className="block text-sm font-medium text-gray-700 mb-2">System Role</label>
+                            <select
+                              value={formData.system_role_id || ''}
+                              onChange={(e) => {
+                                const nextId = e.target.value;
+                                const picked = roles.find(r => String(r.id) === String(nextId));
+                                setFormData({
+                                  ...formData,
+                                  system_role_id: nextId,
+                                  role: picked ? picked.role_name : '',
+                                  system_role_name: picked ? picked.role_name : ''
+                                });
+                              }}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                            >
+                              <option value="">Select a role</option>
+                              {roles.map((r) => (
+                                <option key={r.id} value={r.id}>{r.role_name}</option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
@@ -2889,98 +3008,137 @@ export default function EmployeesPage() {
                     </div>
 
                   </form>
+                  </div>
                 </div>
               </section>
             </div>
           )}
 
           {activeTab === 'view' && selectedEmployee && (
-            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
-              <div className="flex items-center gap-4 mb-6">
-                <Avatar src={selectedEmployee.profile_photo_url} firstName={selectedEmployee.first_name} lastName={selectedEmployee.last_name} size={72} />
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900">Employee Details</h3>
-                  <p className="text-sm text-gray-500">{selectedEmployee.first_name} {selectedEmployee.last_name} • {selectedEmployee.employee_id}</p>
-                </div>
-              </div>
-              
-              <div className="space-y-6">
-                {/* Basic Info */}
-                <div className="bg-gray-50 p-6 rounded-xl">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white shadow-lg rounded-2xl border border-gray-200 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
+              {/* Top header */}
+              <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-gray-50">
+                <div className="flex items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <Avatar src={selectedEmployee.profile_photo_url} firstName={selectedEmployee.first_name} lastName={selectedEmployee.last_name} size={72} />
                     <div>
-                      <p className="text-sm text-gray-600">Employee ID</p>
-                      <p className="font-medium text-[#64126D]">{selectedEmployee.employee_id}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Full Name</p>
-                      <p className="font-medium">{selectedEmployee.first_name} {selectedEmployee.last_name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Email</p>
-                      <p className="font-medium">{selectedEmployee.email}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Phone</p>
-                      <p className="font-medium">{selectedEmployee.phone || '-'}</p>
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-2xl font-semibold text-gray-900">{selectedEmployee.first_name} {selectedEmployee.last_name}</h3>
+                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${
+                          selectedEmployee.status === 'active'
+                            ? 'bg-green-300 text-black'
+                            : selectedEmployee.status === 'inactive'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {selectedEmployee.status || 'active'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">Employee ID • <span className="text-[#64126D] font-medium">{selectedEmployee.employee_id}</span></p>
+                      <p className="text-sm text-gray-500">{selectedEmployee.department || '—'} {selectedEmployee.position ? `• ${selectedEmployee.position}` : ''}</p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(selectedEmployee)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#64126D] text-white hover:bg-[#5a0f62] shadow-sm transition-colors"
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('list')}
+                      className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Back to List
+                    </button>
+                  </div>
                 </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-8 space-y-8">
+                {/* Basic Info */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Basic Information</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Employee ID</p>
+                      <p className="mt-1 font-medium text-[#64126D]">{selectedEmployee.employee_id}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Full Name</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.first_name} {selectedEmployee.last_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Email</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.email || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Phone</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.phone || '—'}</p>
+                    </div>
+                  </div>
+                </section>
 
                 {/* Work Info */}
-                <div className="bg-gray-50 p-6 rounded-xl">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Work Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Work Information</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <p className="text-sm text-gray-600">Department</p>
-                      <p className="font-medium">{selectedEmployee.department || '-'}</p>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Department</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.department || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Position</p>
-                      <p className="font-medium">{selectedEmployee.position || '-'}</p>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Position</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.position || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Hire Date</p>
-                      <p className="font-medium">{formatDate(selectedEmployee.hire_date)}</p>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Hire Date</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.hire_date)}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Salary</p>
-                      <p className="font-medium">{formatCurrency(selectedEmployee.salary)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Status</p>
-                      <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
-                        selectedEmployee.status === 'active' 
-                          ? 'bg-green-100 text-green-800'
-                          : selectedEmployee.status === 'inactive'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {selectedEmployee.status}
-                      </span>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Salary</p>
+                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.salary)}</p>
                     </div>
                   </div>
-                </div>
+                </section>
 
-                {selectedEmployee.address && (
-                  <div className="bg-gray-50 p-6 rounded-xl">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Additional Information</h4>
-                    <div>
-                      <p className="text-sm text-gray-600">Address</p>
-                      <p className="font-medium">{selectedEmployee.address}</p>
+                {/* Contact Details (if available) */}
+                {(selectedEmployee.city || selectedEmployee.state || selectedEmployee.country || selectedEmployee.address) && (
+                  <section className="rounded-xl border border-gray-200 bg-white">
+                    <div className="px-6 py-4 border-b border-gray-200">
+                      <h4 className="text-lg font-semibold text-gray-900">Contact Details</h4>
                     </div>
-                  </div>
+                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {selectedEmployee.address && (
+                        <div className="md:col-span-2">
+                          <p className="text-xs uppercase tracking-wide text-gray-500">Address</p>
+                          <p className="mt-1 font-medium text-black">{selectedEmployee.address}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">City</p>
+                        <p className="mt-1 font-medium text-black">{selectedEmployee.city || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">State</p>
+                        <p className="mt-1 font-medium text-black">{selectedEmployee.state || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Country</p>
+                        <p className="mt-1 font-medium text-black">{selectedEmployee.country || '—'}</p>
+                      </div>
+                    </div>
+                  </section>
                 )}
-              </div>
 
-              <div className="flex justify-end pt-6 border-t border-gray-200">
-                <button
-                  onClick={() => setActiveTab('list')}
-                  className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Back to List
-                </button>
               </div>
             </div>
           )}
