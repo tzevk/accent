@@ -1,5 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
+import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
 
 // Helpers to ensure columns exist even on older MySQL/MariaDB where IF NOT EXISTS isn't supported
 async function getExistingColumns(connection) {
@@ -108,6 +109,7 @@ async function ensureBaseEmployeesTable(connection) {
 export async function GET(request) {
   let connection;
   try {
+    // Note: viewing employees is open (like before). Mutations remain RBAC-protected.
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const department = searchParams.get('department') || '';
@@ -199,6 +201,9 @@ export async function GET(request) {
 // POST - Create new employee
 export async function POST(request) {
   try {
+    // RBAC: create employees
+    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.CREATE);
+    if (auth instanceof Response) return auth;
     const data = await request.json();
     // Trim and sanitize incoming values
     const sanitized = {};
@@ -322,6 +327,9 @@ export async function POST(request) {
 // PUT - Update employee
 export async function PUT(request) {
   try {
+    // RBAC: update employees
+    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.UPDATE);
+    if (auth instanceof Response) return auth;
     const raw = await request.json();
     // Trim and sanitize
     const data = {};
@@ -419,6 +427,36 @@ export async function PUT(request) {
       values
     );
 
+    // Keep Users table in sync for role/status changes when possible
+    try {
+      // If a role name was provided, map to roles_master.id and update user's role_id
+      if (Object.prototype.hasOwnProperty.call(data, 'role') && data.role) {
+        const [roleRows] = await connection.execute(
+          'SELECT id FROM roles_master WHERE role_name = ? AND status = "active" LIMIT 1',
+          [data.role]
+        );
+        if (roleRows && roleRows.length > 0) {
+          await connection.execute(
+            'UPDATE users SET role_id = ? WHERE employee_id = ?',
+            [roleRows[0].id, data.id]
+          );
+        }
+      }
+      // If employment status provided, toggle user's is_active accordingly
+      if (Object.prototype.hasOwnProperty.call(data, 'status') || Object.prototype.hasOwnProperty.call(data, 'employment_status')) {
+        const statusVal = (data.status || data.employment_status || '').toLowerCase();
+        if (['active','inactive','terminated'].includes(statusVal)) {
+          await connection.execute(
+            'UPDATE users SET is_active = ? , status = ? WHERE employee_id = ?',
+            [statusVal === 'active', statusVal === 'inactive' ? 'inactive' : 'active', data.id]
+          );
+        }
+      }
+    } catch (syncErr) {
+      // Non-fatal: syncing users is best-effort
+      console.warn('Employee->User sync warning:', syncErr?.message || syncErr);
+    }
+
     await connection.end();
 
     return NextResponse.json({
@@ -437,6 +475,9 @@ export async function PUT(request) {
 // DELETE - Delete employee
 export async function DELETE(request) {
   try {
+    // RBAC: delete employees
+    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.DELETE);
+    if (auth instanceof Response) return auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -483,6 +524,13 @@ export async function DELETE(request) {
       'DELETE FROM employees WHERE id = ?',
       [id]
     );
+    // Optionally deactivate linked user instead of hard delete
+    try {
+      await connection.execute(
+        'UPDATE users SET is_active = FALSE, status = "inactive" WHERE employee_id = ?',
+        [id]
+      );
+    } catch {}
 
     await connection.end();
 

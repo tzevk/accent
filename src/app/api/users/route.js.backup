@@ -1,6 +1,5 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
 
 // Ensure users table exists and has proper structure for role-based system
 async function ensureUsersTable(db) {
@@ -29,11 +28,15 @@ async function ensureUsersTable(db) {
       INDEX idx_role_id (role_id)
     )
   `);
-  // In case table already existed without this column, attempt to add it
+  
+  // Add is_super_admin column if it doesn't exist (for existing installations)
   try {
-    await db.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE');
-  } catch {
-    // ignore if not supported or already present
+    await db.execute(`
+      ALTER TABLE users 
+      ADD COLUMN is_super_admin BOOLEAN DEFAULT FALSE
+    `);
+  } catch (err) {
+      } catch (error) {\n    // Column already exists, ignore error\n  }
   }
   
   // Ensure roles_master table exists
@@ -56,9 +59,6 @@ async function ensureUsersTable(db) {
 // GET - list users with optional pagination and role information
 export async function GET(request) {
   try {
-    // RBAC: read users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.READ);
-    if (auth instanceof Response) return auth;
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 50;
@@ -82,7 +82,7 @@ export async function GET(request) {
        LEFT JOIN employees e ON u.employee_id = e.id
        LEFT JOIN roles_master r ON u.role_id = r.id
        WHERE u.is_active = TRUE
-       ORDER BY r.role_hierarchy DESC, u.created_at DESC
+       ORDER BY u.is_super_admin DESC, r.role_hierarchy DESC, u.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -114,11 +114,8 @@ export async function GET(request) {
 export async function POST(request) {
   let db;
   try {
-    // RBAC: create users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.CREATE);
-    if (auth instanceof Response) return auth;
     const data = await request.json();
-    const { username, password, email, employee_id, role_id, permissions, created_by } = data;
+    const { username, password, email, employee_id, role_id, permissions, created_by, is_super_admin } = data;
 
     if (!username || !password) {
       return NextResponse.json({ success: false, error: 'username and password are required' }, { status: 400 });
@@ -162,8 +159,8 @@ export async function POST(request) {
 
     // Create the user
     const [result] = await db.execute(
-      `INSERT INTO users (username, password_hash, email, employee_id, role_id, permissions, department, full_name, created_by) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (username, password_hash, email, employee_id, role_id, permissions, department, full_name, created_by, is_super_admin) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         username, 
         password, 
@@ -173,7 +170,8 @@ export async function POST(request) {
         permissions ? JSON.stringify(permissions) : null,
         roleData ? roleData.department : employee.department,
         fullName,
-        created_by || null
+        created_by || null,
+        is_super_admin || false
       ]
     );
 
@@ -203,9 +201,6 @@ export async function POST(request) {
 // PUT - update user
 export async function PUT(request) {
   try {
-    // RBAC: update users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.UPDATE);
-    if (auth instanceof Response) return auth;
     const data = await request.json();
     if (!data.id) return NextResponse.json({ success: false, error: 'User id is required' }, { status: 400 });
 
@@ -229,17 +224,11 @@ export async function PUT(request) {
 
     const fields = [];
     const vals = [];
-    // Allow updating role_id (system role), and optionally permissions
-    const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role', 'role_id', 'permissions'];
+    const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role'];
     allowed.forEach(k => {
       if (data.hasOwnProperty(k)) {
-        if (k === 'permissions') {
-          fields.push('permissions = ?');
-          vals.push(data[k] ? JSON.stringify(data[k]) : null);
-        } else {
-          fields.push(`${k} = ?`);
-          vals.push(data[k]);
-        }
+        fields.push(`${k} = ?`);
+        vals.push(data[k]);
       }
     });
 
@@ -263,9 +252,6 @@ export async function PUT(request) {
 // DELETE - delete user by id query param
 export async function DELETE(request) {
   try {
-    // RBAC: delete users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.DELETE);
-    if (auth instanceof Response) return auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, error: 'User id is required' }, { status: 400 });

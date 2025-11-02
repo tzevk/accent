@@ -17,14 +17,35 @@ export async function POST(req) {
     }
 
 
-    const db = await dbConnect()
+    // Try DB connection with graceful error mapping
+    let db
+    try {
+      db = await dbConnect()
+    } catch (err) {
+      console.error('Login DB connect failed:', err)
+      const isNet = ['ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'DB_CONNECTION_FAILED'].includes(err?.code)
+      return NextResponse.json(
+        { success: false, message: isNet ? 'Database temporarily unavailable. Please try again shortly.' : 'Server error' },
+        { status: isNet ? 503 : 500 }
+      )
+    }
 
 
     // Check by username OR email, using the same password_hash field for now
-    const [rows] = await db.execute(
-      'SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ?',
-      [identifier, identifier, password]
-    )
+    let rows
+    try {
+      ;[rows] = await db.execute(
+        'SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ?',
+        [identifier, identifier, password]
+      )
+    } catch (err) {
+      console.error('Login query failed:', err)
+      await db.end()
+      return NextResponse.json(
+        { success: false, message: 'Server error' },
+        { status: 500 }
+      )
+    }
 
 
     await db.end()
@@ -41,6 +62,15 @@ export async function POST(req) {
         secure: isProd,
         path: '/',
         maxAge: 60 * 60 * 8 // 8 hours
+      })
+      // Also set user_id for server-side RBAC resolution
+      const userId = rows[0].id
+      res.cookies.set('user_id', String(userId), {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/',
+        maxAge: 60 * 60 * 8
       })
       return res
     }

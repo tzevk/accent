@@ -1,6 +1,9 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import RBACPermissionsManager from '@/components/RBACPermissionsManager';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
 import React, { useState, useEffect } from 'react';
 import { 
   PlusIcon, 
@@ -14,6 +17,11 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function EnhancedUsersMaster() {
+  const { loading: rbacLoading, user: sessionUser, can } = useSessionRBAC();
+  const canUsersRead = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.READ);
+  const canUsersCreate = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.CREATE);
+  const canUsersUpdate = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.UPDATE);
+  const canUsersDelete = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.DELETE);
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -25,8 +33,11 @@ export default function EnhancedUsersMaster() {
   const [editingUser, setEditingUser] = useState(null);
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rolePermissions, setRolePermissions] = useState({});
-  const [employeePermissions, setEmployeePermissions] = useState({});
+
+  // RBAC manager state
+  const [rbacTargetType, setRbacTargetType] = useState('role'); // 'role' | 'user'
+  const [rbacRoleId, setRbacRoleId] = useState('');
+  const [rbacUserId, setRbacUserId] = useState('');
   
   const [form, setForm] = useState({
     employee_id: '',
@@ -60,36 +71,8 @@ export default function EnhancedUsersMaster() {
     if (roles.length > 0) {
       const uniqueDepts = [...new Set(roles.map(role => role.department).filter(Boolean))];
       setDepartments(uniqueDepts);
-      
-      // Initialize role permissions state
-      const initialPermissions = {};
-      roles.forEach(role => {
-        initialPermissions[role.id] = {
-          read: false,
-          write: false,
-          delete: false
-        };
-      });
-      setRolePermissions(initialPermissions);
     }
   }, [roles]);
-
-  // Initialize employee permissions when users are loaded
-  useEffect(() => {
-    if (users.length > 0) {
-      const initialEmployeePermissions = {};
-      users.forEach(user => {
-        if (user.id) {
-          initialEmployeePermissions[user.id] = {
-            read: false,
-            write: false,
-            delete: false
-          };
-        }
-      });
-      setEmployeePermissions(initialEmployeePermissions);
-    }
-  }, [users]);
 
   const fetchUsers = async () => {
     try {
@@ -130,6 +113,10 @@ export default function EnhancedUsersMaster() {
   };
 
   const openCreate = () => {
+    if (!canUsersCreate) {
+      alert('You do not have permission to create users.');
+      return;
+    }
     setForm({
       employee_id: '',
       username: '',
@@ -145,6 +132,10 @@ export default function EnhancedUsersMaster() {
   };
 
   const openEdit = (user) => {
+    if (!canUsersUpdate) {
+      alert('You do not have permission to update users.');
+      return;
+    }
     setEditForm({
       employee_id: user.employee_id || '',
       username: user.username,
@@ -180,6 +171,10 @@ export default function EnhancedUsersMaster() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canUsersCreate) {
+      alert('You do not have permission to create users.');
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -217,6 +212,10 @@ export default function EnhancedUsersMaster() {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    if (!canUsersUpdate) {
+      alert('You do not have permission to update users.');
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -256,6 +255,10 @@ export default function EnhancedUsersMaster() {
   };
 
   const handleDelete = async (id) => {
+    if (!canUsersDelete) {
+      alert('You do not have permission to delete users.');
+      return;
+    }
     if (!confirm('Are you sure you want to delete this user?')) return;
     try {
       const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
@@ -301,35 +304,6 @@ export default function EnhancedUsersMaster() {
     } else {
       return <span className="text-gray-600">Associate</span>;
     }
-  };
-
-  // Handle permission checkbox changes
-  const handlePermissionChange = (roleId, permissionType) => {
-    setRolePermissions(prev => ({
-      ...prev,
-      [roleId]: {
-        ...prev[roleId],
-        [permissionType]: !prev[roleId]?.[permissionType]
-      }
-    }));
-  };
-
-  // Handle employee permission checkbox changes
-  const handleEmployeePermissionChange = (employeeId, permissionType) => {
-    setEmployeePermissions(prev => ({
-      ...prev,
-      [employeeId]: {
-        ...prev[employeeId],
-        [permissionType]: !prev[employeeId]?.[permissionType]
-      }
-    }));
-  };
-
-  // Save permissions (placeholder for now)
-  const savePermissions = () => {
-    console.log('Saving role permissions:', rolePermissions);
-    console.log('Saving employee permissions:', employeePermissions);
-    alert('Permissions saved! (Frontend only - backend implementation pending)');
   };
 
   // Render Stats Cards
@@ -381,6 +355,11 @@ export default function EnhancedUsersMaster() {
   // Render Users List
   const renderUsersList = () => (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {!rbacLoading && !canUsersRead && (
+        <div className="p-8 text-center text-sm text-yellow-900 bg-yellow-50 border-b border-yellow-200">
+          You don’t have permission to view users. Please contact an administrator.
+        </div>
+      )}
       {loading ? (
         <div className="p-8 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -392,13 +371,15 @@ export default function EnhancedUsersMaster() {
           <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
           <p className="mt-1 text-sm text-gray-500">Get started by creating your first user.</p>
           <div className="mt-4">
-            <button
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 transition-colors shadow-sm"
-            >
-              <PlusIcon className="h-5 w-5" />
-              Create New User
-            </button>
+            {canUsersCreate && (
+              <button
+                onClick={openCreate}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 transition-colors shadow-sm"
+              >
+                <PlusIcon className="h-5 w-5" />
+                Create New User
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -468,20 +449,24 @@ export default function EnhancedUsersMaster() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => openEdit(user)}
-                        className="text-blue-600 hover:text-blue-800 p-1 rounded"
-                        title="Edit User"
-                      >
-                        <PencilIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        className="text-red-600 hover:text-red-800 p-1 rounded"
-                        title="Delete User"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
+                      {canUsersUpdate && (
+                        <button
+                          onClick={() => openEdit(user)}
+                          className="text-blue-600 hover:text-blue-800 p-1 rounded"
+                          title="Edit User"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canUsersDelete && (
+                        <button
+                          onClick={() => handleDelete(user.id)}
+                          className="text-red-600 hover:text-red-800 p-1 rounded"
+                          title="Delete User"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -672,19 +657,19 @@ export default function EnhancedUsersMaster() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <span className="text-xs text-gray-500">Employee</span>
-            <p className="text-sm font-medium">{editingUser.employee_name || 'Not linked'}</p>
+            <p className="text-sm font-medium text-black">{editingUser.employee_name || 'Not linked'}</p>
           </div>
           <div>
             <span className="text-xs text-gray-500">Current Role</span>
-            <p className="text-sm font-medium">{editingUser.role_name || 'No role assigned'}</p>
+            <p className="text-sm font-medium text-black">{editingUser.role_name || 'No role assigned'}</p>
           </div>
           <div>
             <span className="text-xs text-gray-500">Department</span>
-            <p className="text-sm font-medium">{editingUser.role_department || 'N/A'}</p>
+            <p className="text-sm font-medium text-black">{editingUser.role_department || 'N/A'}</p>
           </div>
           <div>
             <span className="text-xs text-gray-500">Status</span>
-            <p className="text-sm font-medium">{editingUser.status || 'Active'}</p>
+            <p className="text-sm font-medium text-black">{editingUser.status || 'Active'}</p>
           </div>
         </div>
       </div>
@@ -830,413 +815,112 @@ export default function EnhancedUsersMaster() {
   );
 
   // Render Permissions Tab
-  const renderPermissionsTab = () => (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-green-600 text-xl font-bold flex items-center space-x-2">
-            <ShieldCheckIcon className="h-6 w-6" />
-            <span className='text-black'>Role Permissions Management</span>
-          </h2>
-          <p className="text-gray-600 mt-1">Assign read, write, and delete permissions to organizational roles</p>
-        </div>
-        <button
-          onClick={savePermissions}
-          className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-900 transition-colors font-medium shadow-sm"
-        >
-          Save Permissions
-        </button>
-      </div>
-
-      {/* Permissions Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role & Employee Information
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center justify-center space-x-2">
-                    <span>Read</span>
-                    <input
-                      type="checkbox"
-                      onChange={(e) => {
-                        // Select/deselect all read permissions for roles
-                        const newPermissions = { ...rolePermissions };
-                        const newEmployeePermissions = { ...employeePermissions };
-                        roles.forEach(role => {
-                          if (!newPermissions[role.id]) newPermissions[role.id] = {};
-                          newPermissions[role.id].read = e.target.checked;
-                        });
-                        users.forEach(user => {
-                          if (!newEmployeePermissions[user.id]) newEmployeePermissions[user.id] = {};
-                          newEmployeePermissions[user.id].read = e.target.checked;
-                        });
-                        setRolePermissions(newPermissions);
-                        setEmployeePermissions(newEmployeePermissions);
-                      }}
-                      className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                    />
-                  </div>
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center justify-center space-x-2">
-                    <span>Write</span>
-                    <input
-                      type="checkbox"
-                      onChange={(e) => {
-                        // Select/deselect all write permissions
-                        const newPermissions = { ...rolePermissions };
-                        const newEmployeePermissions = { ...employeePermissions };
-                        roles.forEach(role => {
-                          if (!newPermissions[role.id]) newPermissions[role.id] = {};
-                          newPermissions[role.id].write = e.target.checked;
-                        });
-                        users.forEach(user => {
-                          if (!newEmployeePermissions[user.id]) newEmployeePermissions[user.id] = {};
-                          newEmployeePermissions[user.id].write = e.target.checked;
-                        });
-                        setRolePermissions(newPermissions);
-                        setEmployeePermissions(newEmployeePermissions);
-                      }}
-                      className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                    />
-                  </div>
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center justify-center space-x-2">
-                    <span>Delete</span>
-                    <input
-                      type="checkbox"
-                      onChange={(e) => {
-                        // Select/deselect all delete permissions
-                        const newPermissions = { ...rolePermissions };
-                        const newEmployeePermissions = { ...employeePermissions };
-                        roles.forEach(role => {
-                          if (!newPermissions[role.id]) newPermissions[role.id] = {};
-                          newPermissions[role.id].delete = e.target.checked;
-                        });
-                        users.forEach(user => {
-                          if (!newEmployeePermissions[user.id]) newEmployeePermissions[user.id] = {};
-                          newEmployeePermissions[user.id].delete = e.target.checked;
-                        });
-                        setRolePermissions(newPermissions);
-                        setEmployeePermissions(newEmployeePermissions);
-                      }}
-                      className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                    />
-                  </div>
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {roles.map((role) => {
-                const roleEmployees = users.filter(user => user.role_id === role.id);
-                
-                return (
-                  <React.Fragment key={role.id}>
-                    {/* Role Header Row */}
-                    <tr className="bg-blue-50 hover:bg-blue-100">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full flex items-center justify-center">
-                            <span className="font-medium text-sm">
-                              {role.role_name.split(' ').map(n => n[0]).join('')}
-                            </span>
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-bold text-gray-900 flex items-center space-x-2">
-                              <span>{role.role_name}</span>
-                              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
-                                {roleEmployees.length} employee{roleEmployees.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                            <div className="text-sm text-gray-600">{role.role_code} • {role.department}</div>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className="text-xs text-gray-400">Level {role.hierarchy_level}</span>
-                              <span className="text-xs">•</span>
-                              {getHierarchyBadge(role.hierarchy_level)}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={rolePermissions[role.id]?.read || false}
-                            onChange={() => handlePermissionChange(role.id, 'read')}
-                            className="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                          <span className="text-xs text-gray-500">Role</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={rolePermissions[role.id]?.write || false}
-                            onChange={() => handlePermissionChange(role.id, 'write')}
-                            className="h-5 w-5 text-yellow-600 rounded border-gray-300 focus:ring-yellow-500"
-                          />
-                          <span className="text-xs text-gray-500">Role</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={rolePermissions[role.id]?.delete || false}
-                            onChange={() => handlePermissionChange(role.id, 'delete')}
-                            className="h-5 w-5 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                          />
-                          <span className="text-xs text-gray-500">Role</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center space-x-2">
-                          <button
-                            onClick={() => {
-                              // Quick assign all permissions to role
-                              setRolePermissions(prev => ({
-                                ...prev,
-                                [role.id]: {
-                                  read: true,
-                                  write: true,
-                                  delete: true
-                                }
-                              }));
-                            }}
-                            className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-                            title="Grant All Role Permissions"
-                          >
-                            All
-                          </button>
-                          <button
-                            onClick={() => {
-                              // Clear all permissions for role
-                              setRolePermissions(prev => ({
-                                ...prev,
-                                [role.id]: {
-                                  read: false,
-                                  write: false,
-                                  delete: false
-                                }
-                              }));
-                            }}
-                            className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                            title="Revoke All Role Permissions"
-                          >
-                            None
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Employee Rows for this Role */}
-                    {roleEmployees.map((employee) => (
-                      <tr key={`employee-${employee.id}`} className="hover:bg-gray-50 border-l-4 border-blue-200">
-                        <td className="px-6 py-3 pl-12">
-                          <div className="flex items-center">
-                            <div className="h-8 w-8 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center">
-                              <span className="font-medium text-xs">
-                                {employee.full_name ? employee.full_name.split(' ').map(n => n[0]).join('') : employee.username[0].toUpperCase()}
-                              </span>
-                            </div>
-                            <div className="ml-3">
-                              <div className="text-sm font-medium text-gray-900">
-                                {employee.employee_name || employee.username}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {employee.employee_code || employee.email}
-                              </div>
-                              {employee.employee_position && (
-                                <div className="text-xs text-gray-400">{employee.employee_position}</div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={employeePermissions[employee.id]?.read || false}
-                            onChange={() => handleEmployeePermissionChange(employee.id, 'read')}
-                            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-6 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={employeePermissions[employee.id]?.write || false}
-                            onChange={() => handleEmployeePermissionChange(employee.id, 'write')}
-                            className="h-4 w-4 text-yellow-600 rounded border-gray-300 focus:ring-yellow-500"
-                          />
-                        </td>
-                        <td className="px-6 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={employeePermissions[employee.id]?.delete || false}
-                            onChange={() => handleEmployeePermissionChange(employee.id, 'delete')}
-                            className="h-4 w-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                          />
-                        </td>
-                        <td className="px-6 py-3 text-center">
-                          <div className="flex items-center justify-center space-x-1">
-                            <button
-                              onClick={() => {
-                                // Quick assign all permissions to employee
-                                setEmployeePermissions(prev => ({
-                                  ...prev,
-                                  [employee.id]: {
-                                    read: true,
-                                    write: true,
-                                    delete: true
-                                  }
-                                }));
-                              }}
-                              className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-                              title="Grant All Employee Permissions"
-                            >
-                              All
-                            </button>
-                            <button
-                              onClick={() => {
-                                // Clear all permissions for employee
-                                setEmployeePermissions(prev => ({
-                                  ...prev,
-                                  [employee.id]: {
-                                    read: false,
-                                    write: false,
-                                    delete: false
-                                  }
-                                }));
-                              }}
-                              className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                              title="Revoke All Employee Permissions"
-                            >
-                              None
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {/* Show message if no employees in role */}
-                    {roleEmployees.length === 0 && (
-                      <tr className="border-l-4 border-blue-200">
-                        <td colSpan={5} className="px-6 py-2 pl-12">
-                          <div className="text-sm text-gray-400 italic">
-                            No employees assigned to this role
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Permission Summary */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 rounded-lg p-4">
-          <h4 className="font-medium text-blue-900 mb-2">Read Permissions</h4>
-          <div className="space-y-2">
-            <div>
-              <p className="text-2xl font-bold text-blue-600">
-                {Object.values(rolePermissions).filter(p => p?.read).length}
-              </p>
-              <p className="text-xs text-blue-700">roles with read access</p>
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-blue-500">
-                {Object.values(employeePermissions).filter(p => p?.read).length}
-              </p>
-              <p className="text-xs text-blue-600">employees with read access</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-yellow-50 rounded-lg p-4">
-          <h4 className="font-medium text-yellow-900 mb-2">Write Permissions</h4>
-          <div className="space-y-2">
-            <div>
-              <p className="text-2xl font-bold text-yellow-600">
-                {Object.values(rolePermissions).filter(p => p?.write).length}
-              </p>
-              <p className="text-xs text-yellow-700">roles with write access</p>
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-yellow-500">
-                {Object.values(employeePermissions).filter(p => p?.write).length}
-              </p>
-              <p className="text-xs text-yellow-600">employees with write access</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-red-50 rounded-lg p-4">
-          <h4 className="font-medium text-red-900 mb-2">Delete Permissions</h4>
-          <div className="space-y-2">
-            <div>
-              <p className="text-2xl font-bold text-red-600">
-                {Object.values(rolePermissions).filter(p => p?.delete).length}
-              </p>
-              <p className="text-xs text-red-700">roles with delete access</p>
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-red-500">
-                {Object.values(employeePermissions).filter(p => p?.delete).length}
-              </p>
-              <p className="text-xs text-red-600">employees with delete access</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Department-wise Permission Overview */}
-      <div className="mt-6 bg-gray-50 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Department Permission Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {departments.map((dept) => {
-            const deptRoles = roles.filter(r => r.department === dept);
-            const deptPermissions = deptRoles.reduce((acc, role) => {
-              const perms = rolePermissions[role.id] || {};
-              acc.read += perms.read ? 1 : 0;
-              acc.write += perms.write ? 1 : 0;
-              acc.delete += perms.delete ? 1 : 0;
-              return acc;
-            }, { read: 0, write: 0, delete: 0 });
-
-            return (
-              <div key={dept} className="bg-white rounded p-3 border border-gray-200">
-                <h4 className="font-medium text-gray-900 mb-2">{dept}</h4>
-                <div className="text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Read:</span>
-                    <span className="font-medium">{deptPermissions.read}/{deptRoles.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Write:</span>
-                    <span className="font-medium">{deptPermissions.write}/{deptRoles.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Delete:</span>
-                    <span className="font-medium">{deptPermissions.delete}/{deptRoles.length}</span>
-                  </div>
-                </div>
+  const renderPermissionsTab = () => {
+    // Only admins (is_super_admin) can access permissions management
+    const isAdmin = sessionUser?.is_super_admin === true;
+    
+    return (
+      <div>
+        {/* RBAC Manager (Admins only) */}
+        {rbacLoading ? (
+          <div className="p-4 text-gray-600">Loading access…</div>
+        ) : isAdmin ? (
+          <div className="mb-6 bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-xl font-bold text-black">Manage Permissions</h2>
+                <p className="text-sm text-gray-600">Grant or revoke permissions for roles or specific users. Only administrators can manage permissions.</p>
               </div>
-            );
-          })}
-        </div>
+              <div className="flex items-center space-x-2 px-3 py-1 bg-red-50 border border-red-200 rounded-md">
+                <ShieldCheckIcon className="h-5 w-5 text-red-600" />
+                <span className="text-sm font-semibold text-red-700">Admin Access</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Target</label>
+                <select
+                  value={rbacTargetType}
+                  onChange={(e) => setRbacTargetType(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                >
+                  <option value="role">Role</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+              {rbacTargetType === 'role' ? (
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">Select Role</label>
+                  <select
+                    value={rbacRoleId}
+                    onChange={(e) => setRbacRoleId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  >
+                    <option value="">Choose a role…</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.role_name} ({r.role_code})</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">Select User</label>
+                  <select
+                    value={rbacUserId}
+                    onChange={(e) => setRbacUserId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  >
+                    <option value="">Choose a user…</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>{u.username} {u.role_name ? `• ${u.role_name}` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {(rbacTargetType === 'role' && rbacRoleId) && (
+              <RBACPermissionsManager
+                type="role"
+                targetId={rbacRoleId}
+                targetName={(roles.find(r => String(r.id) === String(rbacRoleId))?.role_name) || 'Role'}
+                onPermissionsUpdated={() => {
+                  // Refresh users list to reflect permission changes
+                  fetchUsers();
+                }}
+              />
+            )}
+            {(rbacTargetType === 'user' && rbacUserId) && (
+              <RBACPermissionsManager
+                type="user"
+                targetId={rbacUserId}
+                targetName={(users.find(u => String(u.id) === String(rbacUserId))?.username) || 'User'}
+                onPermissionsUpdated={() => {
+                  // Refresh users list to reflect permission changes
+                  fetchUsers();
+                }}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="p-6 bg-red-50 border border-red-200 rounded-md">
+            <div className="flex items-start space-x-3">
+              <ShieldCheckIcon className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-semibold text-red-900 mb-2">Access Denied</h3>
+                <p className="text-sm text-red-800 mb-2">
+                  You don't have permission to manage permissions. Only administrators can access this section.
+                </p>
+                <p className="text-xs text-red-700">
+                  If you believe you should have access, please contact your system administrator.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -1295,17 +979,20 @@ export default function EnhancedUsersMaster() {
                   Edit: {editingUser.username}
                 </button>
               )}
-              <button
-                onClick={() => setActiveTab('permissions')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
-                  activeTab === 'permissions'
-                    ? 'border-black text-black bg-gray-50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <ShieldCheckIcon className="h-5 w-5 inline mr-2" />
-                Permissions
-              </button>
+              {/* Only show Permissions tab for admins */}
+              {!rbacLoading && sessionUser?.is_super_admin === true && (
+                <button
+                  onClick={() => setActiveTab('permissions')}
+                  className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                    activeTab === 'permissions'
+                      ? 'border-black text-black bg-gray-50'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <ShieldCheckIcon className="h-5 w-5 inline mr-2" />
+                  Permissions
+                </button>
+              )}
             </div>
 
             {/* Tab Content */}
