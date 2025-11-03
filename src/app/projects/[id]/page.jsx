@@ -13,7 +13,9 @@ import {
   ClockIcon,
   UserIcon,
   TagIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  DocumentTextIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 const INFO_PAIR = (label, value) => ({ label, value });
@@ -24,7 +26,7 @@ export default function ProjectViewPage() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('general');
 
   useEffect(() => {
     if (!id) {
@@ -82,6 +84,27 @@ export default function ProjectViewPage() {
       notes.push({ title: 'Internal Notes', content: project.notes });
     }
     return notes;
+  }, [project]);
+
+  const meetingDocuments = useMemo(() => {
+    if (!project) return [];
+    const docs = [];
+    if (project.project_schedule) {
+      docs.push({ title: 'Project Schedule', content: project.project_schedule });
+    }
+    if (project.input_document) {
+      docs.push({ title: 'Input Documents', content: project.input_document });
+    }
+    if (project.list_of_deliverables) {
+      docs.push({ title: 'List of Deliverables', content: project.list_of_deliverables });
+    }
+    if (project.kickoff_meeting) {
+      docs.push({ title: 'Kickoff Meeting', content: project.kickoff_meeting });
+    }
+    if (project.in_house_meeting) {
+      docs.push({ title: 'In House Meeting', content: project.in_house_meeting });
+    }
+    return docs;
   }, [project]);
 
   if (loading) {
@@ -147,11 +170,14 @@ export default function ProjectViewPage() {
             <div className="bg-white border border-gray-200 rounded-lg px-6 py-3">
               <div role="tablist" aria-label="Project sections" className="flex space-x-2">
                 {[
-                  { id: 'overview', label: 'Overview' },
-                  { id: 'scope', label: 'Scope' },
-                  { id: 'sprint', label: 'Sprint' },
-                  { id: 'activities', label: 'Activities' },
-                  { id: 'team', label: 'Team' }
+                  { id: 'general', label: 'General Info' },
+                  { id: 'commercial', label: 'Commercial' },
+                  { id: 'activities', label: 'Project Activities' },
+                  { id: 'team', label: 'Project Team' },
+                  { id: 'procurement', label: 'Procurement' },
+                  { id: 'construction', label: 'Construction' },
+                  { id: 'risk', label: 'Risk & Issues' },
+                  { id: 'closeout', label: 'Closeout' }
                 ].map((t) => (
                   <button
                     id={`tab-${t.id}`}
@@ -168,15 +194,15 @@ export default function ProjectViewPage() {
             </div>
 
             <section
-              id="panel-overview"
+              id="panel-general"
               role="tabpanel"
-              aria-labelledby="tab-overview"
-              hidden={activeTab !== 'overview'}
+              aria-labelledby="tab-general"
+              hidden={activeTab !== 'general'}
               className="bg-white border border-gray-200 rounded-lg shadow-sm"
             >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Basic Information</h2>
+                <h2 className="text-sm font-semibold text-black">General Information</h2>
               </div>
               <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {basicInfo.map((item) => (
@@ -186,72 +212,72 @@ export default function ProjectViewPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Project Scope & Notes */}
+              <div className="px-6 py-4 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <MapPinIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h3 className="text-sm font-semibold text-black">Project Scope & Notes</h3>
+                </div>
+                <div className="space-y-4">
+                  {scopeSummary.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No scope notes captured yet. Use the edit view to document overview, client responsibilities, and change history.
+                    </p>
+                  ) : (
+                    scopeSummary.map((note) => (
+                      <div key={note.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{note.title}</h4>
+                        <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{note.content}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Meeting & Documents */}
+              <div className="px-6 py-4 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h3 className="text-sm font-semibold text-black">Documents & Meetings</h3>
+                </div>
+                <div className="space-y-4">
+                  {meetingDocuments.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No meeting or document details captured yet. Use the edit view to add project schedule, input documents, deliverables, and meeting information.
+                    </p>
+                  ) : (
+                    meetingDocuments.map((doc) => (
+                      <div key={doc.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{doc.title}</h4>
+                        <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{doc.content}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </section>
 
+            {/* Commercial Tab */}
             <section
-              id="panel-scope"
+              id="panel-commercial"
               role="tabpanel"
-              aria-labelledby="tab-scope"
-              hidden={activeTab !== 'scope'}
+              aria-labelledby="tab-commercial"
+              hidden={activeTab !== 'commercial'}
               className="bg-white border border-gray-200 rounded-lg shadow-sm"
             >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-                <MapPinIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Scope & Notes</h2>
+                <TagIcon className="h-5 w-5 text-[#7F2487]" />
+                <h2 className="text-sm font-semibold text-black">Commercial Information</h2>
               </div>
-              <div className="px-6 py-5 space-y-4">
-                {scopeSummary.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    No scope notes captured yet. Use the edit view to document overview, client responsibilities, and change history.
-                  </p>
-                ) : (
-                  scopeSummary.map((note) => (
-                    <div key={note.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
-                      <h3 className="text-xs font-semibold text-black uppercase tracking-wide">{note.title}</h3>
-                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{note.content}</p>
-                    </div>
-                  ))
-                )}
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-500">
+                  Commercial details will be displayed here. Use the edit view to add project value, payment terms, and financial information.
+                </p>
               </div>
             </section>
 
-            <section
-              id="panel-sprint"
-              role="tabpanel"
-              aria-labelledby="tab-sprint"
-              hidden={activeTab !== 'sprint'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
-            >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-                <ClockIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Sprint Planning Snapshot</h2>
-              </div>
-              <div className="px-6 py-5 grid grid-cols-1 lg:grid-cols-4 gap-4 text-xs">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <p className="font-semibold text-black">Sprint Start</p>
-                  <p className="mt-1 text-gray-600">{project.start_date || '—'}</p>
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <p className="font-semibold text-black">Sprint End</p>
-                  <p className="mt-1 text-gray-600">{project.end_date || '—'}</p>
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <p className="font-semibold text-black">Next Planning</p>
-                  <p className="mt-1 text-gray-600">{project.target_date || '—'}</p>
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <p className="font-semibold text-black">Progress</p>
-                  <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
-                    <div className="h-2 rounded-full bg-[#7F2487]" style={{ width: `${Math.min(project.progress || 0, 100)}%` }}></div>
-                  </div>
-                  <p className="mt-1 text-gray-600">{project.progress || 0}% complete</p>
-                </div>
-              </div>
-              <div className="px-6 pb-6 text-xs text-gray-500">
-                Detailed sprint planning lives in the edit view. Use the activity catalogue to seed user stories.
-              </div>
-            </section>
-
+            {/* Project Activities Tab */}
             <section
               id="panel-activities"
               role="tabpanel"
@@ -260,19 +286,19 @@ export default function ProjectViewPage() {
               className="bg-white border border-gray-200 rounded-lg shadow-sm"
             >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-                <TagIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Activities by Discipline</h2>
+                <ClipboardDocumentCheckIcon className="h-5 w-5 text-[#7F2487]" />
+                <h2 className="text-sm font-semibold text-black">Project Activities</h2>
               </div>
-              <div className="px-6 py-5 space-y-4 text-sm text-gray-600">
-                <p>
-                  Activities for this project are sourced from the Activity Master catalogue. Use the edit screen to assign sub-activities to employees, start/end dates, and manhours. Once assignments are made, they will appear here grouped by discipline for quick review.
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-500">
+                  Project activities and task details will be displayed here. Use the edit view to manage activities, disciplines, and assignments.
                 </p>
-                <div className="border border-dashed border-gray-200 rounded-lg px-4 py-8 text-center text-gray-500">
-                  No activities assigned yet. Navigate to the edit view to configure sprint stories using the master catalogue.
-                </div>
               </div>
             </section>
 
+
+
+            {/* Project Team Tab */}
             <section
               id="panel-team"
               role="tabpanel"
@@ -282,14 +308,90 @@ export default function ProjectViewPage() {
             >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <UserIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Team & Ownership</h2>
+                <h2 className="text-sm font-semibold text-black">Project Team</h2>
               </div>
               <div className="px-6 py-5 space-y-3 text-sm text-gray-600">
                 <p><span className="font-semibold text-black">Project Manager:</span> {project.project_manager || '—'}</p>
                 <p><span className="font-semibold text-black">Primary Client:</span> {project.client_name || '—'}</p>
                 <p><span className="font-semibold text-black">Assigned To:</span> {project.assigned_to || '—'}</p>
                 <p className="text-xs text-gray-500 mt-4">
-                  Team details are sourced from project fields only. For richer responsibility mapping use the Activity Master to assign work packages.
+                  Team assignments and member details will be displayed here. Use the edit view to manage team members and their roles.
+                </p>
+              </div>
+            </section>
+
+            {/* Procurement Tab */}
+            <section
+              id="panel-procurement"
+              role="tabpanel"
+              aria-labelledby="tab-procurement"
+              hidden={activeTab !== 'procurement'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                <CalendarIcon className="h-5 w-5 text-[#7F2487]" />
+                <h2 className="text-sm font-semibold text-black">Procurement & Material</h2>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-500">
+                  Procurement status, material delivery schedules, and vendor management information will be displayed here. Use the edit view to manage procurement details.
+                </p>
+              </div>
+            </section>
+
+            {/* Construction Tab */}
+            <section
+              id="panel-construction"
+              role="tabpanel"
+              aria-labelledby="tab-construction"
+              hidden={activeTab !== 'construction'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
+                <h2 className="text-sm font-semibold text-black">Construction</h2>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-500">
+                  Site readiness, mobilization dates, and construction progress will be displayed here. Use the edit view to update construction information.
+                </p>
+              </div>
+            </section>
+
+            {/* Risk & Issues Tab */}
+            <section
+              id="panel-risk"
+              role="tabpanel"
+              aria-labelledby="tab-risk"
+              hidden={activeTab !== 'risk'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                <ClockIcon className="h-5 w-5 text-[#7F2487]" />
+                <h2 className="text-sm font-semibold text-black">Risk & Issues</h2>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-500">
+                  Major risks, mitigation plans, change orders, and disputes will be displayed here. Use the edit view to manage project risks and issues.
+                </p>
+              </div>
+            </section>
+
+            {/* Closeout Tab */}
+            <section
+              id="panel-closeout"
+              role="tabpanel"
+              aria-labelledby="tab-closeout"
+              hidden={activeTab !== 'closeout'}
+              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                <CheckCircleIcon className="h-5 w-5 text-[#7F2487]" />
+                <h2 className="text-sm font-semibold text-black">Project Closeout</h2>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-gray-500">
+                  Final documentation status, lessons learned, client feedback, and profit/loss information will be displayed here. Use the edit view to manage closeout details.
                 </p>
               </div>
             </section>

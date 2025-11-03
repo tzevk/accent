@@ -112,7 +112,13 @@ export async function PUT(request, { params }) {
       final_documentation_status,
       lessons_learned,
       client_feedback,
-      actual_profit_loss
+      actual_profit_loss,
+      // Meeting and Document Fields
+      project_schedule,
+      input_document,
+      list_of_deliverables,
+      kickoff_meeting,
+      in_house_meeting
     } = data;
 
     const db = await dbConnect();
@@ -172,6 +178,13 @@ export async function PUT(request, { params }) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS lessons_learned TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_feedback TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS actual_profit_loss DECIMAL(15,2)');
+      
+      // Meeting and Document Fields
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_document TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
     } catch (err) {
       console.warn('Some ALTER TABLE statements failed, columns might already exist:', err.message);
     }
@@ -225,6 +238,11 @@ export async function PUT(request, { params }) {
         lessons_learned = COALESCE(?, lessons_learned),
         client_feedback = COALESCE(?, client_feedback),
         actual_profit_loss = COALESCE(?, actual_profit_loss),
+        project_schedule = COALESCE(?, project_schedule),
+        input_document = COALESCE(?, input_document),
+        list_of_deliverables = COALESCE(?, list_of_deliverables),
+        kickoff_meeting = COALESCE(?, kickoff_meeting),
+        in_house_meeting = COALESCE(?, in_house_meeting),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -274,6 +292,11 @@ export async function PUT(request, { params }) {
       lessons_learned === undefined ? null : lessons_learned,
       client_feedback === undefined ? null : client_feedback,
       normalizeDecimal(actual_profit_loss),
+      project_schedule === undefined ? null : project_schedule,
+      input_document === undefined ? null : input_document,
+      list_of_deliverables === undefined ? null : list_of_deliverables,
+      kickoff_meeting === undefined ? null : kickoff_meeting,
+      in_house_meeting === undefined ? null : in_house_meeting,
       projectId
     ]);
 
