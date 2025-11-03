@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { hasPermission, RESOURCES, PERMISSIONS, getDefaultPermissionsForLevel } from '@/utils/rbac';
+import jwt from 'jsonwebtoken';
 
 // Safely parse JSON fields stored in MySQL JSON columns
 function safeParse(json, fallback = []) {
@@ -13,10 +14,23 @@ function safeParse(json, fallback = []) {
   }
 }
 
-// Load current user from cookie and DB (includes role permissions)
+// Load current user from JWT token and DB (includes role permissions)
 export async function getCurrentUser(request) {
   try {
-    const userId = request?.cookies?.get?.('user_id')?.value;
+    const token = request?.cookies?.get?.('auth_token')?.value;
+    if (!token) return null;
+
+    // Verify and decode JWT token
+    const secret = process.env.JWT_SECRET || 'your-default-secret-key';
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (error) {
+      console.error('JWT verification failed in getCurrentUser:', error);
+      return null;
+    }
+
+    const userId = decoded.userId;
     if (!userId) return null;
 
     const db = await dbConnect();
