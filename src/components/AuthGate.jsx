@@ -24,11 +24,23 @@ export default function AuthGate() {
       try {
         const res = await fetch('/api/session', { credentials: 'include' });
         if (!res.ok) {
+          console.log('AuthGate: Session check failed with status:', res.status);
           const from = encodeURIComponent(pathname || '/');
           router.replace(`/signin?from=${from}`);
           return;
         }
-      } catch {
+        
+        const data = await res.json();
+        if (!data.authenticated) {
+          console.log('AuthGate: User not authenticated');
+          const from = encodeURIComponent(pathname || '/');
+          router.replace(`/signin?from=${from}`);
+          return;
+        }
+        
+        console.log('AuthGate: Authentication successful for user:', data.user?.username);
+      } catch (error) {
+        console.log('AuthGate: Session check error:', error);
         const from = encodeURIComponent(pathname || '/');
         router.replace(`/signin?from=${from}`);
         return;

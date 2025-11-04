@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 
 const STATUS_OPTIONS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled'];
@@ -92,7 +92,16 @@ const INITIAL_FORM = {
   input_document: '',
   list_of_deliverables: '',
   kickoff_meeting: '',
-  in_house_meeting: ''
+  in_house_meeting: '',
+  
+  // Enhanced Planning & Meeting Fields
+  project_start_milestone: '',
+  project_review_milestone: '',
+  project_end_milestone: '',
+  kickoff_meeting_date: '',
+  kickoff_followup_date: '',
+  internal_meeting_date: '',
+  next_internal_meeting: ''
 };
 
 function LoadingFallback() {
@@ -135,6 +144,18 @@ function EditProjectForm() {
   // Sub-Activity dropdown UI state (per-activity)
   const [openSubActivityDropdowns, setOpenSubActivityDropdowns] = useState({});
   const [subActivitySearch, setSubActivitySearch] = useState({});
+  
+  // Collapsible sections state for enhanced General Info
+  const [expandedSections, setExpandedSections] = useState({
+    planning: true,      // Project Planning section
+    documentation: true, // Documentation section  
+    meetings: true       // Meetings section
+  });
+
+  // File management state
+  const [inputDocuments, setInputDocuments] = useState([]);
+  const [deliverables, setDeliverables] = useState([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   // Fetch all required data
   useEffect(() => {
@@ -315,9 +336,59 @@ function EditProjectForm() {
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
 
+  // Auto-save with debouncing
+  const [autoSaveTimeout, setAutoSaveTimeout] = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+      }
+    };
+  }, [autoSaveTimeout]);
+
+  const autoSave = async (formData) => {
+    try {
+      setSaving(true);
+      const result = await fetchJSON(`/api/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          projectActivities,
+          teamMembers
+        }),
+      });
+
+      if (result.success) {
+        setLastSaved(new Date());
+      }
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    const newForm = { ...form, [name]: value };
+    setForm(newForm);
+
+    // Clear existing timeout
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+
+    // Set new timeout for auto-save (2 seconds after user stops typing)
+    const timeout = setTimeout(() => {
+      autoSave(newForm);
+    }, 2000);
+    
+    setAutoSaveTimeout(timeout);
   };
 
   const handleProgressChange = (event) => {
@@ -425,6 +496,82 @@ function EditProjectForm() {
     }));
   };
 
+  // File Management
+  const handleFileUpload = async (files, documentType) => {
+    if (!files || files.length === 0) return;
+    
+    setUploadingFiles(true);
+    
+    try {
+      const uploadedFiles = [];
+      
+      for (const file of Array.from(files)) {
+        // Validate file size (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File ${file.name} is too large. Maximum size is 10MB.`);
+          continue;
+        }
+        
+        // Validate file type
+        const allowedTypes = ['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+        const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+        if (!allowedTypes.includes(fileExtension)) {
+          alert(`File ${file.name} type is not supported. Allowed: PDF, DOCX, XLS, PNG, JPG`);
+          continue;
+        }
+        
+        // Generate version number
+        const existingFiles = documentType === 'input' ? inputDocuments : deliverables;
+        const baseName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+        const existingVersions = existingFiles.filter(f => f.name.startsWith(baseName));
+        const version = existingVersions.length > 0 ? `v${existingVersions.length + 1}.0` : 'v1.0';
+        
+        // Create file object
+        const fileObj = {
+          id: Date.now() + Math.random(),
+          name: file.name,
+          version: version,
+          size: file.size,
+          type: file.type,
+          uploadDate: new Date().toISOString(),
+          tag: 'Reference', // Default tag
+          file: file // Store actual file for upload
+        };
+        
+        uploadedFiles.push(fileObj);
+      }
+      
+      // Update appropriate state
+      if (documentType === 'input') {
+        setInputDocuments(prev => [...prev, ...uploadedFiles]);
+      } else {
+        setDeliverables(prev => [...prev, ...uploadedFiles]);
+      }
+      
+    } catch (error) {
+      console.error('File upload error:', error);
+      alert('Failed to upload files');
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const removeFile = (fileId, documentType) => {
+    if (documentType === 'input') {
+      setInputDocuments(prev => prev.filter(f => f.id !== fileId));
+    } else {
+      setDeliverables(prev => prev.filter(f => f.id !== fileId));
+    }
+  };
+
+  const updateFileTag = (fileId, tag, documentType) => {
+    if (documentType === 'input') {
+      setInputDocuments(prev => prev.map(f => f.id === fileId ? { ...f, tag } : f));
+    } else {
+      setDeliverables(prev => prev.map(f => f.id === fileId ? { ...f, tag } : f));
+    }
+  };
+
   // Calculate totals
   const totalManhours = useMemo(() => {
     return teamMembers.reduce((sum, member) => sum + (parseFloat(member.manhours) || 0), 0);
@@ -523,6 +670,34 @@ function EditProjectForm() {
                 <p className="text-sm text-gray-600">
                   Comprehensive project management with activities and team builder
                 </p>
+              </div>
+              
+              {/* Auto-save Status */}
+              <div className="flex items-center space-x-3">
+                {saving && (
+                  <div className="flex items-center text-xs text-blue-600">
+                    <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </div>
+                )}
+                
+                {lastSaved && !saving && (
+                  <div className="flex items-center text-xs text-green-600">
+                    <CheckCircleIcon className="h-3 w-3 mr-1" />
+                    Saved {new Date(lastSaved).toLocaleTimeString()}
+                  </div>
+                )}
+                
+                <button
+                  type="submit"
+                  disabled={submitting || saving}
+                  className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {submitting ? 'Saving...' : 'Save Project'}
+                </button>
               </div>
             </header>
 
@@ -659,34 +834,314 @@ function EditProjectForm() {
                   </div>
                 </section>
 
-                <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h2 className="text-sm font-semibold text-black">Meeting & Documents</h2>
-                    <p className="text-xs text-gray-500">Project schedule, input documents, deliverables, and meeting information</p>
-                  </div>
-                  <div className="px-6 py-5 space-y-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Project Schedule</label>
-                      <textarea name="project_schedule" value={form.project_schedule} onChange={handleChange} rows={3} placeholder="Define the overall project schedule and key milestones" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Input Document</label>
-                      <textarea name="input_document" value={form.input_document} onChange={handleChange} rows={2} placeholder="List of input documents and references for the project" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">List of Deliverables</label>
-                      <textarea name="list_of_deliverables" value={form.list_of_deliverables} onChange={handleChange} rows={3} placeholder="Define all project deliverables and expected outputs" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting</label>
-                      <textarea name="kickoff_meeting" value={form.kickoff_meeting} onChange={handleChange} rows={2} placeholder="Details about the project kickoff meeting (date, participants, agenda, minutes)" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">In House Meeting</label>
-                      <textarea name="in_house_meeting" value={form.in_house_meeting} onChange={handleChange} rows={2} placeholder="Internal team meetings, discussions, and decisions" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                  </div>
-                </section>
+                {/* Enhanced Meeting & Documents with Collapsible Sections */}
+                <div className="space-y-4">
+                  {/* Section 1: Project Planning */}
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, planning: !prev.planning }))}
+                      className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div>
+                        <h3 className="text-sm font-semibold text-black flex items-center">
+                          Project Planning
+                          <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">2 items</span>
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">Schedule, deliverables, and project roadmap</p>
+                      </div>
+                      {expandedSections.planning ? 
+                        <ChevronDownIcon className="h-5 w-5 text-gray-400" /> : 
+                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                      }
+                    </button>
+                    
+                    {expandedSections.planning && (
+                      <div className="px-6 pb-5 border-t border-gray-100 space-y-4">
+                        {/* Project Schedule with Timeline */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                          <label className="block text-sm font-medium text-blue-900 mb-3 flex items-center">
+                            Project Schedule & Timeline
+                          </label>
+                          
+                          {/* Date Pickers for Key Milestones */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                            <div>
+                              <label className="block text-xs font-medium text-blue-800 mb-1">Project Start</label>
+                              <input 
+                                type="date" 
+                                name="project_start_milestone" 
+                                value={form.project_start_milestone || form.start_date} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-blue-800 mb-1">Mid Review</label>
+                              <input 
+                                type="date" 
+                                name="project_review_milestone" 
+                                value={form.project_review_milestone || ''} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-blue-800 mb-1">Project End</label>
+                              <input 
+                                type="date" 
+                                name="project_end_milestone" 
+                                value={form.project_end_milestone || form.end_date} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500" 
+                              />
+                            </div>
+                          </div>
+                          
+                          <textarea 
+                            name="project_schedule" 
+                            value={form.project_schedule} 
+                            onChange={handleChange} 
+                            rows={3} 
+                            placeholder="Define phases, milestones, and key deliverables timeline..." 
+                            className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500 bg-white" 
+                          />
+                        </div>
+
+                        {/* List of Deliverables with Tagging */}
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+                          <label className="block text-sm font-medium text-green-900 mb-3 flex items-center">
+                            Project Deliverables
+                          </label>
+                          <textarea 
+                            name="list_of_deliverables" 
+                            value={form.list_of_deliverables} 
+                            onChange={handleChange} 
+                            rows={3} 
+                            placeholder="List all deliverables with status tags: [FINAL], [DRAFT], [REFERENCE]..." 
+                            className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500 bg-white" 
+                          />
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">Final</span>
+                            <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">Draft</span>
+                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Reference</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Section 2: Documentation */}
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, documentation: !prev.documentation }))}
+                      className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div>
+                        <h3 className="text-sm font-semibold text-black flex items-center">
+                          Documentation
+                          <span className="ml-2 px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">Input Docs</span>
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">Input documents, references, and file management</p>
+                      </div>
+                      {expandedSections.documentation ? 
+                        <ChevronDownIcon className="h-5 w-5 text-gray-400" /> : 
+                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                      }
+                    </button>
+                    
+                    {expandedSections.documentation && (
+                      <div className="px-6 pb-5 border-t border-gray-100">
+                        <div className="bg-gradient-to-r from-purple-50 to-violet-50 p-4 rounded-lg border border-purple-200">
+                          <label className="block text-sm font-medium text-purple-900 mb-3 flex items-center">
+                            Input Documents & References
+                          </label>
+                          
+                          {/* File Upload Area */}
+                          <div className="mb-4 p-4 border-2 border-dashed border-purple-300 rounded-lg bg-white hover:border-purple-400 transition-colors">
+                            <input
+                              type="file"
+                              multiple
+                              accept=".pdf,.docx,.doc,.xls,.xlsx,.png,.jpg,.jpeg"
+                              onChange={(e) => handleFileUpload(e.target.files, 'input')}
+                              className="hidden"
+                              id="input-file-upload"
+                            />
+                            <div className="text-center">
+                              <svg className="mx-auto h-8 w-8 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                              </svg>
+                              <p className="mt-1 text-xs text-purple-600">
+                                <label htmlFor="input-file-upload" className="font-medium text-purple-700 hover:text-purple-800 cursor-pointer">Upload files</label>
+                                {' '}or drag and drop
+                              </p>
+                              <p className="text-xs text-purple-500">PDF, DOCX, XLS up to 10MB</p>
+                            </div>
+                          </div>
+
+                          {/* Uploaded Files List */}
+                          {inputDocuments.length > 0 && (
+                            <div className="mb-4 space-y-2">
+                              {inputDocuments.map((file) => (
+                                <div key={file.id} className="flex items-center justify-between p-3 bg-white border border-purple-200 rounded-lg">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="flex-shrink-0">
+                                      <DocumentIcon className="h-5 w-5 text-purple-500" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                                      <p className="text-xs text-gray-500">
+                                        {file.version} • {(file.size / 1024 / 1024).toFixed(2)} MB • {new Date(file.uploadDate).toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <select
+                                      value={file.tag}
+                                      onChange={(e) => updateFileTag(file.id, e.target.value, 'input')}
+                                      className="text-xs border border-purple-300 rounded px-2 py-1"
+                                    >
+                                      <option value="Reference">Reference</option>
+                                      <option value="Final">Final</option>
+                                      <option value="Client Input">Client Input</option>
+                                      <option value="Draft">Draft</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeFile(file.id, 'input')}
+                                      className="text-red-500 hover:text-red-700"
+                                    >
+                                      <XMarkIcon className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          <textarea 
+                            name="input_document" 
+                            value={form.input_document} 
+                            onChange={handleChange} 
+                            rows={3} 
+                            placeholder="List input documents, specifications, references, client requirements..." 
+                            className="w-full px-3 py-2 text-sm border border-purple-300 rounded-md focus:ring-2 focus:ring-purple-500 bg-white" 
+                          />
+                          
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">Specs v2.1</span>
+                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Drawings v1.3</span>
+                            <span className="px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded-full">Requirements v1.0</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Section 3: Meetings */}
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, meetings: !prev.meetings }))}
+                      className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div>
+                        <h3 className="text-sm font-semibold text-black flex items-center">
+                          Meetings & Communications
+                          <span className="ml-2 px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full">2 types</span>
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">Kickoff meetings, internal discussions, and follow-ups</p>
+                      </div>
+                      {expandedSections.meetings ? 
+                        <ChevronDownIcon className="h-5 w-5 text-gray-400" /> : 
+                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                      }
+                    </button>
+                    
+                    {expandedSections.meetings && (
+                      <div className="px-6 pb-5 border-t border-gray-100 space-y-4">
+                        {/* Kickoff Meeting */}
+                        <div className="bg-gradient-to-r from-orange-50 to-red-50 p-4 rounded-lg border border-orange-200">
+                          <label className="block text-sm font-medium text-orange-900 mb-3 flex items-center">
+                            Kickoff Meeting
+                          </label>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-medium text-orange-800 mb-1">Meeting Date</label>
+                              <input 
+                                type="datetime-local" 
+                                name="kickoff_meeting_date" 
+                                value={form.kickoff_meeting_date || ''} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-orange-300 rounded-md focus:ring-2 focus:ring-orange-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-orange-800 mb-1">Next Follow-up</label>
+                              <input 
+                                type="date" 
+                                name="kickoff_followup_date" 
+                                value={form.kickoff_followup_date || ''} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-orange-300 rounded-md focus:ring-2 focus:ring-orange-500" 
+                              />
+                            </div>
+                          </div>
+                          
+                          <textarea 
+                            name="kickoff_meeting" 
+                            value={form.kickoff_meeting} 
+                            onChange={handleChange} 
+                            rows={3} 
+                            placeholder="Participants, agenda, key decisions, action items..." 
+                            className="w-full px-3 py-2 text-sm border border-orange-300 rounded-md focus:ring-2 focus:ring-orange-500 bg-white" 
+                          />
+                        </div>
+
+                        {/* In-House Meeting */}
+                        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-lg border border-indigo-200">
+                          <label className="block text-sm font-medium text-indigo-900 mb-3 flex items-center">
+                            Internal Team Meetings
+                          </label>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-medium text-indigo-800 mb-1">Last Meeting</label>
+                              <input 
+                                type="datetime-local" 
+                                name="internal_meeting_date" 
+                                value={form.internal_meeting_date || ''} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-indigo-800 mb-1">Next Scheduled</label>
+                              <input 
+                                type="datetime-local" 
+                                name="next_internal_meeting" 
+                                value={form.next_internal_meeting || ''} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500" 
+                              />
+                            </div>
+                          </div>
+                          
+                          <textarea 
+                            name="in_house_meeting" 
+                            value={form.in_house_meeting} 
+                            onChange={handleChange} 
+                            rows={3} 
+                            placeholder="Team discussions, progress updates, internal decisions, blockers..." 
+                            className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500 bg-white" 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                </div>
               </div>
             )}
 
