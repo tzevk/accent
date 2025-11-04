@@ -38,10 +38,29 @@ export async function GET(request, { params }) {
     
     await db.end();
     
+    const project = rows[0];
+    
+    // Parse JSON fields if they exist
+    if (project.planning_activities_list && typeof project.planning_activities_list === 'string') {
+      try {
+        project.planning_activities_list = JSON.parse(project.planning_activities_list);
+      } catch (e) {
+        project.planning_activities_list = [];
+      }
+    }
+    
+    if (project.documents_list && typeof project.documents_list === 'string') {
+      try {
+        project.documents_list = JSON.parse(project.documents_list);
+      } catch (e) {
+        project.documents_list = [];
+      }
+    }
+    
     return Response.json({ 
       success: true, 
       data: {
-        ...rows[0],
+        ...project,
         project_activities: projectActivities
       }
     });
@@ -118,7 +137,15 @@ export async function PUT(request, { params }) {
       input_document,
       list_of_deliverables,
       kickoff_meeting,
-      in_house_meeting
+      in_house_meeting,
+      // Enhanced Planning & Meeting Fields
+      project_start_milestone,
+      project_review_milestone,
+      project_end_milestone,
+      kickoff_meeting_date,
+      kickoff_followup_date,
+      internal_meeting_date,
+      next_internal_meeting
     } = data;
 
     const db = await dbConnect();
@@ -185,6 +212,15 @@ export async function PUT(request, { params }) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
+      
+      // Enhanced Planning & Meeting Fields
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_start_milestone TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_review_milestone TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_end_milestone TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_followup_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS internal_meeting_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_internal_meeting DATE');
     } catch (err) {
       console.warn('Some ALTER TABLE statements failed, columns might already exist:', err.message);
     }
@@ -243,6 +279,13 @@ export async function PUT(request, { params }) {
         list_of_deliverables = COALESCE(?, list_of_deliverables),
         kickoff_meeting = COALESCE(?, kickoff_meeting),
         in_house_meeting = COALESCE(?, in_house_meeting),
+        project_start_milestone = COALESCE(?, project_start_milestone),
+        project_review_milestone = COALESCE(?, project_review_milestone),
+        project_end_milestone = COALESCE(?, project_end_milestone),
+        kickoff_meeting_date = COALESCE(?, kickoff_meeting_date),
+        kickoff_followup_date = COALESCE(?, kickoff_followup_date),
+        internal_meeting_date = COALESCE(?, internal_meeting_date),
+        next_internal_meeting = COALESCE(?, next_internal_meeting),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -297,6 +340,13 @@ export async function PUT(request, { params }) {
       list_of_deliverables === undefined ? null : list_of_deliverables,
       kickoff_meeting === undefined ? null : kickoff_meeting,
       in_house_meeting === undefined ? null : in_house_meeting,
+      project_start_milestone === undefined ? null : project_start_milestone,
+      project_review_milestone === undefined ? null : project_review_milestone,
+      project_end_milestone === undefined ? null : project_end_milestone,
+      normalizeDate(kickoff_meeting_date),
+      normalizeDate(kickoff_followup_date),
+      normalizeDate(internal_meeting_date),
+      normalizeDate(next_internal_meeting),
       projectId
     ]);
 
@@ -308,12 +358,14 @@ export async function PUT(request, { params }) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_members JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_activities_list JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_activities_list JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_list JSON');
     } catch (err) {
       // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
       console.warn('Could not ensure project assignment columns exist:', err.message || err);
     }
 
-    // Persist disciplines/activities/descriptions/assignments/team_members/project_activities_list if provided in payload
+    // Persist disciplines/activities/descriptions/assignments/team_members/project_activities_list/planning_activities/documents if provided in payload
     try {
       const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : null;
       const assignedActivities = data.activities ? JSON.stringify(data.activities) : null;
@@ -321,8 +373,12 @@ export async function PUT(request, { params }) {
       const assignments = data.assignments ? JSON.stringify(data.assignments) : null;
       const teamMembers = data.team_members || null;
       const projectActivitiesList = data.project_activities_list || null;
+      const planningActivitiesList = data.planning_activities_list || null;
+      const documentsList = data.documents_list || null;
 
-      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || assignments !== null || teamMembers !== null || projectActivitiesList !== null) {
+      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || 
+          assignments !== null || teamMembers !== null || projectActivitiesList !== null || 
+          planningActivitiesList !== null || documentsList !== null) {
         await db.execute(
           `UPDATE projects SET 
              assigned_disciplines = COALESCE(?, assigned_disciplines),
@@ -330,9 +386,12 @@ export async function PUT(request, { params }) {
              discipline_descriptions = COALESCE(?, discipline_descriptions),
              assignments = COALESCE(?, assignments),
              team_members = COALESCE(?, team_members),
-             project_activities_list = COALESCE(?, project_activities_list)
+             project_activities_list = COALESCE(?, project_activities_list),
+             planning_activities_list = COALESCE(?, planning_activities_list),
+             documents_list = COALESCE(?, documents_list)
            WHERE id = ?`,
-          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, teamMembers, projectActivitiesList, projectId]
+          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, 
+           teamMembers, projectActivitiesList, planningActivitiesList, documentsList, projectId]
         );
       }
     } catch (err) {

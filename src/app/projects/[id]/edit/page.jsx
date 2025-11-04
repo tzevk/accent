@@ -19,9 +19,13 @@ const DOCUMENTATION_STATUS_OPTIONS = ['Not Started', 'In Progress', 'Completed']
 
 const TABS = [
   { id: 'general', label: 'General Info' },
+  { id: 'scope', label: 'Scope of Work' },
   { id: 'commercial', label: 'Commercial' },
   { id: 'activities', label: 'Project Activities' },
   { id: 'team', label: 'Project Team' },
+  { id: 'planning', label: 'Project Planning' },
+  { id: 'documentation', label: 'Input Documentation' },
+  { id: 'meetings', label: 'Meetings & Communications' },
   { id: 'procurement', label: 'Procurement' },
   { id: 'construction', label: 'Construction' },
   { id: 'risk', label: 'Risk & Issues' },
@@ -156,6 +160,34 @@ function EditProjectForm() {
   const [inputDocuments, setInputDocuments] = useState([]);
   const [deliverables, setDeliverables] = useState([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  // Input document list management
+  const [inputDocumentsList, setInputDocumentsList] = useState([]);
+  const [newInputDocument, setNewInputDocument] = useState('');
+  
+  // Documentation tab - detailed document management
+  const [documentsList, setDocumentsList] = useState([]);
+  const [newDocument, setNewDocument] = useState({
+    name: '',
+    number: '',
+    revision: '',
+    quantity: '',
+    sentBy: '',
+    remarks: ''
+  });
+
+  // Project Planning tab - activity tracking
+  const [planningActivities, setPlanningActivities] = useState([]);
+  const [newPlanningActivity, setNewPlanningActivity] = useState({
+    serialNumber: '',
+    activity: '',
+    quantity: '',
+    startDate: '',
+    endDate: '',
+    actualCompletionDate: '',
+    timeRequired: '',
+    actualTimeRequired: ''
+  });
 
   // Fetch all required data
   useEffect(() => {
@@ -319,6 +351,40 @@ function EditProjectForm() {
               setProjectActivities([]);
             }
           }
+
+          // Load planning activities
+          if (project.planning_activities_list) {
+            try {
+              const parsed = typeof project.planning_activities_list === 'string' 
+                ? JSON.parse(project.planning_activities_list) 
+                : project.planning_activities_list;
+              setPlanningActivities(Array.isArray(parsed) ? parsed : []);
+            } catch (e) {
+              setPlanningActivities([]);
+            }
+          }
+
+          // Load documents list
+          if (project.documents_list) {
+            try {
+              const parsed = typeof project.documents_list === 'string' 
+                ? JSON.parse(project.documents_list) 
+                : project.documents_list;
+              setDocumentsList(Array.isArray(parsed) ? parsed : []);
+            } catch (e) {
+              setDocumentsList([]);
+            }
+          }
+
+          // Load input documents list from comma-separated string
+          if (project.input_document) {
+            const docs = project.input_document.split(',').map((doc, index) => ({
+              id: Date.now() + index,
+              text: doc.trim(),
+              addedAt: new Date().toISOString()
+            })).filter(doc => doc.text);
+            setInputDocumentsList(docs);
+          }
         } else {
           setError(result.error || 'Failed to load project');
         }
@@ -358,8 +424,10 @@ function EditProjectForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          projectActivities,
-          teamMembers
+          team_members: JSON.stringify(teamMembers),
+          project_activities_list: JSON.stringify(projectActivities),
+          planning_activities_list: JSON.stringify(planningActivities),
+          documents_list: JSON.stringify(documentsList)
         }),
       });
 
@@ -394,6 +462,109 @@ function EditProjectForm() {
   const handleProgressChange = (event) => {
     const value = Number(event.target.value);
     setForm((prev) => ({ ...prev, progress: Number.isNaN(value) ? 0 : value }));
+  };
+
+  // Input Document List Management
+  const addInputDocument = () => {
+    if (newInputDocument.trim()) {
+      const newDoc = {
+        id: Date.now(),
+        text: newInputDocument.trim(),
+        addedAt: new Date().toISOString()
+      };
+      setInputDocumentsList([...inputDocumentsList, newDoc]);
+      setNewInputDocument('');
+      
+      // Update form field with comma-separated list
+      const updatedList = [...inputDocumentsList, newDoc].map(doc => doc.text).join(', ');
+      setForm(prev => ({ ...prev, input_document: updatedList }));
+    }
+  };
+
+  const removeInputDocument = (id) => {
+    const updatedList = inputDocumentsList.filter(doc => doc.id !== id);
+    setInputDocumentsList(updatedList);
+    
+    // Update form field
+    const updatedText = updatedList.map(doc => doc.text).join(', ');
+    setForm(prev => ({ ...prev, input_document: updatedText }));
+  };
+
+  const handleInputDocumentKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addInputDocument();
+    }
+  };
+
+  // Documentation Tab - Detailed Document Management
+  const addDocument = () => {
+    if (newDocument.name.trim()) {
+      const doc = {
+        id: Date.now(),
+        name: newDocument.name.trim(),
+        number: newDocument.number.trim(),
+        revision: newDocument.revision.trim(),
+        quantity: newDocument.quantity.trim(),
+        sentBy: newDocument.sentBy.trim(),
+        remarks: newDocument.remarks.trim(),
+        addedAt: new Date().toISOString()
+      };
+      setDocumentsList([...documentsList, doc]);
+      setNewDocument({
+        name: '',
+        number: '',
+        revision: '',
+        quantity: '',
+        sentBy: '',
+        remarks: ''
+      });
+    }
+  };
+
+  const removeDocument = (id) => {
+    setDocumentsList(documentsList.filter(doc => doc.id !== id));
+  };
+
+  const updateDocumentField = (field, value) => {
+    setNewDocument(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Project Planning Tab - Activity Management
+  const addPlanningActivity = () => {
+    if (newPlanningActivity.activity.trim()) {
+      const activity = {
+        id: Date.now(),
+        serialNumber: newPlanningActivity.serialNumber.trim() || (planningActivities.length + 1).toString(),
+        activity: newPlanningActivity.activity.trim(),
+        quantity: newPlanningActivity.quantity.trim(),
+        startDate: newPlanningActivity.startDate,
+        endDate: newPlanningActivity.endDate,
+        actualCompletionDate: newPlanningActivity.actualCompletionDate,
+        timeRequired: newPlanningActivity.timeRequired.trim(),
+        actualTimeRequired: newPlanningActivity.actualTimeRequired.trim(),
+        addedAt: new Date().toISOString()
+      };
+      setPlanningActivities([...planningActivities, activity]);
+      setNewPlanningActivity({
+        serialNumber: '',
+        activity: '',
+        quantity: '',
+        startDate: '',
+        endDate: '',
+        actualCompletionDate: '',
+        timeRequired: '',
+        actualTimeRequired: ''
+      });
+    }
+  };
+
+  const removePlanningActivity = (id) => {
+    setPlanningActivities(planningActivities.filter(act => act.id !== id));
+  };
+
+  const updatePlanningActivityField = (field, value) => {
+    setNewPlanningActivity(prev => ({ ...prev, [field]: value }));
   };
 
   // Project Activities Management
@@ -609,7 +780,9 @@ function EditProjectForm() {
         actual_profit_loss: form.actual_profit_loss ? Number(form.actual_profit_loss) : null,
         progress: Number(form.progress) || 0,
         team_members: JSON.stringify(teamMembers),
-        project_activities_list: JSON.stringify(projectActivities)
+        project_activities_list: JSON.stringify(projectActivities),
+        planning_activities_list: JSON.stringify(planningActivities),
+        documents_list: JSON.stringify(documentsList)
       };
 
       const result = await fetchJSON(`/api/projects/${id}`, {
@@ -833,316 +1006,78 @@ function EditProjectForm() {
                     </div>
                   </div>
                 </section>
-
-                {/* Enhanced Meeting & Documents with Collapsible Sections */}
-                <div className="space-y-4">
-                  {/* Section 1: Project Planning */}
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSections(prev => ({ ...prev, planning: !prev.planning }))}
-                      className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
-                    >
-                      <div>
-                        <h3 className="text-sm font-semibold text-black flex items-center">
-                          Project Planning
-                          <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">2 items</span>
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-1">Schedule, deliverables, and project roadmap</p>
-                      </div>
-                      {expandedSections.planning ? 
-                        <ChevronDownIcon className="h-5 w-5 text-gray-400" /> : 
-                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
-                      }
-                    </button>
-                    
-                    {expandedSections.planning && (
-                      <div className="px-6 pb-5 border-t border-gray-100 space-y-4">
-                        {/* Project Schedule with Timeline */}
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
-                          <label className="block text-sm font-medium text-blue-900 mb-3 flex items-center">
-                            Project Schedule & Timeline
-                          </label>
-                          
-                          {/* Date Pickers for Key Milestones */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                            <div>
-                              <label className="block text-xs font-medium text-blue-800 mb-1">Project Start</label>
-                              <input 
-                                type="date" 
-                                name="project_start_milestone" 
-                                value={form.project_start_milestone || form.start_date} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500" 
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-blue-800 mb-1">Mid Review</label>
-                              <input 
-                                type="date" 
-                                name="project_review_milestone" 
-                                value={form.project_review_milestone || ''} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500" 
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-blue-800 mb-1">Project End</label>
-                              <input 
-                                type="date" 
-                                name="project_end_milestone" 
-                                value={form.project_end_milestone || form.end_date} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500" 
-                              />
-                            </div>
-                          </div>
-                          
-                          <textarea 
-                            name="project_schedule" 
-                            value={form.project_schedule} 
-                            onChange={handleChange} 
-                            rows={3} 
-                            placeholder="Define phases, milestones, and key deliverables timeline..." 
-                            className="w-full px-3 py-2 text-sm border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500 bg-white" 
-                          />
-                        </div>
-
-                        {/* List of Deliverables with Tagging */}
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
-                          <label className="block text-sm font-medium text-green-900 mb-3 flex items-center">
-                            Project Deliverables
-                          </label>
-                          <textarea 
-                            name="list_of_deliverables" 
-                            value={form.list_of_deliverables} 
-                            onChange={handleChange} 
-                            rows={3} 
-                            placeholder="List all deliverables with status tags: [FINAL], [DRAFT], [REFERENCE]..." 
-                            className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500 bg-white" 
-                          />
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">Final</span>
-                            <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">Draft</span>
-                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Reference</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Section 2: Documentation */}
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSections(prev => ({ ...prev, documentation: !prev.documentation }))}
-                      className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
-                    >
-                      <div>
-                        <h3 className="text-sm font-semibold text-black flex items-center">
-                          Documentation
-                          <span className="ml-2 px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">Input Docs</span>
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-1">Input documents, references, and file management</p>
-                      </div>
-                      {expandedSections.documentation ? 
-                        <ChevronDownIcon className="h-5 w-5 text-gray-400" /> : 
-                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
-                      }
-                    </button>
-                    
-                    {expandedSections.documentation && (
-                      <div className="px-6 pb-5 border-t border-gray-100">
-                        <div className="bg-gradient-to-r from-purple-50 to-violet-50 p-4 rounded-lg border border-purple-200">
-                          <label className="block text-sm font-medium text-purple-900 mb-3 flex items-center">
-                            Input Documents & References
-                          </label>
-                          
-                          {/* File Upload Area */}
-                          <div className="mb-4 p-4 border-2 border-dashed border-purple-300 rounded-lg bg-white hover:border-purple-400 transition-colors">
-                            <input
-                              type="file"
-                              multiple
-                              accept=".pdf,.docx,.doc,.xls,.xlsx,.png,.jpg,.jpeg"
-                              onChange={(e) => handleFileUpload(e.target.files, 'input')}
-                              className="hidden"
-                              id="input-file-upload"
-                            />
-                            <div className="text-center">
-                              <svg className="mx-auto h-8 w-8 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                              </svg>
-                              <p className="mt-1 text-xs text-purple-600">
-                                <label htmlFor="input-file-upload" className="font-medium text-purple-700 hover:text-purple-800 cursor-pointer">Upload files</label>
-                                {' '}or drag and drop
-                              </p>
-                              <p className="text-xs text-purple-500">PDF, DOCX, XLS up to 10MB</p>
-                            </div>
-                          </div>
-
-                          {/* Uploaded Files List */}
-                          {inputDocuments.length > 0 && (
-                            <div className="mb-4 space-y-2">
-                              {inputDocuments.map((file) => (
-                                <div key={file.id} className="flex items-center justify-between p-3 bg-white border border-purple-200 rounded-lg">
-                                  <div className="flex items-center space-x-3">
-                                    <div className="flex-shrink-0">
-                                      <DocumentIcon className="h-5 w-5 text-purple-500" />
-                                    </div>
-                                    <div>
-                                      <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                                      <p className="text-xs text-gray-500">
-                                        {file.version} • {(file.size / 1024 / 1024).toFixed(2)} MB • {new Date(file.uploadDate).toLocaleDateString()}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <select
-                                      value={file.tag}
-                                      onChange={(e) => updateFileTag(file.id, e.target.value, 'input')}
-                                      className="text-xs border border-purple-300 rounded px-2 py-1"
-                                    >
-                                      <option value="Reference">Reference</option>
-                                      <option value="Final">Final</option>
-                                      <option value="Client Input">Client Input</option>
-                                      <option value="Draft">Draft</option>
-                                    </select>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeFile(file.id, 'input')}
-                                      className="text-red-500 hover:text-red-700"
-                                    >
-                                      <XMarkIcon className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          <textarea 
-                            name="input_document" 
-                            value={form.input_document} 
-                            onChange={handleChange} 
-                            rows={3} 
-                            placeholder="List input documents, specifications, references, client requirements..." 
-                            className="w-full px-3 py-2 text-sm border border-purple-300 rounded-md focus:ring-2 focus:ring-purple-500 bg-white" 
-                          />
-                          
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">Specs v2.1</span>
-                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Drawings v1.3</span>
-                            <span className="px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded-full">Requirements v1.0</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </section>
-
-                  {/* Section 3: Meetings */}
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSections(prev => ({ ...prev, meetings: !prev.meetings }))}
-                      className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
-                    >
-                      <div>
-                        <h3 className="text-sm font-semibold text-black flex items-center">
-                          Meetings & Communications
-                          <span className="ml-2 px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full">2 types</span>
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-1">Kickoff meetings, internal discussions, and follow-ups</p>
-                      </div>
-                      {expandedSections.meetings ? 
-                        <ChevronDownIcon className="h-5 w-5 text-gray-400" /> : 
-                        <ChevronRightIcon className="h-5 w-5 text-gray-400" />
-                      }
-                    </button>
-                    
-                    {expandedSections.meetings && (
-                      <div className="px-6 pb-5 border-t border-gray-100 space-y-4">
-                        {/* Kickoff Meeting */}
-                        <div className="bg-gradient-to-r from-orange-50 to-red-50 p-4 rounded-lg border border-orange-200">
-                          <label className="block text-sm font-medium text-orange-900 mb-3 flex items-center">
-                            Kickoff Meeting
-                          </label>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                            <div>
-                              <label className="block text-xs font-medium text-orange-800 mb-1">Meeting Date</label>
-                              <input 
-                                type="datetime-local" 
-                                name="kickoff_meeting_date" 
-                                value={form.kickoff_meeting_date || ''} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-orange-300 rounded-md focus:ring-2 focus:ring-orange-500" 
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-orange-800 mb-1">Next Follow-up</label>
-                              <input 
-                                type="date" 
-                                name="kickoff_followup_date" 
-                                value={form.kickoff_followup_date || ''} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-orange-300 rounded-md focus:ring-2 focus:ring-orange-500" 
-                              />
-                            </div>
-                          </div>
-                          
-                          <textarea 
-                            name="kickoff_meeting" 
-                            value={form.kickoff_meeting} 
-                            onChange={handleChange} 
-                            rows={3} 
-                            placeholder="Participants, agenda, key decisions, action items..." 
-                            className="w-full px-3 py-2 text-sm border border-orange-300 rounded-md focus:ring-2 focus:ring-orange-500 bg-white" 
-                          />
-                        </div>
-
-                        {/* In-House Meeting */}
-                        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-lg border border-indigo-200">
-                          <label className="block text-sm font-medium text-indigo-900 mb-3 flex items-center">
-                            Internal Team Meetings
-                          </label>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                            <div>
-                              <label className="block text-xs font-medium text-indigo-800 mb-1">Last Meeting</label>
-                              <input 
-                                type="datetime-local" 
-                                name="internal_meeting_date" 
-                                value={form.internal_meeting_date || ''} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500" 
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-indigo-800 mb-1">Next Scheduled</label>
-                              <input 
-                                type="datetime-local" 
-                                name="next_internal_meeting" 
-                                value={form.next_internal_meeting || ''} 
-                                onChange={handleChange} 
-                                className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500" 
-                              />
-                            </div>
-                          </div>
-                          
-                          <textarea 
-                            name="in_house_meeting" 
-                            value={form.in_house_meeting} 
-                            onChange={handleChange} 
-                            rows={3} 
-                            placeholder="Team discussions, progress updates, internal decisions, blockers..." 
-                            className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500 bg-white" 
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </section>
-                </div>
               </div>
+            )}
+
+            {/* Scope of Work Tab */}
+            {activeTab === 'scope' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Scope of Work</h2>
+                  <p className="text-xs text-gray-600 mt-1">Define project scope and input documentation</p>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Description</label>
+                    <textarea 
+                      name="description" 
+                      value={form.description} 
+                      onChange={handleChange} 
+                      rows={8} 
+                      placeholder="Describe the project scope, objectives, and key requirements..." 
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
+                    
+                    {/* Add new document input */}
+                    <div className="flex gap-2 mb-3">
+                      <input 
+                        type="text"
+                        value={newInputDocument}
+                        onChange={(e) => setNewInputDocument(e.target.value)}
+                        onKeyPress={handleInputDocumentKeyPress}
+                        placeholder="Enter document name (e.g., Specification Rev 2.1)..."
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                      />
+                      <button
+                        type="button"
+                        onClick={addInputDocument}
+                        className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* List of added documents */}
+                    {inputDocumentsList.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {inputDocumentsList.map((doc) => (
+                          <div 
+                            key={doc.id} 
+                            className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg group hover:bg-purple-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <DocumentIcon className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-900">{doc.text}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeInputDocument(doc.id)}
+                              className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Remove document"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
             )}
 
             {/* Commercial Tab */}
@@ -1701,6 +1636,292 @@ function EditProjectForm() {
                   <div>
                     <label className="block text-xs font-medium text-black mb-1">Additional Notes</label>
                     <textarea name="notes" value={form.notes} onChange={handleChange} rows={4} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Project Planning Tab */}
+            {activeTab === 'planning' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Project Planning</h2>
+                  <p className="text-xs text-gray-600 mt-1">Track activities, timelines, and deliverables</p>
+                </div>
+                <div className="px-6 py-5 space-y-6">
+                  {/* Activity Tracking Section */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-black mb-4">Activity Tracking</h3>
+                    
+                    {/* Add New Activity Form */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Serial No.</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.serialNumber}
+                            onChange={(e) => updatePlanningActivityField('serialNumber', e.target.value)}
+                            placeholder="Auto"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Activity *</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.activity}
+                            onChange={(e) => updatePlanningActivityField('activity', e.target.value)}
+                            placeholder="Enter activity name..."
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.quantity}
+                            onChange={(e) => updatePlanningActivityField('quantity', e.target.value)}
+                            placeholder="e.g., 10 units"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                          <input 
+                            type="date"
+                            value={newPlanningActivity.startDate}
+                            onChange={(e) => updatePlanningActivityField('startDate', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+                          <input 
+                            type="date"
+                            value={newPlanningActivity.endDate}
+                            onChange={(e) => updatePlanningActivityField('endDate', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Actual Completion</label>
+                          <input 
+                            type="date"
+                            value={newPlanningActivity.actualCompletionDate}
+                            onChange={(e) => updatePlanningActivityField('actualCompletionDate', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Time Required</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.timeRequired}
+                            onChange={(e) => updatePlanningActivityField('timeRequired', e.target.value)}
+                            placeholder="e.g., 5 days"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Actual Time</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.actualTimeRequired}
+                            onChange={(e) => updatePlanningActivityField('actualTimeRequired', e.target.value)}
+                            placeholder="e.g., 6 days"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={addPlanningActivity}
+                          className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                        >
+                          <PlusIcon className="h-4 w-4" />
+                          Add Activity
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Activities List */}
+                    {planningActivities.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border border-gray-200 rounded-lg">
+                          <thead className="bg-gray-100">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">S.No</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Activity</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Quantity</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Start Date</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">End Date</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Actual Completion</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Time Required</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Actual Time</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {planningActivities.map((activity, index) => (
+                              <tr key={activity.id} className="border-t border-gray-200 hover:bg-gray-50">
+                                <td className="px-3 py-2 text-gray-900">{activity.serialNumber}</td>
+                                <td className="px-3 py-2 text-gray-900 font-medium">{activity.activity}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.quantity || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.startDate || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.endDate || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.actualCompletionDate || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.timeRequired || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.actualTimeRequired || '—'}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => removePlanningActivity(activity.id)}
+                                    className="text-red-500 hover:text-red-700 transition-colors"
+                                    title="Remove activity"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                        No activities added yet. Use the form above to add planning activities.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Documentation Tab */}
+            {activeTab === 'documentation' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Input Documentation</h2>
+                  <p className="text-xs text-gray-600 mt-1">Manage all project-related documents and specifications</p>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
+                    
+                    {/* Add new document input */}
+                    <div className="flex gap-2 mb-3">
+                      <input 
+                        type="text"
+                        value={newInputDocument}
+                        onChange={(e) => setNewInputDocument(e.target.value)}
+                        onKeyPress={handleInputDocumentKeyPress}
+                        placeholder="Enter document name (e.g., Technical Specification Rev 3.0)..."
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                      />
+                      <button
+                        type="button"
+                        onClick={addInputDocument}
+                        className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* List of added documents */}
+                    {inputDocumentsList.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {inputDocumentsList.map((doc) => (
+                          <div 
+                            key={doc.id} 
+                            className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg group hover:bg-blue-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <DocumentIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-900">{doc.text}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeInputDocument(doc.id)}
+                              className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Remove document"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!inputDocumentsList.length && (
+                      <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                        <DocumentIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p>No documents added yet</p>
+                        <p className="text-xs mt-1">Use the input above to add documents to the list</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Meetings & Communications Tab */}
+            {activeTab === 'meetings' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Meetings & Communications</h2>
+                  <p className="text-xs text-gray-600 mt-1">Kickoff meetings, internal discussions, and follow-ups</p>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting</label>
+                    <textarea 
+                      name="kickoff_meeting" 
+                      value={form.kickoff_meeting} 
+                      onChange={handleChange} 
+                      rows={4} 
+                      placeholder="Document kickoff meeting details, attendees, and key decisions..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">In-House Meetings</label>
+                    <textarea 
+                      name="in_house_meeting" 
+                      value={form.in_house_meeting} 
+                      onChange={handleChange} 
+                      rows={4} 
+                      placeholder="Track internal team meetings, discussions, and action items..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting Date</label>
+                      <input 
+                        type="date" 
+                        name="kickoff_meeting_date" 
+                        value={form.kickoff_meeting_date} 
+                        onChange={handleChange} 
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Follow-up Meeting Date</label>
+                      <input 
+                        type="date" 
+                        name="followup_meeting_date" 
+                        value={form.followup_meeting_date} 
+                        onChange={handleChange} 
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                      />
+                    </div>
                   </div>
                 </div>
               </section>
