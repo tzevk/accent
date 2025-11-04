@@ -10,7 +10,10 @@ import {
   PencilIcon,
   CheckIcon,
   XMarkIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  PlusIcon,
+  TrashIcon,
+  DocumentArrowDownIcon
 } from '@heroicons/react/24/outline';
 
 export default function ProposalPage() {
@@ -20,14 +23,6 @@ export default function ProposalPage() {
   const [proposal, setProposal] = useState(null);
   const [linkedLead, setLinkedLead] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    value: '',
-    due_date: '',
-    notes: '',
-    client_name: ''
-  });
 
   // Versions & approvals state
   const [versions, setVersions] = useState([]);
@@ -41,6 +36,58 @@ export default function ProposalPage() {
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
+
+  // Quotation form state
+  const [showQuotationForm, setShowQuotationForm] = useState(false);
+  const [quotationData, setQuotationData] = useState({
+    client: {
+      name: '',
+      address: '',
+      contactPerson: '',
+      designation: ''
+    },
+    quotation: {
+      number: '',
+      date: '',
+      enquiryNo: '',
+      enquiryDate: ''
+    },
+    work: [
+      { id: 1, scope: '', qty: '', rate: '', amount: '' }
+    ],
+    amount: {
+      inWords: '',
+      total: ''
+    },
+    registration: {
+      gst: '',
+      pan: '',
+      tan: ''
+    },
+    terms: '',
+    payment: '',
+    signature: {
+      name: 'Santosh Dinkar Mestry',
+      designation: 'Director'
+    }
+  });
+
+  // Annexure form state
+  const [showAnnexureForm, setShowAnnexureForm] = useState(false);
+  const [annexureData, setAnnexureData] = useState({
+    scopeOfWork: '',
+    inputDocuments: '',
+    deliverables: '',
+    software: '',
+    duration: '',
+    siteVisit: '',
+    quotationValidity: '',
+    modeOfDelivery: '',
+    revision: '',
+    exclusions: '',
+    billingAndPayment: ''
+  });
+
 
   // Fetch proposal + linked lead
   useEffect(() => {
@@ -109,6 +156,366 @@ export default function ProposalPage() {
     }
   };
 
+  // Quotation form handlers
+  const handleQuotationChange = (section, field, value) => {
+    setQuotationData(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const addWorkItem = () => {
+    setQuotationData(prev => ({
+      ...prev,
+      work: [...prev.work, { scope: '', qty: '', rate: '', amount: 0 }]
+    }));
+  };
+
+  const removeWorkItem = (index) => {
+    setQuotationData(prev => ({
+      ...prev,
+      work: prev.work.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateWorkItem = (index, field, value) => {
+    setQuotationData(prev => {
+      const newWork = [...prev.work];
+      newWork[index] = { ...newWork[index], [field]: value };
+      
+      // Auto-calculate amount if qty and rate are provided
+      if (field === 'qty' || field === 'rate') {
+        const qty = parseFloat(newWork[index].qty) || 0;
+        const rate = parseFloat(newWork[index].rate) || 0;
+        newWork[index].amount = qty * rate;
+      }
+      
+      return { ...prev, work: newWork };
+    });
+  };
+
+  const calculateTotal = () => {
+    return quotationData.work.reduce((total, item) => total + (item.amount || 0), 0);
+  };
+
+  const handleAnnexureChange = (field, value) => {
+    setAnnexureData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const submitQuotation = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // Calculate total amount
+      const totalAmount = calculateTotal();
+      
+      const quotationPayload = {
+        ...quotationData,
+        amount: {
+          ...quotationData.amount,
+          total: totalAmount
+        },
+        proposalId: proposal.id
+      };
+
+      const result = await fetchJSON(`/api/proposals/${proposal.id}/quotation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quotationPayload),
+      });
+
+      if (result?.success) {
+        alert('Quotation saved successfully!');
+        setShowQuotationForm(false);
+        // Reset form if needed
+      } else {
+        alert('Error saving quotation: ' + (result?.error || 'unknown'));
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error saving quotation');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitAnnexure = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      const annexurePayload = {
+        ...annexureData,
+        proposalId: proposal.id
+      };
+
+      const result = await fetchJSON(`/api/proposals/${proposal.id}/annexure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(annexurePayload),
+      });
+
+      if (result?.success) {
+        alert('Annexure saved successfully!');
+        setShowAnnexureForm(false);
+        // Reset form if needed
+      } else {
+        alert('Error saving annexure: ' + (result?.error || 'unknown'));
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error saving annexure');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const resetQuotationForm = () => {
+    setQuotationData({
+      client: { name: '', address: '', contactPerson: '', designation: '' },
+      quotation: { number: '', date: '', enquiryNo: '', enquiryDate: '' },
+      work: [{ scope: '', qty: '', rate: '', amount: 0 }],
+      amount: { inWords: '', total: 0 },
+      registration: { gst: '', pan: '', tan: '' },
+      terms: '',
+      payment: { advance: '', balance: '', bankDetails: '' },
+      signature: { name: 'Santosh Dinkar Mestry', designation: 'Director', date: '' }
+    });
+  };
+
+  const resetAnnexureForm = () => {
+    setAnnexureData({
+      projectName: '',
+      clientName: '',
+      projectType: '',
+      timeline: '',
+      budget: '',
+      scope: '',
+      deliverables: '',
+      milestones: '',
+      riskFactors: '',
+      assumptions: '',
+      additionalNotes: ''
+    });
+  };
+
+  const generatePDF = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // Dynamic import to avoid SSR issues
+      const jsPDF = (await import('jspdf')).default;
+      const html2canvas = (await import('html2canvas')).default;
+      
+      const activeTab = showQuotationForm ? 'quotation' : 'annexure';
+      const contentId = activeTab === 'quotation' ? 'quotation-content' : 'annexure-content';
+      const element = document.getElementById(contentId);
+      
+      if (!element) {
+        alert('Content not found for PDF generation');
+        return;
+      }
+
+      // Create a temporary container with proper styling for PDF
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.background = 'white';
+      tempDiv.style.padding = '40px';
+      tempDiv.style.width = '800px';
+      tempDiv.style.fontFamily = 'Arial, sans-serif';
+      tempDiv.innerHTML = `
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #64126D; font-size: 24px; margin: 0;">Accent CRM</h1>
+          <h2 style="color: #333; font-size: 18px; margin: 10px 0;">${activeTab === 'quotation' ? 'Professional Quotation' : 'Project Annexure'}</h2>
+          <hr style="border: 1px solid #64126D; margin: 20px 0;">
+        </div>
+        ${activeTab === 'quotation' ? generateQuotationHTML() : generateAnnexureHTML()}
+        <div style="margin-top: 40px; text-align: center;">
+          <p style="font-size: 12px; color: #666;">Generated on ${new Date().toLocaleDateString()}</p>
+        </div>
+      `;
+      
+      document.body.appendChild(tempDiv);
+      
+      // Generate PDF
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        width: 800,
+        height: tempDiv.scrollHeight
+      });
+      
+      document.body.removeChild(tempDiv);
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const imgWidth = 190;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 10;
+      
+      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight + 10;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      const filename = `${activeTab}_${proposal.title || 'document'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(filename);
+      
+      alert(`${activeTab === 'quotation' ? 'Quotation' : 'Annexure'} PDF generated successfully!`);
+      
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const generateQuotationHTML = () => {
+    const total = calculateTotal();
+    return `
+      <div style="line-height: 1.6;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+          <div>
+            <h3 style="color: #64126D; margin-bottom: 10px;">Client Information</h3>
+            <p><strong>Name:</strong> ${quotationData.client.name}</p>
+            <p><strong>Address:</strong> ${quotationData.client.address}</p>
+            <p><strong>Contact Person:</strong> ${quotationData.client.contactPerson}</p>
+            <p><strong>Designation:</strong> ${quotationData.client.designation}</p>
+          </div>
+          <div>
+            <h3 style="color: #64126D; margin-bottom: 10px;">Quotation Details</h3>
+            <p><strong>Quotation No:</strong> ${quotationData.quotation.number}</p>
+            <p><strong>Date:</strong> ${quotationData.quotation.date}</p>
+            <p><strong>Enquiry No:</strong> ${quotationData.quotation.enquiryNo}</p>
+            <p><strong>Enquiry Date:</strong> ${quotationData.quotation.enquiryDate}</p>
+          </div>
+        </div>
+        
+        <h3 style="color: #64126D; margin: 20px 0 10px;">Work Items</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <thead>
+            <tr style="background: #f5f5f5;">
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Scope of Work</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Qty</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Rate</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${quotationData.work.map(item => `
+              <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">${item.scope}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.qty}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.rate}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.amount.toFixed(2)}</td>
+              </tr>
+            `).join('')}
+            <tr style="background: #f5f5f5; font-weight: bold;">
+              <td colspan="3" style="border: 1px solid #ddd; padding: 8px; text-align: right;">Total Amount:</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${total.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <p><strong>Amount in Words:</strong> ${quotationData.amount.inWords}</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+          <div>
+            <h3 style="color: #64126D;">Registration Details</h3>
+            <p><strong>GST:</strong> ${quotationData.registration.gst}</p>
+            <p><strong>PAN:</strong> ${quotationData.registration.pan}</p>
+            <p><strong>TAN:</strong> ${quotationData.registration.tan}</p>
+          </div>
+          <div>
+            <h3 style="color: #64126D;">Payment Details</h3>
+            <p><strong>Advance:</strong> ${quotationData.payment.advance}</p>
+            <p><strong>Balance:</strong> ${quotationData.payment.balance}</p>
+            <p><strong>Bank Details:</strong> ${quotationData.payment.bankDetails}</p>
+          </div>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #64126D;">Terms & Conditions</h3>
+          <p style="white-space: pre-wrap;">${quotationData.terms}</p>
+        </div>
+        
+        <div style="text-align: right; margin-top: 40px;">
+          <p><strong>Signature</strong></p>
+          <p>${quotationData.signature.name}</p>
+          <p>${quotationData.signature.designation}</p>
+          <p>Date: ${quotationData.signature.date}</p>
+        </div>
+      </div>
+    `;
+  };
+
+  const generateAnnexureHTML = () => {
+    return `
+      <div style="line-height: 1.6;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+          <div>
+            <h3 style="color: #64126D;">Project Information</h3>
+            <p><strong>Project Name:</strong> ${annexureData.projectName}</p>
+            <p><strong>Client Name:</strong> ${annexureData.clientName}</p>
+            <p><strong>Project Type:</strong> ${annexureData.projectType}</p>
+          </div>
+          <div>
+            <h3 style="color: #64126D;">Timeline & Budget</h3>
+            <p><strong>Timeline:</strong> ${annexureData.timeline}</p>
+            <p><strong>Budget:</strong> ${annexureData.budget}</p>
+          </div>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #64126D;">Scope of Work</h3>
+          <p style="white-space: pre-wrap;">${annexureData.scope}</p>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #64126D;">Deliverables</h3>
+          <p style="white-space: pre-wrap;">${annexureData.deliverables}</p>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #64126D;">Milestones</h3>
+          <p style="white-space: pre-wrap;">${annexureData.milestones}</p>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #64126D;">Risk Factors</h3>
+          <p style="white-space: pre-wrap;">${annexureData.riskFactors}</p>
+        </div>
+        
+        <div style="margin: 20px 0;">
+          <h3 style="color: #64126D;">Assumptions</h3>
+          <p style="white-space: pre-wrap;">${annexureData.assumptions}</p>
+        </div>
+        
+        ${annexureData.additionalNotes ? `
+          <div style="margin: 20px 0;">
+            <h3 style="color: #64126D;">Additional Notes</h3>
+            <p style="white-space: pre-wrap;">${annexureData.additionalNotes}</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  };
+
   const fetchVersions = useCallback(async () => {
     if (!proposal?.id) return;
     try {
@@ -133,6 +540,27 @@ export default function ProposalPage() {
     };
     fetchMeta();
   }, [proposal, fetchVersions, fetchApprovals]);
+
+  // Listen for custom events from proposals list page
+  useEffect(() => {
+    const handleOpenQuotationForm = () => {
+      setShowQuotationForm(true);
+      setShowAnnexureForm(false);
+    };
+
+    const handleOpenAnnexureForm = () => {
+      setShowAnnexureForm(true);
+      setShowQuotationForm(false);
+    };
+
+    window.addEventListener('openQuotationForm', handleOpenQuotationForm);
+    window.addEventListener('openAnnexureForm', handleOpenAnnexureForm);
+
+    return () => {
+      window.removeEventListener('openQuotationForm', handleOpenQuotationForm);
+      window.removeEventListener('openAnnexureForm', handleOpenAnnexureForm);
+    };
+  }, []);
 
   const handleFileSelect = (e) => {
     const f = e.target.files?.[0];
@@ -292,6 +720,23 @@ export default function ProposalPage() {
               </div>
 
               <div className="flex items-center space-x-3">
+                {/* Quotation and Annexure Buttons */}
+                <button
+                  onClick={() => setShowQuotationForm(true)}
+                  className="px-3 py-1.5 text-sm text-white bg-accent-primary rounded-md hover:bg-accent-primary/90 transition-colors flex items-center space-x-1"
+                >
+                  <DocumentArrowDownIcon className="h-3 w-3" />
+                  <span>Create Quotation</span>
+                </button>
+                
+                <button
+                  onClick={() => setShowAnnexureForm(true)}
+                  className="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex items-center space-x-1"
+                >
+                  <PlusIcon className="h-3 w-3" />
+                  <span>Create Annexure</span>
+                </button>
+
                 <button
                   onClick={async () => {
                     try {
@@ -654,6 +1099,567 @@ export default function ProposalPage() {
           </div>
         </div>
       </div>
+
+      {/* Quotation and Annexure Tabs Modal */}
+      {(showQuotationForm || showAnnexureForm) && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {
+              setShowQuotationForm(false);
+              setShowAnnexureForm(false);
+            }}></div>
+            
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-7xl sm:w-full">
+              <div className="bg-white px-6 pt-6 pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Professional Document Generator</h3>
+                  <button
+                    onClick={() => {
+                      setShowQuotationForm(false);
+                      setShowAnnexureForm(false);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                {/* Tab Navigation */}
+                <div className="border-b border-gray-200 mb-6">
+                  <nav className="-mb-px flex space-x-8">
+                    <button
+                      onClick={() => {
+                        setShowQuotationForm(true);
+                        setShowAnnexureForm(false);
+                      }}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                        showQuotationForm 
+                          ? 'border-accent-primary text-accent-primary' 
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Professional Quotation
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowQuotationForm(false);
+                        setShowAnnexureForm(true);
+                      }}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                        showAnnexureForm 
+                          ? 'border-accent-primary text-accent-primary' 
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Project Annexure
+                    </button>
+                  </nav>
+                </div>
+
+                <div className="max-h-[70vh] overflow-y-auto">
+                  {/* Quotation Tab Content */}
+                  {showQuotationForm && (
+                    <div id="quotation-content" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    
+                    {/* Client Information */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Client Information</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
+                          <input
+                            type="text"
+                            value={quotationData.client.name}
+                            onChange={(e) => handleQuotationChange('client', 'name', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter client name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                          <textarea
+                            value={quotationData.client.address}
+                            onChange={(e) => handleQuotationChange('client', 'address', e.target.value)}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter client address"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+                          <input
+                            type="text"
+                            value={quotationData.client.contactPerson}
+                            onChange={(e) => handleQuotationChange('client', 'contactPerson', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter contact person name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                          <input
+                            type="text"
+                            value={quotationData.client.designation}
+                            onChange={(e) => handleQuotationChange('client', 'designation', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter designation"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quotation Details */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Quotation Details</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Number</label>
+                          <input
+                            type="text"
+                            value={quotationData.quotation.number}
+                            onChange={(e) => handleQuotationChange('quotation', 'number', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter quotation number"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                          <input
+                            type="date"
+                            value={quotationData.quotation.date}
+                            onChange={(e) => handleQuotationChange('quotation', 'date', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Enquiry Number</label>
+                          <input
+                            type="text"
+                            value={quotationData.quotation.enquiryNo}
+                            onChange={(e) => handleQuotationChange('quotation', 'enquiryNo', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter enquiry number"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Enquiry Date</label>
+                          <input
+                            type="date"
+                            value={quotationData.quotation.enquiryDate}
+                            onChange={(e) => handleQuotationChange('quotation', 'enquiryDate', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Work Items Table */}
+                    <div className="lg:col-span-2 bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-md font-semibold text-gray-900">Work Items</h4>
+                        <button
+                          onClick={addWorkItem}
+                          className="px-3 py-1 text-sm bg-accent-primary text-white rounded-md hover:bg-accent-primary/90 flex items-center space-x-1"
+                        >
+                          <PlusIcon className="h-4 w-4" />
+                          <span>Add Item</span>
+                        </button>
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100">
+                              <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Scope of Work</th>
+                              <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Qty</th>
+                              <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Rate</th>
+                              <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Amount</th>
+                              <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {quotationData.work.map((item, index) => (
+                              <tr key={index}>
+                                <td className="border border-gray-300 px-3 py-2">
+                                  <textarea
+                                    value={item.scope}
+                                    onChange={(e) => updateWorkItem(index, 'scope', e.target.value)}
+                                    className="w-full px-2 py-1 border-none resize-none focus:ring-2 focus:ring-accent-primary"
+                                    rows={2}
+                                    placeholder="Describe work scope"
+                                  />
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2">
+                                  <input
+                                    type="number"
+                                    value={item.qty}
+                                    onChange={(e) => updateWorkItem(index, 'qty', e.target.value)}
+                                    className="w-full px-2 py-1 border-none focus:ring-2 focus:ring-accent-primary"
+                                    placeholder="0"
+                                  />
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2">
+                                  <input
+                                    type="number"
+                                    value={item.rate}
+                                    onChange={(e) => updateWorkItem(index, 'rate', e.target.value)}
+                                    className="w-full px-2 py-1 border-none focus:ring-2 focus:ring-accent-primary"
+                                    placeholder="0.00"
+                                  />
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2 text-right font-medium">
+                                  ₹{item.amount.toFixed(2)}
+                                </td>
+                                <td className="border border-gray-300 px-3 py-2 text-center">
+                                  {quotationData.work.length > 1 && (
+                                    <button
+                                      onClick={() => removeWorkItem(index)}
+                                      className="text-red-600 hover:text-red-800"
+                                    >
+                                      <TrashIcon className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-100 font-semibold">
+                              <td colSpan={3} className="border border-gray-300 px-3 py-2 text-right">Total Amount:</td>
+                              <td className="border border-gray-300 px-3 py-2 text-right">₹{calculateTotal().toFixed(2)}</td>
+                              <td className="border border-gray-300"></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Amount in Words */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Amount</h4>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Amount in Words</label>
+                        <input
+                          type="text"
+                          value={quotationData.amount.inWords}
+                          onChange={(e) => handleQuotationChange('amount', 'inWords', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Enter amount in words"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Registration Numbers */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Registration Details</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
+                          <input
+                            type="text"
+                            value={quotationData.registration.gst}
+                            onChange={(e) => handleQuotationChange('registration', 'gst', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter GST number"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+                          <input
+                            type="text"
+                            value={quotationData.registration.pan}
+                            onChange={(e) => handleQuotationChange('registration', 'pan', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter PAN number"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">TAN Number</label>
+                          <input
+                            type="text"
+                            value={quotationData.registration.tan}
+                            onChange={(e) => handleQuotationChange('registration', 'tan', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter TAN number"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Terms & Conditions */}
+                    <div className="lg:col-span-2 bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Terms & Conditions</h4>
+                      <textarea
+                        value={quotationData.terms}
+                        onChange={(e) => setQuotationData(prev => ({ ...prev, terms: e.target.value }))}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                        placeholder="Enter terms and conditions"
+                      />
+                    </div>
+
+                    {/* Payment Details */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Payment Details</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Advance Payment</label>
+                          <input
+                            type="text"
+                            value={quotationData.payment.advance}
+                            onChange={(e) => handleQuotationChange('payment', 'advance', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter advance payment details"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Balance Payment</label>
+                          <input
+                            type="text"
+                            value={quotationData.payment.balance}
+                            onChange={(e) => handleQuotationChange('payment', 'balance', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter balance payment details"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Bank Details</label>
+                          <textarea
+                            value={quotationData.payment.bankDetails}
+                            onChange={(e) => handleQuotationChange('payment', 'bankDetails', e.target.value)}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Enter bank details"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Signature Section */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-900 mb-3">Signature</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                          <input
+                            type="text"
+                            value={quotationData.signature.name}
+                            onChange={(e) => handleQuotationChange('signature', 'name', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Signatory name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                          <input
+                            type="text"
+                            value={quotationData.signature.designation}
+                            onChange={(e) => handleQuotationChange('signature', 'designation', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                            placeholder="Designation"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                          <input
+                            type="date"
+                            value={quotationData.signature.date}
+                            onChange={(e) => handleQuotationChange('signature', 'date', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    </div>
+                  )}
+
+                  {/* Annexure Tab Content */}
+                  {showAnnexureForm && (
+                    <div id="annexure-content" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Project Name *</label>
+                        <input
+                          type="text"
+                          value={annexureData.projectName}
+                          onChange={(e) => handleAnnexureChange('projectName', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Enter project name"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
+                        <input
+                          type="text"
+                          value={annexureData.clientName}
+                          onChange={(e) => handleAnnexureChange('clientName', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Enter client name"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Project Type *</label>
+                        <select
+                          value={annexureData.projectType}
+                          onChange={(e) => handleAnnexureChange('projectType', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          required
+                        >
+                          <option value="">Select project type</option>
+                          <option value="Web Development">Web Development</option>
+                          <option value="Mobile App">Mobile App</option>
+                          <option value="Software Development">Software Development</option>
+                          <option value="Consulting">Consulting</option>
+                          <option value="Design">Design</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Timeline *</label>
+                        <input
+                          type="text"
+                          value={annexureData.timeline}
+                          onChange={(e) => handleAnnexureChange('timeline', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="e.g., 3 months, 6 weeks"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Budget *</label>
+                        <input
+                          type="text"
+                          value={annexureData.budget}
+                          onChange={(e) => handleAnnexureChange('budget', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Enter budget range"
+                          required
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Scope of Work *</label>
+                        <textarea
+                          value={annexureData.scope}
+                          onChange={(e) => handleAnnexureChange('scope', e.target.value)}
+                          rows={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Detailed description of work scope"
+                          required
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Deliverables *</label>
+                        <textarea
+                          value={annexureData.deliverables}
+                          onChange={(e) => handleAnnexureChange('deliverables', e.target.value)}
+                          rows={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="List of expected deliverables"
+                          required
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Milestones *</label>
+                        <textarea
+                          value={annexureData.milestones}
+                          onChange={(e) => handleAnnexureChange('milestones', e.target.value)}
+                          rows={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Key project milestones and timelines"
+                          required
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Risk Factors *</label>
+                        <textarea
+                          value={annexureData.riskFactors}
+                          onChange={(e) => handleAnnexureChange('riskFactors', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Potential risks and mitigation strategies"
+                          required
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Assumptions *</label>
+                        <textarea
+                          value={annexureData.assumptions}
+                          onChange={(e) => handleAnnexureChange('assumptions', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Key assumptions made for this project"
+                          required
+                        />
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+                        <textarea
+                          value={annexureData.additionalNotes}
+                          onChange={(e) => handleAnnexureChange('additionalNotes', e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Any additional notes or special requirements"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex justify-between items-center">
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        setShowQuotationForm(false);
+                        setShowAnnexureForm(false);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={showQuotationForm ? resetQuotationForm : resetAnnexureForm}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={generatePDF}
+                      disabled={isSubmitting}
+                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center space-x-1"
+                    >
+                      <DocumentArrowDownIcon className="h-4 w-4" />
+                      <span>Generate PDF</span>
+                    </button>
+                    <button
+                      onClick={showQuotationForm ? submitQuotation : submitAnnexure}
+                      disabled={isSubmitting}
+                      className="px-4 py-2 text-sm font-medium text-white bg-accent-primary rounded-md hover:bg-accent-primary/90 disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Saving...' : showQuotationForm ? 'Save Quotation' : 'Save Annexure'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }

@@ -369,10 +369,10 @@ export default function Leads() {
       } else {
         const createdId = result.data && result.data.id;
         const proposalId = result.data && result.data.proposalId;
-        // Redirect to proposal detail page if available
+        // Redirect to proposal edit page if available
         if (createdId) {
-          // navigate to the proposal detail page
-          router.push(`/proposals/${createdId}`);
+          // navigate to the proposal edit page
+          router.push(`/proposals/${createdId}/edit`);
         } else {
           alert('Proposal created: ' + (proposalId || ('ID ' + (result.data && result.data.id))));
           fetchLeads();
