@@ -177,9 +177,61 @@ export async function GET(request, { params }) {
       [employeeId]
     );
     await db.end();
-    if (!rows || rows.length === 0) return NextResponse.json({ success: true, data: null });
+    if (!rows || rows.length === 0) {
+      console.debug('[salary-api] GET: no persisted rows for employee', employeeId);
+      // Try to compute from employee master record if available (gross or salary_structure)
+      try {
+        const [empRows] = await db.execute('SELECT gross_salary, salary_structure FROM employees WHERE id = ? LIMIT 1', [employeeId]);
+        if (empRows && empRows.length > 0) {
+          const emp = empRows[0];
+          let grossFromEmp = null;
+          let otherAllowanceFromEmp = 0;
+          // salary_structure may be JSON with parts; try to extract gross or sum parts
+          if (emp.salary_structure) {
+            try {
+              const ss = typeof emp.salary_structure === 'string' ? JSON.parse(emp.salary_structure) : emp.salary_structure;
+              // If salary_structure contains a gross-like field, use it; otherwise sum known parts
+              if (ss.gross_salary || ss.gross) grossFromEmp = Number(ss.gross_salary || ss.gross) || null;
+              else {
+                const parts = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives'];
+                const sum = parts.reduce((s, k) => s + (Number(ss[k] || 0) || 0), 0);
+                if (sum > 0) grossFromEmp = Math.round(sum);
+                otherAllowanceFromEmp = Number(ss.other_allowance || ss.other || 0) || 0;
+              }
+            } catch (e) {
+              console.debug('[salary-api] failed to parse salary_structure for employee', employeeId, e.message);
+            }
+          }
+          if (emp.gross_salary && (!grossFromEmp)) grossFromEmp = Number(emp.gross_salary) || null;
+          if (grossFromEmp) {
+            const computed = calculateSalaryBreakdown({ grossSalary: grossFromEmp, otherAllowance: otherAllowanceFromEmp });
+            if (computed && !computed.error) {
+              const fakeRecord = {
+                effective_from: null,
+                gross_salary: computed.inputs?.gross_salary ?? grossFromEmp,
+                da: computed.breakdown?.basic_da,
+                hra: computed.breakdown?.hra,
+                conveyance: computed.breakdown?.conveyance_allowance,
+                other_allowance: computed.inputs?.other_allowance ?? otherAllowanceFromEmp
+              };
+              console.debug('[salary-api] GET: computed from employee master for', employeeId, { fakeRecord, computed });
+              await db.end();
+              return NextResponse.json({ success: true, data: { record: null, computed, derived_from_employee: true, employee: { id: employeeId } } });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[salary-api] GET: error while attempting compute from employee master', employeeId, e.message);
+      }
+
+      return NextResponse.json({ success: true, data: null });
+    }
     const result = calculateSalaryBreakdown(rows[0]);
-    if (result && result.error) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+    if (result && result.error) {
+      console.error('[salary-api] GET: computation error for employee', employeeId, result.error);
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+    }
+    console.debug('[salary-api] GET: returning record and computed for employee', employeeId, { record: rows[0], computed: result });
     return NextResponse.json({ success: true, data: { record: rows[0], computed: result } });
   } catch (error) {
     console.error('GET salary master error:', error);

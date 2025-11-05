@@ -458,6 +458,9 @@ export default function EmployeesPage() {
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
   const [salarySuccess, setSalarySuccess] = useState('');
+  // Salary rows loaded from DB (most-recent-first)
+  const [salaryRows, setSalaryRows] = useState([]);
+  const [salaryRaw, setSalaryRaw] = useState(null);
 
   // Comprehensive reactive salary engine
   useEffect(() => {
@@ -582,6 +585,159 @@ export default function EmployeesPage() {
     salaryData.total_working_hours,
     JSON.stringify(salaryData.manual_overrides)
   ]);
+
+  // Fetch persisted salary rows for the selected employee and map primary fields into the UI
+  const loadSalaryRows = async (empId) => {
+    try {
+      console.debug('[salary] loadSalaryRows called for', empId);
+      if (!empId) return;
+      setSalaryLoading(true);
+      setSalaryError('');
+      const url = `/api/employees/${empId}/salary`;
+      console.debug('[salary] fetching', url);
+      const res = await fetch(url);
+      console.debug('[salary] fetch response status', res.status);
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error('[salary] fetch failed:', txt || `Status ${res.status}`);
+        throw new Error(txt || `Status ${res.status}`);
+      }
+      const resJson = await res.json();
+      console.debug('[salary] response json', resJson);
+      // Server returns { success: true, data: { record, computed } } or { success: true, data: null }
+  setSalaryRaw(resJson);
+      let rows = [];
+      if (resJson && resJson.success) {
+        const payload = resJson.data;
+        if (!payload) {
+          rows = [];
+        } else if (Array.isArray(payload)) {
+          rows = payload;
+        } else if (payload.record) {
+          rows = [payload.record];
+        } else if (payload.rows) {
+          rows = payload.rows;
+        } else {
+          // fallback: if data itself looks like a record
+          rows = [payload];
+        }
+        // If no persisted record but server returned a computed breakdown, map computed -> fake row
+        if (rows.length === 0 && payload && payload.computed) {
+          const comp = payload.computed;
+          const fake = {
+            gross_salary: comp.inputs?.gross_salary ?? null,
+            basic_da: comp.breakdown?.basic_da ?? null,
+            hra: comp.breakdown?.hra ?? null,
+            conveyance_allowance: comp.breakdown?.conveyance_allowance ?? null,
+            call_allowance: null,
+            other_allowance: comp.inputs?.other_allowance ?? null,
+            effective_from: (payload.record && (payload.record.effective_from || payload.record.effectiveFrom)) || null,
+          };
+          console.debug('[salary] using server computed as fake row', fake);
+          rows = [fake];
+        }
+      } else {
+        // If the API returned a non-success wrapper, treat as empty and surface the raw payload in preview
+        rows = [];
+      }
+      console.debug('[salary] normalized rows count', rows.length, rows[0]);
+      // sort most-recent-first if effective_from present
+      rows.sort((a, b) => {
+        const da = a?.effective_from ? new Date(a.effective_from) : null;
+        const db = b?.effective_from ? new Date(b.effective_from) : null;
+        if (da && db) return db - da;
+        if (db) return 1;
+        if (da) return -1;
+        return 0;
+      });
+      setSalaryRows(rows);
+
+      // If we have at least one row, map the common DB fields into the salaryData UI state.
+      if (rows.length > 0) {
+        const row = rows[0];
+        // compute mapping values for logging
+        const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
+        const basic = row.basic ?? row.BASIC ?? row.Basic;
+        const da = row.da ?? row.DA ?? row.Da;
+        const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? undefined);
+        const hra = row.hra ?? row.HRA ?? undefined;
+        const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? undefined;
+        const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? undefined;
+        const other = row.other_allowance ?? row.other ?? row.other_allow ?? undefined;
+
+        console.debug('[salary] mapping record -> UI', { gross: g, basicDaCombined, hra, convey, callAllow, other, effective_from: row.effective_from });
+
+        setSalaryData(prev => {
+          // Helper to coalesce multiple possible field names
+          const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
+          const basic = row.basic ?? row.BASIC ?? row.Basic;
+          const da = row.da ?? row.DA ?? row.Da;
+          const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? prev.basic_da);
+          const hra = row.hra ?? row.HRA ?? prev.hra;
+          const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? prev.conveyance_allowance;
+          const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? prev.call_allowance;
+          const other = row.other_allowance ?? row.other ?? row.other_allow ?? prev.other_allowance;
+
+          // Preserve existing manual overrides and mark fetched component fields as manual so
+          // they reflect DB values until the user explicitly resets them via the UI.
+          const prevMO = prev.manual_overrides || {};
+          const newMO = { ...prevMO };
+          // Prefer mapping component splits from gross: do not force basic/da/hra/conveyance from DB.
+          // Remove manual override flags for those splits so the reactive engine computes them from gross.
+          if (newMO.basic_da) delete newMO.basic_da;
+          if (newMO.hra) delete newMO.hra;
+          if (newMO.conveyance_allowance) delete newMO.conveyance_allowance;
+          if (callAllow !== undefined || row.call_allowance !== undefined) newMO.call_allowance = true;
+          if (other !== undefined || row.other_allowance !== undefined) newMO.other_allowance = true;
+
+          return {
+            ...prev,
+            gross_salary: g !== undefined && g !== null ? g : prev.gross_salary,
+            // Do not overwrite the component splits here; let the reactive salary engine derive them from gross.
+            basic_da: prev.basic_da,
+            hra: prev.hra,
+            conveyance_allowance: prev.conveyance_allowance,
+            call_allowance: callAllow !== undefined ? callAllow : prev.call_allowance,
+            other_allowance: other !== undefined ? other : prev.other_allowance,
+            effective_from: row.effective_from ?? prev.effective_from,
+            manual_overrides: newMO
+          };
+        });
+        // Also populate salaryInputs (used by the save flow) so add/edit flows stay in sync
+        try {
+          setSalaryInputs(prev => ({
+            ...prev,
+            basic_salary: row.basic ?? row.basic_salary ?? row.BASIC ?? prev.basic_salary,
+            da: row.da ?? row.DA ?? prev.da,
+            hra: row.hra ?? row.HRA ?? prev.hra,
+            conveyance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance,
+            call_allowance: row.call_allowance ?? row.call ?? prev.call_allowance,
+            other_allowance: row.other_allowance ?? row.other ?? prev.other_allowance,
+            effective_from: row.effective_from ?? prev.effective_from,
+            pl_used: row.pl_used ?? prev.pl_used,
+            pl_balance: row.pl_balance ?? prev.pl_balance,
+          }));
+          console.debug('[salary] salaryInputs populated from DB', { basic_salary: row.basic ?? row.basic_salary, da: row.da, hra: row.hra, conveyance: row.conveyance, call_allowance: row.call_allowance, other_allowance: row.other_allowance });
+        } catch (e) { console.error('[salary] failed to set salaryInputs', e); }
+      }
+
+    } catch (err) {
+      console.error('Failed to load salary rows', err);
+      setSalaryError(String(err?.message || err));
+      setSalaryRows([]);
+    } finally {
+      setSalaryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSalaryRows(selectedEmployee?.id);
+  }, [selectedEmployee?.id]);
+
+  // Also reload when the Salary tab is shown to the user
+  useEffect(() => {
+    if (editSubTab === 'salary') loadSalaryRows(selectedEmployee?.id);
+  }, [editSubTab, selectedEmployee?.id]);
 
   // Add attendance related extras
   // week_offs: weekly offs in the period; pl_use: paid leave used; pl_balance: informational
@@ -722,7 +878,8 @@ export default function EmployeesPage() {
       const s = (searchTerm || '').trim();
       const params = new URLSearchParams({
         page: currentPage,
-        limit: 10,
+        // Request a larger page size so the UI shows more employees (server caps at 100)
+        limit: 100,
         ...(s && { search: s }),
         ...(selectedDepartment && { department: selectedDepartment }),
         ...(selectedStatus && { status: selectedStatus })
@@ -1008,7 +1165,6 @@ export default function EmployeesPage() {
         setActiveTab('list');
         setFormData(defaultFormData);
         setSelectedEmployee(null);
-  setSalaryInputs({ basic_salary: '', attendance_days: '', total_working_days: 26, loan_active: 'No', loan_emi: '', advance_payment: '', salary_type: 'Monthly', effective_from: '', additional_earnings: '', additional_deductions: '', pf: '', pt: '', mlwf: '' });
         fetchEmployees();
       } else {
         const error = respJson || {};
@@ -1982,6 +2138,46 @@ export default function EmployeesPage() {
                               <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
                             </div>
                           </div>
+                        </div>
+                        {/* DB-backed salary preview / selector */}
+                        <div>
+                          {salaryLoading ? (
+                            <div className="text-sm text-gray-600 py-2">Loading salary rows...</div>
+                          ) : salaryError ? (
+                            <div className="text-sm text-red-600 py-2">Error loading salary: {salaryError}</div>
+                          ) : (salaryRows && salaryRows.length > 0) ? (
+                            <div className="bg-white p-3 rounded-lg border border-gray-200 mb-4">
+                              <div className="flex items-center justify-end gap-2 mb-2">
+                                <button type="button" onClick={() => loadSalaryRows(selectedEmployee?.id)} className="text-xs px-2 py-1 rounded bg-gray-100 border">Reload from DB</button>
+                                <button type="button" onClick={() => {
+                                  // copy DB values into the form explicitly (same as load but safe)
+                                  loadSalaryRows(selectedEmployee?.id);
+                                }} className="text-xs px-2 py-1 rounded bg-white border">Load DB values</button>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-gray-700">
+                                  <div className="font-medium">Salary row loaded from DB</div>
+                                  <div className="text-xs text-gray-500">Effective from: {salaryRows[0].effective_from ? new Date(salaryRows[0].effective_from).toLocaleDateString() : '—'}</div>
+                                </div>
+                                <div className="text-sm text-gray-700">
+                                  <div>Gross: ₹{salaryRows[0].gross_salary ?? salaryRows[0].gross ?? '—'}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-gray-700">
+                                <div>BASIC+DA: {salaryRows[0].basic_da ?? ((salaryRows[0].basic || 0) + (salaryRows[0].da || 0))}</div>
+                                <div>HRA: {salaryRows[0].hra ?? '—'}</div>
+                                <div>Conveyance: {salaryRows[0].conveyance_allowance ?? salaryRows[0].conveyance ?? '—'}</div>
+                                <div>Call allowance: {salaryRows[0].call_allowance ?? salaryRows[0].call ?? '—'}</div>
+                                <div>Other allowance: {salaryRows[0].other_allowance ?? salaryRows[0].other ?? '—'}</div>
+                              </div>
+                              {/* Debug: show raw API payload (compact) so we can confirm keys like gross_salary */}
+                              {salaryRaw ? (
+                                <pre className="text-xs text-gray-500 mt-2 max-h-36 overflow-auto bg-gray-50 p-2 rounded">{JSON.stringify(salaryRaw, null, 2)}</pre>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500 py-2">No persisted salary rows found for this employee.</div>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
