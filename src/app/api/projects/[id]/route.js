@@ -44,7 +44,7 @@ export async function GET(request, { params }) {
     if (project.planning_activities_list && typeof project.planning_activities_list === 'string') {
       try {
         project.planning_activities_list = JSON.parse(project.planning_activities_list);
-      } catch (e) {
+      } catch {
         project.planning_activities_list = [];
       }
     }
@@ -52,7 +52,7 @@ export async function GET(request, { params }) {
     if (project.documents_list && typeof project.documents_list === 'string') {
       try {
         project.documents_list = JSON.parse(project.documents_list);
-      } catch (e) {
+      } catch {
         project.documents_list = [];
       }
     }
