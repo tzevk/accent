@@ -13,6 +13,7 @@ import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon
 } from '@heroicons/react/24/outline';
+import { ArrowRightIcon } from '@heroicons/react/24/outline';
 
 export default function Proposals() {
   const router = useRouter();
@@ -60,6 +61,35 @@ export default function Proposals() {
     } catch (error) {
       console.error('Error deleting proposal:', error);
       alert('Error deleting proposal');
+    }
+  };
+
+  const handleConvert = async (proposal) => {
+    try {
+      if (!proposal?.id) return alert('Proposal not loaded');
+      if (!window.confirm(`Convert proposal "${proposal.proposal_title || proposal.title}" to a project?`)) return;
+
+      const res = await fetch(`/api/proposals/${proposal.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // minimal overrides; server will copy fields
+          project_manager: proposal.project_manager || null,
+          start_date: new Date().toISOString().split('T')[0],
+          budget: proposal.value || null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Conversion failed');
+
+      // Update local list: mark as converted
+      setProposals(prev => prev.map(p => p.id === proposal.id ? { ...p, status: 'CONVERTED', project_id: data.data.project.project_id } : p));
+
+      alert('Proposal converted to project. Redirecting to project...');
+      router.push(`/projects/${data.data.project.project_id}/edit`);
+    } catch (err) {
+      console.error('Convert error:', err);
+      alert('Failed to convert proposal: ' + (err.message || err));
     }
   };
 
@@ -310,6 +340,13 @@ export default function Proposals() {
                               title="Edit Proposal"
                             >
                               <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleConvert(proposal)}
+                              className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Convert to Project"
+                            >
+                              <ArrowRightIcon className="h-4 w-4" />
                             </button>
                             <button 
                               onClick={() => handleDelete(proposal.id)}

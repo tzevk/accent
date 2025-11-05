@@ -4,18 +4,34 @@ import { dbConnect } from '@/utils/database';
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const projectId = parseInt(id);
-    
+    const projectIdInt = parseInt(id, 10);
+
     const db = await dbConnect();
-    
-    const [rows] = await db.execute(`
-      SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
-      FROM projects p 
-      LEFT JOIN proposals pr ON p.proposal_id = pr.id
-      WHERE p.id = ?
-    `, [projectId]);
-    
-    if (rows.length === 0) {
+
+    // Try lookup by numeric primary id first. If not found, fallback to project_id (human readable)
+    let rows = [];
+    if (!Number.isNaN(projectIdInt)) {
+      const [r] = await db.execute(`
+        SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
+        FROM projects p 
+        LEFT JOIN proposals pr ON p.proposal_id = pr.id
+        WHERE p.id = ?
+      `, [projectIdInt]);
+      rows = r || [];
+    }
+
+    if (!rows || rows.length === 0) {
+      // fallback: try project_id column (string like 001-11-2025)
+      const [r2] = await db.execute(`
+        SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
+        FROM projects p 
+        LEFT JOIN proposals pr ON p.proposal_id = pr.id
+        WHERE p.project_id = ?
+      `, [id]);
+      rows = r2 || [];
+    }
+
+    if (!rows || rows.length === 0) {
       await db.end();
       return Response.json({ 
         success: false, 
@@ -77,8 +93,31 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
-    const projectId = parseInt(id);
     const data = await request.json();
+    const db = await dbConnect();
+
+    // Resolve the numeric primary key for the project.
+    // If the route param is a pure numeric string, use it directly.
+    // Otherwise try to resolve the human-friendly `project_id` to the numeric id.
+    let projectId = null;
+    if (/^\d+$/.test(id)) {
+      projectId = parseInt(id, 10);
+    } else {
+      try {
+        const [lookup] = await db.execute('SELECT id FROM projects WHERE project_id = ?', [id]);
+        if (lookup && lookup.length > 0) {
+          projectId = lookup[0].id;
+        }
+      } catch (lookupErr) {
+        console.warn('Project lookup by project_id failed:', lookupErr.message || lookupErr);
+      }
+    }
+
+    if (projectId === null) {
+      // ensure DB connection closed before returning
+      try { await db.end(); } catch {}
+      return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
+    }
     
     const {
       name,
@@ -148,7 +187,7 @@ export async function PUT(request, { params }) {
       next_internal_meeting
     } = data;
 
-    const db = await dbConnect();
+    
     
     // Helper function to normalize decimal/numeric fields (convert empty strings to null)
     const normalizeDecimal = (value) => {
@@ -298,7 +337,7 @@ export async function PUT(request, { params }) {
       project_location_site === undefined ? null : project_location_site,
       industry === undefined ? null : industry,
       contract_type === undefined ? null : contract_type,
-      company_id === undefined ? null : company_id,
+  (company_id === undefined || company_id === null || company_id === '' ) ? null : company_id,
       project_manager === undefined ? null : project_manager,
       type === undefined ? null : type,
       normalizeDate(start_date),
@@ -312,8 +351,8 @@ export async function PUT(request, { params }) {
       priority === undefined ? null : priority,
       assigned_to === undefined ? null : assigned_to,
       description === undefined ? null : description,
-      notes === undefined ? null : notes,
-      proposal_id === undefined ? null : proposal_id,
+  notes === undefined ? null : notes,
+  (proposal_id === undefined || proposal_id === null || proposal_id === '' ) ? null : proposal_id,
       normalizeDecimal(project_value),
       currency === undefined ? null : currency,
       payment_terms === undefined ? null : payment_terms,

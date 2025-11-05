@@ -107,6 +107,43 @@ export default function ProjectViewPage() {
     return docs;
   }, [project]);
 
+  // Parse JSON fields safely for rendering
+  const parsedTeamMembers = useMemo(() => {
+    if (!project || !project.team_members) return [];
+    try {
+      return typeof project.team_members === 'string' ? JSON.parse(project.team_members) : project.team_members;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedProjectActivitiesList = useMemo(() => {
+    if (!project || !project.project_activities_list) return [];
+    try {
+      return typeof project.project_activities_list === 'string' ? JSON.parse(project.project_activities_list) : project.project_activities_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedPlanningActivities = useMemo(() => {
+    if (!project || !project.planning_activities_list) return [];
+    try {
+      return typeof project.planning_activities_list === 'string' ? JSON.parse(project.planning_activities_list) : project.planning_activities_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedDocumentsList = useMemo(() => {
+    if (!project || !project.documents_list) return [];
+    try {
+      return typeof project.documents_list === 'string' ? JSON.parse(project.documents_list) : project.documents_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
   if (loading) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
@@ -270,10 +307,31 @@ export default function ProjectViewPage() {
                 <TagIcon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">Commercial Information</h2>
               </div>
-              <div className="px-6 py-5">
-                <p className="text-sm text-gray-500">
-                  Commercial details will be displayed here. Use the edit view to add project value, payment terms, and financial information.
-                </p>
+              <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Project Value</p>
+                  <p className="text-sm font-medium text-black mt-1">{project.project_value ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: project.currency || 'INR' }).format(project.project_value) : '—'}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Currency</p>
+                  <p className="text-sm font-medium text-black mt-1">{project.currency || '—'}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Payment Terms</p>
+                  <p className="text-sm font-medium text-black mt-1">{project.payment_terms || '—'}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Invoicing Status</p>
+                  <p className="text-sm font-medium text-black mt-1">{project.invoicing_status || '—'}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Cost to Company</p>
+                  <p className="text-sm font-medium text-black mt-1">{project.cost_to_company ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: project.currency || 'INR' }).format(project.cost_to_company) : '—'}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Profitability Estimate</p>
+                  <p className="text-sm font-medium text-black mt-1">{project.profitability_estimate ? `${project.profitability_estimate}%` : '—'}</p>
+                </div>
               </div>
             </section>
 
@@ -290,9 +348,18 @@ export default function ProjectViewPage() {
                 <h2 className="text-sm font-semibold text-black">Project Activities</h2>
               </div>
               <div className="px-6 py-5">
-                <p className="text-sm text-gray-500">
-                  Project activities and task details will be displayed here. Use the edit view to manage activities, disciplines, and assignments.
-                </p>
+                {parsedProjectActivitiesList && parsedProjectActivitiesList.length > 0 ? (
+                  <div className="space-y-3">
+                    {parsedProjectActivitiesList.map((act, idx) => (
+                      <div key={idx} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <h4 className="text-sm font-semibold text-black">{act.activity || act.name || `Activity ${idx+1}`}</h4>
+                        {act.description ? <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{act.description}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No project activities captured. Use the edit view to add activities, disciplines and assignments.</p>
+                )}
               </div>
             </section>
 
@@ -314,9 +381,16 @@ export default function ProjectViewPage() {
                 <p><span className="font-semibold text-black">Project Manager:</span> {project.project_manager || '—'}</p>
                 <p><span className="font-semibold text-black">Primary Client:</span> {project.client_name || '—'}</p>
                 <p><span className="font-semibold text-black">Assigned To:</span> {project.assigned_to || '—'}</p>
-                <p className="text-xs text-gray-500 mt-4">
-                  Team assignments and member details will be displayed here. Use the edit view to manage team members and their roles.
-                </p>
+                <div className="mt-3">
+                  <h4 className="text-xs font-semibold text-black uppercase tracking-wide">Team Members</h4>
+                  {parsedTeamMembers && parsedTeamMembers.length > 0 ? (
+                    parsedTeamMembers.map((m, i) => (
+                      <div key={i} className="text-sm text-gray-600">{m.name || m.employee_name || m}</div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No team members added. Use the edit view to assign team members.</p>
+                  )}
+                </div>
               </div>
             </section>
 
@@ -333,9 +407,11 @@ export default function ProjectViewPage() {
                 <h2 className="text-sm font-semibold text-black">Procurement & Material</h2>
               </div>
               <div className="px-6 py-5">
-                <p className="text-sm text-gray-500">
-                  Procurement status, material delivery schedules, and vendor management information will be displayed here. Use the edit view to manage procurement details.
-                </p>
+                <div className="space-y-3 text-sm text-gray-600">
+                  <p><span className="font-semibold text-black">Procurement Status:</span> {project.procurement_status || '—'}</p>
+                  <p><span className="font-semibold text-black">Material Delivery Schedule:</span> {project.material_delivery_schedule || '—'}</p>
+                  <p><span className="font-semibold text-black">Vendor Management:</span> {project.vendor_management || '—'}</p>
+                </div>
               </div>
             </section>
 
@@ -352,9 +428,11 @@ export default function ProjectViewPage() {
                 <h2 className="text-sm font-semibold text-black">Construction</h2>
               </div>
               <div className="px-6 py-5">
-                <p className="text-sm text-gray-500">
-                  Site readiness, mobilization dates, and construction progress will be displayed here. Use the edit view to update construction information.
-                </p>
+                <div className="space-y-3 text-sm text-gray-600">
+                  <p><span className="font-semibold text-black">Mobilization Date:</span> {project.mobilization_date || '—'}</p>
+                  <p><span className="font-semibold text-black">Site Readiness:</span> {project.site_readiness || '—'}</p>
+                  <p><span className="font-semibold text-black">Construction Progress:</span> {project.construction_progress || '—'}</p>
+                </div>
               </div>
             </section>
 
@@ -371,9 +449,12 @@ export default function ProjectViewPage() {
                 <h2 className="text-sm font-semibold text-black">Risk & Issues</h2>
               </div>
               <div className="px-6 py-5">
-                <p className="text-sm text-gray-500">
-                  Major risks, mitigation plans, change orders, and disputes will be displayed here. Use the edit view to manage project risks and issues.
-                </p>
+                <div className="space-y-3 text-sm text-gray-600">
+                  <p><span className="font-semibold text-black">Major Risks:</span> {project.major_risks || '—'}</p>
+                  <p><span className="font-semibold text-black">Mitigation Plans:</span> {project.mitigation_plans || '—'}</p>
+                  <p><span className="font-semibold text-black">Change Orders:</span> {project.change_orders || '—'}</p>
+                  <p><span className="font-semibold text-black">Claims / Disputes:</span> {project.claims_disputes || '—'}</p>
+                </div>
               </div>
             </section>
 
@@ -390,9 +471,12 @@ export default function ProjectViewPage() {
                 <h2 className="text-sm font-semibold text-black">Project Closeout</h2>
               </div>
               <div className="px-6 py-5">
-                <p className="text-sm text-gray-500">
-                  Final documentation status, lessons learned, client feedback, and profit/loss information will be displayed here. Use the edit view to manage closeout details.
-                </p>
+                <div className="space-y-3 text-sm text-gray-600">
+                  <p><span className="font-semibold text-black">Final Documentation Status:</span> {project.final_documentation_status || '—'}</p>
+                  <p><span className="font-semibold text-black">Lessons Learned:</span> {project.lessons_learned || '—'}</p>
+                  <p><span className="font-semibold text-black">Client Feedback:</span> {project.client_feedback || '—'}</p>
+                  <p><span className="font-semibold text-black">Actual Profit / Loss:</span> {project.actual_profit_loss ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: project.currency || 'INR' }).format(project.actual_profit_loss) : '—'}</p>
+                </div>
               </div>
             </section>
           </div>

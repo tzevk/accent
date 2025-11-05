@@ -37,6 +37,10 @@ export default function ProposalPage() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
 
+  // Convert confirmation modal state
+  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
+  const [convertLoading, setConvertLoading] = useState(false);
+
   // Quotation form state
   const [showQuotationForm, setShowQuotationForm] = useState(false);
   const [quotationData, setQuotationData] = useState({
@@ -738,53 +742,25 @@ export default function ProposalPage() {
                 </button>
 
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     try {
                       if (!proposal?.id) throw new Error('Proposal not loaded');
                       if (!proposal?.title) throw new Error('Proposal title is required');
                       if (!proposal?.client) throw new Error('Client is required in the proposal');
-                      
+
                       // Get company_id from linked lead if available
                       let companyId = linkedLead?.company_id || null;
-                      
-                      // If no company_id from lead, try to get it from the proposal itself
-                      if (!companyId && proposal?.company_id) {
-                        companyId = proposal.company_id;
-                      }
-                      
+                      if (!companyId && proposal?.company_id) companyId = proposal.company_id;
                       if (!companyId) {
-                        throw new Error('Company information is missing. Please ensure the proposal is linked to a lead with company details.');
+                        alert('Company information is missing. Please ensure the proposal is linked to a lead with company details.');
+                        return;
                       }
-                      
-                      if (!window.confirm('Convert this proposal to a project?')) return;
 
-                      const res = await fetch('/api/projects', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          name: proposal.title,
-                          description: proposal.project_description || '',
-                          client_name: proposal.client,
-                          company_id: companyId,
-                          start_date: new Date().toISOString().split('T')[0],
-                          status: 'NEW',
-                          type: 'PROPOSAL',
-                          priority: 'MEDIUM',
-                          progress: 0,
-                          budget: proposal.value || null,
-                          notes: proposal.notes || '',
-                          proposal_id: proposal.id
-                        })
-                      });
-
-                      const data = await res.json();
-                      if (!res.ok) throw new Error(data?.error || 'Failed to create project');
-
-                      alert('Project created successfully! Redirecting to edit page...');
-                      router.push(`/projects/${data.data.id}/edit`);
+                      setConvertContext({ companyId });
+                      setShowConvertConfirm(true);
                     } catch (err) {
                       console.error(err);
-                      alert('Failed to create project: ' + err.message);
+                      alert('Failed to create project: ' + (err.message || err));
                     }
                   }}
                   className="px-3 py-1.5 text-sm text-white bg-[#64126D] rounded-md hover:bg-[#86288F] transition-colors flex items-center space-x-1"
@@ -795,6 +771,55 @@ export default function ProposalPage() {
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(proposal.status)}`}>
                   {(proposal.status || 'draft').charAt(0).toUpperCase() + (proposal.status || 'draft').slice(1)}
                 </span>
+
+                {/* Convert confirmation modal */}
+                {showConvertConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                    <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-md p-6">
+                      <h3 className="text-lg font-semibold mb-2">Convert proposal to project</h3>
+                      <p className="text-sm text-gray-700">Are you sure you want to convert <strong>{proposal?.title}</strong> to a project? This will create a project record and mark the proposal as converted.</p>
+                      <div className="mt-4 flex justify-end space-x-2">
+                        <button
+                          onClick={() => setShowConvertConfirm(false)}
+                          className="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              setConvertLoading(true);
+                              const res = await fetch(`/api/proposals/${proposal.id}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  project_manager: proposal.project_manager || null,
+                                  start_date: new Date().toISOString().split('T')[0],
+                                  budget: proposal.value || null,
+                                  converted_by: undefined
+                                })
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data?.error || 'Failed to convert proposal');
+                              setShowConvertConfirm(false);
+                              alert('Proposal converted to project. Redirecting...');
+                              router.push(`/projects/${data.data.project.project_id}/edit`);
+                            } catch (err) {
+                              console.error(err);
+                              alert('Conversion failed: ' + (err.message || err));
+                            } finally {
+                              setConvertLoading(false);
+                            }
+                          }}
+                          disabled={convertLoading}
+                          className="px-3 py-1.5 text-sm text-white bg-[#64126D] rounded-md hover:bg-[#86288F]"
+                        >
+                          {convertLoading ? 'Converting...' : 'Convert'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {!isEditing ? (
                   <button
                     onClick={() => setIsEditing(true)}

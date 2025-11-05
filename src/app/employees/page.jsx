@@ -359,13 +359,35 @@ export default function EmployeesPage() {
     holiday_working_days: '',
     ot_hours: '',
     
-    // Salary breakup
-    gross_salary: '',
-    basic_da: '',
-    hra: '',
-    conveyance_allowance: '',
-    call_allowance: '',
-    other_allowance: '',
+  // Salary breakup
+  gross_salary: '',
+  basic_da: '',
+  hra: '',
+  conveyance_allowance: '',
+  call_allowance: '',
+  other_allowance: '',
+  // Leave & OT
+  // treat absent_days as leaveDays (user-visible field labelled 'Absent')
+  absent_days: '',
+  total_working_days: 26,
+  ot_hours: '',
+  ot_rate: '',
+  total_working_hours: 208,
+  // computed / derived fields
+  adjusted_gross: 0,
+  leave_deduction: 0,
+  ot_pay: 0,
+  employee_pf: 0,
+  employer_pf: 0,
+  bonus: 0,
+  professional_tax: 200,
+  mlwf_employee: 5,
+  mlwf_employer: 13,
+  mediclaim: 500,
+  in_hand_salary: 0,
+  ctc: 0,
+  // manual overrides tracker: { fieldName: true }
+  manual_overrides: {},
     
     // Other income
     holiday_working_hours: '',
@@ -397,97 +419,168 @@ export default function EmployeesPage() {
     salary_structure: null, // Will store the JSON structure for server
     effective_from: ''
   });
+
+  // Helper to set salary fields and mark manual overrides
+  const setSalaryField = (field, value, manual = true) => {
+    // normalize numeric fields to empty string or number-like strings; actual parsing happens in compute
+    // Special-case: when primary inputs that affect splits are edited (like gross_salary or other_allowance),
+    // remove manual override flags for computed split fields so they bifurcate automatically.
+    setSalaryData(prev => {
+      const mo = { ...(prev.manual_overrides || {}) };
+      // mark this field as manual if requested
+      if (manual) mo[field] = true;
+
+      // if gross or other allowance (or attendance/OT inputs) changed, clear split overrides so bifurcation runs
+  const triggerClear = ['gross_salary', 'other_allowance', 'absent_days', 'total_working_days', 'month_days', 'ot_hours', 'ot_rate', 'total_working_hours'];
+      if (triggerClear.includes(field)) {
+        delete mo.basic_da;
+        delete mo.hra;
+        delete mo.conveyance_allowance;
+      }
+
+      return {
+        ...prev,
+        [field]: value,
+        manual_overrides: mo
+      };
+    });
+  };
+
+  const resetFormula = (field) => {
+    setSalaryData(prev => {
+      const mo = { ...(prev.manual_overrides || {}) };
+      delete mo[field];
+      return { ...prev, manual_overrides: mo };
+    });
+  };
   
   const [salaryCalculation, setSalaryCalculation] = useState(null);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
   const [salarySuccess, setSalarySuccess] = useState('');
 
-  // Auto-calculations for salary structure
+  // Comprehensive reactive salary engine
   useEffect(() => {
+    // compute derived values based on inputs and manual overrides
     setSalaryData(prev => {
-      const monthDays = parseFloat(prev.month_days) || 0;
-      const absentDays = parseFloat(prev.absent_days) || 0;
-      const plUsed = parseFloat(prev.pl_used) || 0;
-      
-      // Calculate week offs (Sundays + 2nd & 4th Saturdays)
-      // Approximate: monthDays/7 Sundays + monthDays/14 2nd/4th Saturdays
-      const weekOffs = monthDays > 0 ? Math.round((monthDays / 7) + (monthDays / 14)) : 0;
-      
-      // Working days = month days - week offs
-      const workingDays = monthDays - weekOffs;
-      
-      // Paid days = working days - absent + pl_used
-      const paidDays = workingDays - absentDays + plUsed;
-      
-      // Gross salary = sum of all salary components
-      const basicDa = parseFloat(prev.basic_da) || 0;
-      const hra = parseFloat(prev.hra) || 0;
-      const conveyanceAllowance = parseFloat(prev.conveyance_allowance) || 0;
-      const callAllowance = parseFloat(prev.call_allowance) || 0;
-      const otherAllowance = parseFloat(prev.other_allowance) || 0;
-      const grossSalary = basicDa + hra + conveyanceAllowance + callAllowance + otherAllowance;
-      
-      // Bonus = 8.33% of Basic+DA
-      const bonus = basicDa * 0.0833;
-      
-      // Other income
-      const holidayWorkingHours = parseFloat(prev.holiday_working_hours) || 0;
-      const weeklyOffWorking = parseFloat(prev.weekly_off_working) || 0;
-      const otCharges = parseFloat(prev.ot_charges) || 0;
-      const totalOtherIncome = holidayWorkingHours + weeklyOffWorking + otCharges;
-      
-      // Deductions
-      const employeePf = parseFloat(prev.employee_pf) || 0;
-      const employeePt = parseFloat(prev.employee_pt) || 0;
-      const retentionAmount = parseFloat(prev.retention_amount) || 0;
-      const mlwfEmployee = parseFloat(prev.mlwf_employee) || 0;
-      const otherDeductions = parseFloat(prev.other_deductions) || 0;
-      const totalDeductions = employeePf + employeePt + retentionAmount + mlwfEmployee + otherDeductions;
-      
-      // In-hand salary = gross salary + other income - deductions
-      const inHandSalary = grossSalary + totalOtherIncome - totalDeductions;
-      
-      // Company contributions
-      const employerPf = parseFloat(prev.employer_pf) || 0;
-      const mlwfCompany = parseFloat(prev.mlwf_company) || 13;
-      const medicalInsurance = parseFloat(prev.medical_insurance) || 500;
-      const totalCompanyContributions = employerPf + bonus + mlwfCompany + medicalInsurance;
-      
-      // Employee CTC = in-hand salary + company contributions
-      const employeeCtc = inHandSalary + totalCompanyContributions;
-      
-      return {
-        ...prev,
-        week_offs: weekOffs,
-        working_days: workingDays,
-        paid_days: paidDays,
-        gross_salary: grossSalary.toFixed(2),
-        bonus: bonus.toFixed(2),
-        in_hand_salary: inHandSalary.toFixed(2),
-        employee_ctc: employeeCtc.toFixed(2)
+      const toNum = (v) => {
+        const n = Number(String(v || '').replace(/,/g, ''));
+        return Number.isFinite(n) ? n : 0;
       };
+
+      const grossInput = toNum(prev.gross_salary);
+      const otherAllowance = toNum(prev.other_allowance);
+      const totalWorkingDays = toNum(prev.total_working_days) || 26;
+      const leaveDays = toNum(prev.absent_days);
+      const totalWorkingHours = toNum(prev.total_working_hours) || 208;
+      const otHours = toNum(prev.ot_hours);
+      const otRate = toNum(prev.ot_rate) || 1;
+
+      // Leave deduction based on input gross
+  const leaveDeduction = Math.round((grossInput / totalWorkingDays) * leaveDays);
+
+  // PL balance: annual leaves minus PL used (cannot be negative)
+  const annualLeaves = toNum(prev.annual_leaves) || 0;
+  const plUsed = toNum(prev.pl_used) || 0;
+  const plBalance = Math.max(0, annualLeaves - plUsed);
+
+  // Attendance-derived values: week offs, working days, paid days
+  const monthDays = toNum(prev.month_days) || 0;
+  // If monthDays provided, estimate weekly offs as floor(monthDays/7), otherwise use totalWorkingDays/7 rounded
+  const weekOffsCalc = monthDays ? Math.floor(monthDays / 7) : Math.max(0, Math.floor(totalWorkingDays / 7));
+  const workingDaysCalc = Math.max(0, (monthDays || totalWorkingDays) - weekOffsCalc);
+  // paid days = working days - absent days (cannot be negative)
+  const paidDaysCalc = Math.max(0, workingDaysCalc - leaveDays);
+
+      // OT pay uses grossInput prorated to hours and multiplied by multiplier otRate
+      const otPay = Math.round((grossInput / totalWorkingHours) * otHours * otRate);
+
+      // Adjusted gross = grossInput - leaveDeduction + otPay
+      const adjustedGross = Math.round(Math.max(0, grossInput - leaveDeduction + otPay));
+
+      // Base for split excludes otherAllowance
+      const baseForSplit = Math.max(0, adjustedGross - otherAllowance);
+
+      // Default splits
+      const defaultBasicDa = Math.round(0.6 * baseForSplit);
+      const defaultHra = Math.round(0.2 * baseForSplit);
+      const defaultConveyance = Math.round(0.1 * baseForSplit);
+
+      // If user manually edited a field, preserve it; otherwise use default
+      const basicDa = prev.manual_overrides?.basic_da ? Math.round(toNum(prev.basic_da)) : defaultBasicDa;
+      const hra = prev.manual_overrides?.hra ? Math.round(toNum(prev.hra)) : defaultHra;
+      const conveyance = prev.manual_overrides?.conveyance_allowance ? Math.round(toNum(prev.conveyance_allowance)) : defaultConveyance;
+
+      // Employee PF = 12% of Basic+DA (cap 1800)
+      const employeePfRaw = Math.round(0.12 * basicDa);
+      const employeePf = Math.min(1800, employeePfRaw);
+
+      // Employer PF = 13% of Basic+DA (cap 1950)
+      const employerPfRaw = Math.round(0.13 * basicDa);
+      const employerPf = Math.min(1950, employerPfRaw);
+
+      // Bonus = 8.33% of Basic+DA
+      const bonus = Math.round(0.0833 * basicDa);
+
+      const professionalTax = 200;
+      const mlwfEmployee = 5;
+      const mlwfEmployer = 13;
+      const mediclaim = 500;
+
+      // In-Hand = adjustedGross - (employee PF + professional tax + mlwf employee)
+      const inHand = Math.round(Math.max(0, adjustedGross - (employeePf + professionalTax + mlwfEmployee)));
+
+      // CTC = adjustedGross + (employer PF + bonus + mlwf employer + mediclaim + otherAllowance)
+      const ctc = Math.round(adjustedGross + (employerPf + bonus + mlwfEmployer + mediclaim + otherAllowance));
+
+  // Prepare new state but only overwrite fields that are computed (do not unset manual overrides)
+      const next = { ...prev };
+    next.leave_deduction = leaveDeduction;
+    next.pl_balance = plBalance;
+    // Write attendance-derived fields unless manually overridden
+    if (!prev.manual_overrides?.week_offs) next.week_offs = weekOffsCalc;
+    if (!prev.manual_overrides?.working_days) next.working_days = workingDaysCalc;
+    if (!prev.manual_overrides?.paid_days) next.paid_days = paidDaysCalc;
+      next.ot_pay = otPay;
+      next.adjusted_gross = adjustedGross;
+      next.gross_salary = grossInput; // keep original gross input shown
+
+      // Write computed splits only if not manual
+      if (!prev.manual_overrides?.basic_da) next.basic_da = defaultBasicDa;
+      if (!prev.manual_overrides?.hra) next.hra = defaultHra;
+      if (!prev.manual_overrides?.conveyance_allowance) next.conveyance_allowance = defaultConveyance;
+
+      next.employee_pf = employeePf;
+      next.employer_pf = employerPf;
+      next.bonus = bonus;
+      next.professional_tax = professionalTax;
+      next.mlwf_employee = mlwfEmployee;
+      next.mlwf_employer = mlwfEmployer;
+      next.mediclaim = mediclaim;
+      next.in_hand_salary = inHand;
+  next.ctc = ctc;
+  // mirror computed CTC to employee_ctc for UI/editing consistency
+  next.employee_ctc = ctc;
+
+      // round all currency-like values to integers
+      ['leave_deduction','ot_pay','adjusted_gross','employee_pf','employer_pf','bonus','in_hand_salary','ctc','pl_balance','week_offs','working_days','paid_days'].forEach(k => {
+        if (next[k] !== undefined) next[k] = Math.round(Number(next[k]) || 0);
+      });
+
+      return next;
     });
   }, [
-    salaryData.month_days,
-    salaryData.absent_days,
-    salaryData.pl_used,
-    salaryData.basic_da,
-    salaryData.hra,
-    salaryData.conveyance_allowance,
-    salaryData.call_allowance,
+    salaryData.gross_salary,
     salaryData.other_allowance,
-    salaryData.holiday_working_hours,
-    salaryData.weekly_off_working,
-    salaryData.ot_charges,
-    salaryData.employee_pf,
-    salaryData.employee_pt,
-    salaryData.retention_amount,
-    salaryData.mlwf_employee,
-    salaryData.other_deductions,
-    salaryData.employer_pf,
-    salaryData.mlwf_company,
-    salaryData.medical_insurance
+  salaryData.absent_days,
+    salaryData.pl_used,
+    salaryData.annual_leaves,
+    salaryData.total_working_days,
+  salaryData.month_days,
+    salaryData.ot_hours,
+    salaryData.ot_rate,
+    salaryData.total_working_hours,
+    JSON.stringify(salaryData.manual_overrides)
   ]);
 
   // Add attendance related extras
@@ -675,34 +768,6 @@ export default function EmployeesPage() {
     loadRoles();
   }, []);
 
-  // Load latest salary snapshot when editing an employee
-  // Commented out - using simplified salary structure now
-  /*
-  useEffect(() => {
-    const loadSalary = async () => {
-      if (!selectedEmployee?.id) {
-        setSalaryServerData(null);
-        return;
-      }
-      try {
-        setSalaryLoading(true);
-        const res = await fetch(`/api/employees/${selectedEmployee.id}/salary`);
-        const json = await res.json();
-        if (res.ok && json.success && json.data) {
-          setSalaryServerData(json.data.computed);
-        } else {
-          setSalaryServerData(null);
-        }
-      } catch {
-        setSalaryServerData(null);
-      } finally {
-        setSalaryLoading(false);
-      }
-    };
-    loadSalary();
-  }, [selectedEmployee?.id]);
-  */
-
   const submitSalaryMaster = async (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     setSalaryError('');
@@ -738,6 +803,9 @@ export default function EmployeesPage() {
       conveyance: salaryInputs.conveyance === '' ? null : Number(salaryInputs.conveyance),
       call_allowance: salaryInputs.call_allowance === '' ? null : Number(salaryInputs.call_allowance),
       other_allowance: salaryInputs.other_allowance === '' ? null : Number(salaryInputs.other_allowance),
+      // Preserve paid leave usage and balance so server stores PL info
+      pl_used: Number(salaryInputs.pl_used || 0),
+      pl_balance: Number(salaryInputs.pl_balance || 0),
     };
     try {
       setSalaryLoading(true);
@@ -907,6 +975,9 @@ export default function EmployeesPage() {
                 pf: Number(salaryInputs.pf || 0),
                 pt: Number(salaryInputs.pt || 0),
                 mlwf: Number(salaryInputs.mlwf || 0),
+                // Persist PL usage and remaining balance when creating salary along with employee
+                pl_used: Number(salaryInputs.pl_used || 0),
+                pl_balance: Number(salaryInputs.pl_balance || 0),
               };
               await fetch(`/api/employees/${respJson.employeeId}/salary`, {
                 method: 'POST',
@@ -1956,7 +2027,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.annual_leaves || 21}
-                                    onChange={(e) => setSalaryData({ ...salaryData, annual_leaves: e.target.value })}
+                                    onChange={(e) => setSalaryField('annual_leaves', e.target.value, false)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -1965,7 +2036,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.pl_used || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, pl_used: e.target.value })}
+                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -1994,7 +2065,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.month_days || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, month_days: e.target.value })}
+                                    onChange={(e) => setSalaryField('month_days', e.target.value)}
                                     placeholder="e.g., 30"
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
@@ -2004,9 +2075,9 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.working_days || ''}
-                                    disabled
+                                    onChange={(e) => setSalaryField('working_days', e.target.value)}
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                   />
                                 </div>
                                 <div>
@@ -2014,9 +2085,9 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.week_offs || ''}
-                                    disabled
+                                    onChange={(e) => setSalaryField('week_offs', e.target.value)}
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                   />
                                 </div>
                                 <div>
@@ -2024,8 +2095,8 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.pl_used || ''}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
                                 <div>
@@ -2033,7 +2104,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.absent_days || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, absent_days: e.target.value })}
+                                    onChange={(e) => setSalaryField('absent_days', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -2042,9 +2113,9 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.paid_days || ''}
-                                    disabled
+                                    onChange={(e) => setSalaryField('paid_days', e.target.value)}
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                   />
                                 </div>
                                 <div>
@@ -2062,9 +2133,20 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.ot_hours || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, ot_hours: e.target.value })}
+                                    onChange={(e) => setSalaryField('ot_hours', e.target.value)}
                                     step="0.5"
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">9. OT Rate</label>
+                                  <input
+                                    type="number"
+                                    value={salaryData.ot_rate || ''}
+                                    onChange={(e) => setSalaryField('ot_rate', e.target.value)}
+                                    step="0.1"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Multiplier (e.g., 1.5)"
                                   />
                                 </div>
                               </div>
@@ -2078,41 +2160,66 @@ export default function EmployeesPage() {
                               </h5>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Gross Salary</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Gross Salary
+                                    <span className="ml-2 text-xs text-gray-500">(editable)</span>
+                                  </label>
                                   <input 
                                     type="number" 
                                     value={salaryData.gross_salary || ''}
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 font-semibold"
+                                    onChange={(e) => setSalaryField('gross_salary', e.target.value)}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg font-semibold"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Basic + DA</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.basic_da || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, basic_da: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  />
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Basic + DA
+                                    <small className="ml-2 text-xs text-gray-500">Basic+DA = 60% of (Adjusted Gross − Other Allowance)</small>
+                                    {salaryData.manual_overrides?.basic_da ? <span className="ml-2 text-xs text-yellow-700">(manual)</span> : null}
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <input 
+                                      type="number" 
+                                      value={salaryData.basic_da || ''}
+                                      onChange={(e) => setSalaryField('basic_da', e.target.value)}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    />
+                                    {salaryData.manual_overrides?.basic_da ? (
+                                      <button type="button" onClick={() => resetFormula('basic_da')} className="text-xs text-gray-600 px-2">Reset</button>
+                                    ) : null}
+                                  </div>
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. HRA</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.hra || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, hra: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  />
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. HRA
+                                    <small className="ml-2 text-xs text-gray-500">HRA = 20% of (Adjusted Gross − Other Allowance)</small>
+                                    {salaryData.manual_overrides?.hra ? <span className="ml-2 text-xs text-yellow-700">(manual)</span> : null}
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <input 
+                                      type="number" 
+                                      value={salaryData.hra || ''}
+                                      onChange={(e) => setSalaryField('hra', e.target.value)}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    />
+                                    {salaryData.manual_overrides?.hra ? (
+                                      <button type="button" onClick={() => resetFormula('hra')} className="text-xs text-gray-600 px-2">Reset</button>
+                                    ) : null}
+                                  </div>
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">4. Conveyance Allowance</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.conveyance_allowance || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, conveyance_allowance: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  />
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">4. Conveyance Allowance
+                                    <small className="ml-2 text-xs text-gray-500">Conveyance = 10% of (Adjusted Gross − Other Allowance)</small>
+                                    {salaryData.manual_overrides?.conveyance_allowance ? <span className="ml-2 text-xs text-yellow-700">(manual)</span> : null}
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <input 
+                                      type="number" 
+                                      value={salaryData.conveyance_allowance || ''}
+                                      onChange={(e) => setSalaryField('conveyance_allowance', e.target.value)}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    />
+                                    {salaryData.manual_overrides?.conveyance_allowance ? (
+                                      <button type="button" onClick={() => resetFormula('conveyance_allowance')} className="text-xs text-gray-600 px-2">Reset</button>
+                                    ) : null}
+                                  </div>
                                 </div>
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-2">5. Call Allowance</label>
@@ -2124,13 +2231,20 @@ export default function EmployeesPage() {
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">6. Other Allowance</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.other_allowance || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, other_allowance: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  />
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">6. Other Allowance
+                                    <small className="ml-2 text-xs text-gray-500">Shown additive to CTC; excluded from base split when &gt; 0</small>
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <input 
+                                      type="number" 
+                                      value={salaryData.other_allowance || ''}
+                                      onChange={(e) => setSalaryField('other_allowance', e.target.value)}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    />
+                                    {salaryData.manual_overrides?.other_allowance ? (
+                                      <button type="button" onClick={() => resetFormula('other_allowance')} className="text-xs text-gray-600 px-2">Reset</button>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -2185,7 +2299,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.employee_pf || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employee_pf: e.target.value })}
+                                    onChange={(e) => setSalaryField('employee_pf', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -2228,11 +2342,11 @@ export default function EmployeesPage() {
                               </div>
                             </div>
 
-                            {/* Employee Contributions (Company) */}
+                            {/* Employer Contributions (Company) */}
                             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                               <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                                 <CurrencyDollarIcon className="h-5 w-5 text-purple-600" />
-                                Employee Contributions (Company)
+                                Employer Contributions (Company)
                               </h5>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -2240,7 +2354,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.employer_pf || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employer_pf: e.target.value })}
+                                    onChange={(e) => setSalaryField('employer_pf', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -2249,9 +2363,8 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.bonus || ''}
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    onChange={(e) => setSalaryField('bonus', e.target.value)}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
                                 <div>
@@ -2285,13 +2398,23 @@ export default function EmployeesPage() {
                                 {/* In-Hand Salary */}
                                 <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
                                   <p className="text-xs text-gray-600 mb-1">In-Hand Salary</p>
-                                  <p className="text-2xl font-bold text-purple-700">₹{salaryData.in_hand_salary || '0.00'}</p>
+                                  <input
+                                    type="number"
+                                    value={salaryData.in_hand_salary || ''}
+                                    onChange={(e) => setSalaryField('in_hand_salary', e.target.value)}
+                                    className="w-full text-2xl font-bold text-purple-700 text-right border-0 bg-transparent"
+                                  />
                                 </div>
 
                                 {/* CTC */}
                                 <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
                                   <p className="text-xs text-gray-600 mb-1">Employee CTC</p>
-                                  <p className="text-2xl font-bold text-orange-700">₹{salaryData.employee_ctc || '0.00'}</p>
+                                  <input
+                                    type="number"
+                                    value={salaryData.employee_ctc || ''}
+                                    onChange={(e) => setSalaryField('employee_ctc', e.target.value)}
+                                    className="w-full text-2xl font-bold text-orange-700 text-right border-0 bg-transparent"
+                                  />
                                 </div>
 
                                 {/* Breakdown */}
@@ -2952,7 +3075,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.annual_leaves || 21}
-                                    onChange={(e) => setSalaryData({ ...salaryData, annual_leaves: e.target.value })}
+                                    onChange={(e) => setSalaryField('annual_leaves', e.target.value, false)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -2961,7 +3084,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.pl_used || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, pl_used: e.target.value })}
+                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -2990,7 +3113,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.month_days || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, month_days: e.target.value })}
+                                    onChange={(e) => setSalaryField('month_days', e.target.value)}
                                     placeholder="e.g., 30"
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
@@ -3000,9 +3123,9 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.working_days || ''}
-                                    disabled
+                                    onChange={(e) => setSalaryField('working_days', e.target.value)}
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                   />
                                 </div>
                                 <div>
@@ -3010,9 +3133,9 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.week_offs || ''}
-                                    disabled
+                                    onChange={(e) => setSalaryField('week_offs', e.target.value)}
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                   />
                                 </div>
                                 <div>
@@ -3020,8 +3143,8 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.pl_used || ''}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
                                 <div>
@@ -3029,7 +3152,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.absent_days || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, absent_days: e.target.value })}
+                                    onChange={(e) => setSalaryField('absent_days', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -3038,9 +3161,9 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.paid_days || ''}
-                                    disabled
+                                    onChange={(e) => setSalaryField('paid_days', e.target.value)}
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
                                   />
                                 </div>
                                 <div>
@@ -3058,7 +3181,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.ot_hours || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, ot_hours: e.target.value })}
+                                    onChange={(e) => setSalaryField('ot_hours', e.target.value)}
                                     step="0.5"
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
@@ -3074,13 +3197,14 @@ export default function EmployeesPage() {
                               </h5>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Gross Salary</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Gross Salary
+                                    <span className="ml-2 text-xs text-gray-500">(editable)</span>
+                                  </label>
                                   <input 
                                     type="number" 
                                     value={salaryData.gross_salary || ''}
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 font-semibold"
+                                    onChange={(e) => setSalaryField('gross_salary', e.target.value)}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg font-semibold"
                                   />
                                 </div>
                                 <div>
@@ -3181,7 +3305,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.employee_pf || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employee_pf: e.target.value })}
+                                    onChange={(e) => setSalaryField('employee_pf', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -3190,7 +3314,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.employee_pt || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employee_pt: e.target.value })}
+                                    onChange={(e) => setSalaryField('employee_pt', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -3224,11 +3348,11 @@ export default function EmployeesPage() {
                               </div>
                             </div>
 
-                            {/* Employee Contributions (Company) */}
+                            {/* Employer Contributions (Company) */}
                             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                               <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                                 <CurrencyDollarIcon className="h-5 w-5 text-purple-600" />
-                                Employee Contributions (Company)
+                                Employer Contributions (Company)
                               </h5>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -3236,7 +3360,7 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.employer_pf || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employer_pf: e.target.value })}
+                                    onChange={(e) => setSalaryField('employer_pf', e.target.value)}
                                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
@@ -3245,9 +3369,8 @@ export default function EmployeesPage() {
                                   <input 
                                     type="number" 
                                     value={salaryData.bonus || ''}
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    onChange={(e) => setSalaryField('bonus', e.target.value)}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                   />
                                 </div>
                                 <div>
@@ -3281,13 +3404,23 @@ export default function EmployeesPage() {
                                 {/* In-Hand Salary */}
                                 <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
                                   <p className="text-xs text-gray-600 mb-1">In-Hand Salary</p>
-                                  <p className="text-2xl font-bold text-purple-700">₹{salaryData.in_hand_salary || '0.00'}</p>
+                                  <input
+                                    type="number"
+                                    value={salaryData.in_hand_salary || ''}
+                                    onChange={(e) => setSalaryField('in_hand_salary', e.target.value)}
+                                    className="w-full text-2xl font-bold text-purple-700 text-right border-0 bg-transparent"
+                                  />
                                 </div>
 
                                 {/* CTC */}
                                 <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
                                   <p className="text-xs text-gray-600 mb-1">Employee CTC</p>
-                                  <p className="text-2xl font-bold text-orange-700">₹{salaryData.employee_ctc || '0.00'}</p>
+                                  <input
+                                    type="number"
+                                    value={salaryData.employee_ctc || ''}
+                                    onChange={(e) => setSalaryField('employee_ctc', e.target.value)}
+                                    className="w-full text-2xl font-bold text-orange-700 text-right border-0 bg-transparent"
+                                  />
                                 </div>
 
                                 {/* Breakdown */}

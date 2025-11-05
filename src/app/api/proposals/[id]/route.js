@@ -7,6 +7,16 @@ export async function GET(request, { params }) {
     // Get database connection
     const { dbConnect } = await import('@/utils/database');
     const pool = await dbConnect();
+
+    // Ensure audit columns exist on both proposals and projects (best-effort)
+    try {
+      await pool.execute(`ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_by VARCHAR(255) DEFAULT NULL`);
+      await pool.execute(`ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP NULL`);
+      await pool.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS converted_by VARCHAR(255) DEFAULT NULL`);
+      await pool.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP NULL`);
+    } catch (e) {
+      console.warn('Schema alter warnings during convert:', e?.message || e);
+    }
     
     const [rows] = await pool.execute(
       'SELECT * FROM proposals WHERE id = ?',
@@ -31,6 +41,147 @@ export async function GET(request, { params }) {
       { success: false, error: 'Failed to fetch proposal' },
       { status: 500 }
     );
+  }
+}
+
+// Convert proposal to project
+export async function POST(request, { params }) {
+  try {
+    const { id } = await params;
+    if (!id) return NextResponse.json({ success: false, error: 'Proposal id required' }, { status: 400 });
+
+    const body = await request.json();
+    // Load DB
+    const { dbConnect } = await import('@/utils/database');
+    const pool = await dbConnect();
+
+    // Fetch proposal
+    const [rows] = await pool.execute('SELECT * FROM proposals WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      await pool.end?.();
+      return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
+    }
+    const proposal = rows[0];
+
+    // Prepare project data from proposal (map common fields)
+    const projectData = {
+      name: proposal.proposal_title || proposal.title || `Project from ${proposal.proposal_title || proposal.title || id}`,
+      description: proposal.description || proposal.project_description || null,
+      company_id: proposal.company_id || null,
+      project_manager: body.project_manager || proposal.project_manager || null,
+      start_date: body.start_date || proposal.planned_start_date || null,
+      end_date: body.end_date || proposal.planned_end_date || null,
+      target_date: body.target_date || proposal.target_date || null,
+      budget: body.budget || proposal.budget || proposal.proposal_value || null,
+      status: body.status || 'NEW',
+      priority: body.priority || proposal.priority || 'MEDIUM',
+      progress: body.progress || 0,
+      proposal_id: proposal.id,
+      notes: body.notes || proposal.notes || null,
+      project_schedule: proposal.project_schedule || null,
+      input_document: proposal.input_document || null,
+      list_of_deliverables: proposal.list_of_deliverables || null,
+      kickoff_meeting: proposal.kickoff_meeting || null,
+      in_house_meeting: proposal.in_house_meeting || null,
+      // copy collaborative fields
+      activities: proposal.activities || body.activities || [],
+      disciplines: proposal.disciplines || body.disciplines || [],
+      discipline_descriptions: proposal.discipline_descriptions || body.discipline_descriptions || {},
+      planning_activities_list: proposal.planning_activities_list || body.planning_activities_list || [],
+      documents_list: proposal.documents_list || body.documents_list || []
+    };
+
+    // Insert project using existing projects POST logic shape
+    const insertSql = `INSERT INTO projects (
+      project_id, name, description, company_id, client_name, project_manager,
+      start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
+      activities, disciplines, discipline_descriptions, assignments,
+      project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+
+
+    // Compose project_id using serial-month-year logic (reuse projects.POST behavior)
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const currentPattern = `-${month}-${year}`;
+
+    // Find highest serial number for current month/year
+    const [existingProjects] = await pool.execute(
+      'SELECT project_id FROM projects WHERE project_id LIKE ? ORDER BY project_id DESC',
+      [`%${currentPattern}`]
+    );
+    let maxSerial = 0;
+    existingProjects.forEach(p => {
+      if (p.project_id && p.project_id.endsWith(currentPattern)) {
+        const serialPart = p.project_id.split('-')[0];
+        const serial = parseInt(serialPart, 10);
+        if (!isNaN(serial) && serial > maxSerial) maxSerial = serial;
+      }
+    });
+    const nextSerial = String(maxSerial + 1).padStart(3, '0');
+    const project_id = `${nextSerial}-${month}-${year}`;
+
+    const client_name = proposal.client_name || proposal.client || null;
+
+    const [result] = await pool.execute(insertSql, [
+      project_id,
+      projectData.name,
+      projectData.description,
+      projectData.company_id,
+      client_name,
+      projectData.project_manager,
+      projectData.start_date,
+      projectData.end_date,
+      projectData.target_date,
+      projectData.budget,
+      null, // assigned_to
+      projectData.status,
+      'ONGOING', // type
+      projectData.priority,
+      projectData.progress,
+      projectData.proposal_id,
+      projectData.notes,
+      JSON.stringify(projectData.activities || []),
+      JSON.stringify(projectData.disciplines || []),
+      JSON.stringify(projectData.discipline_descriptions || {}),
+      JSON.stringify([]),
+      projectData.project_schedule,
+      projectData.input_document,
+      projectData.list_of_deliverables,
+      projectData.kickoff_meeting,
+      projectData.in_house_meeting
+    ]);
+
+    // Update proposal status to CONVERTED, link the created project id and set audit fields
+    const convertedBy = body.converted_by || 'manual';
+    const convertedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // Ensure proposals.status can accept new values (best-effort migration from ENUM to VARCHAR)
+    try {
+      await pool.execute("ALTER TABLE proposals MODIFY COLUMN status VARCHAR(50) DEFAULT 'draft'");
+    } catch (e) {
+      // ignore if ALTER fails (older DBs might not allow modification)
+      console.warn('Failed to alter proposals.status column:', e?.message || e);
+    }
+
+    await pool.execute('UPDATE proposals SET status = ?, project_id = ?, converted_by = ?, converted_at = ? WHERE id = ?', ['CONVERTED', result.insertId, convertedBy, convertedAt, id]);
+
+    // Also set audit fields on the created project row (best-effort)
+    try {
+      await pool.execute('UPDATE projects SET converted_by = ?, converted_at = ? WHERE id = ?', [convertedBy, convertedAt, result.insertId]);
+    } catch (e) {
+      console.warn('Failed to set audit fields on project:', e?.message || e);
+    }
+
+    // Fetch created project
+    const [created] = await pool.execute('SELECT * FROM projects WHERE id = ?', [result.insertId]);
+
+    await pool.end?.();
+
+  return NextResponse.json({ success: true, data: { project: created[0], proposal: { ...proposal, status: 'CONVERTED', project_id: created[0].project_id } } }, { status: 201 });
+  } catch (err) {
+    console.error('Convert proposal to project error:', err);
+    return NextResponse.json({ success: false, error: 'Failed to convert proposal', details: err.message }, { status: 500 });
   }
 }
 
