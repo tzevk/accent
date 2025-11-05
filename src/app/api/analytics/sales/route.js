@@ -31,7 +31,7 @@ export async function GET(request) {
     const [rows] = await db.execute(
       `SELECT LOWER(COALESCE(status, '')) as status,
               COUNT(*) as count,
-              COALESCE(SUM(COALESCE(value, 0)), 0) as amount
+              COALESCE(SUM(COALESCE(proposal_value, 0)), 0) as amount
        FROM proposals
        WHERE created_at BETWEEN ? AND ?
        GROUP BY LOWER(COALESCE(status, ''))`,
