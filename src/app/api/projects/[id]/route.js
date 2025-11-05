@@ -9,7 +9,7 @@ export async function GET(request, { params }) {
     const db = await dbConnect();
     
     const [rows] = await db.execute(`
-      SELECT p.*, pr.proposal_id as linked_proposal_id, pr.title as proposal_title
+      SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
       FROM projects p 
       LEFT JOIN proposals pr ON p.proposal_id = pr.id
       WHERE p.id = ?

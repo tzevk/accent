@@ -66,8 +66,8 @@ export default function Proposals() {
   // Filter proposals based on search and status
   const filteredProposals = proposals.filter(proposal => {
     const matchesSearch = !searchQuery || 
-      proposal.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      proposal.client?.toLowerCase().includes(searchQuery.toLowerCase());
+      ((proposal.proposal_title ?? proposal.title) || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (proposal.client ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
     
@@ -265,7 +265,7 @@ export default function Proposals() {
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">
-                                {proposal.title || 'Untitled Proposal'}
+                                {proposal.proposal_title || proposal.title || 'Untitled Proposal'}
                               </div>
                               <div className="text-sm text-gray-500">
                                 #{proposal.proposal_number || proposal.id}
