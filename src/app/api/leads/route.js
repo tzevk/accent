@@ -28,8 +28,9 @@ export async function GET(request) {
     const params = [];
     
     if (search) {
-      whereClause += ' AND (company_name LIKE ? OR contact_name LIKE ? OR contact_email LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      // Include lead_id in search so users can search by generated lead identifier
+      whereClause += ' AND (lead_id LIKE ? OR company_name LIKE ? OR contact_name LIKE ? OR contact_email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
     
     if (status) {
@@ -50,7 +51,7 @@ export async function GET(request) {
     const total = countRows[0].total;
     
     // Validate and sanitize sort parameters
-    const allowedSortFields = ['created_at', 'enquiry_date', 'company_name', 'contact_name', 'enquiry_status'];
+  const allowedSortFields = ['created_at', 'enquiry_date', 'company_name', 'contact_name', 'enquiry_status', 'lead_id'];
     const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
     const validSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     
