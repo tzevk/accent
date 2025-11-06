@@ -28,9 +28,10 @@ export async function GET(request) {
     const params = [];
     
     if (search) {
-      // Include lead_id in search so users can search by generated lead identifier
-      whereClause += ' AND (lead_id LIKE ? OR company_name LIKE ? OR contact_name LIKE ? OR contact_email LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      // Include lead_id and project_description in search; use case-insensitive matching
+      const s = String(search).toLowerCase();
+      whereClause += ' AND (LOWER(lead_id) LIKE ? OR LOWER(company_name) LIKE ? OR LOWER(contact_name) LIKE ? OR LOWER(contact_email) LIKE ? OR LOWER(project_description) LIKE ?)';
+      params.push(`%${s}%`, `%${s}%`, `%${s}%`, `%${s}%`, `%${s}%`);
     }
     
     if (status) {

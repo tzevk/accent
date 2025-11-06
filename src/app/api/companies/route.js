@@ -1,8 +1,11 @@
 import { dbConnect } from '@/utils/database';
 
 // GET all companies
-export async function GET() {
+export async function GET(request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const search = (searchParams.get('search') || '').trim().toLowerCase();
+
     const db = await dbConnect();
     
     // Create companies table if it doesn't exist
@@ -35,15 +38,22 @@ export async function GET() {
       )
     `);
     
-    const [rows] = await db.execute(
-      `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
+    // Build base SQL and optionally apply a search WHERE clause (case-insensitive)
+    let sql = `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
        FROM companies c
        -- leads table stores company_name (string) rather than a numeric company_id
        LEFT JOIN leads l ON l.company_name = c.company_name
-       LEFT JOIN follow_ups f ON f.lead_id = l.id
-       GROUP BY c.id
-       ORDER BY c.company_name ASC`
-    );
+       LEFT JOIN follow_ups f ON f.lead_id = l.id`;
+
+    const params = [];
+    if (search) {
+      sql += ` WHERE (LOWER(c.company_name) LIKE ? OR LOWER(c.company_id) LIKE ? OR LOWER(c.city) LIKE ? OR LOWER(c.contact_person) LIKE ? OR LOWER(c.industry) LIKE ?)`;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    sql += ` GROUP BY c.id ORDER BY c.company_name ASC`;
+
+    const [rows] = await db.execute(sql, params);
     
     await db.end();
     
