@@ -30,6 +30,7 @@ export default function Leads() {
   const [stats, setStats] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [sortBy, setSortBy] = useState('enquiry_date');
@@ -63,6 +64,7 @@ export default function Leads() {
     first_followup_notes: ''
   });
   const fileInputRef = useRef(null);
+  const searchDebounceRef = useRef(null);
 
   // Robust JSON handling helpers to avoid SyntaxError when server returns HTML/text (e.g., Internal Server Error)
   const parseJSONSafe = async (response) => {
@@ -94,15 +96,16 @@ export default function Leads() {
     return data;
   };
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (searchOverride) => {
     try {
       setLoading(true);
+      const searchValue = typeof searchOverride !== 'undefined' ? searchOverride : debouncedSearchTerm;
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '20',
         sortBy: sortBy,
         sortOrder: sortOrder,
-        ...(searchTerm && { search: searchTerm }),
+        ...(searchValue && { search: searchValue }),
         ...(statusFilter && { status: statusFilter }),
         ...(cityFilter && { city: cityFilter })
       });
@@ -141,14 +144,26 @@ export default function Leads() {
     fetchCompanies(); // Fetch companies on component mount
     if (activeTab === 'list') {
       fetchLeads();
-    } else if (activeTab === 'add') {
-      // nothing special for add
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchTerm, statusFilter, cityFilter, sortBy, sortOrder, activeTab]);
+  }, [currentPage, debouncedSearchTerm, statusFilter, cityFilter, sortBy, sortOrder, activeTab]);
+
+  // Debounce searchTerm so we don't fire a request on every keystroke
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setCurrentPage(1); // reset to first page on new search
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 350);
+
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchTerm]);
 
   const clearFilters = () => {
     setSearchTerm('');
+    setDebouncedSearchTerm('');
     setStatusFilter('');
     setCityFilter('');
     setSortBy('enquiry_date');
@@ -542,6 +557,17 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                 placeholder="Search leads by company, contact, or project..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    // flush debounce and trigger search immediately
+                    if (searchDebounceRef.current) {
+                      clearTimeout(searchDebounceRef.current);
+                    }
+                    setDebouncedSearchTerm(searchTerm.trim());
+                    setCurrentPage(1);
+                    fetchLeads(searchTerm.trim());
+                  }
+                }}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
               />
             </div>
@@ -550,7 +576,7 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
           <div className="sm:w-48">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
             >
               <option value="">All Status</option>
@@ -565,7 +591,7 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
           <div className="sm:w-32">
             <select
               value={cityFilter}
-              onChange={(e) => setCityFilter(e.target.value)}
+              onChange={(e) => { setCityFilter(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent"
             >
               <option value="">All Cities</option>

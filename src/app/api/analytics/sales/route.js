@@ -28,6 +28,7 @@ export async function GET(request) {
 
     const db = await dbConnect();
     // Group proposals by status in the selected time window
+    // Use `proposal_value` (column in proposals) instead of non-existent `value` column
     const [rows] = await db.execute(
       `SELECT LOWER(COALESCE(status, '')) as status,
               COUNT(*) as count,

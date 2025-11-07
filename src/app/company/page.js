@@ -1,7 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   PlusIcon,
@@ -16,6 +16,9 @@ import Papa from 'papaparse';
 export default function Company() {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const searchDebounceRef = useRef(null);
   const [activeTab, setActiveTab] = useState('list');
   const [formData, setFormData] = useState({
     company_id: '',
@@ -50,11 +53,32 @@ export default function Company() {
 
   useEffect(() => {
     fetchCompanies();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCompanies = async () => {
+  // Trigger fetch when debounced search changes or when switching to list tab
+  useEffect(() => {
+    if (activeTab === 'list') fetchCompanies();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm, activeTab]);
+
+  // Debounce searchTerm to avoid firing on every keystroke
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 350);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchTerm]);
+
+  const fetchCompanies = async (searchOverride) => {
     try {
-      const response = await fetch('/api/companies');
+      const searchValue = typeof searchOverride !== 'undefined' ? searchOverride : debouncedSearchTerm;
+      const url = searchValue ? `/api/companies?search=${encodeURIComponent(searchValue)}` : '/api/companies';
+      setLoading(true);
+      const response = await fetch(url);
       const result = await response.json();
       
       if (result.success) {
@@ -380,6 +404,31 @@ export default function Company() {
               ) : (
                 /* Companies Table */
                 <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+                  {/* Search bar for companies */}
+                  <div className="p-4 border-b border-gray-100">
+                    <div className="max-w-md">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Search companies by name, id, city or contact..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                              setDebouncedSearchTerm(searchTerm.trim());
+                              fetchCompanies(searchTerm.trim());
+                            }
+                          }}
+                          className="w-full pl-3 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary"
+                        />
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <button onClick={() => { setDebouncedSearchTerm(searchTerm.trim()); fetchCompanies(searchTerm.trim()); }} className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-md">Search</button>
+                        <button onClick={() => { setSearchTerm(''); setDebouncedSearchTerm(''); fetchCompanies(''); }} className="px-3 py-1 text-sm border rounded-md">Clear</button>
+                      </div>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gradient-to-r from-gray-50 to-gray-100">

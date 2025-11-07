@@ -74,7 +74,6 @@ export default function Proposals() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // minimal overrides; server will copy fields
-          project_manager: proposal.project_manager || null,
           start_date: new Date().toISOString().split('T')[0],
           budget: proposal.value || null
         })
@@ -103,6 +102,54 @@ export default function Proposals() {
     
     return matchesSearch && matchesStatus;
   });
+  const [downloadingId, setDownloadingId] = useState(null);
+
+  const downloadProposal = async (id) => {
+    try {
+      setDownloadingId(id);
+      const res = await fetch(`/api/proposals/export?id=${encodeURIComponent(id)}`);
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+
+      const contentDisposition = res.headers.get('Content-Disposition') || res.headers.get('content-disposition');
+      let filename = `proposal_${id}.docx`;
+      if (contentDisposition) {
+        const match = /filename\*?=([^;]+)/i.exec(contentDisposition);
+        if (match) {
+          filename = decodeURIComponent(match[1].replace(/UTF-8''/i, '').replace(/["']/g, '').trim());
+        }
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      // Success toast
+      const toast = document.createElement('div');
+      toast.textContent = `✅ Download complete: ${filename}`;
+      toast.style.position = 'fixed';
+      toast.style.bottom = '20px';
+      toast.style.right = '20px';
+      toast.style.background = '#1E293B';
+      toast.style.color = 'white';
+      toast.style.padding = '10px 16px';
+      toast.style.borderRadius = '8px';
+      toast.style.boxShadow = '0 4px 10px rgba(0,0,0,0.2)';
+      toast.style.zIndex = 9999;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download proposal. Please try again.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -171,10 +218,10 @@ export default function Proposals() {
                   <span>Import</span>
                 </button>
                 
-                <button className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
+                <a href="/api/proposals/export" className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
                   <ArrowDownTrayIcon className="h-4 w-4" />
                   <span>Export</span>
-                </button>
+                </a>
               </div>
             </div>
           </div>
@@ -333,6 +380,13 @@ export default function Proposals() {
                               title="View Proposal"
                             >
                               <EyeIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => downloadProposal(proposal.id)}
+                              className="p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+                              title="Export Proposal"
+                            >
+                              <ArrowDownTrayIcon className="h-4 w-4" />
                             </button>
                             <button 
                               onClick={() => router.push(`/proposals/${proposal.id}/edit`)}

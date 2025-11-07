@@ -68,7 +68,7 @@ export async function POST(request, { params }) {
       name: proposal.proposal_title || proposal.title || `Project from ${proposal.proposal_title || proposal.title || id}`,
       description: proposal.description || proposal.project_description || null,
       company_id: proposal.company_id || null,
-      project_manager: body.project_manager || proposal.project_manager || null,
+      // intentionally do not set project_manager here; user will assign it on the Project page
       start_date: body.start_date || proposal.planned_start_date || null,
       end_date: body.end_date || proposal.planned_end_date || null,
       target_date: body.target_date || proposal.target_date || null,
@@ -93,11 +93,11 @@ export async function POST(request, { params }) {
 
     // Insert project using existing projects POST logic shape
     const insertSql = `INSERT INTO projects (
-      project_id, name, description, company_id, client_name, project_manager,
+      project_id, name, description, company_id, client_name,
       start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
       activities, disciplines, discipline_descriptions, assignments,
       project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting
-  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 
     // Compose project_id using serial-month-year logic (reuse projects.POST behavior)
@@ -130,7 +130,6 @@ export async function POST(request, { params }) {
       projectData.description,
       projectData.company_id,
       client_name,
-      projectData.project_manager,
       projectData.start_date,
       projectData.end_date,
       projectData.target_date,

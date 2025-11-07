@@ -14,7 +14,7 @@ import {
   UsersIcon,
   DocumentTextIcon,
   BuildingOfficeIcon,
-  DocumentDuplicateIcon,
+  
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -96,7 +96,7 @@ export default function Sidebar() {
             <NavRow icon={DocumentTextIcon} label="Activity Master" href="/masters/activities" active={pathname.startsWith('/masters/activities')} />
             <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />
             <NavRow icon={BuildingOfficeIcon} label="Vendor Master" href="/vendors" active={pathname.startsWith('/vendors')} />
-            <NavRow icon={DocumentDuplicateIcon} label="Document Master" href="/masters/documents" active={pathname.startsWith('/masters/documents')} />
+            {/* Document Master removed from sidebar per request */}
           </div>
         </div>
 
@@ -106,7 +106,7 @@ export default function Sidebar() {
             <span>SETTINGS</span>
           </div>
           <div className="mt-1">
-            <NavRow icon={Cog6ToothIcon} label="My Profile" href="#" />
+            <NavRow icon={Cog6ToothIcon} label="My Profile" href="/profile" active={pathname.startsWith('/profile')} />
           </div>
           {/* Pin/Unpin control (no company logo) */}
           <div className="mt-2">

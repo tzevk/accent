@@ -217,6 +217,10 @@ export async function POST(request) {
         sanitized[k] = v;
       }
     }
+    // Debug: surface sanitized payload keys (avoid logging full PII in prod)
+    try {
+      console.debug('[employees.POST] sanitized keys:', Object.keys(sanitized));
+    } catch {}
     
     // Validation
     const requiredFields = ['employee_id', 'first_name', 'last_name', 'email'];
@@ -243,6 +247,25 @@ export async function POST(request) {
   await ensureEmployeesTable(connection);
 
     // Check if employee_id or email already exists
+    // Auto-generate ATS-prefixed employee_id when missing or only prefix provided
+    try {
+      if (!sanitized.employee_id || /^ATS\s*$/i.test(sanitized.employee_id) || /^ATS\d*$/i.test(sanitized.employee_id)) {
+        const [rows] = await connection.execute("SELECT employee_id FROM employees WHERE employee_id LIKE 'ATS%'");
+        let maxNum = 0;
+        for (const r of rows) {
+          const m = String(r.employee_id || '').match(/ATS0*(\d+)$/i);
+          if (m) {
+            const n = parseInt(m[1], 10);
+            if (Number.isFinite(n)) maxNum = Math.max(maxNum, n);
+          }
+        }
+        const next = String(maxNum + 1).padStart(3, '0');
+        sanitized.employee_id = `ATS${next}`;
+      }
+    } catch (genErr) {
+      console.warn('Failed to auto-generate ATS id:', genErr?.message || genErr);
+    }
+
     const [existing] = await connection.execute(
       'SELECT id FROM employees WHERE employee_id = ? OR email = ?',
       [sanitized.employee_id, sanitized.email]
@@ -279,6 +302,16 @@ export async function POST(request) {
         placeholders.push('?');
         vals.push(sanitized[key]);
       }
+    }
+    // Safety: log and fail fast if something unexpected occurs with columns/values
+    try {
+      console.debug('[employees.POST] insert columns count:', cols.length, 'values count:', vals.length);
+    } catch {}
+    if (cols.length !== vals.length) {
+      // helpful diagnostic for developers when payload/DB diverge
+      console.error('[employees.POST] column/value mismatch', { cols, vals });
+      await connection.end();
+      return NextResponse.json({ error: 'Server misconfiguration: column/value mismatch when saving employee' }, { status: 500 });
     }
     // Required fields safety
     if (!cols.includes('employee_id') || !cols.includes('first_name') || !cols.includes('last_name') || !cols.includes('email')) {

@@ -793,7 +793,6 @@ export default function ProposalPage() {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                  project_manager: proposal.project_manager || null,
                                   start_date: new Date().toISOString().split('T')[0],
                                   budget: proposal.value || null,
                                   converted_by: undefined
@@ -1006,6 +1005,90 @@ export default function ProposalPage() {
                     {proposal.notes || 'No notes added yet.'}
                   </p>
                 )}
+              </div>
+
+              {/* Annexure / Additional Details (display proposal fields if present) */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Annexure / Additional Details</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Scope of Work</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.scope_of_work || proposal.scope || proposal.annexure?.scopeOfWork || proposal.annexure?.scope || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Input Document</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.input_document || proposal.input_documents || proposal.annexure?.inputDocuments || proposal.annexure?.input_document || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Deliverables</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.deliverables || proposal.annexure?.deliverables || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Software</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.software || proposal.annexure?.software || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.duration || proposal.timeline || proposal.annexure?.duration || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Site Visit</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.site_visit || proposal.annexure?.siteVisit || proposal.annexure?.site_visit || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Validity</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.quotation_validity || proposal.annexure?.quotationValidity || proposal.annexure?.quotation_validity || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Delivery</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.mode_of_delivery || proposal.annexure?.modeOfDelivery || proposal.annexure?.mode_of_delivery || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Revision</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.revision || proposal.annexure?.revision || '—'
+                    }</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Exclusions</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.exclusions || proposal.annexure?.exclusions || '—'
+                    }</p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Billing</label>
+                    <p className="text-gray-700 whitespace-pre-wrap">{
+                      proposal.billing || proposal.billing_and_payment || proposal.billingAndPayment || proposal.annexure?.billingAndPayment || '—'
+                    }</p>
+                  </div>
+                </div>
               </div>
 
               {/* Versions */}

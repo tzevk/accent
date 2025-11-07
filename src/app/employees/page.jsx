@@ -420,6 +420,30 @@ export default function EmployeesPage() {
     effective_from: ''
   });
 
+  // Inputs model used for the Salary add/edit form and save flow
+  const [salaryInputs, setSalaryInputs] = useState({
+    basic_salary: '',
+    attendance_days: '',
+    total_working_days: 26,
+    loan_active: 'no',
+    loan_emi: '',
+    advance_payment: '',
+    salary_type: 'Monthly',
+    effective_from: '',
+    additional_earnings: '',
+    additional_deductions: '',
+    pf: '',
+    pt: '',
+    mlwf: '',
+    da: '',
+    hra: '',
+    conveyance: '',
+    call_allowance: '',
+    other_allowance: '',
+    pl_used: '',
+    pl_balance: ''
+  });
+
   // Helper to set salary fields and mark manual overrides
   const setSalaryField = (field, value, manual = true) => {
     // normalize numeric fields to empty string or number-like strings; actual parsing happens in compute
@@ -458,6 +482,9 @@ export default function EmployeesPage() {
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
   const [salarySuccess, setSalarySuccess] = useState('');
+  // Salary rows loaded from DB (most-recent-first)
+  const [salaryRows, setSalaryRows] = useState([]);
+  const [salaryRaw, setSalaryRaw] = useState(null);
 
   // Comprehensive reactive salary engine
   useEffect(() => {
@@ -582,6 +609,159 @@ export default function EmployeesPage() {
     salaryData.total_working_hours,
     JSON.stringify(salaryData.manual_overrides)
   ]);
+
+  // Fetch persisted salary rows for the selected employee and map primary fields into the UI
+  const loadSalaryRows = async (empId) => {
+    try {
+      console.debug('[salary] loadSalaryRows called for', empId);
+      if (!empId) return;
+      setSalaryLoading(true);
+      setSalaryError('');
+      const url = `/api/employees/${empId}/salary`;
+      console.debug('[salary] fetching', url);
+      const res = await fetch(url);
+      console.debug('[salary] fetch response status', res.status);
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error('[salary] fetch failed:', txt || `Status ${res.status}`);
+        throw new Error(txt || `Status ${res.status}`);
+      }
+      const resJson = await res.json();
+      console.debug('[salary] response json', resJson);
+      // Server returns { success: true, data: { record, computed } } or { success: true, data: null }
+  setSalaryRaw(resJson);
+      let rows = [];
+      if (resJson && resJson.success) {
+        const payload = resJson.data;
+        if (!payload) {
+          rows = [];
+        } else if (Array.isArray(payload)) {
+          rows = payload;
+        } else if (payload.record) {
+          rows = [payload.record];
+        } else if (payload.rows) {
+          rows = payload.rows;
+        } else {
+          // fallback: if data itself looks like a record
+          rows = [payload];
+        }
+        // If no persisted record but server returned a computed breakdown, map computed -> fake row
+        if (rows.length === 0 && payload && payload.computed) {
+          const comp = payload.computed;
+          const fake = {
+            gross_salary: comp.inputs?.gross_salary ?? null,
+            basic_da: comp.breakdown?.basic_da ?? null,
+            hra: comp.breakdown?.hra ?? null,
+            conveyance_allowance: comp.breakdown?.conveyance_allowance ?? null,
+            call_allowance: null,
+            other_allowance: comp.inputs?.other_allowance ?? null,
+            effective_from: (payload.record && (payload.record.effective_from || payload.record.effectiveFrom)) || null,
+          };
+          console.debug('[salary] using server computed as fake row', fake);
+          rows = [fake];
+        }
+      } else {
+        // If the API returned a non-success wrapper, treat as empty and surface the raw payload in preview
+        rows = [];
+      }
+      console.debug('[salary] normalized rows count', rows.length, rows[0]);
+      // sort most-recent-first if effective_from present
+      rows.sort((a, b) => {
+        const da = a?.effective_from ? new Date(a.effective_from) : null;
+        const db = b?.effective_from ? new Date(b.effective_from) : null;
+        if (da && db) return db - da;
+        if (db) return 1;
+        if (da) return -1;
+        return 0;
+      });
+      setSalaryRows(rows);
+
+      // If we have at least one row, map the common DB fields into the salaryData UI state.
+      if (rows.length > 0) {
+        const row = rows[0];
+        // compute mapping values for logging
+        const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
+        const basic = row.basic ?? row.BASIC ?? row.Basic;
+        const da = row.da ?? row.DA ?? row.Da;
+        const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? undefined);
+        const hra = row.hra ?? row.HRA ?? undefined;
+        const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? undefined;
+        const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? undefined;
+        const other = row.other_allowance ?? row.other ?? row.other_allow ?? undefined;
+
+        console.debug('[salary] mapping record -> UI', { gross: g, basicDaCombined, hra, convey, callAllow, other, effective_from: row.effective_from });
+
+        setSalaryData(prev => {
+          // Helper to coalesce multiple possible field names
+          const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
+          const basic = row.basic ?? row.BASIC ?? row.Basic;
+          const da = row.da ?? row.DA ?? row.Da;
+          const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? prev.basic_da);
+          const hra = row.hra ?? row.HRA ?? prev.hra;
+          const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? prev.conveyance_allowance;
+          const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? prev.call_allowance;
+          const other = row.other_allowance ?? row.other ?? row.other_allow ?? prev.other_allowance;
+
+          // Preserve existing manual overrides and mark fetched component fields as manual so
+          // they reflect DB values until the user explicitly resets them via the UI.
+          const prevMO = prev.manual_overrides || {};
+          const newMO = { ...prevMO };
+          // Prefer mapping component splits from gross: do not force basic/da/hra/conveyance from DB.
+          // Remove manual override flags for those splits so the reactive engine computes them from gross.
+          if (newMO.basic_da) delete newMO.basic_da;
+          if (newMO.hra) delete newMO.hra;
+          if (newMO.conveyance_allowance) delete newMO.conveyance_allowance;
+          if (callAllow !== undefined || row.call_allowance !== undefined) newMO.call_allowance = true;
+          if (other !== undefined || row.other_allowance !== undefined) newMO.other_allowance = true;
+
+          return {
+            ...prev,
+            gross_salary: g !== undefined && g !== null ? g : prev.gross_salary,
+            // Do not overwrite the component splits here; let the reactive salary engine derive them from gross.
+            basic_da: prev.basic_da,
+            hra: prev.hra,
+            conveyance_allowance: prev.conveyance_allowance,
+            call_allowance: callAllow !== undefined ? callAllow : prev.call_allowance,
+            other_allowance: other !== undefined ? other : prev.other_allowance,
+            effective_from: row.effective_from ?? prev.effective_from,
+            manual_overrides: newMO
+          };
+        });
+        // Also populate salaryInputs (used by the save flow) so add/edit flows stay in sync
+        try {
+          setSalaryInputs(prev => ({
+            ...prev,
+            basic_salary: row.basic ?? row.basic_salary ?? row.BASIC ?? prev.basic_salary,
+            da: row.da ?? row.DA ?? prev.da,
+            hra: row.hra ?? row.HRA ?? prev.hra,
+            conveyance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance,
+            call_allowance: row.call_allowance ?? row.call ?? prev.call_allowance,
+            other_allowance: row.other_allowance ?? row.other ?? prev.other_allowance,
+            effective_from: row.effective_from ?? prev.effective_from,
+            pl_used: row.pl_used ?? prev.pl_used,
+            pl_balance: row.pl_balance ?? prev.pl_balance,
+          }));
+          console.debug('[salary] salaryInputs populated from DB', { basic_salary: row.basic ?? row.basic_salary, da: row.da, hra: row.hra, conveyance: row.conveyance, call_allowance: row.call_allowance, other_allowance: row.other_allowance });
+        } catch (e) { console.error('[salary] failed to set salaryInputs', e); }
+      }
+
+    } catch (err) {
+      console.error('Failed to load salary rows', err);
+      setSalaryError(String(err?.message || err));
+      setSalaryRows([]);
+    } finally {
+      setSalaryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSalaryRows(selectedEmployee?.id);
+  }, [selectedEmployee?.id]);
+
+  // Also reload when the Salary tab is shown to the user
+  useEffect(() => {
+    if (editSubTab === 'salary') loadSalaryRows(selectedEmployee?.id);
+  }, [editSubTab, selectedEmployee?.id]);
 
   // Add attendance related extras
   // week_offs: weekly offs in the period; pl_use: paid leave used; pl_balance: informational
@@ -722,7 +902,8 @@ export default function EmployeesPage() {
       const s = (searchTerm || '').trim();
       const params = new URLSearchParams({
         page: currentPage,
-        limit: 10,
+        // Request a larger page size so the UI shows more employees (server caps at 100)
+        limit: 100,
         ...(s && { search: s }),
         ...(selectedDepartment && { department: selectedDepartment }),
         ...(selectedStatus && { status: selectedStatus })
@@ -735,7 +916,21 @@ export default function EmployeesPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setEmployees(data.employees);
+        // Sort employees by numeric suffix in their employee_id (e.g., ATS001 -> 1)
+        const sortByIdNumber = (a, b) => {
+          const extract = (s) => {
+            if (!s) return Number.POSITIVE_INFINITY;
+            const m = String(s).match(/(\d+)$/);
+            if (!m) return Number.POSITIVE_INFINITY;
+            return Number(m[1]);
+          };
+          const na = extract(a.employee_id);
+          const nb = extract(b.employee_id);
+          if (na === nb) return 0;
+          return (na === Number.POSITIVE_INFINITY) ? 1 : (nb === Number.POSITIVE_INFINITY ? -1 : na - nb);
+        };
+        const sorted = Array.isArray(data.employees) ? [...data.employees].sort(sortByIdNumber) : (data.employees || []);
+        setEmployees(sorted);
         setDepartments(data.departments);
         setPagination(data.pagination);
       } else {
@@ -753,6 +948,22 @@ export default function EmployeesPage() {
   useEffect(() => {
     fetchEmployees();
   }, [currentPage, searchTerm, selectedDepartment, selectedStatus]);
+
+  // Compute next ATS id from current employees list (e.g. ATS001 -> ATS002)
+  const nextAtsId = useMemo(() => {
+    try {
+      let max = 0;
+      for (const e of (employees || [])) {
+        const m = String(e.employee_id || '').match(/ATS0*(\d+)$/i);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (Number.isFinite(n)) max = Math.max(max, n);
+        }
+      }
+      const next = String(max + 1).padStart(3, '0');
+      return `ATS${next}`;
+    } catch (err) { return 'ATS001'; }
+  }, [employees]);
 
   // Load roles for System Role assignment
   useEffect(() => {
@@ -953,7 +1164,10 @@ export default function EmployeesPage() {
       });
 
       let respJson = null;
-      try { respJson = await response.json(); } catch {}
+      let respText = null;
+      try { respJson = await response.json(); } catch (e) {
+        try { respText = await response.text(); } catch (e2) { /* ignore */ }
+      }
 
       if (response.ok) {
         // If this was a create, and salary inputs are present, create salary entry too
@@ -1008,11 +1222,11 @@ export default function EmployeesPage() {
         setActiveTab('list');
         setFormData(defaultFormData);
         setSelectedEmployee(null);
-  setSalaryInputs({ basic_salary: '', attendance_days: '', total_working_days: 26, loan_active: 'No', loan_emi: '', advance_payment: '', salary_type: 'Monthly', effective_from: '', additional_earnings: '', additional_deductions: '', pf: '', pt: '', mlwf: '' });
         fetchEmployees();
       } else {
         const error = respJson || {};
-        setFormErrors(error.errors || { general: error.error || error.message || 'An error occurred' });
+        const fallback = respText || (error.error || error.message) || `Request failed: ${response.status}`;
+        setFormErrors(error.errors || { general: fallback || 'An error occurred' });
       }
     } catch (error) {
       console.error('Error saving employee:', error);
@@ -1414,25 +1628,29 @@ export default function EmployeesPage() {
                 ) : (
                   <>
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
+                      <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                           <tr>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-3 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100 w-28">
+                              Employee ID
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Employee
                             </th>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Department
                             </th>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Position
                             </th>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Hire Date
                             </th>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Status
                             </th>
-                            <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Actions
                             </th>
                           </tr>
@@ -1440,15 +1658,15 @@ export default function EmployeesPage() {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {employees.map((employee) => (
                             <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-200 motion-safe:hover:scale-[1.01]">
+                              <td className="px-3 py-4 whitespace-nowrap w-28">
+                                <div className="text-sm font-medium text-[#64126D] truncate">{employee.employee_id}</div>
+                              </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <Avatar src={employee.profile_photo_url} firstName={employee.first_name} lastName={employee.last_name} size={48} />
                                   <div className="ml-4">
                                     <div className="text-sm font-medium text-gray-900">
                                       {employee.first_name} {employee.last_name}
-                                    </div>
-                                    <div className="text-sm text-[#64126D] font-medium">
-                                      {employee.employee_id}
                                     </div>
                                     <div className="text-sm text-gray-500">
                                       {employee.email}
@@ -1504,7 +1722,8 @@ export default function EmployeesPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                        </table>
+                      </div>
                     </div>
 
                     {/* Pagination */}
@@ -1599,7 +1818,7 @@ export default function EmployeesPage() {
                   </div>
                   <div className="overflow-y-auto">
                     {employees.map(emp => (
-                      <div key={emp.id} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                      <div key={emp.id} onClick={() => openViewForm(emp)} role="button" tabIndex={0} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer focus:outline-none" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openViewForm(emp); }}>
                         <div className="flex items-center">
                           <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
                           <div className="ml-3 min-w-0">
@@ -1694,7 +1913,11 @@ export default function EmployeesPage() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Employee ID <span className="text-red-500">*</span></label>
-                          <input type="text" value={formData.employee_id || ''} onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" required />
+                          <div className="flex items-center gap-2">
+                            <input type="text" value={formData.employee_id || ''} onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })} className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" required />
+                            <button type="button" className="px-3 py-2 bg-gray-100 text-sm rounded-lg border border-gray-200 hover:bg-gray-200" onClick={() => setFormData({ ...formData, employee_id: nextAtsId })} title="Auto-fill next ATS id">Auto-fill</button>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">Next ATS: <span className="font-medium text-[#64126D]">{nextAtsId}</span></p>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
@@ -1982,6 +2205,46 @@ export default function EmployeesPage() {
                               <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
                             </div>
                           </div>
+                        </div>
+                        {/* DB-backed salary preview / selector */}
+                        <div>
+                          {salaryLoading ? (
+                            <div className="text-sm text-gray-600 py-2">Loading salary rows...</div>
+                          ) : salaryError ? (
+                            <div className="text-sm text-red-600 py-2">Error loading salary: {salaryError}</div>
+                          ) : (salaryRows && salaryRows.length > 0) ? (
+                            <div className="bg-white p-3 rounded-lg border border-gray-200 mb-4">
+                              <div className="flex items-center justify-end gap-2 mb-2">
+                                <button type="button" onClick={() => loadSalaryRows(selectedEmployee?.id)} className="text-xs px-2 py-1 rounded bg-gray-100 border">Reload from DB</button>
+                                <button type="button" onClick={() => {
+                                  // copy DB values into the form explicitly (same as load but safe)
+                                  loadSalaryRows(selectedEmployee?.id);
+                                }} className="text-xs px-2 py-1 rounded bg-white border">Load DB values</button>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-gray-700">
+                                  <div className="font-medium">Salary row loaded from DB</div>
+                                  <div className="text-xs text-gray-500">Effective from: {salaryRows[0].effective_from ? new Date(salaryRows[0].effective_from).toLocaleDateString() : '—'}</div>
+                                </div>
+                                <div className="text-sm text-gray-700">
+                                  <div>Gross: ₹{salaryRows[0].gross_salary ?? salaryRows[0].gross ?? '—'}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-gray-700">
+                                <div>BASIC+DA: {salaryRows[0].basic_da ?? ((salaryRows[0].basic || 0) + (salaryRows[0].da || 0))}</div>
+                                <div>HRA: {salaryRows[0].hra ?? '—'}</div>
+                                <div>Conveyance: {salaryRows[0].conveyance_allowance ?? salaryRows[0].conveyance ?? '—'}</div>
+                                <div>Call allowance: {salaryRows[0].call_allowance ?? salaryRows[0].call ?? '—'}</div>
+                                <div>Other allowance: {salaryRows[0].other_allowance ?? salaryRows[0].other ?? '—'}</div>
+                              </div>
+                              {/* Debug: show raw API payload (compact) so we can confirm keys like gross_salary */}
+                              {salaryRaw ? (
+                                <pre className="text-xs text-gray-500 mt-2 max-h-36 overflow-auto bg-gray-50 p-2 rounded">{JSON.stringify(salaryRaw, null, 2)}</pre>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500 py-2">No persisted salary rows found for this employee.</div>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -3602,34 +3865,224 @@ export default function EmployeesPage() {
                   </div>
                 </section>
 
-                {/* Contact Details (if available) */}
-                {(selectedEmployee.city || selectedEmployee.state || selectedEmployee.country || selectedEmployee.address) && (
-                  <section className="rounded-xl border border-gray-200 bg-white">
-                    <div className="px-6 py-4 border-b border-gray-200">
-                      <h4 className="text-lg font-semibold text-gray-900">Contact Details</h4>
+                {/* Contact Details & Misc (always shown) */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Contact & Location</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Address</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.address || '—'}</p>
                     </div>
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {selectedEmployee.address && (
-                        <div className="md:col-span-2">
-                          <p className="text-xs uppercase tracking-wide text-gray-500">Address</p>
-                          <p className="mt-1 font-medium text-black">{selectedEmployee.address}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-gray-500">City</p>
-                        <p className="mt-1 font-medium text-black">{selectedEmployee.city || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-gray-500">State</p>
-                        <p className="mt-1 font-medium text-black">{selectedEmployee.state || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-gray-500">Country</p>
-                        <p className="mt-1 font-medium text-black">{selectedEmployee.country || '—'}</p>
-                      </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">City</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.city || '—'}</p>
                     </div>
-                  </section>
-                )}
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">State</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.state || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Country</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.country || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PIN / ZIP</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.pin || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Phone</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.phone || selectedEmployee.mobile || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Personal Email</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.personal_email || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Emergency Contact</p>
+                      <p className="mt-1 font-medium text-black">{(selectedEmployee.emergency_contact_name ? `${selectedEmployee.emergency_contact_name}${selectedEmployee.emergency_contact_phone ? ' • ' + selectedEmployee.emergency_contact_phone : ''}` : '—')}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Notes</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.notes || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Personal & Government IDs */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Personal & Government IDs</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">DOB</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.dob)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Marital Status</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.marital_status || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PAN</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.pan || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Aadhar / National ID</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.aadhar || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">UAN</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.uan || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">ESI No</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.esi_no || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Bank & Salary Details */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Bank & Salary</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Bank Name</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.bank_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Account Holder</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.account_holder_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Account No</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.bank_account_no || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">IFSC / Branch</p>
+                      <p className="mt-1 font-medium text-black">{(selectedEmployee.bank_ifsc || selectedEmployee.bank_branch) || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Gross Salary</p>
+                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.gross_salary || selectedEmployee.salary)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Net Salary</p>
+                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.net_salary)}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Statutory & Flags */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Statutory & Flags</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Bonus Eligible</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.bonus_eligible ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PF Applicable</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_pf ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">MLWF</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_mlwf ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Professional Tax</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_pt ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">ESIC</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_esic ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">TDS</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_tds ? 'Yes' : 'No'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Education & Experience */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Education & Experience</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Qualification</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.qualification || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Institute</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.institute || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Passing Year</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.passing_year || '—'}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Work Experience</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.work_experience || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Attendance / Exit */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Attendance & Exit</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Attendance ID</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.attendance_id || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Biometric Code</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.biometric_code || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Exit Date</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.exit_date)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Exit Reason</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.exit_reason || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* System & Role Info */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">System & Role</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Username</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.username || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Role</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.role || selectedEmployee.system_role_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Created At</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Updated At</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.updated_at)}</p>
+                    </div>
+                  </div>
+                </section>
 
               </div>
             </div>

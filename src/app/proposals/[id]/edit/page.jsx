@@ -29,7 +29,6 @@ export default function EditProposalPage() {
     description: '',
     company_id: null,
     client_name: '',
-    project_manager: '',
     industry: '',
     contract_type: '',
     proposal_value: 0,
@@ -179,7 +178,7 @@ Dispute Resolution
             description: p.description ?? p.project_description ?? '',
             company_id: p.company_id ?? null,
             client_name: p.client_name ?? p.client ?? '',
-            project_manager: p.project_manager ?? '',
+            
             industry: p.industry ?? '',
             contract_type: p.contract_type ?? '',
             proposal_value: p.proposal_value ?? p.value ?? 0,
@@ -427,7 +426,7 @@ function BasicInfoForm({ proposalData, setProposalData }) {
           <Text label="Proposal Title *" value={proposalData.proposal_title} onChange={v => set('proposal_title', v)} required />
           <Textarea label="Description" rows={4} value={proposalData.description} onChange={v => set('description', v)} />
           <Text label="Client Name" value={proposalData.client_name} onChange={v => set('client_name', v)} />
-          <Text label="Project Manager" value={proposalData.project_manager} onChange={v => set('project_manager', v)} />
+          {/* Project Manager removed from proposal form */}
           <Text label="Industry" placeholder="e.g., Oil & Gas, Petrochemical…" value={proposalData.industry} onChange={v => set('industry', v)} />
           <Text label="Contract Type" placeholder="e.g., EPC, Consultancy, T&M…" value={proposalData.contract_type} onChange={v => set('contract_type', v)} />
         </div>
