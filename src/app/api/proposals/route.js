@@ -151,7 +151,6 @@ export async function POST(request) {
       description || project_description || null,
       company_id || null,
       client_name || client || null,
-  null,
       industry || null,
       contract_type || null,
       proposal_value || value || null,

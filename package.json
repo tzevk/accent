@@ -25,6 +25,8 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
+  "pizzip": "^3.1.6",
+  "docxtemplater": "^3.29.0",
     "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.3",
