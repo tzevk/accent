@@ -345,7 +345,7 @@ export default function Proposals() {
                                 {proposal.proposal_title || proposal.title || 'Untitled Proposal'}
                               </div>
                               <div className="text-sm text-gray-500">
-                                #{proposal.proposal_number || proposal.id}
+                                {proposal.proposal_id || proposal.proposal_number || `#${proposal.id}`}
                               </div>
                             </div>
                           </div>

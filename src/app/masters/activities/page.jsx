@@ -571,11 +571,11 @@ export default function ActivityMasterPage() {
                           <div className="flex-1">
                             <p className="text-sm font-semibold text-black">{subActivity.name}</p>
                             <div className="mt-1 text-xs text-gray-500 space-y-1">
-                              {subActivity.default_duration && (
-                                <div>Duration: {subActivity.default_duration}hrs</div>
+                              {subActivity.default_manhours !== undefined && subActivity.default_manhours !== null && (
+                                <div>Manhours: {subActivity.default_manhours} hrs</div>
                               )}
-                              {subActivity.default_manhours && (
-                                <div>Manhours: {subActivity.default_manhours}hrs</div>
+                              {subActivity.default_rate !== undefined && subActivity.default_rate !== null && (
+                                <div>Default Rate: ₹{subActivity.default_rate}</div>
                               )}
                             </div>
                           </div>
@@ -633,6 +633,7 @@ export default function ActivityMasterPage() {
                         placeholder="Manhours (hrs)"
                         className="w-full px-3 py-2 border rounded-md text-sm"
                       />
+                      {/* Only collect name, duration and manhours when creating sub-activities */}
                     </div>
                     <div className="flex justify-end gap-3">
                       <button

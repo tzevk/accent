@@ -213,6 +213,7 @@ export async function PUT(request, { params }) {
     // Map request body keys to possible DB column names and push accordingly
     // title/proposal_title
     pushIf('title', body.title ?? null);
+  pushIf('proposal_id', body.proposal_id ?? null);
     pushIf('proposal_title', body.proposal_title ?? body.title ?? null);
     pushIf('client', body.client ?? null);
     pushIf('contact_name', body.contact_name ?? null);
