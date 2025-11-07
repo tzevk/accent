@@ -420,6 +420,30 @@ export default function EmployeesPage() {
     effective_from: ''
   });
 
+  // Inputs model used for the Salary add/edit form and save flow
+  const [salaryInputs, setSalaryInputs] = useState({
+    basic_salary: '',
+    attendance_days: '',
+    total_working_days: 26,
+    loan_active: 'no',
+    loan_emi: '',
+    advance_payment: '',
+    salary_type: 'Monthly',
+    effective_from: '',
+    additional_earnings: '',
+    additional_deductions: '',
+    pf: '',
+    pt: '',
+    mlwf: '',
+    da: '',
+    hra: '',
+    conveyance: '',
+    call_allowance: '',
+    other_allowance: '',
+    pl_used: '',
+    pl_balance: ''
+  });
+
   // Helper to set salary fields and mark manual overrides
   const setSalaryField = (field, value, manual = true) => {
     // normalize numeric fields to empty string or number-like strings; actual parsing happens in compute
@@ -892,7 +916,21 @@ export default function EmployeesPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setEmployees(data.employees);
+        // Sort employees by numeric suffix in their employee_id (e.g., ATS001 -> 1)
+        const sortByIdNumber = (a, b) => {
+          const extract = (s) => {
+            if (!s) return Number.POSITIVE_INFINITY;
+            const m = String(s).match(/(\d+)$/);
+            if (!m) return Number.POSITIVE_INFINITY;
+            return Number(m[1]);
+          };
+          const na = extract(a.employee_id);
+          const nb = extract(b.employee_id);
+          if (na === nb) return 0;
+          return (na === Number.POSITIVE_INFINITY) ? 1 : (nb === Number.POSITIVE_INFINITY ? -1 : na - nb);
+        };
+        const sorted = Array.isArray(data.employees) ? [...data.employees].sort(sortByIdNumber) : (data.employees || []);
+        setEmployees(sorted);
         setDepartments(data.departments);
         setPagination(data.pagination);
       } else {
@@ -910,6 +948,22 @@ export default function EmployeesPage() {
   useEffect(() => {
     fetchEmployees();
   }, [currentPage, searchTerm, selectedDepartment, selectedStatus]);
+
+  // Compute next ATS id from current employees list (e.g. ATS001 -> ATS002)
+  const nextAtsId = useMemo(() => {
+    try {
+      let max = 0;
+      for (const e of (employees || [])) {
+        const m = String(e.employee_id || '').match(/ATS0*(\d+)$/i);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (Number.isFinite(n)) max = Math.max(max, n);
+        }
+      }
+      const next = String(max + 1).padStart(3, '0');
+      return `ATS${next}`;
+    } catch (err) { return 'ATS001'; }
+  }, [employees]);
 
   // Load roles for System Role assignment
   useEffect(() => {
@@ -1110,7 +1164,10 @@ export default function EmployeesPage() {
       });
 
       let respJson = null;
-      try { respJson = await response.json(); } catch {}
+      let respText = null;
+      try { respJson = await response.json(); } catch (e) {
+        try { respText = await response.text(); } catch (e2) { /* ignore */ }
+      }
 
       if (response.ok) {
         // If this was a create, and salary inputs are present, create salary entry too
@@ -1168,7 +1225,8 @@ export default function EmployeesPage() {
         fetchEmployees();
       } else {
         const error = respJson || {};
-        setFormErrors(error.errors || { general: error.error || error.message || 'An error occurred' });
+        const fallback = respText || (error.error || error.message) || `Request failed: ${response.status}`;
+        setFormErrors(error.errors || { general: fallback || 'An error occurred' });
       }
     } catch (error) {
       console.error('Error saving employee:', error);
@@ -1573,6 +1631,9 @@ export default function EmployeesPage() {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                           <tr>
+                            <th className="px-3 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100 w-28">
+                              Employee ID
+                            </th>
                             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               Employee
                             </th>
@@ -1596,15 +1657,15 @@ export default function EmployeesPage() {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {employees.map((employee) => (
                             <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-200 motion-safe:hover:scale-[1.01]">
+                              <td className="px-3 py-4 whitespace-nowrap w-28">
+                                <div className="text-sm font-medium text-[#64126D] truncate">{employee.employee_id}</div>
+                              </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center">
                                   <Avatar src={employee.profile_photo_url} firstName={employee.first_name} lastName={employee.last_name} size={48} />
                                   <div className="ml-4">
                                     <div className="text-sm font-medium text-gray-900">
                                       {employee.first_name} {employee.last_name}
-                                    </div>
-                                    <div className="text-sm text-[#64126D] font-medium">
-                                      {employee.employee_id}
                                     </div>
                                     <div className="text-sm text-gray-500">
                                       {employee.email}
@@ -1755,7 +1816,7 @@ export default function EmployeesPage() {
                   </div>
                   <div className="overflow-y-auto">
                     {employees.map(emp => (
-                      <div key={emp.id} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                      <div key={emp.id} onClick={() => openViewForm(emp)} role="button" tabIndex={0} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer focus:outline-none" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openViewForm(emp); }}>
                         <div className="flex items-center">
                           <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
                           <div className="ml-3 min-w-0">
@@ -1850,7 +1911,11 @@ export default function EmployeesPage() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Employee ID <span className="text-red-500">*</span></label>
-                          <input type="text" value={formData.employee_id || ''} onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" required />
+                          <div className="flex items-center gap-2">
+                            <input type="text" value={formData.employee_id || ''} onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })} className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" required />
+                            <button type="button" className="px-3 py-2 bg-gray-100 text-sm rounded-lg border border-gray-200 hover:bg-gray-200" onClick={() => setFormData({ ...formData, employee_id: nextAtsId })} title="Auto-fill next ATS id">Auto-fill</button>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">Next ATS: <span className="font-medium text-[#64126D]">{nextAtsId}</span></p>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
@@ -3798,34 +3863,224 @@ export default function EmployeesPage() {
                   </div>
                 </section>
 
-                {/* Contact Details (if available) */}
-                {(selectedEmployee.city || selectedEmployee.state || selectedEmployee.country || selectedEmployee.address) && (
-                  <section className="rounded-xl border border-gray-200 bg-white">
-                    <div className="px-6 py-4 border-b border-gray-200">
-                      <h4 className="text-lg font-semibold text-gray-900">Contact Details</h4>
+                {/* Contact Details & Misc (always shown) */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Contact & Location</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Address</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.address || '—'}</p>
                     </div>
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {selectedEmployee.address && (
-                        <div className="md:col-span-2">
-                          <p className="text-xs uppercase tracking-wide text-gray-500">Address</p>
-                          <p className="mt-1 font-medium text-black">{selectedEmployee.address}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-gray-500">City</p>
-                        <p className="mt-1 font-medium text-black">{selectedEmployee.city || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-gray-500">State</p>
-                        <p className="mt-1 font-medium text-black">{selectedEmployee.state || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-gray-500">Country</p>
-                        <p className="mt-1 font-medium text-black">{selectedEmployee.country || '—'}</p>
-                      </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">City</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.city || '—'}</p>
                     </div>
-                  </section>
-                )}
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">State</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.state || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Country</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.country || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PIN / ZIP</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.pin || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Phone</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.phone || selectedEmployee.mobile || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Personal Email</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.personal_email || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Emergency Contact</p>
+                      <p className="mt-1 font-medium text-black">{(selectedEmployee.emergency_contact_name ? `${selectedEmployee.emergency_contact_name}${selectedEmployee.emergency_contact_phone ? ' • ' + selectedEmployee.emergency_contact_phone : ''}` : '—')}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Notes</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.notes || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Personal & Government IDs */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Personal & Government IDs</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">DOB</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.dob)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Marital Status</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.marital_status || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PAN</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.pan || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Aadhar / National ID</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.aadhar || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">UAN</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.uan || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">ESI No</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.esi_no || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Bank & Salary Details */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Bank & Salary</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Bank Name</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.bank_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Account Holder</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.account_holder_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Account No</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.bank_account_no || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">IFSC / Branch</p>
+                      <p className="mt-1 font-medium text-black">{(selectedEmployee.bank_ifsc || selectedEmployee.bank_branch) || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Gross Salary</p>
+                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.gross_salary || selectedEmployee.salary)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Net Salary</p>
+                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.net_salary)}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Statutory & Flags */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Statutory & Flags</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Bonus Eligible</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.bonus_eligible ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PF Applicable</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_pf ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">MLWF</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_mlwf ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Professional Tax</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_pt ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">ESIC</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_esic ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">TDS</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_tds ? 'Yes' : 'No'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Education & Experience */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Education & Experience</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Qualification</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.qualification || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Institute</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.institute || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Passing Year</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.passing_year || '—'}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Work Experience</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.work_experience || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Attendance / Exit */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Attendance & Exit</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Attendance ID</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.attendance_id || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Biometric Code</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.biometric_code || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Exit Date</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.exit_date)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Exit Reason</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.exit_reason || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* System & Role Info */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">System & Role</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Username</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.username || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Role</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.role || selectedEmployee.system_role_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Created At</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Updated At</p>
+                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.updated_at)}</p>
+                    </div>
+                  </div>
+                </section>
 
               </div>
             </div>
