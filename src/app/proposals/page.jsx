@@ -74,7 +74,6 @@ export default function Proposals() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // minimal overrides; server will copy fields
-          project_manager: proposal.project_manager || null,
           start_date: new Date().toISOString().split('T')[0],
           budget: proposal.value || null
         })

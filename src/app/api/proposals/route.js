@@ -46,9 +46,8 @@ export async function POST(request) {
       // New comprehensive fields
       proposal_title,
       description,
-      company_id,
-      client_name,
-      project_manager,
+  company_id,
+  client_name,
       industry,
       contract_type,
       proposal_value,
@@ -129,8 +128,8 @@ export async function POST(request) {
     
     // Build columns and values explicitly to avoid column/value count mismatches
     const columns = [
-      'proposal_id', 'proposal_title', 'description', 'company_id', 'client_name',
-      'project_manager', 'industry', 'contract_type', 'proposal_value', 'currency',
+  'proposal_id', 'proposal_title', 'description', 'company_id', 'client_name',
+  'industry', 'contract_type', 'proposal_value', 'currency',
       'payment_terms', 'planned_start_date', 'planned_end_date', 'project_duration_planned',
       'target_date', 'project_schedule', 'input_document', 'list_of_deliverables',
       'disciplines', 'activities', 'discipline_descriptions', 'planning_activities_list',
@@ -152,7 +151,7 @@ export async function POST(request) {
       description || project_description || null,
       company_id || null,
       client_name || client || null,
-      project_manager || null,
+  null,
       industry || null,
       contract_type || null,
       proposal_value || value || null,

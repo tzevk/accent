@@ -106,7 +106,7 @@ export default function Sidebar() {
             <span>SETTINGS</span>
           </div>
           <div className="mt-1">
-            <NavRow icon={Cog6ToothIcon} label="My Profile" href="#" />
+            <NavRow icon={Cog6ToothIcon} label="My Profile" href="/profile" active={pathname.startsWith('/profile')} />
           </div>
           {/* Pin/Unpin control (no company logo) */}
           <div className="mt-2">

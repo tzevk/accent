@@ -793,7 +793,6 @@ export default function ProposalPage() {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                  project_manager: proposal.project_manager || null,
                                   start_date: new Date().toISOString().split('T')[0],
                                   budget: proposal.value || null,
                                   converted_by: undefined
