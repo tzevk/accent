@@ -38,6 +38,14 @@ export async function POST(req) {
         'SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ?',
         [identifier, identifier, password]
       )
+      if (rows.length > 0) {
+        const userId = rows[0].id
+        try {
+          await db.execute('UPDATE users SET last_login = NOW(), is_active = TRUE, status = "active" WHERE id = ?', [userId])
+        } catch (err) {
+          console.warn('Failed to update last_login for user', userId, err?.code || err?.message || err)
+        }
+      }
     } catch (err) {
       console.error('Login query failed:', err)
       await db.end()
@@ -64,7 +72,7 @@ export async function POST(req) {
         maxAge: 60 * 60 * 8 // 8 hours
       })
       // Also set user_id for server-side RBAC resolution
-      const userId = rows[0].id
+  const userId = rows[0].id
       res.cookies.set('user_id', String(userId), {
         httpOnly: true,
         sameSite: 'lax',

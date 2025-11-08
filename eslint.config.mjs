@@ -18,6 +18,11 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Ignore macOS resource-fork / hidden files that sometimes appear as ._filename
+      "._*",
+      "**/._*",
+      "._**",
+      "**/._**",
     ],
   },
 ];

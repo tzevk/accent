@@ -1,0 +1,17 @@
+# Ignore macOS resource fork / hidden files
+._*
+**/._*
+
+# Node / Next build artifacts
+node_modules/
+.next/
+.next/**
+
+# Editor or backup files
+*.backup
+*.orig
+*.log
+
+# Optional: ignore package-lock and other system files
+._package-lock.json
+._node_modules

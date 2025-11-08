@@ -4,10 +4,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { 
-  HomeIcon, 
-  DocumentTextIcon, 
-  UserGroupIcon, 
+import {
+  HomeIcon,
+  DocumentTextIcon,
+  UserGroupIcon,
   BriefcaseIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
@@ -16,6 +16,7 @@ import {
   ChevronDownIcon,
   Cog6ToothIcon
 } from '@heroicons/react/24/outline';
+import { useSessionRBAC } from '@/utils/client-rbac';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
@@ -35,6 +36,9 @@ export default function Navbar() {
   // Masters dropdown removed; handled in sidebar
   const [scrolled, setScrolled] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
+  const { loading: userLoading, user } = useSessionRBAC();
+  const displayName = user?.full_name || user?.username || (userLoading ? '...' : 'Account');
+  const displayEmail = user?.email || '';
 
   // Handle scroll effect
   useEffect(() => {
@@ -69,7 +73,7 @@ export default function Navbar() {
   return (
     <>
       <nav 
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 anim-fade-in ${
           scrolled ? 'shadow-xl backdrop-blur-lg' : 'shadow-lg'
         }`}
       >
@@ -110,7 +114,7 @@ export default function Navbar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden ${
+                    className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
                       isActive
                         ? 'text-white shadow-lg'
                         : 'text-white/90 hover:text-white'
@@ -157,7 +161,7 @@ export default function Navbar() {
                   className="flex items-center space-x-2 px-3 py-2 rounded-xl text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
                 >
                   <UserCircleIcon className="h-6 w-6" />
-                  <span className="text-sm font-medium">Admin</span>
+                  <span className="text-sm font-medium">{displayName}</span>
                   <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${
                     isProfileMenuOpen ? 'rotate-180' : ''
                   }`} />
@@ -165,10 +169,12 @@ export default function Navbar() {
 
                 {/* Profile Dropdown Menu */}
                 {isProfileMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
                     <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">Admin User</p>
-                      <p className="text-xs text-gray-500">admin@accentcrm.com</p>
+                      <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                      {displayEmail && (
+                        <p className="text-xs text-gray-500">{displayEmail}</p>
+                      )}
                     </div>
                     <Link
                       href="/settings"
@@ -206,7 +212,7 @@ export default function Navbar() {
         {/* Mobile Navigation Menu */}
         {isMobileMenuOpen && (
           <div 
-            className="md:hidden border-t border-white/20"
+            className="md:hidden border-t border-white/20 anim-slide-up"
             style={{
               background: `linear-gradient(135deg, #64126D 0%, #86288F 100%)`,
               filter: isWindows ? 'saturate(1.06) brightness(1.05)' : undefined
@@ -221,7 +227,7 @@ export default function Navbar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                    className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
                       isActive
                         ? 'bg-white/20 text-white'
                         : 'text-white/90 hover:bg-white/10 hover:text-white'
@@ -240,8 +246,10 @@ export default function Navbar() {
                 <div className="flex items-center space-x-3 px-4 py-2 text-white/90">
                   <UserCircleIcon className="h-6 w-6" />
                   <div>
-                    <p className="text-sm font-medium text-white">Admin User</p>
-                    <p className="text-xs text-white/70">admin@accentcrm.com</p>
+                    <p className="text-sm font-medium text-white">{displayName}</p>
+                    {displayEmail && (
+                      <p className="text-xs text-white/70">{displayEmail}</p>
+                    )}
                   </div>
                 </div>
                 <button
@@ -260,7 +268,7 @@ export default function Navbar() {
       {/* Overlay for mobile menu */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden anim-fade-in"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
