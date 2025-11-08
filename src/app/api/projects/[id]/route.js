@@ -4,18 +4,34 @@ import { dbConnect } from '@/utils/database';
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const projectId = parseInt(id);
-    
+    const projectIdInt = parseInt(id, 10);
+
     const db = await dbConnect();
-    
-    const [rows] = await db.execute(`
-      SELECT p.*, pr.proposal_id as linked_proposal_id, pr.title as proposal_title
-      FROM projects p 
-      LEFT JOIN proposals pr ON p.proposal_id = pr.id
-      WHERE p.id = ?
-    `, [projectId]);
-    
-    if (rows.length === 0) {
+
+    // Try lookup by numeric primary id first. If not found, fallback to project_id (human readable)
+    let rows = [];
+    if (!Number.isNaN(projectIdInt)) {
+      const [r] = await db.execute(`
+        SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
+        FROM projects p 
+        LEFT JOIN proposals pr ON p.proposal_id = pr.id
+        WHERE p.id = ?
+      `, [projectIdInt]);
+      rows = r || [];
+    }
+
+    if (!rows || rows.length === 0) {
+      // fallback: try project_id column (string like 001-11-2025)
+      const [r2] = await db.execute(`
+        SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
+        FROM projects p 
+        LEFT JOIN proposals pr ON p.proposal_id = pr.id
+        WHERE p.project_id = ?
+      `, [id]);
+      rows = r2 || [];
+    }
+
+    if (!rows || rows.length === 0) {
       await db.end();
       return Response.json({ 
         success: false, 
@@ -38,10 +54,29 @@ export async function GET(request, { params }) {
     
     await db.end();
     
+    const project = rows[0];
+    
+    // Parse JSON fields if they exist
+    if (project.planning_activities_list && typeof project.planning_activities_list === 'string') {
+      try {
+        project.planning_activities_list = JSON.parse(project.planning_activities_list);
+      } catch {
+        project.planning_activities_list = [];
+      }
+    }
+    
+    if (project.documents_list && typeof project.documents_list === 'string') {
+      try {
+        project.documents_list = JSON.parse(project.documents_list);
+      } catch {
+        project.documents_list = [];
+      }
+    }
+    
     return Response.json({ 
       success: true, 
       data: {
-        ...rows[0],
+        ...project,
         project_activities: projectActivities
       }
     });
@@ -58,8 +93,31 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
-    const projectId = parseInt(id);
     const data = await request.json();
+    const db = await dbConnect();
+
+    // Resolve the numeric primary key for the project.
+    // If the route param is a pure numeric string, use it directly.
+    // Otherwise try to resolve the human-friendly `project_id` to the numeric id.
+    let projectId = null;
+    if (/^\d+$/.test(id)) {
+      projectId = parseInt(id, 10);
+    } else {
+      try {
+        const [lookup] = await db.execute('SELECT id FROM projects WHERE project_id = ?', [id]);
+        if (lookup && lookup.length > 0) {
+          projectId = lookup[0].id;
+        }
+      } catch (lookupErr) {
+        console.warn('Project lookup by project_id failed:', lookupErr.message || lookupErr);
+      }
+    }
+
+    if (projectId === null) {
+      // ensure DB connection closed before returning
+      try { await db.end(); } catch {}
+      return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
+    }
     
     const {
       name,
@@ -112,10 +170,24 @@ export async function PUT(request, { params }) {
       final_documentation_status,
       lessons_learned,
       client_feedback,
-      actual_profit_loss
+      actual_profit_loss,
+      // Meeting and Document Fields
+      project_schedule,
+      input_document,
+      list_of_deliverables,
+      kickoff_meeting,
+      in_house_meeting,
+      // Enhanced Planning & Meeting Fields
+      project_start_milestone,
+      project_review_milestone,
+      project_end_milestone,
+      kickoff_meeting_date,
+      kickoff_followup_date,
+      internal_meeting_date,
+      next_internal_meeting
     } = data;
 
-    const db = await dbConnect();
+    
     
     // Helper function to normalize decimal/numeric fields (convert empty strings to null)
     const normalizeDecimal = (value) => {
@@ -172,6 +244,22 @@ export async function PUT(request, { params }) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS lessons_learned TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_feedback TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS actual_profit_loss DECIMAL(15,2)');
+      
+      // Meeting and Document Fields
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_document TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
+      
+      // Enhanced Planning & Meeting Fields
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_start_milestone TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_review_milestone TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_end_milestone TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_followup_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS internal_meeting_date DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_internal_meeting DATE');
     } catch (err) {
       console.warn('Some ALTER TABLE statements failed, columns might already exist:', err.message);
     }
@@ -225,6 +313,18 @@ export async function PUT(request, { params }) {
         lessons_learned = COALESCE(?, lessons_learned),
         client_feedback = COALESCE(?, client_feedback),
         actual_profit_loss = COALESCE(?, actual_profit_loss),
+        project_schedule = COALESCE(?, project_schedule),
+        input_document = COALESCE(?, input_document),
+        list_of_deliverables = COALESCE(?, list_of_deliverables),
+        kickoff_meeting = COALESCE(?, kickoff_meeting),
+        in_house_meeting = COALESCE(?, in_house_meeting),
+        project_start_milestone = COALESCE(?, project_start_milestone),
+        project_review_milestone = COALESCE(?, project_review_milestone),
+        project_end_milestone = COALESCE(?, project_end_milestone),
+        kickoff_meeting_date = COALESCE(?, kickoff_meeting_date),
+        kickoff_followup_date = COALESCE(?, kickoff_followup_date),
+        internal_meeting_date = COALESCE(?, internal_meeting_date),
+        next_internal_meeting = COALESCE(?, next_internal_meeting),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
@@ -237,7 +337,7 @@ export async function PUT(request, { params }) {
       project_location_site === undefined ? null : project_location_site,
       industry === undefined ? null : industry,
       contract_type === undefined ? null : contract_type,
-      company_id === undefined ? null : company_id,
+  (company_id === undefined || company_id === null || company_id === '' ) ? null : company_id,
       project_manager === undefined ? null : project_manager,
       type === undefined ? null : type,
       normalizeDate(start_date),
@@ -251,8 +351,8 @@ export async function PUT(request, { params }) {
       priority === undefined ? null : priority,
       assigned_to === undefined ? null : assigned_to,
       description === undefined ? null : description,
-      notes === undefined ? null : notes,
-      proposal_id === undefined ? null : proposal_id,
+  notes === undefined ? null : notes,
+  (proposal_id === undefined || proposal_id === null || proposal_id === '' ) ? null : proposal_id,
       normalizeDecimal(project_value),
       currency === undefined ? null : currency,
       payment_terms === undefined ? null : payment_terms,
@@ -274,6 +374,18 @@ export async function PUT(request, { params }) {
       lessons_learned === undefined ? null : lessons_learned,
       client_feedback === undefined ? null : client_feedback,
       normalizeDecimal(actual_profit_loss),
+      project_schedule === undefined ? null : project_schedule,
+      input_document === undefined ? null : input_document,
+      list_of_deliverables === undefined ? null : list_of_deliverables,
+      kickoff_meeting === undefined ? null : kickoff_meeting,
+      in_house_meeting === undefined ? null : in_house_meeting,
+      project_start_milestone === undefined ? null : project_start_milestone,
+      project_review_milestone === undefined ? null : project_review_milestone,
+      project_end_milestone === undefined ? null : project_end_milestone,
+      normalizeDate(kickoff_meeting_date),
+      normalizeDate(kickoff_followup_date),
+      normalizeDate(internal_meeting_date),
+      normalizeDate(next_internal_meeting),
       projectId
     ]);
 
@@ -285,12 +397,14 @@ export async function PUT(request, { params }) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_members JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_activities_list JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_activities_list JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_list JSON');
     } catch (err) {
       // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
       console.warn('Could not ensure project assignment columns exist:', err.message || err);
     }
 
-    // Persist disciplines/activities/descriptions/assignments/team_members/project_activities_list if provided in payload
+    // Persist disciplines/activities/descriptions/assignments/team_members/project_activities_list/planning_activities/documents if provided in payload
     try {
       const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : null;
       const assignedActivities = data.activities ? JSON.stringify(data.activities) : null;
@@ -298,8 +412,12 @@ export async function PUT(request, { params }) {
       const assignments = data.assignments ? JSON.stringify(data.assignments) : null;
       const teamMembers = data.team_members || null;
       const projectActivitiesList = data.project_activities_list || null;
+      const planningActivitiesList = data.planning_activities_list || null;
+      const documentsList = data.documents_list || null;
 
-      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || assignments !== null || teamMembers !== null || projectActivitiesList !== null) {
+      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || 
+          assignments !== null || teamMembers !== null || projectActivitiesList !== null || 
+          planningActivitiesList !== null || documentsList !== null) {
         await db.execute(
           `UPDATE projects SET 
              assigned_disciplines = COALESCE(?, assigned_disciplines),
@@ -307,9 +425,12 @@ export async function PUT(request, { params }) {
              discipline_descriptions = COALESCE(?, discipline_descriptions),
              assignments = COALESCE(?, assignments),
              team_members = COALESCE(?, team_members),
-             project_activities_list = COALESCE(?, project_activities_list)
+             project_activities_list = COALESCE(?, project_activities_list),
+             planning_activities_list = COALESCE(?, planning_activities_list),
+             documents_list = COALESCE(?, documents_list)
            WHERE id = ?`,
-          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, teamMembers, projectActivitiesList, projectId]
+          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, 
+           teamMembers, projectActivitiesList, planningActivitiesList, documentsList, projectId]
         );
       }
     } catch (err) {

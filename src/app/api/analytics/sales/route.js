@@ -28,10 +28,11 @@ export async function GET(request) {
 
     const db = await dbConnect();
     // Group proposals by status in the selected time window
+    // Use `proposal_value` (column in proposals) instead of non-existent `value` column
     const [rows] = await db.execute(
       `SELECT LOWER(COALESCE(status, '')) as status,
               COUNT(*) as count,
-              COALESCE(SUM(COALESCE(value, 0)), 0) as amount
+              COALESCE(SUM(COALESCE(proposal_value, 0)), 0) as amount
        FROM proposals
        WHERE created_at BETWEEN ? AND ?
        GROUP BY LOWER(COALESCE(status, ''))`,

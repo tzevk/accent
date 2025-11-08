@@ -208,7 +208,10 @@ function ProjectsInner() {
               <div role="tablist" aria-label="Projects views" className="-mb-px flex space-x-2">
                 {[
                   { id: 'list', label: `Projects List (${projects.length})` },
-                  { id: 'calendar', label: 'Calendar View' }
+                  { id: 'calendar', label: 'Calendar View' },
+                  { id: 'planning', label: 'Project Planning', badge: '2 items' },
+                  { id: 'documentation', label: 'Documentation', badge: 'Input Docs' },
+                  { id: 'meetings', label: 'Meetings & Communications', badge: '2 types' }
                 ].map((tab, idx, arr) => {
                   const isActive = activeTab === tab.id;
                   return (
@@ -246,7 +249,14 @@ function ProjectsInner() {
                           : 'border-transparent text-black hover:text-gray-700 hover:border-gray-300'
                       }`}
                     >
-                      {tab.label}
+                      <span>{tab.label}</span>
+                      {tab.badge && (
+                        <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
+                          isActive ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {tab.badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -545,6 +555,84 @@ function ProjectsInner() {
                         );
                       })}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Project Planning Tab */}
+              {activeTab === 'planning' && (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                          <CalendarIcon className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-black">Project Planning</h3>
+                          <p className="text-sm text-gray-600 mt-1">Schedule, deliverables, and project roadmap</p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                        2 items
+                      </span>
+                    </div>
+                    <button className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-2">
+                      View Details
+                      <ArrowRightIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Documentation Tab */}
+              {activeTab === 'documentation' && (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                          <FolderIcon className="h-5 w-5 text-purple-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-black">Documentation</h3>
+                          <p className="text-sm text-gray-600 mt-1">Input documents, references, and file management</p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                        Input Docs
+                      </span>
+                    </div>
+                    <button className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-2">
+                      View Details
+                      <ArrowRightIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Meetings & Communications Tab */}
+              {activeTab === 'meetings' && (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                          <CalendarIcon className="h-5 w-5 text-green-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-black">Meetings & Communications</h3>
+                          <p className="text-sm text-gray-600 mt-1">Kickoff meetings, internal discussions, and follow-ups</p>
+                        </div>
+                      </div>
+                      <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                        2 types
+                      </span>
+                    </div>
+                    <button className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-2">
+                      View Details
+                      <ArrowRightIcon className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               )}

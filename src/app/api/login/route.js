@@ -72,7 +72,7 @@ export async function POST(req) {
         maxAge: 60 * 60 * 8 // 8 hours
       })
       // Also set user_id for server-side RBAC resolution
-  const userId = rows[0].id
+      const userId = rows[0].id
       res.cookies.set('user_id', String(userId), {
         httpOnly: true,
         sameSite: 'lax',
@@ -80,6 +80,7 @@ export async function POST(req) {
         path: '/',
         maxAge: 60 * 60 * 8
       })
+      
       return res
     }
 

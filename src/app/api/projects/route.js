@@ -36,6 +36,14 @@ export async function GET() {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT \'ONGOING\'');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS proposal_id INT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
+      
+      // Add new project fields requested by user
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_document TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
+      
       await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
 
       // Update enum fields to use VARCHAR instead for more flexibility
@@ -91,7 +99,13 @@ export async function POST(request) {
       priority,
       progress,
       proposal_id,
-      notes
+      notes,
+      // New fields
+      project_schedule,
+      input_document,
+      list_of_deliverables,
+      kickoff_meeting,
+      in_house_meeting
     } = data;
 
     if (!name || !company_id) {
@@ -178,18 +192,20 @@ export async function POST(request) {
       projectId = `${nextSerial}-${month}-${year}`;
     }
     
-    // Insert the new project (include activities/disciplines JSON)
+    // Insert the new project (include activities/disciplines JSON and new fields)
     const [result] = await db.execute(
       `INSERT INTO projects (
         project_id, name, description, company_id, client_name, project_manager,
         start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
-        activities, disciplines, discipline_descriptions, assignments
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        activities, disciplines, discipline_descriptions, assignments,
+        project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         projectId, name, description, company_id || null, client_name, project_manager || null,
         start_date || null, end_date || null, target_date || null, budget || null, assigned_to || null,
         status || 'NEW', type || 'ONGOING', priority || 'MEDIUM', progress || 0, proposal_id || null, notes || null,
-        JSON.stringify(data.activities || []), JSON.stringify(data.disciplines || []), JSON.stringify(data.discipline_descriptions || {}), JSON.stringify(data.assignments || [])
+        JSON.stringify(data.activities || []), JSON.stringify(data.disciplines || []), JSON.stringify(data.discipline_descriptions || {}), JSON.stringify(data.assignments || []),
+        project_schedule || null, input_document || null, list_of_deliverables || null, kickoff_meeting || null, in_house_meeting || null
       ]
     );
     
@@ -236,7 +252,13 @@ export async function PUT(request) {
       notes,
       assigned_to,
       type,
-      proposal_id
+      proposal_id,
+      // New fields
+      project_schedule,
+      input_document,
+      list_of_deliverables,
+      kickoff_meeting,
+      in_house_meeting
     } = data;
 
     if (!id || !name || !company_id) {
@@ -278,7 +300,7 @@ export async function PUT(request) {
       }, { status: 404 });
     }
 
-    // Update project (including manhours and cost_breakup)
+    // Update project (including manhours and cost_breakup and new fields)
     await db.execute(
       `UPDATE projects SET 
         name = ?,
@@ -300,7 +322,12 @@ export async function PUT(request) {
         activities = ?,
         disciplines = ?,
         discipline_descriptions = ?,
-        assignments = ?
+        assignments = ?,
+        project_schedule = ?,
+        input_document = ?,
+        list_of_deliverables = ?,
+        kickoff_meeting = ?,
+        in_house_meeting = ?
       WHERE id = ?`,
       [
         name,
@@ -323,6 +350,11 @@ export async function PUT(request) {
         JSON.stringify(data.disciplines || []),
         JSON.stringify(data.discipline_descriptions || {}),
         JSON.stringify(data.assignments || []),
+        project_schedule || null,
+        input_document || null,
+        list_of_deliverables || null,
+        kickoff_meeting || null,
+        in_house_meeting || null,
         id
       ]
     );

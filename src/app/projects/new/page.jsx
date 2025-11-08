@@ -27,7 +27,13 @@ const INITIAL_FORM = {
   type: 'ONGOING',
   description: '',
   notes: '',
-  proposal_id: ''
+  proposal_id: '',
+  // New meeting and document fields
+  project_schedule: '',
+  input_document: '',
+  list_of_deliverables: '',
+  kickoff_meeting: '',
+  in_house_meeting: ''
 };
 
 function LoadingFallback() {
@@ -372,6 +378,70 @@ function NewProjectForm() {
                     onChange={handleChange}
                     rows={3}
                     placeholder="Additional notes stored against the project record."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h2 className="text-sm font-semibold text-black">Meeting & Documents</h2>
+                <p className="text-xs text-gray-500">Project schedule, input documents, deliverables, and meeting information.</p>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-black mb-1">Project Schedule</label>
+                  <textarea
+                    name="project_schedule"
+                    value={form.project_schedule}
+                    onChange={handleChange}
+                    rows={3}
+                    placeholder="Define the overall project schedule and key milestones"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-black mb-1">Input Document</label>
+                  <textarea
+                    name="input_document"
+                    value={form.input_document}
+                    onChange={handleChange}
+                    rows={2}
+                    placeholder="List of input documents and references for the project"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-black mb-1">List of Deliverables</label>
+                  <textarea
+                    name="list_of_deliverables"
+                    value={form.list_of_deliverables}
+                    onChange={handleChange}
+                    rows={3}
+                    placeholder="Define all project deliverables and expected outputs"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting</label>
+                  <textarea
+                    name="kickoff_meeting"
+                    value={form.kickoff_meeting}
+                    onChange={handleChange}
+                    rows={2}
+                    placeholder="Details about the project kickoff meeting (date, participants, agenda, minutes)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-black mb-1">In House Meeting</label>
+                  <textarea
+                    name="in_house_meeting"
+                    value={form.in_house_meeting}
+                    onChange={handleChange}
+                    rows={2}
+                    placeholder="Internal team meetings, discussions, and decisions"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                   />
                 </div>

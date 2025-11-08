@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 
 const STATUS_OPTIONS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled'];
@@ -19,9 +19,13 @@ const DOCUMENTATION_STATUS_OPTIONS = ['Not Started', 'In Progress', 'Completed']
 
 const TABS = [
   { id: 'general', label: 'General Info' },
+  { id: 'scope', label: 'Scope of Work' },
   { id: 'commercial', label: 'Commercial' },
   { id: 'activities', label: 'Project Activities' },
   { id: 'team', label: 'Project Team' },
+  { id: 'planning', label: 'Project Planning' },
+  { id: 'documentation', label: 'Input Documentation' },
+  { id: 'meetings', label: 'Meetings & Communications' },
   { id: 'procurement', label: 'Procurement' },
   { id: 'construction', label: 'Construction' },
   { id: 'risk', label: 'Risk & Issues' },
@@ -85,7 +89,23 @@ const INITIAL_FORM = {
   final_documentation_status: '',
   lessons_learned: '',
   client_feedback: '',
-  actual_profit_loss: ''
+  actual_profit_loss: '',
+  
+  // Meeting and Document Fields
+  project_schedule: '',
+  input_document: '',
+  list_of_deliverables: '',
+  kickoff_meeting: '',
+  in_house_meeting: '',
+  
+  // Enhanced Planning & Meeting Fields
+  project_start_milestone: '',
+  project_review_milestone: '',
+  project_end_milestone: '',
+  kickoff_meeting_date: '',
+  kickoff_followup_date: '',
+  internal_meeting_date: '',
+  next_internal_meeting: ''
 };
 
 function LoadingFallback() {
@@ -128,6 +148,46 @@ function EditProjectForm() {
   // Sub-Activity dropdown UI state (per-activity)
   const [openSubActivityDropdowns, setOpenSubActivityDropdowns] = useState({});
   const [subActivitySearch, setSubActivitySearch] = useState({});
+  
+  // Collapsible sections state for enhanced General Info
+  const [expandedSections, setExpandedSections] = useState({
+    planning: true,      // Project Planning section
+    documentation: true, // Documentation section  
+    meetings: true       // Meetings section
+  });
+
+  // File management state
+  const [inputDocuments, setInputDocuments] = useState([]);
+  const [deliverables, setDeliverables] = useState([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  // Input document list management
+  const [inputDocumentsList, setInputDocumentsList] = useState([]);
+  const [newInputDocument, setNewInputDocument] = useState('');
+  
+  // Documentation tab - detailed document management
+  const [documentsList, setDocumentsList] = useState([]);
+  const [newDocument, setNewDocument] = useState({
+    name: '',
+    number: '',
+    revision: '',
+    quantity: '',
+    sentBy: '',
+    remarks: ''
+  });
+
+  // Project Planning tab - activity tracking
+  const [planningActivities, setPlanningActivities] = useState([]);
+  const [newPlanningActivity, setNewPlanningActivity] = useState({
+    serialNumber: '',
+    activity: '',
+    quantity: '',
+    startDate: '',
+    endDate: '',
+    actualCompletionDate: '',
+    timeRequired: '',
+    actualTimeRequired: ''
+  });
 
   // Fetch all required data
   useEffect(() => {
@@ -291,6 +351,40 @@ function EditProjectForm() {
               setProjectActivities([]);
             }
           }
+
+          // Load planning activities
+          if (project.planning_activities_list) {
+            try {
+              const parsed = typeof project.planning_activities_list === 'string' 
+                ? JSON.parse(project.planning_activities_list) 
+                : project.planning_activities_list;
+              setPlanningActivities(Array.isArray(parsed) ? parsed : []);
+            } catch (e) {
+              setPlanningActivities([]);
+            }
+          }
+
+          // Load documents list
+          if (project.documents_list) {
+            try {
+              const parsed = typeof project.documents_list === 'string' 
+                ? JSON.parse(project.documents_list) 
+                : project.documents_list;
+              setDocumentsList(Array.isArray(parsed) ? parsed : []);
+            } catch (e) {
+              setDocumentsList([]);
+            }
+          }
+
+          // Load input documents list from comma-separated string
+          if (project.input_document) {
+            const docs = project.input_document.split(',').map((doc, index) => ({
+              id: Date.now() + index,
+              text: doc.trim(),
+              addedAt: new Date().toISOString()
+            })).filter(doc => doc.text);
+            setInputDocumentsList(docs);
+          }
         } else {
           setError(result.error || 'Failed to load project');
         }
@@ -308,14 +402,169 @@ function EditProjectForm() {
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
 
+  // Auto-save with debouncing
+  const [autoSaveTimeout, setAutoSaveTimeout] = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeout) {
+        clearTimeout(autoSaveTimeout);
+      }
+    };
+  }, [autoSaveTimeout]);
+
+  const autoSave = async (formData) => {
+    try {
+      setSaving(true);
+      const result = await fetchJSON(`/api/projects/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          team_members: JSON.stringify(teamMembers),
+          project_activities_list: JSON.stringify(projectActivities),
+          planning_activities_list: JSON.stringify(planningActivities),
+          documents_list: JSON.stringify(documentsList)
+        }),
+      });
+
+      if (result.success) {
+        setLastSaved(new Date());
+      }
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    const newForm = { ...form, [name]: value };
+    setForm(newForm);
+
+    // Clear existing timeout
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+
+    // Set new timeout for auto-save (2 seconds after user stops typing)
+    const timeout = setTimeout(() => {
+      autoSave(newForm);
+    }, 2000);
+    
+    setAutoSaveTimeout(timeout);
   };
 
   const handleProgressChange = (event) => {
     const value = Number(event.target.value);
     setForm((prev) => ({ ...prev, progress: Number.isNaN(value) ? 0 : value }));
+  };
+
+  // Input Document List Management
+  const addInputDocument = () => {
+    if (newInputDocument.trim()) {
+      const newDoc = {
+        id: Date.now(),
+        text: newInputDocument.trim(),
+        addedAt: new Date().toISOString()
+      };
+      setInputDocumentsList([...inputDocumentsList, newDoc]);
+      setNewInputDocument('');
+      
+      // Update form field with comma-separated list
+      const updatedList = [...inputDocumentsList, newDoc].map(doc => doc.text).join(', ');
+      setForm(prev => ({ ...prev, input_document: updatedList }));
+    }
+  };
+
+  const removeInputDocument = (id) => {
+    const updatedList = inputDocumentsList.filter(doc => doc.id !== id);
+    setInputDocumentsList(updatedList);
+    
+    // Update form field
+    const updatedText = updatedList.map(doc => doc.text).join(', ');
+    setForm(prev => ({ ...prev, input_document: updatedText }));
+  };
+
+  const handleInputDocumentKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addInputDocument();
+    }
+  };
+
+  // Documentation Tab - Detailed Document Management
+  const addDocument = () => {
+    if (newDocument.name.trim()) {
+      const doc = {
+        id: Date.now(),
+        name: newDocument.name.trim(),
+        number: newDocument.number.trim(),
+        revision: newDocument.revision.trim(),
+        quantity: newDocument.quantity.trim(),
+        sentBy: newDocument.sentBy.trim(),
+        remarks: newDocument.remarks.trim(),
+        addedAt: new Date().toISOString()
+      };
+      setDocumentsList([...documentsList, doc]);
+      setNewDocument({
+        name: '',
+        number: '',
+        revision: '',
+        quantity: '',
+        sentBy: '',
+        remarks: ''
+      });
+    }
+  };
+
+  const removeDocument = (id) => {
+    setDocumentsList(documentsList.filter(doc => doc.id !== id));
+  };
+
+  const updateDocumentField = (field, value) => {
+    setNewDocument(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Project Planning Tab - Activity Management
+  const addPlanningActivity = () => {
+    if (newPlanningActivity.activity.trim()) {
+      const activity = {
+        id: Date.now(),
+        serialNumber: newPlanningActivity.serialNumber.trim() || (planningActivities.length + 1).toString(),
+        activity: newPlanningActivity.activity.trim(),
+        quantity: newPlanningActivity.quantity.trim(),
+        startDate: newPlanningActivity.startDate,
+        endDate: newPlanningActivity.endDate,
+        actualCompletionDate: newPlanningActivity.actualCompletionDate,
+        timeRequired: newPlanningActivity.timeRequired.trim(),
+        actualTimeRequired: newPlanningActivity.actualTimeRequired.trim(),
+        addedAt: new Date().toISOString()
+      };
+      setPlanningActivities([...planningActivities, activity]);
+      setNewPlanningActivity({
+        serialNumber: '',
+        activity: '',
+        quantity: '',
+        startDate: '',
+        endDate: '',
+        actualCompletionDate: '',
+        timeRequired: '',
+        actualTimeRequired: ''
+      });
+    }
+  };
+
+  const removePlanningActivity = (id) => {
+    setPlanningActivities(planningActivities.filter(act => act.id !== id));
+  };
+
+  const updatePlanningActivityField = (field, value) => {
+    setNewPlanningActivity(prev => ({ ...prev, [field]: value }));
   };
 
   // Project Activities Management
@@ -418,6 +667,82 @@ function EditProjectForm() {
     }));
   };
 
+  // File Management
+  const handleFileUpload = async (files, documentType) => {
+    if (!files || files.length === 0) return;
+    
+    setUploadingFiles(true);
+    
+    try {
+      const uploadedFiles = [];
+      
+      for (const file of Array.from(files)) {
+        // Validate file size (10MB limit)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File ${file.name} is too large. Maximum size is 10MB.`);
+          continue;
+        }
+        
+        // Validate file type
+        const allowedTypes = ['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+        const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+        if (!allowedTypes.includes(fileExtension)) {
+          alert(`File ${file.name} type is not supported. Allowed: PDF, DOCX, XLS, PNG, JPG`);
+          continue;
+        }
+        
+        // Generate version number
+        const existingFiles = documentType === 'input' ? inputDocuments : deliverables;
+        const baseName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+        const existingVersions = existingFiles.filter(f => f.name.startsWith(baseName));
+        const version = existingVersions.length > 0 ? `v${existingVersions.length + 1}.0` : 'v1.0';
+        
+        // Create file object
+        const fileObj = {
+          id: Date.now() + Math.random(),
+          name: file.name,
+          version: version,
+          size: file.size,
+          type: file.type,
+          uploadDate: new Date().toISOString(),
+          tag: 'Reference', // Default tag
+          file: file // Store actual file for upload
+        };
+        
+        uploadedFiles.push(fileObj);
+      }
+      
+      // Update appropriate state
+      if (documentType === 'input') {
+        setInputDocuments(prev => [...prev, ...uploadedFiles]);
+      } else {
+        setDeliverables(prev => [...prev, ...uploadedFiles]);
+      }
+      
+    } catch (error) {
+      console.error('File upload error:', error);
+      alert('Failed to upload files');
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const removeFile = (fileId, documentType) => {
+    if (documentType === 'input') {
+      setInputDocuments(prev => prev.filter(f => f.id !== fileId));
+    } else {
+      setDeliverables(prev => prev.filter(f => f.id !== fileId));
+    }
+  };
+
+  const updateFileTag = (fileId, tag, documentType) => {
+    if (documentType === 'input') {
+      setInputDocuments(prev => prev.map(f => f.id === fileId ? { ...f, tag } : f));
+    } else {
+      setDeliverables(prev => prev.map(f => f.id === fileId ? { ...f, tag } : f));
+    }
+  };
+
   // Calculate totals
   const totalManhours = useMemo(() => {
     return teamMembers.reduce((sum, member) => sum + (parseFloat(member.manhours) || 0), 0);
@@ -455,7 +780,9 @@ function EditProjectForm() {
         actual_profit_loss: form.actual_profit_loss ? Number(form.actual_profit_loss) : null,
         progress: Number(form.progress) || 0,
         team_members: JSON.stringify(teamMembers),
-        project_activities_list: JSON.stringify(projectActivities)
+        project_activities_list: JSON.stringify(projectActivities),
+        planning_activities_list: JSON.stringify(planningActivities),
+        documents_list: JSON.stringify(documentsList)
       };
 
       const result = await fetchJSON(`/api/projects/${id}`, {
@@ -516,6 +843,34 @@ function EditProjectForm() {
                 <p className="text-sm text-gray-600">
                   Comprehensive project management with activities and team builder
                 </p>
+              </div>
+              
+              {/* Auto-save Status */}
+              <div className="flex items-center space-x-3">
+                {saving && (
+                  <div className="flex items-center text-xs text-blue-600">
+                    <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </div>
+                )}
+                
+                {lastSaved && !saving && (
+                  <div className="flex items-center text-xs text-green-600">
+                    <CheckCircleIcon className="h-3 w-3 mr-1" />
+                    Saved {new Date(lastSaved).toLocaleTimeString()}
+                  </div>
+                )}
+                
+                <button
+                  type="submit"
+                  disabled={submitting || saving}
+                  className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {submitting ? 'Saving...' : 'Save Project'}
+                </button>
               </div>
             </header>
 
@@ -652,6 +1007,77 @@ function EditProjectForm() {
                   </div>
                 </section>
               </div>
+            )}
+
+            {/* Scope of Work Tab */}
+            {activeTab === 'scope' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Scope of Work</h2>
+                  <p className="text-xs text-gray-600 mt-1">Define project scope and input documentation</p>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Description</label>
+                    <textarea 
+                      name="description" 
+                      value={form.description} 
+                      onChange={handleChange} 
+                      rows={8} 
+                      placeholder="Describe the project scope, objectives, and key requirements..." 
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
+                    
+                    {/* Add new document input */}
+                    <div className="flex gap-2 mb-3">
+                      <input 
+                        type="text"
+                        value={newInputDocument}
+                        onChange={(e) => setNewInputDocument(e.target.value)}
+                        onKeyPress={handleInputDocumentKeyPress}
+                        placeholder="Enter document name (e.g., Specification Rev 2.1)..."
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                      />
+                      <button
+                        type="button"
+                        onClick={addInputDocument}
+                        className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* List of added documents */}
+                    {inputDocumentsList.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {inputDocumentsList.map((doc) => (
+                          <div 
+                            key={doc.id} 
+                            className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg group hover:bg-purple-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <DocumentIcon className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-900">{doc.text}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeInputDocument(doc.id)}
+                              className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Remove document"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
             )}
 
             {/* Commercial Tab */}
@@ -1210,6 +1636,292 @@ function EditProjectForm() {
                   <div>
                     <label className="block text-xs font-medium text-black mb-1">Additional Notes</label>
                     <textarea name="notes" value={form.notes} onChange={handleChange} rows={4} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Project Planning Tab */}
+            {activeTab === 'planning' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Project Planning</h2>
+                  <p className="text-xs text-gray-600 mt-1">Track activities, timelines, and deliverables</p>
+                </div>
+                <div className="px-6 py-5 space-y-6">
+                  {/* Activity Tracking Section */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-black mb-4">Activity Tracking</h3>
+                    
+                    {/* Add New Activity Form */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Serial No.</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.serialNumber}
+                            onChange={(e) => updatePlanningActivityField('serialNumber', e.target.value)}
+                            placeholder="Auto"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Activity *</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.activity}
+                            onChange={(e) => updatePlanningActivityField('activity', e.target.value)}
+                            placeholder="Enter activity name..."
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.quantity}
+                            onChange={(e) => updatePlanningActivityField('quantity', e.target.value)}
+                            placeholder="e.g., 10 units"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                          <input 
+                            type="date"
+                            value={newPlanningActivity.startDate}
+                            onChange={(e) => updatePlanningActivityField('startDate', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+                          <input 
+                            type="date"
+                            value={newPlanningActivity.endDate}
+                            onChange={(e) => updatePlanningActivityField('endDate', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Actual Completion</label>
+                          <input 
+                            type="date"
+                            value={newPlanningActivity.actualCompletionDate}
+                            onChange={(e) => updatePlanningActivityField('actualCompletionDate', e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Time Required</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.timeRequired}
+                            onChange={(e) => updatePlanningActivityField('timeRequired', e.target.value)}
+                            placeholder="e.g., 5 days"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Actual Time</label>
+                          <input 
+                            type="text"
+                            value={newPlanningActivity.actualTimeRequired}
+                            onChange={(e) => updatePlanningActivityField('actualTimeRequired', e.target.value)}
+                            placeholder="e.g., 6 days"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={addPlanningActivity}
+                          className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                        >
+                          <PlusIcon className="h-4 w-4" />
+                          Add Activity
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Activities List */}
+                    {planningActivities.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border border-gray-200 rounded-lg">
+                          <thead className="bg-gray-100">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">S.No</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Activity</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Quantity</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Start Date</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">End Date</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Actual Completion</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Time Required</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Actual Time</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {planningActivities.map((activity, index) => (
+                              <tr key={activity.id} className="border-t border-gray-200 hover:bg-gray-50">
+                                <td className="px-3 py-2 text-gray-900">{activity.serialNumber}</td>
+                                <td className="px-3 py-2 text-gray-900 font-medium">{activity.activity}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.quantity || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.startDate || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.endDate || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.actualCompletionDate || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.timeRequired || '—'}</td>
+                                <td className="px-3 py-2 text-gray-900">{activity.actualTimeRequired || '—'}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => removePlanningActivity(activity.id)}
+                                    className="text-red-500 hover:text-red-700 transition-colors"
+                                    title="Remove activity"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                        No activities added yet. Use the form above to add planning activities.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Documentation Tab */}
+            {activeTab === 'documentation' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Input Documentation</h2>
+                  <p className="text-xs text-gray-600 mt-1">Manage all project-related documents and specifications</p>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
+                    
+                    {/* Add new document input */}
+                    <div className="flex gap-2 mb-3">
+                      <input 
+                        type="text"
+                        value={newInputDocument}
+                        onChange={(e) => setNewInputDocument(e.target.value)}
+                        onKeyPress={handleInputDocumentKeyPress}
+                        placeholder="Enter document name (e.g., Technical Specification Rev 3.0)..."
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
+                      />
+                      <button
+                        type="button"
+                        onClick={addInputDocument}
+                        className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                      >
+                        <PlusIcon className="h-4 w-4" />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* List of added documents */}
+                    {inputDocumentsList.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {inputDocumentsList.map((doc) => (
+                          <div 
+                            key={doc.id} 
+                            className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg group hover:bg-blue-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <DocumentIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                              <span className="text-sm text-gray-900">{doc.text}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeInputDocument(doc.id)}
+                              className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Remove document"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!inputDocumentsList.length && (
+                      <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                        <DocumentIcon className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p>No documents added yet</p>
+                        <p className="text-xs mt-1">Use the input above to add documents to the list</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Meetings & Communications Tab */}
+            {activeTab === 'meetings' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-sm font-semibold text-black">Meetings & Communications</h2>
+                  <p className="text-xs text-gray-600 mt-1">Kickoff meetings, internal discussions, and follow-ups</p>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting</label>
+                    <textarea 
+                      name="kickoff_meeting" 
+                      value={form.kickoff_meeting} 
+                      onChange={handleChange} 
+                      rows={4} 
+                      placeholder="Document kickoff meeting details, attendees, and key decisions..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">In-House Meetings</label>
+                    <textarea 
+                      name="in_house_meeting" 
+                      value={form.in_house_meeting} 
+                      onChange={handleChange} 
+                      rows={4} 
+                      placeholder="Track internal team meetings, discussions, and action items..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting Date</label>
+                      <input 
+                        type="date" 
+                        name="kickoff_meeting_date" 
+                        value={form.kickoff_meeting_date} 
+                        onChange={handleChange} 
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Follow-up Meeting Date</label>
+                      <input 
+                        type="date" 
+                        name="followup_meeting_date" 
+                        value={form.followup_meeting_date} 
+                        onChange={handleChange} 
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
+                      />
+                    </div>
                   </div>
                 </div>
               </section>

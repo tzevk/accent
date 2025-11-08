@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import { authenticateJWT } from '@/utils/jwt-auth';
 
 export async function GET(req) {
-  const auth = req.cookies.get('auth')?.value;
-  if (!auth) {
+  // Authenticate JWT token
+  const auth = authenticateJWT(req);
+  if (!auth.authenticated) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 
@@ -12,5 +14,12 @@ export async function GET(req) {
   if (!user) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
-  return NextResponse.json({ authenticated: true, user });
+  
+  return NextResponse.json({ 
+    authenticated: true, 
+    user: {
+      ...user,
+      tokenData: auth.user // Include decoded token data
+    }
+  });
 }
