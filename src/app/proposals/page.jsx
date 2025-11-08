@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { 
+import {
   DocumentTextIcon,
   EyeIcon,
   PencilIcon,
@@ -46,12 +46,12 @@ export default function Proposals() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this proposal?')) return;
-    
+
     try {
       const response = await fetch(`/api/proposals/${id}`, {
         method: 'DELETE',
       });
-      
+
       if (response.ok) {
         setProposals(proposals.filter(proposal => proposal.id !== id));
         alert('Proposal deleted successfully');
@@ -94,12 +94,12 @@ export default function Proposals() {
 
   // Filter proposals based on search and status
   const filteredProposals = proposals.filter(proposal => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       ((proposal.proposal_title ?? proposal.title) || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (proposal.client ?? '').toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
   const [downloadingId, setDownloadingId] = useState(null);
@@ -151,10 +151,62 @@ export default function Proposals() {
     }
   };
 
+  const downloadProposalPDF = async (id) => {
+    try {
+      setDownloadingId(id);
+
+      // Direct download of server-generated PDF
+      const res = await fetch(`/api/proposals/pdf?id=${encodeURIComponent(id)}`);
+      if (!res.ok) throw new Error(`PDF Export failed (${res.status})`);
+
+      // Get the filename from response headers
+      const contentDisposition = res.headers.get('Content-Disposition') || res.headers.get('content-disposition');
+      let filename = `quotation_${id}.pdf`;
+      if (contentDisposition) {
+        const match = /filename="([^"]+)"/i.exec(contentDisposition);
+        if (match) {
+          filename = match[1];
+        }
+      }
+
+      // Download the PDF
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      // Success toast
+      const toast = document.createElement('div');
+      toast.textContent = `✅ PDF downloaded: ${filename}`;
+      toast.style.position = 'fixed';
+      toast.style.bottom = '20px';
+      toast.style.right = '20px';
+      toast.style.background = '#1E293B';
+      toast.style.color = 'white';
+      toast.style.padding = '10px 16px';
+      toast.style.borderRadius = '8px';
+      toast.style.boxShadow = '0 4px 10px rgba(0,0,0,0.2)';
+      toast.style.zIndex = 9999;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+
+    } catch (err) {
+      console.error('PDF Download failed:', err);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       {/* Fixed header section */}
       <div className="flex-shrink-0 pt-24 px-8 pb-4">
         <div className="mb-6">
@@ -165,7 +217,7 @@ export default function Proposals() {
             Manage and track your business proposals
           </p>
         </div>
-        
+
         {/* Tab Navigation - Fixed */}
         <div className="flex border-b border-gray-200 bg-white rounded-t-lg px-6 pt-4">
           <button
@@ -180,7 +232,7 @@ export default function Proposals() {
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="bg-white rounded-t-lg shadow-sm min-h-full">
-          
+
           {/* Search and Filters */}
           <div className="px-6 pt-6 pb-4 border-b border-gray-200">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
@@ -196,7 +248,7 @@ export default function Proposals() {
                   />
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-2">
                   <FunnelIcon className="h-5 w-5 text-gray-400" />
@@ -212,16 +264,19 @@ export default function Proposals() {
                     <option value="rejected">Rejected</option>
                   </select>
                 </div>
-                
+
                 <button className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
                   <ArrowUpTrayIcon className="h-4 w-4" />
                   <span>Import</span>
                 </button>
-                
-                <a href="/api/proposals/export" className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
+
+                <button
+                  onClick={() => window.open('/api/proposals/pdf?id=all', '_blank')}
+                  className="inline-flex items-center px-3 py-2 border border-[#64126D] text-sm font-medium rounded-lg text-[#64126D] bg-white hover:bg-purple-50 space-x-2"
+                >
                   <ArrowDownTrayIcon className="h-4 w-4" />
-                  <span>Export</span>
-                </a>
+                  <span>Export All as PDF</span>
+                </button>
               </div>
             </div>
           </div>
@@ -240,7 +295,7 @@ export default function Proposals() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                 <div className="flex items-center">
                   <div className="p-2 bg-yellow-100 rounded-lg">
@@ -254,7 +309,7 @@ export default function Proposals() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                 <div className="flex items-center">
                   <div className="p-2 bg-green-100 rounded-lg">
@@ -268,7 +323,7 @@ export default function Proposals() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
                 <div className="flex items-center">
                   <div className="p-2 bg-red-100 rounded-lg">
@@ -374,7 +429,7 @@ export default function Proposals() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex justify-end space-x-2">
-                            <button 
+                            <button
                               onClick={() => router.push(`/proposals/${proposal.id}`)}
                               className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View Proposal"
@@ -382,13 +437,25 @@ export default function Proposals() {
                               <EyeIcon className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => downloadProposal(proposal.id)}
-                              className="p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
-                              title="Export Proposal"
+                              onClick={() => downloadProposalPDF(proposal.id)}
+                              className="p-2 text-white bg-[#64126D] hover:bg-[#86288F] rounded-lg transition-colors font-medium"
+                              title="Download PDF Quotation"
+                              disabled={downloadingId === proposal.id}
                             >
-                              <ArrowDownTrayIcon className="h-4 w-4" />
+                              {downloadingId === proposal.id ? (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              ) : (
+                                <ArrowDownTrayIcon className="h-4 w-4" />
+                              )}
                             </button>
-                            <button 
+                            <button
+                              onClick={() => downloadProposal(proposal.id)}
+                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Export Word Document (Legacy)"
+                            >
+                              <DocumentTextIcon className="h-4 w-4" />
+                            </button>
+                            <button
                               onClick={() => router.push(`/proposals/${proposal.id}/edit`)}
                               className="p-2 text-[#64126D] hover:text-[#86288F] hover:bg-purple-50 rounded-lg transition-colors"
                               title="Edit Proposal"
@@ -402,7 +469,7 @@ export default function Proposals() {
                             >
                               <ArrowRightIcon className="h-4 w-4" />
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDelete(proposal.id)}
                               className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete Proposal"
