@@ -14,9 +14,6 @@ const publicPaths = [
   '/accent-logo.png',
   '/public',
   '/uploads',
-  '/pdf-test',
-  '/api/proposals/export-pdf',
-  '/api/proposals/pdf'
 ]
 
 function isPublicPath(pathname: string) {
