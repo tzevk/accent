@@ -274,6 +274,10 @@ export async function PUT(request, { params }) {
     
     // First ensure all new columns exist
     try {
+      // Ensure core columns exist to avoid 'unknown column' errors on UPDATE
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255)');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255)');
+
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_id VARCHAR(100)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_contact_details TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_location_country VARCHAR(100)');
@@ -336,129 +340,108 @@ export async function PUT(request, { params }) {
     }
     
     // Update all provided fields using COALESCE
-    const [result] = await db.execute(`
-      UPDATE projects SET 
-        name = COALESCE(?, name),
-        project_id = COALESCE(?, project_id),
-        client_name = COALESCE(?, client_name),
-        client_contact_details = COALESCE(?, client_contact_details),
-        project_location_country = COALESCE(?, project_location_country),
-        project_location_city = COALESCE(?, project_location_city),
-        project_location_site = COALESCE(?, project_location_site),
-        industry = COALESCE(?, industry),
-        contract_type = COALESCE(?, contract_type),
-        company_id = COALESCE(?, company_id),
-        project_manager = COALESCE(?, project_manager),
-        type = COALESCE(?, type),
-        start_date = COALESCE(?, start_date),
-        end_date = COALESCE(?, end_date),
-        target_date = COALESCE(?, target_date),
-        project_duration_planned = COALESCE(?, project_duration_planned),
-        project_duration_actual = COALESCE(?, project_duration_actual),
-        budget = COALESCE(?, budget),
-        progress = COALESCE(?, progress),
-        status = COALESCE(?, status),
-        priority = COALESCE(?, priority),
-        assigned_to = COALESCE(?, assigned_to),
-        description = COALESCE(?, description),
-        notes = COALESCE(?, notes),
-        proposal_id = COALESCE(?, proposal_id),
-        project_value = COALESCE(?, project_value),
-        currency = COALESCE(?, currency),
-        payment_terms = COALESCE(?, payment_terms),
-        invoicing_status = COALESCE(?, invoicing_status),
-        cost_to_company = COALESCE(?, cost_to_company),
-        profitability_estimate = COALESCE(?, profitability_estimate),
-        subcontractors_vendors = COALESCE(?, subcontractors_vendors),
-        procurement_status = COALESCE(?, procurement_status),
-        material_delivery_schedule = COALESCE(?, material_delivery_schedule),
-        vendor_management = COALESCE(?, vendor_management),
-        mobilization_date = COALESCE(?, mobilization_date),
-        site_readiness = COALESCE(?, site_readiness),
-        construction_progress = COALESCE(?, construction_progress),
-        major_risks = COALESCE(?, major_risks),
-        mitigation_plans = COALESCE(?, mitigation_plans),
-        change_orders = COALESCE(?, change_orders),
-        claims_disputes = COALESCE(?, claims_disputes),
-        final_documentation_status = COALESCE(?, final_documentation_status),
-        lessons_learned = COALESCE(?, lessons_learned),
-        client_feedback = COALESCE(?, client_feedback),
-        actual_profit_loss = COALESCE(?, actual_profit_loss),
-        project_schedule = COALESCE(?, project_schedule),
-        input_document = COALESCE(?, input_document),
-        list_of_deliverables = COALESCE(?, list_of_deliverables),
-        kickoff_meeting = COALESCE(?, kickoff_meeting),
-        in_house_meeting = COALESCE(?, in_house_meeting),
-        project_start_milestone = COALESCE(?, project_start_milestone),
-        project_review_milestone = COALESCE(?, project_review_milestone),
-        project_end_milestone = COALESCE(?, project_end_milestone),
-        kickoff_meeting_date = COALESCE(?, kickoff_meeting_date),
-        kickoff_followup_date = COALESCE(?, kickoff_followup_date),
-        internal_meeting_date = COALESCE(?, internal_meeting_date),
-        next_internal_meeting = COALESCE(?, next_internal_meeting),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [
-      name === undefined ? null : name,
-      project_id === undefined ? null : project_id,
-      client_name === undefined ? null : client_name,
-      client_contact_details === undefined ? null : client_contact_details,
-      project_location_country === undefined ? null : project_location_country,
-      project_location_city === undefined ? null : project_location_city,
-      project_location_site === undefined ? null : project_location_site,
-      industry === undefined ? null : industry,
-      contract_type === undefined ? null : contract_type,
-  (company_id === undefined || company_id === null || company_id === '' ) ? null : company_id,
-      project_manager === undefined ? null : project_manager,
-      type === undefined ? null : type,
-      normalizeDate(start_date),
-      normalizeDate(end_date),
-      normalizeDate(target_date),
-      normalizeDecimal(project_duration_planned),
-      normalizeDecimal(project_duration_actual),
-      normalizeDecimal(budget),
-      progress === undefined ? null : progress,
-      status === undefined ? null : status,
-      priority === undefined ? null : priority,
-      assigned_to === undefined ? null : assigned_to,
-      description === undefined ? null : description,
-  notes === undefined ? null : notes,
-  (proposal_id === undefined || proposal_id === null || proposal_id === '' ) ? null : proposal_id,
-      normalizeDecimal(project_value),
-      currency === undefined ? null : currency,
-      payment_terms === undefined ? null : payment_terms,
-      invoicing_status === undefined ? null : invoicing_status,
-      normalizeDecimal(cost_to_company),
-      normalizeDecimal(profitability_estimate),
-      subcontractors_vendors === undefined ? null : subcontractors_vendors,
-      procurement_status === undefined ? null : procurement_status,
-      material_delivery_schedule === undefined ? null : material_delivery_schedule,
-      vendor_management === undefined ? null : vendor_management,
-      normalizeDate(mobilization_date),
-      site_readiness === undefined ? null : site_readiness,
-      construction_progress === undefined ? null : construction_progress,
-      major_risks === undefined ? null : major_risks,
-      mitigation_plans === undefined ? null : mitigation_plans,
-      change_orders === undefined ? null : change_orders,
-      claims_disputes === undefined ? null : claims_disputes,
-      final_documentation_status === undefined ? null : final_documentation_status,
-      lessons_learned === undefined ? null : lessons_learned,
-      client_feedback === undefined ? null : client_feedback,
-      normalizeDecimal(actual_profit_loss),
-      project_schedule === undefined ? null : project_schedule,
-      input_document === undefined ? null : input_document,
-      list_of_deliverables === undefined ? null : list_of_deliverables,
-      kickoff_meeting === undefined ? null : kickoff_meeting,
-      in_house_meeting === undefined ? null : in_house_meeting,
-      project_start_milestone === undefined ? null : project_start_milestone,
-      project_review_milestone === undefined ? null : project_review_milestone,
-      project_end_milestone === undefined ? null : project_end_milestone,
-      normalizeDate(kickoff_meeting_date),
-      normalizeDate(kickoff_followup_date),
-      normalizeDate(internal_meeting_date),
-      normalizeDate(next_internal_meeting),
-      projectId
-    ]);
+    // If proposal_id provided in payload, prefer company info from the linked proposal
+    let companyParamValue = (company_id === undefined || company_id === null || company_id === '' ) ? null : company_id;
+    let clientNameParam = client_name === undefined ? null : client_name;
+    if (proposal_id !== undefined && proposal_id !== null && proposal_id !== '') {
+      try {
+        const [proposalRows] = await db.execute(
+          'SELECT company_id, client_name FROM proposals WHERE id = ? OR proposal_id = ?',
+          [proposal_id, proposal_id]
+        );
+        if (proposalRows && proposalRows.length > 0) {
+          if (proposalRows[0].company_id) companyParamValue = proposalRows[0].company_id;
+          if (proposalRows[0].client_name) clientNameParam = proposalRows[0].client_name;
+        }
+      } catch (e) {
+        console.warn('Failed to lookup proposal for company override in project update:', e?.message || e);
+      }
+    }
+
+    // Build an UPDATE that only references columns that actually exist in the projects table.
+    // This avoids "Unknown column" errors in environments with partial schemas.
+    const [colRows] = await db.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
+    );
+    const existingCols = new Set((colRows || []).map(c => c.COLUMN_NAME));
+
+    const fieldValues = [
+      ['name', name === undefined ? null : name],
+      ['project_id', project_id === undefined ? null : project_id],
+      ['client_name', clientNameParam],
+      ['client_contact_details', client_contact_details === undefined ? null : client_contact_details],
+      ['project_location_country', project_location_country === undefined ? null : project_location_country],
+      ['project_location_city', project_location_city === undefined ? null : project_location_city],
+      ['project_location_site', project_location_site === undefined ? null : project_location_site],
+      ['industry', industry === undefined ? null : industry],
+      ['contract_type', contract_type === undefined ? null : contract_type],
+      ['company_id', companyParamValue],
+      ['project_manager', project_manager === undefined ? null : project_manager],
+      ['type', type === undefined ? null : type],
+      ['start_date', normalizeDate(start_date)],
+      ['end_date', normalizeDate(end_date)],
+      ['target_date', normalizeDate(target_date)],
+      ['project_duration_planned', normalizeDecimal(project_duration_planned)],
+      ['project_duration_actual', normalizeDecimal(project_duration_actual)],
+      ['budget', normalizeDecimal(budget)],
+      ['progress', progress === undefined ? null : progress],
+      ['status', status === undefined ? null : status],
+      ['priority', priority === undefined ? null : priority],
+      ['assigned_to', assigned_to === undefined ? null : assigned_to],
+      ['description', description === undefined ? null : description],
+      ['notes', notes === undefined ? null : notes],
+      ['proposal_id', (proposal_id === undefined || proposal_id === null || proposal_id === '' ) ? null : proposal_id],
+      ['project_value', normalizeDecimal(project_value)],
+      ['currency', currency === undefined ? null : currency],
+      ['payment_terms', payment_terms === undefined ? null : payment_terms],
+      ['invoicing_status', invoicing_status === undefined ? null : invoicing_status],
+      ['cost_to_company', normalizeDecimal(cost_to_company)],
+      ['profitability_estimate', normalizeDecimal(profitability_estimate)],
+      ['subcontractors_vendors', subcontractors_vendors === undefined ? null : subcontractors_vendors],
+      ['procurement_status', procurement_status === undefined ? null : procurement_status],
+      ['material_delivery_schedule', material_delivery_schedule === undefined ? null : material_delivery_schedule],
+      ['vendor_management', vendor_management === undefined ? null : vendor_management],
+      ['mobilization_date', normalizeDate(mobilization_date)],
+      ['site_readiness', site_readiness === undefined ? null : site_readiness],
+      ['construction_progress', construction_progress === undefined ? null : construction_progress],
+      ['major_risks', major_risks === undefined ? null : major_risks],
+      ['mitigation_plans', mitigation_plans === undefined ? null : mitigation_plans],
+      ['change_orders', change_orders === undefined ? null : change_orders],
+      ['claims_disputes', claims_disputes === undefined ? null : claims_disputes],
+      ['final_documentation_status', final_documentation_status === undefined ? null : final_documentation_status],
+      ['lessons_learned', lessons_learned === undefined ? null : lessons_learned],
+      ['client_feedback', client_feedback === undefined ? null : client_feedback],
+      ['actual_profit_loss', normalizeDecimal(actual_profit_loss)],
+      ['project_schedule', project_schedule === undefined ? null : project_schedule],
+      ['input_document', input_document === undefined ? null : input_document],
+      ['list_of_deliverables', list_of_deliverables === undefined ? null : list_of_deliverables],
+      ['kickoff_meeting', kickoff_meeting === undefined ? null : kickoff_meeting],
+      ['in_house_meeting', in_house_meeting === undefined ? null : in_house_meeting],
+      ['project_start_milestone', project_start_milestone === undefined ? null : project_start_milestone],
+      ['project_review_milestone', project_review_milestone === undefined ? null : project_review_milestone],
+      ['project_end_milestone', project_end_milestone === undefined ? null : project_end_milestone],
+      ['kickoff_meeting_date', normalizeDate(kickoff_meeting_date)],
+      ['kickoff_followup_date', normalizeDate(kickoff_followup_date)],
+      ['internal_meeting_date', normalizeDate(internal_meeting_date)],
+      ['next_internal_meeting', normalizeDate(next_internal_meeting)]
+    ];
+
+    const setParts = [];
+    const params = [];
+    for (const [col, val] of fieldValues) {
+      if (existingCols.has(col)) {
+        setParts.push(`${col} = COALESCE(?, ${col})`);
+        params.push(val);
+      }
+    }
+
+    // Always update updated_at
+    setParts.push('updated_at = CURRENT_TIMESTAMP');
+
+    const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE id = ?`;
+    params.push(projectId);
+
+    const [result] = await db.execute(sql, params);
 
     // Ensure columns exist to store assigned disciplines/activities/assignments and per-discipline descriptions
     try {

@@ -43,6 +43,8 @@ export async function GET() {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
+  await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list LONGTEXT');
+  await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list LONGTEXT');
       
       await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
 
@@ -144,21 +146,41 @@ export async function POST(request) {
       in_house_meeting
     } = data;
 
-    if (!name || !company_id) {
+    if (!name || (!company_id && !proposal_id)) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Project name and company are required' 
+        error: 'Project name and company (or linked proposal) are required' 
       }, { status: 400 });
     }
 
     const db = await dbConnect();
     
-    // Fetch company name from company_id
+    // If a proposal_id is provided, prefer company information from that proposal
+    let effectiveCompanyId = company_id || null;
+    let effectiveClientName = client_name || null;
+
+    if (proposal_id) {
+      try {
+        const [proposalRows] = await db.execute(
+          'SELECT company_id, client_name FROM proposals WHERE id = ? OR proposal_id = ?',
+          [proposal_id, proposal_id]
+        );
+        if (proposalRows && proposalRows.length > 0) {
+          // Use company_id/client_name from proposal if present
+          if (proposalRows[0].company_id) effectiveCompanyId = proposalRows[0].company_id;
+          if (proposalRows[0].client_name) effectiveClientName = proposalRows[0].client_name;
+        }
+      } catch (e) {
+        console.warn('Failed to lookup proposal for company override:', e?.message || e);
+      }
+    }
+
+    // Fetch company name from effectiveCompanyId
     const [companyRows] = await db.execute(
       'SELECT company_name FROM companies WHERE id = ?',
-      [company_id]
+      [effectiveCompanyId]
     );
-    
+
     if (companyRows.length === 0) {
       await db.end();
       return NextResponse.json({ 
@@ -166,8 +188,8 @@ export async function POST(request) {
         error: 'Selected company not found' 
       }, { status: 400 });
     }
-    
-    const client_name = companyRows[0].company_name;
+
+    const client_name = effectiveClientName || companyRows[0].company_name;
     
     let projectId;
     
@@ -234,14 +256,17 @@ export async function POST(request) {
         project_id, name, description, company_id, client_name, project_manager,
         start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
         activities, disciplines, discipline_descriptions, assignments,
-        project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting
+        project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting,
+        project_assumption_list, project_lessons_learnt_list
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        projectId, name, description, company_id || null, client_name, project_manager || null,
+  projectId, name, description, effectiveCompanyId || null, client_name, project_manager || null,
         start_date || null, end_date || null, target_date || null, budget || null, assigned_to || null,
         status || 'NEW', type || 'ONGOING', priority || 'MEDIUM', progress || 0, proposal_id || null, notes || null,
         JSON.stringify(data.activities || []), JSON.stringify(data.disciplines || []), JSON.stringify(data.discipline_descriptions || {}), JSON.stringify(data.assignments || []),
-        project_schedule || null, input_document || null, list_of_deliverables || null, kickoff_meeting || null, in_house_meeting || null
+        project_schedule || null, input_document || null, list_of_deliverables || null, kickoff_meeting || null, in_house_meeting || null,
+        data.project_assumption_list ? (typeof data.project_assumption_list === 'string' ? data.project_assumption_list : JSON.stringify(data.project_assumption_list)) : null,
+        data.project_lessons_learnt_list ? (typeof data.project_lessons_learnt_list === 'string' ? data.project_lessons_learnt_list : JSON.stringify(data.project_lessons_learnt_list)) : null
       ]
     );
     
@@ -297,21 +322,49 @@ export async function PUT(request) {
       in_house_meeting
     } = data;
 
-    if (!id || !name || !company_id) {
+    if (!id || !name) {
       return NextResponse.json({ 
         success: false, 
-        error: 'ID, project name and company are required' 
+        error: 'ID and project name are required' 
       }, { status: 400 });
     }
 
     const db = await dbConnect();
-    
-    // Fetch company name from company_id
+
+    // If a proposal_id is provided, prefer company information from that proposal
+    let effectiveCompanyId = company_id || null;
+    let effectiveClientName = null;
+
+    if (proposal_id) {
+      try {
+        const [proposalRows] = await db.execute(
+          'SELECT company_id, client_name FROM proposals WHERE id = ? OR proposal_id = ?',
+          [proposal_id, proposal_id]
+        );
+        if (proposalRows && proposalRows.length > 0) {
+          if (proposalRows[0].company_id) effectiveCompanyId = proposalRows[0].company_id;
+          if (proposalRows[0].client_name) effectiveClientName = proposalRows[0].client_name;
+        }
+      } catch (e) {
+        console.warn('Failed to lookup proposal for company override:', e?.message || e);
+      }
+    }
+
+    // Ensure we have a company id (from proposal or provided payload)
+    if (!effectiveCompanyId) {
+      await db.end();
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Company is required (provide company_id or link a proposal with a company)' 
+      }, { status: 400 });
+    }
+
+    // Fetch company name from effectiveCompanyId
     const [companyRows] = await db.execute(
       'SELECT company_name FROM companies WHERE id = ?',
-      [company_id]
+      [effectiveCompanyId]
     );
-    
+
     if (companyRows.length === 0) {
       await db.end();
       return NextResponse.json({ 
@@ -319,8 +372,8 @@ export async function PUT(request) {
         error: 'Selected company not found' 
       }, { status: 400 });
     }
-    
-    const client_name = companyRows[0].company_name;
+
+    const client_name = effectiveClientName || companyRows[0].company_name;
     
     // Check if project exists
     const [existing] = await db.execute(
@@ -364,11 +417,13 @@ export async function PUT(request) {
         list_of_deliverables = ?,
         kickoff_meeting = ?,
         in_house_meeting = ?
+        ,project_assumption_list = ?,
+        project_lessons_learnt_list = ?
       WHERE id = ?`,
       [
         name,
         description,
-        company_id || null,
+  effectiveCompanyId || null,
         client_name,
         project_manager || null,
         start_date || null,
@@ -391,6 +446,8 @@ export async function PUT(request) {
         list_of_deliverables || null,
         kickoff_meeting || null,
         in_house_meeting || null,
+        data.project_assumption_list ? (typeof data.project_assumption_list === 'string' ? data.project_assumption_list : JSON.stringify(data.project_assumption_list)) : null,
+        data.project_lessons_learnt_list ? (typeof data.project_lessons_learnt_list === 'string' ? data.project_lessons_learnt_list : JSON.stringify(data.project_lessons_learnt_list)) : null,
         id
       ]
     );

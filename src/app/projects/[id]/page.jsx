@@ -257,8 +257,7 @@ export default function ProjectViewPage() {
                 {[
                   { id: 'project_details', label: 'Project Details' },
                   { id: 'scope', label: 'Scope' },
-                  { id: 'minutes_kom_client', label: 'Minutes - KOM with Client' },
-                  { id: 'minutes_internal_meet', label: 'Minutes of the Internal Meet' },
+                  { id: 'minutes_internal_meet', label: 'Meetings' },
                   { id: 'documents_received', label: 'List of Documents Received' },
                   { id: 'project_schedule', label: 'Project Schedule' },
                   { id: 'project_activity', label: 'Project Activity' },
