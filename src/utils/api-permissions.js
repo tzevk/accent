@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { hasPermission, RESOURCES, PERMISSIONS, getDefaultPermissionsForLevel } from '@/utils/rbac';
-import jwt from 'jsonwebtoken';
+import { hasPermission, RESOURCES, PERMISSIONS, getDefaultPermissionsForLevel, mergePermissions } from '@/utils/rbac';
 
 // Safely parse JSON fields stored in MySQL JSON columns
 function safeParse(json, fallback = []) {
@@ -14,31 +13,50 @@ function safeParse(json, fallback = []) {
   }
 }
 
-// Load current user from JWT token and DB (includes role permissions)
+// Load current user from cookie and DB (includes role permissions)
 export async function getCurrentUser(request) {
   try {
-    const token = request?.cookies?.get?.('auth_token')?.value;
-    if (!token) return null;
-
-    // Verify and decode JWT token
-    const secret = process.env.JWT_SECRET || 'your-default-secret-key';
-    let decoded;
-    try {
-      decoded = jwt.verify(token, secret);
-    } catch (error) {
-      console.error('JWT verification failed in getCurrentUser:', error);
-      return null;
-    }
-
-    const userId = decoded.userId;
+    const userId = request?.cookies?.get?.('user_id')?.value;
     if (!userId) return null;
 
     const db = await dbConnect();
     const [rows] = await db.execute(
-      `SELECT u.id, u.username, u.email, u.role_id, u.permissions as user_permissions, u.is_super_admin,
-              r.permissions as role_permissions, r.role_hierarchy
+      `SELECT 
+          u.id,
+          u.username,
+          u.full_name,
+          u.email,
+          u.department,
+          u.employee_id AS linked_employee_id,
+          u.role_id,
+          u.permissions AS user_permissions,
+          u.is_super_admin,
+          u.is_active,
+          u.status,
+          u.last_login,
+          u.last_password_change,
+          r.permissions AS role_permissions,
+          r.role_hierarchy,
+          r.role_name,
+          r.role_code,
+          e.id AS employee_record_id,
+          e.first_name,
+          e.last_name,
+          e.phone,
+          e.mobile,
+          e.personal_email,
+          e.department AS employee_department,
+          e.position,
+          e.present_address,
+          e.city,
+          e.state,
+          e.country,
+          e.profile_photo_url,
+          e.emergency_contact_name,
+          e.emergency_contact_phone
        FROM users u
        LEFT JOIN roles_master r ON u.role_id = r.id
+       LEFT JOIN employees e ON u.employee_id = e.id
        WHERE u.id = ?
        LIMIT 1`,
       [userId]
@@ -57,14 +75,54 @@ export async function getCurrentUser(request) {
       } catch {}
     }
 
+    const mergedPermissions = mergePermissions(rolePermissions, userPermissions);
+    const employee = row.employee_record_id
+      ? {
+          id: row.employee_record_id,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          phone: row.phone,
+          mobile: row.mobile,
+          personal_email: row.personal_email,
+          department: row.employee_department,
+          position: row.position,
+          present_address: row.present_address,
+          city: row.city,
+          state: row.state,
+          country: row.country,
+          profile_photo_url: row.profile_photo_url,
+          emergency_contact_name: row.emergency_contact_name,
+          emergency_contact_phone: row.emergency_contact_phone
+        }
+      : null;
+
+    const authenticated = !!request?.cookies?.get?.('auth')?.value;
     return {
       id: row.id,
       username: row.username,
+      full_name: row.full_name,
       email: row.email,
+      department: row.department || employee?.department || null,
+      employee_id: row.linked_employee_id,
       role_id: row.role_id,
+      role: row.role_id
+        ? {
+            id: row.role_id,
+            name: row.role_name,
+            code: row.role_code,
+            hierarchy: row.role_hierarchy
+          }
+        : null,
       is_super_admin: !!row.is_super_admin,
+      // Consider the session: if authenticated, treat as active even if flag wasn't updated yet
+      is_active: row.is_active === null ? true : (!!row.is_active || authenticated),
+      status: row.status,
+      last_login: row.last_login,
+      last_password_change: row.last_password_change,
       permissions: userPermissions,
       role_permissions: rolePermissions,
+      merged_permissions: mergedPermissions,
+      employee
     };
   } catch {
     return null;

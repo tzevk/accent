@@ -148,3 +148,30 @@ textarea::placeholder {
 .employees-screen .hover\:text-purple-900:hover {
   color: inherit;
 }
+
+/* Additional elegant motion helpers */
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.95) }
+  to { opacity: 1; transform: scale(1) }
+}
+
+@keyframes drop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98) }
+  to { opacity: 1; transform: translateY(0) scale(1) }
+}
+
+.anim-fade-in { animation: fade-in .5s ease-out both; }
+.anim-slide-up { animation: slide-up .5s ease-out both; }
+.anim-scale-in { animation: pop .25s ease-out both; }
+.anim-pop { animation: pop .2s ease-out both; }
+.anim-drop { animation: drop .14s ease-out both; transform-origin: top right; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-in,
+  .anim-slide-up,
+  .anim-scale-in,
+  .anim-pop,
+  .anim-drop {
+    animation: none !important;
+  }
+}

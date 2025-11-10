@@ -1,6 +1,5 @@
 import { dbConnect } from '@/utils/database'
 import { NextResponse } from 'next/server'
-import { generateToken, setTokenCookie } from '@/utils/jwt-auth'
 
 
 export async function POST(req) {
@@ -39,6 +38,14 @@ export async function POST(req) {
         'SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ?',
         [identifier, identifier, password]
       )
+      if (rows.length > 0) {
+        const userId = rows[0].id
+        try {
+          await db.execute('UPDATE users SET last_login = NOW(), is_active = TRUE, status = "active" WHERE id = ?', [userId])
+        } catch (err) {
+          console.warn('Failed to update last_login for user', userId, err?.code || err?.message || err)
+        }
+      }
     } catch (err) {
       console.error('Login query failed:', err)
       await db.end()
@@ -53,35 +60,26 @@ export async function POST(req) {
 
 
     if (rows.length > 0) {
-      const user = rows[0]
-      
-      // Create JWT payload
-      const payload = {
-        userId: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role || 'user',
-        roleId: user.role_id
-      }
-      
-      // Generate JWT token
-      const token = generateToken(payload)
-      
-      // Create response with user data
-      const res = NextResponse.json({ 
-        success: true, 
-        message: 'Login successful',
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          role: user.role,
-          roleId: user.role_id
-        }
+      // Minimal auth: set an httpOnly cookie to mark authenticated session
+      // Note: For production, sign this value (HMAC/JWT). This is a simple presence check.
+      const res = NextResponse.json({ success: true, message: 'Login successful' })
+      const isProd = process.env.NODE_ENV === 'production'
+      res.cookies.set('auth', '1', {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/',
+        maxAge: 60 * 60 * 8 // 8 hours
       })
-      
-      // Set JWT token in httpOnly cookie
-      setTokenCookie(res, token)
+      // Also set user_id for server-side RBAC resolution
+      const userId = rows[0].id
+      res.cookies.set('user_id', String(userId), {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/',
+        maxAge: 60 * 60 * 8
+      })
       
       return res
     }
