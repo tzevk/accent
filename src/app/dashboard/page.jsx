@@ -361,8 +361,20 @@ export default function Dashboard() {
       const res = await fetch(`/api/leads?page=${page}&limit=${rowsPerPage}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`);
       const data = await res.json();
       if (data.success) {
-        setLeadsList(data.data.leads || []);
-        setLeadsTotal(data.data.pagination?.total || 0);
+        // Defensive normalization: ensure array of objects
+        const rawLeads = Array.isArray(data.data?.leads) ? data.data.leads : [];
+        // Map legacy or partially populated columns to what the table expects
+        const normalized = rawLeads.map(l => ({
+          id: l.id ?? l.lead_id ?? null,
+          lead_id: l.lead_id ?? null,
+          city: l.city ?? l.location ?? '',
+          contact_name: l.contact_name ?? l.director ?? '',
+          enquiry_status: l.enquiry_status ?? l.status ?? '',
+          enquiry_date: l.enquiry_date ?? l.deadline ?? l.created_at ?? null,
+          created_at: l.created_at ?? null,
+        }));
+        setLeadsList(normalized);
+        setLeadsTotal(Number(data.data.pagination?.total || normalized.length || 0));
         setLeadsError(null);
       } else {
         setLeadsError(data.error || 'Failed to fetch leads');
@@ -888,7 +900,9 @@ export default function Dashboard() {
                       <div className="flex flex-col items-center gap-2">
                         <EyeIcon className="h-6 w-6 text-gray-400" />
                         <div className="font-medium">No leads found</div>
-                        <div className="text-xs">Get started by creating a new lead.</div>
+                        <div className="text-xs">
+                          {leadsError ? 'Leads failed to load.' : 'Either there are no leads yet or data columns are missing.'}
+                        </div>
                         <Link href="/leads/new" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-50 text-[#64126D] border border-purple-200 hover:bg-purple-100 mt-2">Add Lead</Link>
                       </div>
                     </td>
