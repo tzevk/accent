@@ -27,6 +27,7 @@ export async function GET() {
       name VARCHAR(255) NOT NULL,
       default_duration DECIMAL(10,2) DEFAULT 0,
       default_manhours DECIMAL(10,2) DEFAULT 0,
+      default_rate DECIMAL(10,2) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
@@ -42,7 +43,7 @@ export async function GET() {
     // fetch sub_activities if available
     let subActivities = [];
     try {
-      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours FROM sub_activities');
+      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours, default_rate FROM sub_activities');
       subActivities = subs;
     } catch {
       // table might not exist yet; that's fine
@@ -61,7 +62,7 @@ export async function GET() {
         .map((a) => ({
           id: a.id,
           name: a.activity_name,
-          subActivities: subActivities.filter((s) => String(s.activity_id) === String(a.id)).map((s) => ({ id: s.id, name: s.name, defaultDuration: s.default_duration, defaultManhours: s.default_manhours }))
+          subActivities: subActivities.filter((s) => String(s.activity_id) === String(a.id)).map((s) => ({ id: s.id, name: s.name, defaultDuration: s.default_duration, defaultManhours: s.default_manhours, defaultRate: s.default_rate }))
         }))
     }));
 

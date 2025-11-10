@@ -95,25 +95,66 @@ export async function GET(request) {
       `);
     } catch {}
 
+    // Detect if `budget` column exists on projects table; fall back if not
+    const dbName = process.env.DB_NAME || null;
+    let hasBudget = false;
+    try {
+      if (dbName) {
+        const [cols] = await db.execute(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects'`,
+          [dbName]
+        );
+        hasBudget = cols.some(c => c.COLUMN_NAME === 'budget');
+      }
+    } catch (e) {
+      console.warn('Failed to inspect projects table columns for analytics:', e?.message || e);
+    }
+
     // Overall totals in the window
-    const [totalsRows] = await db.execute(
-      `SELECT COUNT(*) as cnt, COALESCE(SUM(COALESCE(budget,0)),0) as val
-       FROM projects WHERE created_at BETWEEN ? AND ?`,
-      [fmtDateSQL(start), fmtDateSQL(end)]
-    );
-    const totalProjects = Number(totalsRows?.[0]?.cnt || 0);
-    const totalValue = Number(totalsRows?.[0]?.val || 0);
+    let totalProjects = 0;
+    let totalValue = 0;
+    if (hasBudget) {
+      const [totalsRows] = await db.execute(
+        `SELECT COUNT(*) as cnt, COALESCE(SUM(COALESCE(budget,0)),0) as val
+         FROM projects WHERE created_at BETWEEN ? AND ?`,
+        [fmtDateSQL(start), fmtDateSQL(end)]
+      );
+      totalProjects = Number(totalsRows?.[0]?.cnt || 0);
+      totalValue = Number(totalsRows?.[0]?.val || 0);
+    } else {
+      const [totalsRows] = await db.execute(
+        `SELECT COUNT(*) as cnt FROM projects WHERE created_at BETWEEN ? AND ?`,
+        [fmtDateSQL(start), fmtDateSQL(end)]
+      );
+      totalProjects = Number(totalsRows?.[0]?.cnt || 0);
+      totalValue = 0;
+    }
 
     // Breakdown by status in the window (for donut)
-    const [statusRows] = await db.execute(
-      `SELECT UPPER(COALESCE(status,'NEW')) as status,
-              COUNT(*) as cnt,
-              COALESCE(SUM(COALESCE(budget,0)),0) as val
-       FROM projects
-       WHERE created_at BETWEEN ? AND ?
-       GROUP BY UPPER(COALESCE(status,'NEW'))`,
-      [fmtDateSQL(start), fmtDateSQL(end)]
-    );
+    let statusRows;
+    if (hasBudget) {
+      const [sr] = await db.execute(
+        `SELECT UPPER(COALESCE(status,'NEW')) as status,
+                COUNT(*) as cnt,
+                COALESCE(SUM(COALESCE(budget,0)),0) as val
+         FROM projects
+         WHERE created_at BETWEEN ? AND ?
+         GROUP BY UPPER(COALESCE(status,'NEW'))`,
+        [fmtDateSQL(start), fmtDateSQL(end)]
+      );
+      statusRows = sr;
+    } else {
+      const [sr] = await db.execute(
+        `SELECT UPPER(COALESCE(status,'NEW')) as status,
+                COUNT(*) as cnt
+         FROM projects
+         WHERE created_at BETWEEN ? AND ?
+         GROUP BY UPPER(COALESCE(status,'NEW'))`,
+        [fmtDateSQL(start), fmtDateSQL(end)]
+      );
+      // normalize to same shape with val = cnt when metric is 'value' (but we'll set val=0)
+      statusRows = sr.map(r => ({ ...r, val: 0 }));
+    }
     const breakdownByStatus = statusRows.map(r => {
       const name = String(r.status).replace(/_/g, ' ');
       const value = metric === 'value' ? Number(r.val || 0) : Number(r.cnt || 0);

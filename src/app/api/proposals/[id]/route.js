@@ -91,15 +91,6 @@ export async function POST(request, { params }) {
       documents_list: proposal.documents_list || body.documents_list || []
     };
 
-    // Insert project using existing projects POST logic shape
-    const insertSql = `INSERT INTO projects (
-      project_id, name, description, company_id, client_name,
-      start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
-      activities, disciplines, discipline_descriptions, assignments,
-      project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting
-  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
-
-
     // Compose project_id using serial-month-year logic (reuse projects.POST behavior)
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -107,24 +98,140 @@ export async function POST(request, { params }) {
     const currentPattern = `-${month}-${year}`;
 
     // Find highest serial number for current month/year
-    const [existingProjects] = await pool.execute(
+    const [existingProjectsForId] = await pool.execute(
       'SELECT project_id FROM projects WHERE project_id LIKE ? ORDER BY project_id DESC',
       [`%${currentPattern}`]
     );
-    let maxSerial = 0;
-    existingProjects.forEach(p => {
+    let maxSerialForId = 0;
+    existingProjectsForId.forEach(p => {
       if (p.project_id && p.project_id.endsWith(currentPattern)) {
         const serialPart = p.project_id.split('-')[0];
         const serial = parseInt(serialPart, 10);
-        if (!isNaN(serial) && serial > maxSerial) maxSerial = serial;
+        if (!isNaN(serial) && serial > maxSerialForId) maxSerialForId = serial;
       }
     });
-    const nextSerial = String(maxSerial + 1).padStart(3, '0');
+    const nextSerial = String(maxSerialForId + 1).padStart(3, '0');
     const project_id = `${nextSerial}-${month}-${year}`;
 
     const client_name = proposal.client_name || proposal.client || null;
 
-    const [result] = await pool.execute(insertSql, [
+    // Build INSERT dynamically based on actual columns present in `projects` table
+    const dbName = process.env.DB_NAME || null;
+    let insertSql;
+    let insertValues = [];
+    if (dbName) {
+      const [cols] = await pool.execute(
+        `SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH, DATA_TYPE, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects'`,
+        [dbName]
+      );
+      const existing = new Set(cols.map((c) => c.COLUMN_NAME));
+      const colMaxLen = Object.fromEntries(cols.map(c => [c.COLUMN_NAME, c.CHARACTER_MAXIMUM_LENGTH]));
+      const colType = Object.fromEntries(cols.map(c => [c.COLUMN_NAME, (c.DATA_TYPE || c.COLUMN_TYPE || '').toLowerCase()]));
+
+      const colNames = [];
+      const placeholders = [];
+
+      const push = (col, val) => {
+        if (existing.has(col)) {
+          let v = val;
+          // If column has a max length and value is a string exceeding it, truncate to avoid Data truncated errors
+          const maxLen = colMaxLen[col];
+          if (typeof maxLen === 'number' && maxLen > 0 && typeof v === 'string' && v.length > maxLen) {
+            console.warn(`Truncating value for column ${col} to ${maxLen} chars (was ${v.length})`);
+            v = v.slice(0, maxLen);
+          } else if (!maxLen && typeof v === 'string' && v.length > 250) {
+            // Defensive fallback: trim very large strings to a safe upper bound to avoid unexpected truncation
+            console.warn(`Truncating value for column ${col} to 250 chars as fallback (was ${v.length})`);
+            v = v.slice(0, 250);
+          }
+          colNames.push(col);
+          placeholders.push('?');
+          insertValues.push(v);
+        }
+      };
+
+      // Handle project_id: if the projects.project_id column is integer type, skip inserting a string value
+      if (existing.has('project_id')) {
+        const pType = colType['project_id'] || '';
+        if (/(int|bigint|smallint|mediumint|tinyint)/.test(pType)) {
+          console.warn('projects.project_id is an integer type; skipping inserting string project_id to avoid truncation. Letting DB populate or use numeric ids.');
+          // Do not push project_id; we'll rely on DB-generated id or set project_id after insert if needed
+        } else {
+          const pidMax = colMaxLen['project_id'] || 50;
+          const safePid = String(project_id).slice(0, pidMax);
+          if (safePid.length !== String(project_id).length) console.warn(`project_id truncated from ${String(project_id).length} to ${safePid.length}`);
+          push('project_id', safePid);
+        }
+      }
+      push('name', projectData.name);
+      push('description', projectData.description);
+      push('company_id', projectData.company_id);
+      push('client_name', client_name);
+      push('start_date', projectData.start_date);
+      push('end_date', projectData.end_date);
+      push('target_date', projectData.target_date);
+      push('budget', projectData.budget);
+      push('assigned_to', null);
+      push('status', projectData.status);
+      push('type', 'ONGOING');
+      push('priority', projectData.priority);
+      push('progress', projectData.progress);
+      push('proposal_id', projectData.proposal_id);
+      push('notes', projectData.notes);
+      if (existing.has('activities')) push('activities', JSON.stringify(projectData.activities || []));
+      if (existing.has('disciplines')) push('disciplines', JSON.stringify(projectData.disciplines || []));
+      if (existing.has('discipline_descriptions')) push('discipline_descriptions', JSON.stringify(projectData.discipline_descriptions || {}));
+      if (existing.has('assignments')) push('assignments', JSON.stringify([]));
+      push('project_schedule', projectData.project_schedule);
+      push('input_document', projectData.input_document);
+      push('list_of_deliverables', projectData.list_of_deliverables);
+      push('kickoff_meeting', projectData.kickoff_meeting);
+      push('in_house_meeting', projectData.in_house_meeting);
+
+      if (colNames.length === 0) {
+        throw new Error('No writable columns found in projects table for insert');
+      }
+
+      insertSql = `INSERT INTO projects (${colNames.join(',')}) VALUES (${placeholders.join(',')})`;
+    } else {
+      // Fallback to legacy full insert (may fail if columns missing)
+      insertSql = `INSERT INTO projects (
+      project_id, name, description, company_id, client_name,
+      start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
+      activities, disciplines, discipline_descriptions, assignments,
+      project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+      insertValues = [
+        project_id,
+        projectData.name,
+        projectData.description,
+        projectData.company_id,
+        client_name,
+        projectData.start_date,
+        projectData.end_date,
+        projectData.target_date,
+        projectData.budget,
+        null,
+        projectData.status,
+        'ONGOING',
+        projectData.priority,
+        projectData.progress,
+        projectData.proposal_id,
+        projectData.notes,
+        JSON.stringify(projectData.activities || []),
+        JSON.stringify(projectData.disciplines || []),
+        JSON.stringify(projectData.discipline_descriptions || {}),
+        JSON.stringify([]),
+        projectData.project_schedule,
+        projectData.input_document,
+        projectData.list_of_deliverables,
+        projectData.kickoff_meeting,
+        projectData.in_house_meeting
+      ];
+    }
+
+    // Execute insert - use dynamically built values when available
+    const execValues = (insertValues && insertValues.length > 0) ? insertValues : [
       project_id,
       projectData.name,
       projectData.description,
@@ -148,11 +255,114 @@ export async function POST(request, { params }) {
       projectData.project_schedule,
       projectData.input_document,
       projectData.list_of_deliverables,
-      projectData.kickoff_meeting,
-      projectData.in_house_meeting
-    ]);
+        projectData.kickoff_meeting,
+        projectData.in_house_meeting
+      ];
+
+      // Final safety: ensure any project_id in execValues is trimmed to actual column max length
+      try {
+        if (dbName) {
+          const [projCol] = await pool.execute(
+            `SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'project_id'`,
+            [dbName]
+          );
+          if (projCol && projCol.length > 0) {
+            const col = projCol[0];
+            let maxLen = col.CHARACTER_MAXIMUM_LENGTH;
+            if (!maxLen && typeof col.COLUMN_TYPE === 'string') {
+              const m = col.COLUMN_TYPE.match(/varchar\((\d+)\)/i);
+              if (m) maxLen = Number(m[1]);
+            }
+            if (!maxLen) maxLen = 50;
+            // find project_id position in insertSql columns list
+            const colsMatch = insertSql.match(/INSERT INTO projects \(([^)]+)\)/i);
+            if (colsMatch) {
+              const cols = colsMatch[1].split(',').map(s => s.trim());
+              const idx = cols.indexOf('project_id');
+                if (idx >= 0 && execValues && execValues.length > idx) {
+                  const original = String(execValues[idx] ?? '');
+                  console.warn('INSERT SQL columns:', cols);
+                  console.warn('project_id column index in INSERT:', idx, 'detected maxLen:', maxLen);
+                  console.warn('project_id value before trimming (len):', original.length, original);
+                  if (original.length > maxLen) {
+                    console.warn(`Final truncation: project_id length ${original.length} > ${maxLen}, trimming`);
+                    execValues[idx] = original.slice(0, maxLen);
+                    console.warn('project_id value after trimming (len):', String(execValues[idx]).length, execValues[idx]);
+                  }
+                } else {
+                  console.warn('project_id not found in INSERT columns or execValues not aligned; INSERT columns:', cols);
+                  console.warn('execValues length:', execValues ? execValues.length : 0);
+                }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to verify project_id column length before insert:', e?.message || e);
+      }
+
+      const [result] = await pool.execute(insertSql, execValues);
 
     // Update proposal status to CONVERTED, link the created project id and set audit fields
+        // --- Post-insert: ensure a human-readable project_code exists and/or populate project_id if it's varchar ---
+        try {
+          const dbNameForCols = dbName || process.env.DB_NAME || process.env.MYSQL_DATABASE || null;
+          if (dbNameForCols) {
+            const [projCols] = await pool.execute(
+              `SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects' AND COLUMN_NAME IN ('project_code','project_id')`,
+              [dbNameForCols]
+            );
+            const colMap = Object.fromEntries(projCols.map(c => [c.COLUMN_NAME, c]));
+
+            // Ensure `project_code` column exists (idempotent)
+            if (!colMap['project_code']) {
+              try {
+                await pool.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code VARCHAR(100)`);
+                // reload definition
+                const [reloaded] = await pool.execute(
+                  `SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects' AND COLUMN_NAME = 'project_code'`,
+                  [dbNameForCols]
+                );
+                colMap['project_code'] = reloaded[0] || { CHARACTER_MAXIMUM_LENGTH: 100 };
+              } catch (e) {
+                console.warn('Failed to add project_code column:', e?.message || e);
+              }
+            }
+
+            // Decide value to write: prefer the generated alphanumeric project_id variable (serial-month-year)
+            let codeVal = String(project_id || result.insertId || `P-${result.insertId}`);
+            const pcMax = (colMap['project_code'] && colMap['project_code'].CHARACTER_MAXIMUM_LENGTH) || 100;
+            if (codeVal.length > pcMax) {
+              console.warn(`Trimming project_code from ${codeVal.length} to ${pcMax}`);
+              codeVal = codeVal.slice(0, pcMax);
+            }
+
+            // Update project_code column
+            try {
+              await pool.execute('UPDATE projects SET project_code = ? WHERE id = ?', [codeVal, result.insertId]);
+            } catch (e) {
+              console.warn('Failed to set project_code on created project:', e?.message || e);
+            }
+
+            // If projects.project_id is a VARCHAR (not integer) and we didn't insert an alphanumeric id earlier, set it now
+            const pidCol = colMap['project_id'];
+            if (pidCol) {
+              const pType = (pidCol.DATA_TYPE || '').toLowerCase();
+              if (!/(int|bigint|smallint|mediumint|tinyint)/.test(pType)) {
+                // safe to set project_id string
+                try {
+                  const pidMax = pidCol.CHARACTER_MAXIMUM_LENGTH || 100;
+                  let pidToWrite = String(project_id || codeVal).slice(0, pidMax);
+                  await pool.execute('UPDATE projects SET project_id = ? WHERE id = ?', [pidToWrite, result.insertId]);
+                } catch (e) {
+                  console.warn('Failed to populate projects.project_id with string value:', e?.message || e);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Post-insert project code handling failed:', e?.message || e);
+        }
+
     const convertedBy = body.converted_by || 'manual';
     const convertedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     // Ensure proposals.status can accept new values (best-effort migration from ENUM to VARCHAR)
@@ -172,8 +382,90 @@ export async function POST(request, { params }) {
       console.warn('Failed to set audit fields on project:', e?.message || e);
     }
 
-    // Fetch created project
-    const [created] = await pool.execute('SELECT * FROM projects WHERE id = ?', [result.insertId]);
+    // Fetch created project: detect primary key name and select by it (DB schema may differ)
+    let created;
+    try {
+      let pkCol = null;
+      if (dbName) {
+        const [pkRows] = await pool.execute(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY' LIMIT 1`,
+          [dbName]
+        );
+        if (pkRows && pkRows.length > 0) pkCol = pkRows[0].COLUMN_NAME;
+      }
+
+      // If primary key column is known, try to query by that column
+      if (pkCol) {
+        // If we inserted a value for the pk column in the dynamic insert, try to map it from execValues
+        let pkVal = undefined;
+        try {
+          const colsMatch = insertSql.match(/INSERT INTO projects \(([^)]+)\)/i);
+          if (colsMatch) {
+            const cols = colsMatch[1].split(',').map(s => s.trim());
+            const idx = cols.indexOf(pkCol);
+            if (idx >= 0 && execValues && execValues.length > idx) {
+              pkVal = execValues[idx];
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        // If no pkVal from execValues, but we have an insertId and pk column is numeric, use insertId
+        if ((pkVal === undefined || pkVal === null) && result && typeof result.insertId === 'number' && result.insertId > 0) {
+          // attempt to detect if pkCol is numeric
+          try {
+            const [colInfo] = await pool.execute(
+              `SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects' AND COLUMN_NAME = ?`,
+              [dbName, pkCol]
+            );
+            const dtype = colInfo?.[0]?.DATA_TYPE || '';
+            if (/(int|bigint|smallint|mediumint|tinyint)/i.test(dtype)) {
+              pkVal = result.insertId;
+            }
+          } catch {
+            // fallback to using insertId anyway
+            pkVal = result.insertId;
+          }
+        }
+
+        if (pkVal !== undefined) {
+          const [rows] = await pool.execute(`SELECT * FROM projects WHERE ${pkCol} = ?`, [pkVal]);
+          created = rows;
+        }
+      }
+
+      // Fallbacks: try project_code or project_id or last inserted row
+      if (!created || created.length === 0) {
+        // try project_code
+        try {
+          const [pcRows] = await pool.execute('SELECT * FROM projects WHERE project_code = ? LIMIT 1', [project_id || null]);
+          if (pcRows && pcRows.length > 0) created = pcRows;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!created || created.length === 0) {
+        // try project_id column (string)
+        try {
+          const [pidRows] = await pool.execute('SELECT * FROM projects WHERE project_id = ? LIMIT 1', [project_id || null]);
+          if (pidRows && pidRows.length > 0) created = pidRows;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!created || created.length === 0) {
+        // last-resort: return the most recently created project
+        const [lastRows] = await pool.execute('SELECT * FROM projects ORDER BY created_at DESC LIMIT 1');
+        created = lastRows;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch created project by primary key, falling back to last row:', e?.message || e);
+      const [lastRows] = await pool.execute('SELECT * FROM projects ORDER BY created_at DESC LIMIT 1');
+      created = lastRows;
+    }
 
     await pool.end?.();
 
@@ -213,6 +505,7 @@ export async function PUT(request, { params }) {
     // Map request body keys to possible DB column names and push accordingly
     // title/proposal_title
     pushIf('title', body.title ?? null);
+  pushIf('proposal_id', body.proposal_id ?? null);
     pushIf('proposal_title', body.proposal_title ?? body.title ?? null);
     pushIf('client', body.client ?? null);
     pushIf('contact_name', body.contact_name ?? null);

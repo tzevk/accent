@@ -350,13 +350,13 @@ function ProjectsInner() {
                               })
                               .sort((a, b) => {
                                 // Sort by project_id in descending order (newest first)
-                                const idA = a.project_id || '';
-                                const idB = b.project_id || '';
+                                const idA = String(a.project_id || '');
+                                const idB = String(b.project_id || '');
                                 // Compare strings in reverse order for descending
                                 return idB.localeCompare(idA);
                               })
-                              .map((project) => (
-                              <tr key={project.id} className="hover:bg-gray-50">
+                              .map((project, _idx) => (
+                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} className="hover:bg-gray-50">
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-sm font-mono text-gray-900">
                                     {project.project_id || '-'}
@@ -417,21 +417,21 @@ function ProjectsInner() {
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end space-x-1">
                                     <button
-                                      onClick={() => router.push(`/projects/${project.id}`)}
+                                      onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}`)}
                                       className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
                                       title="View Details"
                                     >
                                       <EyeIcon className="h-3 w-3" />
                                     </button>
                                     <button
-                                      onClick={() => router.push(`/projects/${project.id}/edit`)}
+                                      onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}/edit`)}
                                       className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
                                       title="Edit Project"
                                     >
                                       <PencilIcon className="h-3 w-3" />
                                     </button>
                                     <button
-                                      onClick={() => handleDelete(project.id)}
+                                      onClick={() => handleDelete(project.id ?? project.project_id ?? project.project_code)}
                                       className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
                                       title="Delete Project"
                                     >
