@@ -171,13 +171,15 @@ const Avatar = ({ src, firstName, lastName, size = 40 }) => {
   
   if (src) {
     return (
-      <Image 
-        src={src} 
-        alt={`${firstName} ${lastName}`}
-        width={size}
-        height={size}
-        className="rounded-full object-cover"
-      />
+      <div className="relative" style={{ width: size, height: size }}>
+        <Image 
+          src={src} 
+          alt={`${firstName} ${lastName}`}
+          fill
+          className="rounded-full object-cover"
+          unoptimized
+        />
+      </div>
     );
   }
   

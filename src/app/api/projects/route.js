@@ -71,36 +71,40 @@ export async function GET() {
       console.warn('Some ALTER TABLE statements failed, table might already be updated:', err);
     }
     
-    // Check whether `company_id` exists on projects table before joining
-    const dbName = process.env.DB_NAME || null;
+    // Attempt to join companies only if company_id column truly exists; fallback safely if missing
     let rows;
-    if (dbName) {
+    let hasCompanyId = false;
+    try {
+      const [cols] = await db.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
+      );
+      hasCompanyId = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'company_id');
+    } catch (inspectErr) {
+      console.warn('Could not inspect projects table for company_id column:', inspectErr?.message || inspectErr);
+      hasCompanyId = false;
+    }
+
+    if (hasCompanyId) {
       try {
-        const [cols] = await db.execute(
-          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects'`,
-          [dbName]
-        );
-        const existing = new Set(cols.map((c) => c.COLUMN_NAME));
-        if (existing.has('company_id')) {
-          const [r] = await db.execute(`
-            SELECT p.*, c.company_name
-            FROM projects p
-            LEFT JOIN companies c ON p.company_id = c.id
-            ORDER BY p.created_at DESC
-          `);
-          rows = r;
-        } else {
+        const [r] = await db.execute(`
+          SELECT p.*, c.company_name
+          FROM projects p
+          LEFT JOIN companies c ON p.company_id = c.id
+          ORDER BY p.created_at DESC
+        `);
+        rows = r;
+      } catch (joinErr) {
+        // If the join still fails due to schema drift, log and fallback
+        if (String(joinErr?.message || '').includes('Unknown column') && String(joinErr?.message || '').includes('company_id')) {
+          console.warn('company_id column missing during join, falling back to projects only select');
           const [r] = await db.execute(`SELECT p.* FROM projects p ORDER BY p.created_at DESC`);
           rows = r;
+        } else {
+          throw joinErr;
         }
-      } catch (e) {
-        console.warn('Failed to inspect projects columns, falling back to simple select:', e?.message || e);
-        const [r] = await db.execute(`SELECT * FROM projects ORDER BY created_at DESC`);
-        rows = r;
       }
     } else {
-      // If DB name is not available, perform a safe simple select
-      const [r] = await db.execute(`SELECT * FROM projects ORDER BY created_at DESC`);
+      const [r] = await db.execute(`SELECT p.* FROM projects p ORDER BY p.created_at DESC`);
       rows = r;
     }
     
