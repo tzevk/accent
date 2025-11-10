@@ -37,7 +37,7 @@ export async function GET() {
     // try fetching sub_activities (may not exist yet)
     let subActivities = [];
     try {
-      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours, created_at, updated_at FROM sub_activities');
+      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities');
       subActivities = subs;
     } catch {
       subActivities = [];
@@ -60,7 +60,7 @@ export async function GET() {
           activity_name: activity.activity_name,
           created_at: activity.created_at,
           updated_at: activity.updated_at,
-          subActivities: subActivities.filter((s) => String(s.activity_id) === String(activity.id)).map((s) => ({ id: s.id, name: s.name, default_duration: s.default_duration, default_manhours: s.default_manhours }))
+          subActivities: subActivities.filter((s) => String(s.activity_id) === String(activity.id)).map((s) => ({ id: s.id, name: s.name, default_duration: s.default_duration, default_manhours: s.default_manhours, default_rate: s.default_rate }))
         }))
     }));
 

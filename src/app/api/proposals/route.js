@@ -120,11 +120,32 @@ export async function POST(request) {
       project_id
     } = data;
 
-    // Generate proposal ID for new schema
-    const proposal_id = `P${Date.now()}`;
-    
     // Get database connection
     const pool = await dbConnect();
+
+    // Generate proposal ID in format: ATSPL/Q/{MONTH_NUMBER}/{RUNNING_YEAR}/076{SEQ}
+    // Assumption: sequence is 1-based count of proposals created in the same month+year.
+    // Example: ATSPL/Q/11/2025/076001
+    try {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const [countRows] = await pool.execute(
+        'SELECT COUNT(*) as cnt FROM proposals WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?',
+        [month, year]
+      );
+      const existingCount = (countRows && countRows[0] && Number(countRows[0].cnt)) || 0;
+      const seq = existingCount + 1;
+      const seqStr = String(seq).padStart(3, '0');
+      var proposal_id = `ATSPL/Q/${month}/${year}/076${seqStr}`;
+    } catch (e) {
+      // If counting fails, fall back to a default formatted id with sequence 001
+      console.error('Failed to compute sequential proposal id, falling back to default formatted id', e);
+      const now2 = new Date();
+      const month2 = String(now2.getMonth() + 1).padStart(2, '0');
+      const year2 = now2.getFullYear();
+      var proposal_id = `ATSPL/Q/${month2}/${year2}/076001`;
+    }
     
     // Build columns and values explicitly to avoid column/value count mismatches
     const columns = [

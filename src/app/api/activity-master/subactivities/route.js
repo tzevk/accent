@@ -11,11 +11,12 @@ export async function GET() {
       name VARCHAR(255) NOT NULL,
       default_duration DECIMAL(10,2) DEFAULT 0,
       default_manhours DECIMAL(10,2) DEFAULT 0,
+      default_rate DECIMAL(10,2) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
     const [subActivities] = await db.execute(
-      'SELECT id, activity_id, name, default_duration, default_manhours, created_at, updated_at FROM sub_activities ORDER BY name'
+      'SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities ORDER BY name'
     );
     await db.end();
 
@@ -32,7 +33,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { activity_id, name, default_duration = 0, default_manhours = 0 } = body;
+  const { activity_id, name, default_duration = 0, default_manhours = 0, default_rate = 0 } = body;
 
     if (!activity_id || !name) {
       return NextResponse.json({ success: false, error: 'Activity id and name are required' }, { status: 400 });
@@ -50,8 +51,8 @@ export async function POST(request) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
     await db.execute(
-      'INSERT INTO sub_activities (id, activity_id, name, default_duration, default_manhours) VALUES (?, ?, ?, ?, ?)',
-      [id, activity_id, name, default_duration, default_manhours]
+      'INSERT INTO sub_activities (id, activity_id, name, default_duration, default_manhours, default_rate) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, activity_id, name, default_duration, default_manhours, default_rate]
     );
     await db.end();
 
@@ -65,7 +66,7 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { id, name, default_duration, default_manhours, activity_id } = body;
+  const { id, name, default_duration, default_manhours, default_rate, activity_id } = body;
     if (!id) return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
 
     const db = await dbConnect();
@@ -74,9 +75,10 @@ export async function PUT(request) {
          name = COALESCE(?, name),
          default_duration = COALESCE(?, default_duration),
          default_manhours = COALESCE(?, default_manhours),
+         default_rate = COALESCE(?, default_rate),
          activity_id = COALESCE(?, activity_id)
        WHERE id = ?`,
-      [name ?? null, default_duration ?? null, default_manhours ?? null, activity_id ?? null, id]
+      [name ?? null, default_duration ?? null, default_manhours ?? null, default_rate ?? null, activity_id ?? null, id]
     );
     await db.end();
 

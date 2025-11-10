@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import {
   DocumentTextIcon,
@@ -18,6 +18,7 @@ export default function EditProposalPage() {
   const router = useRouter();
   const params = useParams();
   const proposalId = params?.id;
+  const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab] = useState('basic');
   const [loading, setLoading] = useState(true);
@@ -152,6 +153,15 @@ Dispute Resolution
       if (!proposalId) return;
       try {
         setLoading(true);
+        // If a proposal id value was passed via query (e.g., ?pid=ATSPL/...), set it immediately so the textbox shows a value
+        try {
+          const pid = searchParams?.get?.('pid');
+          if (pid) {
+            setProposalData(prev => ({ ...prev, proposal_id: pid }));
+          }
+        } catch (e) {
+          // ignore
+        }
         const res = await fetch(`/api/proposals/${proposalId}`);
         const data = await res.json();
 
@@ -421,8 +431,8 @@ function BasicInfoForm({ proposalData, setProposalData }) {
     <div className="space-y-8">
       <Section title="Identification" subtitle="Basic proposal information" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="space-y-4">
-          <Text label="Proposal ID *" value={proposalData.proposal_id} onChange={v => set('proposal_id', v)} required />
+          <div className="space-y-4">
+          <ProposalIdField label="Proposal ID *" value={proposalData.proposal_id} onChange={v => set('proposal_id', v)} required />
           <Text label="Proposal Title *" value={proposalData.proposal_title} onChange={v => set('proposal_title', v)} required />
           <Textarea label="Description" rows={4} value={proposalData.description} onChange={v => set('description', v)} />
           <Text label="Client Name" value={proposalData.client_name} onChange={v => set('client_name', v)} />
@@ -567,7 +577,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
     Array.isArray(proposalData.commercial_items) && proposalData.commercial_items.length
       ? proposalData.commercial_items
       : [
-          {
+            {
             id: Date.now(),
             sr_no: 1,
             activities: '',
@@ -576,8 +586,9 @@ function CommercialsForm({ proposalData, setProposalData }) {
             man_hour_rate: 0,
             total_amount: 0,
             discipline_id: '',
-            activity_id: '',
-            sub_activity_id: '',
+            activity_ids: [],
+            sub_activity_ids: [],
+            showSubPicker: false,
           },
         ]
   );
@@ -613,16 +624,57 @@ function CommercialsForm({ proposalData, setProposalData }) {
   }, []);
 
   // Normalize legacy free-text activity entries into ids when possible
+  // Also normalize single `sub_activity_id` into `sub_activity_ids` for compatibility
   useEffect(() => {
-    if (!activityOptions.length || !items.some(i => i.activities && !i.activity_id)) return;
+    if (!activityOptions.length || !items.some(i => i.activities && !(i.activity_ids && i.activity_ids.length))) return;
     setItems(prev => prev.map(it => {
-      if ((it.activity_id && it.activity_id !== '') || !it.activities) return it;
+      if ((it.activity_ids && it.activity_ids.length) || !it.activities) return it;
       // try to find activity by name
       const found = activityOptions.find(a => a.activity_name === it.activities);
-      if (found) return { ...it, activity_id: found.id, discipline_id: found.function_id };
+      if (found) return { ...it, activity_ids: [found.id], discipline_id: found.function_id };
       return it;
     }));
   }, [activityOptions]);
+
+  // Normalize legacy single sub_activity_id into sub_activity_ids array
+  useEffect(() => {
+    if (!subActivityOptions.length || !items.some(i => i.sub_activity_id && !(i.sub_activity_ids && i.sub_activity_ids.length))) return;
+    setItems(prev => prev.map(it => {
+      if (!it.sub_activity_id || (it.sub_activity_ids && it.sub_activity_ids.length)) return it;
+      return { ...it, sub_activity_ids: [it.sub_activity_id] };
+    }));
+  }, [subActivityOptions]);
+
+  // When sub-activities load, for items that have an activity selected but no sub_activity_ids,
+  // default to selecting all sub-activities for that activity and populate defaults (manhours/rate)
+  useEffect(() => {
+    if (!subActivityOptions.length) return;
+
+    setItems(prev => {
+      let changed = false;
+      const next = prev.map(it => {
+        if (!it.activity_ids || !it.activity_ids.length) return it;
+        if (it.sub_activity_ids && it.sub_activity_ids.length) return it;
+        // find sub-activities for these activities
+        const subs = subActivityOptions.filter(s => (it.activity_ids || []).map(String).includes(String(s.activity_id)));
+        if (!subs.length) return it;
+        changed = true;
+        const updated = { ...it };
+        const ids = subs.map(s => s.id);
+        updated.sub_activity_ids = ids;
+        // sum default_manhours
+        const sumMan = subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
+        updated.man_hours = parseFloat(sumMan.toFixed(2));
+        // avg default_rate if present
+        const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
+        const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+        if (avgRate > 0) updated.man_hour_rate = parseFloat(avgRate.toFixed(2));
+        updated.total_amount = parseFloat(((parseFloat(updated.man_hours || 0) || 0) * (parseFloat(updated.man_hour_rate || 0) || 0)).toFixed(2));
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, [subActivityOptions]);
 
   useEffect(() => {
     // Keep parent state in sync
@@ -642,7 +694,8 @@ function CommercialsForm({ proposalData, setProposalData }) {
         total_amount: 0,
         discipline_id: '',
         activity_id: '',
-        sub_activity_id: '',
+        sub_activity_ids: [],
+        showSubPicker: false,
       },
     ]);
   };
@@ -659,9 +712,52 @@ function CommercialsForm({ proposalData, setProposalData }) {
     setItems(prev =>
       prev.map(i => {
         if (i.id !== id) return i;
-        const updated = { ...i, [field]: field === 'man_hours' || field === 'man_hour_rate' ? parseFloat(value || 0) : value };
-    const hours = field === 'man_hours' ? parseFloat(value || 0) : parseFloat(updated.man_hours || 0);
-    const rate = field === 'man_hour_rate' ? parseFloat(value || 0) : parseFloat(updated.man_hour_rate || 0);
+        // start with a shallow copy
+        const updated = { ...i };
+
+        // set the changed field
+        if (field === 'man_hours' || field === 'man_hour_rate') {
+          updated[field] = parseFloat(value || 0);
+        } else {
+          updated[field] = value;
+        }
+
+        // If the activity changed, default-select its sub-activities and compute defaults
+        if (field === 'activity_ids') {
+          const selectedActivityIds = Array.isArray(value) ? value : [];
+          // collect subs for all selected activities
+          const subs = subActivityOptions.filter(s => selectedActivityIds.map(String).includes(String(s.activity_id)));
+          const ids = subs.map(s => s.id);
+          if (ids.length) {
+            updated.sub_activity_ids = ids;
+            // sum default_manhours
+            const sumMan = subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
+            if (sumMan > 0 && (!updated.man_hours || parseFloat(updated.man_hours) === 0)) {
+              updated.man_hours = parseFloat(sumMan.toFixed(2));
+            }
+            // avg default_rate if present
+            const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
+            const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+            if (avgRate > 0 && (!updated.man_hour_rate || parseFloat(updated.man_hour_rate) === 0)) {
+              updated.man_hour_rate = parseFloat(avgRate.toFixed(2));
+            }
+          }
+        }
+        if (field === 'sub_activity_ids') {
+          // when sub activities selection changes, compute man_hours and man_hour_rate
+          const subs = subActivityOptions.filter(s => (value || []).map(String).includes(String(s.id)));
+          const sumMan = subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
+          updated.man_hours = parseFloat(sumMan.toFixed(2));
+          const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
+          const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+          if (avgRate > 0) updated.man_hour_rate = parseFloat(avgRate.toFixed(2));
+        }
+
+        // Recalculate total_amount = man_hours * man_hour_rate
+        const hours = parseFloat(updated.man_hours || 0);
+        const rate = parseFloat(updated.man_hour_rate || 0);
+        updated.total_amount = parseFloat((hours * rate).toFixed(2));
+
         return updated;
       })
     );
@@ -696,8 +792,9 @@ function CommercialsForm({ proposalData, setProposalData }) {
           <thead>
             <tr className="bg-gray-100 border-b-2 border-gray-300">
               <Th>Sr no</Th>
-              <Th>Activities</Th>
-              <Th>Scope of work</Th>
+              <Th className="w-52">Discipline</Th>
+              <Th className="w-52">Activity</Th>
+              <Th>Sub-Activities</Th>
               <Th className="w-32">Man-Hours</Th>
               <Th className="w-36">Man-Hour Rate</Th>
               <Th className="w-36">Total Amount</Th>
@@ -709,57 +806,171 @@ function CommercialsForm({ proposalData, setProposalData }) {
               <tr key={item.id} className="border-b border-gray-200">
                 <Td className="text-center">{item.sr_no}</Td>
                 <Td>
-                  <div className="space-y-2">
-                    <select
-                      value={item.discipline_id ?? ''}
-                      onChange={e => updateItem(item.id, 'discipline_id', e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
-                    >
-                      <option value="">Select discipline…</option>
-                      {disciplineOptions.map(d => (
-                        <option key={d.id} value={d.id}>{d.function_name || d.name || d.label || d.id}</option>
-                      ))}
-                    </select>
+                  <select
+                    value={item.discipline_id ?? ''}
+                    onChange={e => updateItem(item.id, 'discipline_id', e.target.value)}
+                    className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                  >
+                    <option value="">Select discipline…</option>
+                    {disciplineOptions.map(d => (
+                      <option key={d.id} value={d.id}>{d.function_name || d.name || d.label || d.id}</option>
+                    ))}
+                  </select>
+                </Td>
+                <Td>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {!item.discipline_id ? (
+                      <div className="text-sm text-gray-500">Select a discipline first to choose activities.</div>
+                    ) : activityOptions
+                        .filter(a => String(a.function_id) === String(item.discipline_id))
+                        .map(a => {
+                        const subsForAct = subActivityOptions.filter(s => String(s.activity_id) === String(a.id));
+                        const sumManForAct = subsForAct.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
+                        const ratesForAct = subsForAct.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
+                        const avgRateForAct = ratesForAct.length ? (ratesForAct.reduce((a, b) => a + b, 0) / ratesForAct.length) : 0;
+                        return (
+                          <label key={a.id} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={(item.activity_ids || []).map(String).includes(String(a.id))}
+                              onChange={() => {
+                                const current = Array.isArray(item.activity_ids) ? [...item.activity_ids] : [];
+                                const strId = String(a.id);
+                                const exists = current.map(String).includes(strId);
+                                let next;
+                                if (exists) next = current.filter(cid => String(cid) !== strId);
+                                else next = [...current, a.id];
+                                updateItem(item.id, 'activity_ids', next);
+                              }}
+                            />
+                            <span className="flex-1">{a.activity_name}</span>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{sumManForAct.toFixed(1)} hrs</span>
+                            <span className="text-xs text-gray-500 pl-2">{avgRateForAct > 0 ? `₹${avgRateForAct.toFixed(2)}` : '—'}</span>
+                          </label>
+                        );
+                      })}
 
-                    <select
-                      value={item.activity_id ?? ''}
-                      onChange={e => updateItem(item.id, 'activity_id', e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
-                    >
-                      <option value="">Select activity…</option>
-                      {activityOptions
-                        .filter(a => !item.discipline_id || String(a.function_id) === String(item.discipline_id))
-                        .map(a => (
-                          <option key={a.id} value={a.id}>{a.activity_name}</option>
-                        ))}
-                      {/* preserve legacy free-text activity if present */}
-                      {item.activities && !activityOptions.find(a => a.activity_name === item.activities) && (
-                        <option value={item.activities}>{item.activities}</option>
-                      )}
-                    </select>
+                    {/* free-text fallback if legacy value exists */}
+                    {item.activities && !activityOptions.find(a => a.activity_name === item.activities) && (
+                      <div className="mt-2 text-sm">
+                        <label className="block text-xs text-gray-600">Other activity</label>
+                        <input
+                          type="text"
+                          value={item.activities}
+                          onChange={e => updateItem(item.id, 'activities', e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded mt-1"
+                        />
+                      </div>
+                    )}
 
-                    <select
-                      value={item.sub_activity_id ?? ''}
-                      onChange={e => updateItem(item.id, 'sub_activity_id', e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
-                    >
-                      <option value="">Select sub-activity…</option>
-                      {subActivityOptions
-                        .filter(s => !item.activity_id || String(s.activity_id) === String(item.activity_id))
-                        .map(s => (
-                          <option key={s.id} value={s.id}>{s.subactivity_name || s.name || s.id}</option>
-                        ))}
-                    </select>
+                    <div className="pt-1 text-xs text-gray-500">Select one or more activities</div>
                   </div>
                 </Td>
                 <Td>
-                  <textarea
-                    rows={2}
-                    value={item.scope_of_work}
-                    onChange={e => updateItem(item.id, 'scope_of_work', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
-                    placeholder="Scope details…"
-                  />
+                  <div className="w-full">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 text-sm text-gray-700">
+                        {item.sub_activity_ids && item.sub_activity_ids.length ? (
+                            // Group selected sub-activities by their parent activity for clarity
+                            (() => {
+                              const byActivity = {};
+                              (subActivityOptions || []).forEach(s => {
+                                if (!item.sub_activity_ids.map(String).includes(String(s.id))) return;
+                                const aid = String(s.activity_id || '');
+                                if (!byActivity[aid]) byActivity[aid] = [];
+                                byActivity[aid].push(s);
+                              });
+                              const groups = Object.keys(byActivity).map(aid => ({ activity: activityOptions.find(a => String(a.id) === aid) || { id: aid, activity_name: 'Other' }, subs: byActivity[aid] }));
+                              return (
+                                <div className="space-y-2">
+                                  {groups.map(g => (
+                                    <div key={g.activity.id}>
+                                      <div className="text-sm font-medium text-gray-700">{g.activity.activity_name || g.activity.name || 'Other'}</div>
+                                      <ul className="list-none pl-3 space-y-1">
+                                        {g.subs.map(s => (
+                                          <li key={s.id} className="text-sm text-gray-700 flex items-center justify-between">
+                                            <span>{s.subactivity_name || s.name || s.id}</span>
+                                            <span className="text-xs text-gray-500">{(parseFloat(s.default_manhours || s.defaultManhours || 0) || 0).toFixed(1)} hrs • {((parseFloat(s.default_rate || s.defaultRate || 0) || 0) > 0 ? `₹${(parseFloat(s.default_rate || s.defaultRate || 0)).toFixed(2)}` : '—')}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <div className="text-gray-400">No sub-activities selected</div>
+                          )}
+                      </div>
+                      <div className="flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => updateItem(item.id, 'showSubPicker', !item.showSubPicker)}
+                          className="px-2 py-1 text-xs bg-gray-100 rounded"
+                        >
+                          {item.showSubPicker ? 'Close' : 'Select'}
+                        </button>
+                      </div>
+                    </div>
+                      {item.showSubPicker && (
+                        <div className="mt-2 border rounded p-2 max-h-56 overflow-y-auto bg-white">
+                          {/* Group subs by activity inside the picker for easier scanning */}
+                          {(
+                            (item.activity_ids && item.activity_ids.length)
+                              ? activityOptions.filter(a => (item.activity_ids || []).map(String).includes(String(a.id)))
+                              : (item.discipline_id ? activityOptions.filter(a => String(a.function_id) === String(item.discipline_id)) : [])
+                          ).map(a => {
+                          const subs = (subActivityOptions || []).filter(s => String(s.activity_id) === String(a.id));
+                          if (!subs.length) return null;
+                          const allSelected = subs.every(s => (item.sub_activity_ids || []).map(String).includes(String(s.id)));
+                          return (
+                            <div key={a.id} className="mb-2">
+                              <label className="flex items-center justify-between text-sm font-medium">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    onChange={() => {
+                                      const current = Array.isArray(item.sub_activity_ids) ? [...item.sub_activity_ids] : [];
+                                      const subIds = subs.map(s => s.id);
+                                      let next;
+                                      if (allSelected) next = current.filter(cid => !subIds.map(String).includes(String(cid)));
+                                      else next = Array.from(new Set([...current, ...subIds]));
+                                      updateItem(item.id, 'sub_activity_ids', next);
+                                    }}
+                                  />
+                                  <span>{a.activity_name || a.name || a.id}</span>
+                                </div>
+                                <div className="text-xs text-gray-500">{subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0).toFixed(1)} hrs • {(() => { const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r=>r>0); return rates.length ? `₹${(rates.reduce((a,b)=>a+b,0)/rates.length).toFixed(2)}` : '—'; })()}</div>
+                              </label>
+                              <div className="pl-6 mt-1 space-y-1">
+                                {subs.map(s => (
+                                  <label key={s.id} className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={(item.sub_activity_ids || []).map(String).includes(String(s.id))}
+                                      onChange={() => {
+                                        const current = Array.isArray(item.sub_activity_ids) ? [...item.sub_activity_ids] : [];
+                                        const strId = String(s.id);
+                                        const exists = current.map(String).includes(strId);
+                                        let next;
+                                        if (exists) next = current.filter(cid => String(cid) !== strId);
+                                        else next = [...current, s.id];
+                                        updateItem(item.id, 'sub_activity_ids', next);
+                                      }}
+                                    />
+                                    <span className="flex-1">{s.subactivity_name || s.name || s.id}</span>
+                                    <span className="text-xs text-gray-500">{(parseFloat(s.default_manhours || s.defaultManhours || 0) || 0).toFixed(1)} hrs • {((parseFloat(s.default_rate || s.defaultRate || 0) || 0) > 0 ? `₹${(parseFloat(s.default_rate || s.defaultRate || 0)).toFixed(2)}` : '—')}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </Td>
                 <Td>
                   <input
@@ -801,7 +1012,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
               </tr>
             ))}
             <tr className="bg-green-50 border-t-2 border-green-300 font-semibold">
-              <Td colSpan={3}>Total</Td>
+              <Td colSpan={4}>Total</Td>
               <Td>{totalManHours.toFixed(1)}</Td>
               <Td>—</Td>
               <Td>{totalAmount.toFixed(2)}</Td>
@@ -1032,6 +1243,101 @@ function Text({ label, value, onChange, placeholder = '', required = false, read
         readOnly={readOnly}
         className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent ${readOnly ? 'bg-gray-100 cursor-not-allowed' : ''}`}
       />
+    </div>
+  );
+}
+
+function ProposalIdField({ label, value, onChange, required = false }) {
+  // value is full proposal_id string. We split into three parts:
+  //   prefix (read-only) e.g. ATSPL/Q/MM/YYYY/
+  //   series (editable) e.g. 076
+  //   suffix (editable) last 3 digits
+  const defaultPrefix = () => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const next = year + 1;
+    return `ATSPL/Q/${month}/${year}-${next}/`;
+  };
+
+  const defaultSeries = '076';
+
+  const splitId = (val) => {
+    if (!val) return { prefix: defaultPrefix(), series: defaultSeries };
+    const s = String(val).trim();
+    // Legacy numeric id like P<digits> (e.g. P123456789) -> try to extract a 3-digit series from digits
+    const legacyMatch = s.match(/^P(\d+)$/i);
+    if (legacyMatch) {
+      const digits = legacyMatch[1];
+      const series = digits.length >= 6 ? digits.slice(-6, -3) : defaultSeries;
+      return { prefix: defaultPrefix(), series };
+    }
+
+    // Try to match ATSPL-style with series (3 digits) at the end
+    const m = s.match(/^(.*?)(\d{3})$/);
+    if (m) {
+      const prefixPart = m[1];
+      const series = m[2] || defaultSeries;
+      const prefix = String(prefixPart).includes('ATSPL') ? prefixPart : defaultPrefix();
+      return { prefix, series };
+    }
+
+    // Fallback: take last up to 3 digits as series
+    const fallbackMatch = s.match(/^(.*?)(\d{1,})$/);
+    if (fallbackMatch) {
+      const allDigits = fallbackMatch[2];
+      const series = allDigits.slice(-3) || defaultSeries;
+      const prefixPart = s.slice(0, s.length - series.length) || defaultPrefix();
+      const prefix = String(prefixPart).includes('ATSPL') ? prefixPart : defaultPrefix();
+      return { prefix, series };
+    }
+
+    return { prefix: defaultPrefix(), series: defaultSeries };
+  };
+
+  const { prefix: initialPrefix, series: initialSeries } = splitId(value);
+  const [pref, setPref] = useState(initialPrefix || defaultPrefix());
+  const [series, setSeries] = useState(initialSeries || defaultSeries);
+
+  // keep local state in sync if parent value changes
+  useEffect(() => {
+    const s = splitId(value);
+    setPref(s.prefix || defaultPrefix());
+    setSeries(s.series || defaultSeries);
+  }, [value]);
+
+  const updateParent = (nextPref, nextSeries) => {
+    const padSeries = String(nextSeries || '').padStart(3, '0');
+    onChange(`${nextPref || defaultPrefix()}${padSeries}`);
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={pref}
+          readOnly
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-l bg-gray-100 cursor-not-allowed"
+        />
+        <input
+          type="number"
+          min="0"
+          max="999"
+          value={series}
+          onChange={e => {
+            const v = e.target.value.replace(/^0+(?=\d)/, '');
+            const cleaned = v === '' ? '' : String(Math.max(0, Math.min(999, Number(v))));
+            setSeries(cleaned);
+          }}
+          onBlur={() => updateParent(pref, series)}
+          className="w-20 px-3 py-2 border-t border-b border-gray-300 text-center"
+          aria-label="Proposal series (3 digits)"
+        />
+        {/* suffix removed — server will assign final sequence */}
+      </div>
+      <p className="text-xs text-gray-500 mt-1">Format: {defaultPrefix()}<span className="font-mono">NNN</span> — edit the 3-digit series</p>
     </div>
   );
 }

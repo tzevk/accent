@@ -802,7 +802,13 @@ export default function ProposalPage() {
                               if (!res.ok) throw new Error(data?.error || 'Failed to convert proposal');
                               setShowConvertConfirm(false);
                               alert('Proposal converted to project. Redirecting...');
-                              router.push(`/projects/${data.data.project.project_id}/edit`);
+                              const proj = data?.data?.project;
+                              const targetId = proj?.project_id ?? proj?.project_code ?? proj?.id;
+                              if (!targetId) {
+                                alert('Project created but no redirect id returned. Please open Projects list to view.');
+                              } else {
+                                router.push(`/projects/${targetId}/edit`);
+                              }
                             } catch (err) {
                               console.error(err);
                               alert('Conversion failed: ' + (err.message || err));

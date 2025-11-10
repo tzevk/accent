@@ -382,12 +382,14 @@ export default function Leads() {
       if (!updResult.success) {
         alert('Proposal created but failed to update lead status: ' + (updResult.error || 'Unknown'));
       } else {
-        const createdId = result.data && result.data.id;
-        const proposalId = result.data && result.data.proposalId;
+  const createdId = result.data && result.data.id;
+  // support multiple shapes returned by API
+  const proposalId = result.data && (result.data.proposal_id || result.data.proposalId || (result.data.proposal && (result.data.proposal.proposal_id || result.data.proposal.proposalId)));
         // Redirect to proposal edit page if available
         if (createdId) {
-          // navigate to the proposal edit page
-          router.push(`/proposals/${createdId}/edit`);
+          // navigate to the proposal edit page. Include the generated proposal_id as a query param so the edit page can display it immediately while the server fetch completes.
+          const qp = proposalId ? `?pid=${encodeURIComponent(proposalId)}` : '';
+          router.push(`/proposals/${createdId}/edit${qp}`);
         } else {
           alert('Proposal created: ' + (proposalId || ('ID ' + (result.data && result.data.id))));
           fetchLeads();
