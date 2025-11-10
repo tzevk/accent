@@ -1,4 +1,4 @@
-'use client';
+ 'use client';
 
 import { Suspense, useEffect, useMemo, useState, Fragment } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -6,99 +6,42 @@ import Navbar from '@/components/Navbar';
 import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 
-const STATUS_OPTIONS = ['Ongoing', 'Completed', 'On Hold', 'Cancelled'];
-const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
-const TYPE_OPTIONS = ['EPC', 'Consultancy', 'PMC', 'Lump Sum', 'Reimbursable'];
-const INDUSTRY_OPTIONS = ['Oil & Gas', 'Petrochemical', 'Solar', 'Power', 'Infrastructure', 'Other'];
-const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP', 'AED'];
-const PAYMENT_TERMS_OPTIONS = ['Milestones', 'Monthly', '% Completion', 'Other'];
-const INVOICING_STATUS_OPTIONS = ['Raised', 'Pending', 'Paid', 'Partially Paid'];
-const PROCUREMENT_STATUS_OPTIONS = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
-const SITE_READINESS_OPTIONS = ['Ready', 'Partially Ready', 'Not Ready'];
-const DOCUMENTATION_STATUS_OPTIONS = ['Not Started', 'In Progress', 'Completed'];
-
-const TABS = [
-  { id: 'general', label: 'General Info' },
-  { id: 'scope', label: 'Scope of Work' },
-  { id: 'commercial', label: 'Commercial' },
-  { id: 'activities', label: 'Project Activities' },
-  { id: 'team', label: 'Project Team' },
-  { id: 'planning', label: 'Project Planning' },
-  { id: 'documentation', label: 'Input Documentation' },
-  { id: 'meetings', label: 'Meetings & Communications' },
-  { id: 'procurement', label: 'Procurement' },
-  { id: 'construction', label: 'Construction' },
-  { id: 'risk', label: 'Risk & Issues' },
-  { id: 'closeout', label: 'Closeout' }
-];
-
 const INITIAL_FORM = {
-  // General Information
-  project_id: '',
-  name: '',
-  client_name: '',
-  client_contact_details: '',
-  project_location_country: '',
-  project_location_city: '',
-  project_location_site: '',
-  industry: '',
-  contract_type: '',
-  company_id: '',
-  project_manager: '',
-  start_date: '',
-  end_date: '',
-  target_date: '',
-  project_duration_planned: '',
-  project_duration_actual: '',
-  status: 'Ongoing',
-  priority: 'MEDIUM',
-  progress: 0,
-  assigned_to: '',
-  type: 'EPC',
-  description: '',
-  notes: '',
-  proposal_id: '',
-  
-  // Commercial Details
-  project_value: '',
-  currency: 'INR',
-  payment_terms: '',
-  invoicing_status: '',
-  cost_to_company: '',
-  profitability_estimate: '',
-  subcontractors_vendors: '',
+  // Scope & Annexure fields
+  scope_of_work: '',
+  input_documents: '',
+  deliverables: '',
+  software_included: '',
+  duration: '',
+  mode_of_delivery: '',
+  revision: '',
+  site_visit: '',
+  quotation_validity: '',
+  exclusion: '',
+  billing_and_payment_terms: '',
+  other_terms_and_conditions: '',
+
+  // General project fields (add more as needed)
   budget: '',
-  
-  // Procurement & Material
   procurement_status: '',
   material_delivery_schedule: '',
   vendor_management: '',
-  
-  // Construction / Site
   mobilization_date: '',
   site_readiness: '',
   construction_progress: '',
-  
-  // Risk & Issues
   major_risks: '',
   mitigation_plans: '',
   change_orders: '',
   claims_disputes: '',
-  
-  // Project Closeout
   final_documentation_status: '',
   lessons_learned: '',
   client_feedback: '',
   actual_profit_loss: '',
-  
-  // Meeting and Document Fields
   project_schedule: '',
   input_document: '',
   list_of_deliverables: '',
   kickoff_meeting: '',
   in_house_meeting: '',
-  
-  // Enhanced Planning & Meeting Fields
   project_start_milestone: '',
   project_review_milestone: '',
   project_end_milestone: '',
@@ -106,7 +49,38 @@ const INITIAL_FORM = {
   kickoff_followup_date: '',
   internal_meeting_date: '',
   next_internal_meeting: ''
+  ,
+  // additional fields surfaced in Project Details
+  estimated_manhours: '',
+  unit_qty: ''
 };
+
+// UI constants used by the edit form (kept local to avoid cross-file imports)
+const TABS = [
+  { id: 'project_details', label: 'Project Details' },
+  { id: 'scope', label: 'Scope' },
+  { id: 'minutes_kom_client', label: 'Minutes - KOM with Client' },
+  { id: 'minutes_internal_meet', label: 'Minutes of Internal Meet' },
+  { id: 'documents_received', label: 'List of Documents Received' },
+  { id: 'project_schedule', label: 'Project Schedule' },
+  { id: 'project_activity', label: 'Project Activity' },
+  { id: 'documents_issued', label: 'Documents Issued' },
+  { id: 'project_handover', label: 'Project Handover' },
+  { id: 'project_manhours', label: 'Project Manhours' },
+  { id: 'query_log', label: 'Query Log' },
+  { id: 'assumption', label: 'Assumption' },
+  { id: 'lessons_learnt', label: 'Lessons Learnt' }
+];
+
+const STATUS_OPTIONS = ['NEW', 'planning', 'in-progress', 'on-hold', 'completed', 'cancelled'];
+const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
+const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
+const INDUSTRY_OPTIONS = ['Construction', 'Energy', 'Infrastructure', 'Manufacturing', 'IT', 'Healthcare'];
+const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'];
+const PAYMENT_TERMS_OPTIONS = ['Net 30', 'Net 45', 'Net 60', 'Advance'];
+const INVOICING_STATUS_OPTIONS = ['Uninvoiced', 'Partially Invoiced', 'Invoiced', 'Paid'];
+const PROCUREMENT_STATUS_OPTIONS = ['Not Started', 'In Progress', 'Completed', 'On Hold'];
+const DOCUMENTATION_STATUS_OPTIONS = ['Not Started', 'Drafted', 'Reviewed', 'Finalized'];
 
 function LoadingFallback() {
   return (
@@ -155,6 +129,16 @@ function EditProjectForm() {
     documentation: true, // Documentation section  
     meetings: true       // Meetings section
   });
+
+  // Collapsible sections for General / Project Details (Basic, Scope, Unit/Qty, Deliverables)
+  const [openSections, setOpenSections] = useState({
+    basic: true,
+    scope: true,
+    unitQty: false,
+    deliverables: true
+  });
+
+  const toggleSection = (key) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
 
   // File management state
   const [inputDocuments, setInputDocuments] = useState([]);
@@ -267,7 +251,7 @@ function EditProjectForm() {
 
   // Fetch existing project data
   useEffect(() => {
-    if (!id) {
+    if (!id || id === 'undefined') {
       setError('Invalid project ID');
       setLoading(false);
       return;
@@ -325,7 +309,9 @@ function EditProjectForm() {
             final_documentation_status: project.final_documentation_status || '',
             lessons_learned: project.lessons_learned || '',
             client_feedback: project.client_feedback || '',
-            actual_profit_loss: project.actual_profit_loss || ''
+            actual_profit_loss: project.actual_profit_loss || '',
+            estimated_manhours: project.estimated_manhours || project.estimated_hours || '',
+            unit_qty: project.unit_qty || project.unit || ''
           });
 
           // Load team members
@@ -876,8 +862,8 @@ function EditProjectForm() {
 
             {/* Tab Navigation */}
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-              <div className="px-6 py-3 overflow-x-auto">
-                <div className="flex space-x-1 min-w-max">
+              <div className="px-6 py-3">
+                <div className="flex flex-wrap gap-2">
                   {TABS.map((tab) => (
                     <button
                       key={tab.id}
@@ -896,113 +882,159 @@ function EditProjectForm() {
               </div>
             </div>
 
-            {/* General Tab */}
-            {activeTab === 'general' && (
+            {/* General / Project Details Tab */}
+            {(activeTab === 'general' || activeTab === 'project_details') && (
               <div className="space-y-6">
                 <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
                   <div className="px-6 py-4 border-b border-gray-200">
                     <h2 className="text-sm font-semibold text-black">General Project Information</h2>
                   </div>
-                  <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Project ID / Code</label>
-                      <input type="text" name="project_id" value={form.project_id} onChange={handleChange} placeholder="e.g., 001-10-2024" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                  <div className="px-6 py-5 space-y-4">
+                    {/* Basic Details (collapsible) */}
+                    <div className="border-t border-gray-200 pt-4">
+                      <button type="button" onClick={() => toggleSection('basic')} className="w-full flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ArrowLeftIcon className="h-4 w-4 text-[#7F2487] rotate-180" />
+                          <h3 className="text-sm font-semibold text-black">Basic Details</h3>
+                        </div>
+                        <div className="text-sm text-gray-500">{openSections.basic ? 'Hide' : 'Show'}</div>
+                      </button>
+                      {openSections.basic && (
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Project Number</label>
+                            <input type="text" name="project_id" value={form.project_id} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Project Name</label>
+                            <input type="text" name="name" value={form.name} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Company</label>
+                            <select name="company_id" value={form.company_id} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
+                              <option value="">Select company</option>
+                              {companies.map((c) => (<option key={c.id} value={c.id}>{c.company_name || c.name}</option>))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Project Start Date</label>
+                            <input type="date" name="start_date" value={form.start_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Project End Date</label>
+                            <input type="date" name="end_date" value={form.end_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Project Type</label>
+                            <select name="contract_type" value={form.contract_type} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
+                              <option value="">Select Type</option>
+                              {TYPE_OPTIONS.map((type) => (<option key={type} value={type}>{type}</option>))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Estimated Manhours</label>
+                            <input type="number" name="estimated_manhours" value={form.estimated_manhours} onChange={handleChange} step="0.1" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Project Name *</label>
-                      <input type="text" name="name" value={form.name} onChange={handleChange} required className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+
+                    {/* Scope (collapsible) */}
+                    <div className="border-t border-gray-200 pt-4">
+                      <button type="button" onClick={() => toggleSection('scope')} className="w-full flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ChevronDownIcon className="h-4 w-4 text-[#7F2487]" />
+                          <h3 className="text-sm font-semibold text-black">Scope</h3>
+                        </div>
+                        <div className="text-sm text-gray-500">{openSections.scope ? 'Hide' : 'Show'}</div>
+                      </button>
+                      {openSections.scope && (
+                        <div className="mt-3 space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Description / Scope</label>
+                            <textarea name="description" value={form.description} onChange={handleChange} rows={6} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
+                            <div className="flex gap-2 mb-3">
+                              <input type="text" value={newInputDocument} onChange={(e) => setNewInputDocument(e.target.value)} onKeyPress={handleInputDocumentKeyPress} placeholder="Enter document name" className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                              <button type="button" onClick={addInputDocument} className="px-4 py-2 bg-[#7F2487] text-white text-sm rounded-md">Add</button>
+                            </div>
+                            {inputDocumentsList.length > 0 && (
+                              <div className="space-y-2">
+                                {inputDocumentsList.map((doc) => (
+                                  <div key={doc.id} className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                                    <div className="flex items-center gap-3"><DocumentIcon className="h-4 w-4 text-purple-600" /> <span className="text-sm">{doc.text}</span></div>
+                                    <button type="button" onClick={() => removeInputDocument(doc.id)} className="text-red-500">Remove</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Client Name</label>
-                      <input type="text" name="client_name" value={form.client_name} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+
+                    {/* Unit / Qty (collapsible) */}
+                    <div className="border-t border-gray-200 pt-4">
+                      <button type="button" onClick={() => toggleSection('unitQty')} className="w-full flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ChevronRightIcon className="h-4 w-4 text-[#7F2487]" />
+                          <h3 className="text-sm font-semibold text-black">Unit / Qty</h3>
+                        </div>
+                        <div className="text-sm text-gray-500">{openSections.unitQty ? 'Hide' : 'Show'}</div>
+                      </button>
+                      {openSections.unitQty && (
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Unit / Qty</label>
+                            <input type="text" name="unit_qty" value={form.unit_qty} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Duration Planned (days)</label>
+                            <input type="number" name="project_duration_planned" value={form.project_duration_planned} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Duration Actual (days)</label>
+                            <input type="number" name="project_duration_actual" value={form.project_duration_actual} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Company *</label>
-                      <select name="company_id" value={form.company_id} onChange={handleChange} required className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                        <option value="">Select company</option>
-                        {companies.map((c) => (
-                          <option key={c.id} value={c.id}>{c.company_name || c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-black mb-1">Client Contact Details</label>
-                      <textarea name="client_contact_details" value={form.client_contact_details} onChange={handleChange} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Location - Country</label>
-                      <input type="text" name="project_location_country" value={form.project_location_country} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Location - City</label>
-                      <input type="text" name="project_location_city" value={form.project_location_city} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Location - Site</label>
-                      <input type="text" name="project_location_site" value={form.project_location_site} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Industry</label>
-                      <select name="industry" value={form.industry} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                        <option value="">Select Industry</option>
-                        {INDUSTRY_OPTIONS.map((ind) => (
-                          <option key={ind} value={ind}>{ind}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Contract Type</label>
-                      <select name="contract_type" value={form.contract_type} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                        <option value="">Select Type</option>
-                        {TYPE_OPTIONS.map((type) => (
-                          <option key={type} value={type}>{type}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Project Manager</label>
-                      <input type="text" name="project_manager" value={form.project_manager} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Start Date</label>
-                      <input type="date" name="start_date" value={form.start_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">End Date</label>
-                      <input type="date" name="end_date" value={form.end_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Duration Planned (days)</label>
-                      <input type="number" name="project_duration_planned" value={form.project_duration_planned} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Duration Actual (days)</label>
-                      <input type="number" name="project_duration_actual" value={form.project_duration_actual} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Status</label>
-                      <select name="status" value={form.status} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                        {STATUS_OPTIONS.map((s) => (<option key={s} value={s}>{s}</option>))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Priority</label>
-                      <select name="priority" value={form.priority} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                        {PRIORITY_OPTIONS.map((p) => (<option key={p} value={p}>{p}</option>))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Assigned To</label>
-                      <input type="text" name="assigned_to" value={form.assigned_to} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-black mb-1">Progress (%)</label>
-                      <input type="range" value={form.progress} min="0" max="100" onChange={handleProgressChange} className="w-full" />
-                      <p className="text-xs text-gray-500 mt-1">{form.progress}% complete</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-black mb-1">Description</label>
-                      <textarea name="description" value={form.description} onChange={handleChange} rows={3} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+
+                    {/* Deliverables (collapsible) */}
+                    <div className="border-t border-gray-200 pt-4">
+                      <button type="button" onClick={() => toggleSection('deliverables')} className="w-full flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
+                          <h3 className="text-sm font-semibold text-black">Deliverables</h3>
+                        </div>
+                        <div className="text-sm text-gray-500">{openSections.deliverables ? 'Hide' : 'Show'}</div>
+                      </button>
+                      {openSections.deliverables && (
+                        <div className="mt-3 space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">List of Deliverables</label>
+                            <textarea name="list_of_deliverables" value={form.list_of_deliverables} onChange={handleChange} rows={4} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-black mb-1">Upload Deliverable Files</label>
+                            <input type="file" multiple onChange={(e) => handleFileUpload(e.target.files, 'deliverables')} className="w-full text-sm" />
+                            {deliverables.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                {deliverables.map((f) => (
+                                  <div key={f.id} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded">
+                                    <div className="text-sm">{f.name} <span className="text-xs text-gray-500">{f.version}</span></div>
+                                    <div className="flex items-center gap-2">
+                                      <button type="button" onClick={() => removeFile(f.id, 'deliverables')} className="text-red-600 text-xs">Remove</button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </section>

@@ -26,7 +26,7 @@ export default function ProjectViewPage() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState('project_details');
 
   useEffect(() => {
     if (!id) {
@@ -105,6 +105,54 @@ export default function ProjectViewPage() {
       docs.push({ title: 'In House Meeting', content: project.in_house_meeting });
     }
     return docs;
+  }, [project]);
+
+  // helpers for collapsible Project Details
+  const [openSections, setOpenSections] = useState({
+    basic: true,
+    scope: true,
+    unitQty: false,
+    deliverables: true
+  });
+
+  const toggleSection = (key) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
+
+  const pick = (keys = []) => {
+    if (!project) return null;
+    for (const k of keys) {
+      const v = project[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return null;
+  };
+
+  const basicDetailsList = useMemo(() => {
+    if (!project) return [];
+    return [
+      { label: 'Company Name', value: pick(['company_name', 'client_name', 'company']) },
+      { label: 'Project Number', value: pick(['project_number', 'project_code', 'project_id']) },
+      { label: 'Project Name', value: pick(['name', 'project_name']) },
+      { label: 'Project Duration', value: pick(['duration', 'project_duration']) },
+      { label: 'Project Start Date', value: pick(['start_date', 'project_start_date']) },
+      { label: 'Project End Date', value: pick(['end_date', 'project_end_date', 'target_date']) },
+      { label: 'Estimated Manhours', value: pick(['estimated_manhours', 'manhours', 'estimated_hours']) },
+      { label: 'Project Type', value: pick(['type', 'project_type']) }
+    ];
+  }, [project]);
+
+  const scopeField = useMemo(() => {
+    return (
+      pick(['scope_of_work', 'proposal_scope', 'scope', 'description']) || null
+    );
+  }, [project]);
+
+  const unitQtyField = useMemo(() => {
+    return pick(['unit_qty', 'unit', 'quantity', 'units', 'unit_quantity']) || null;
+  }, [project]);
+
+  const deliverablesField = useMemo(() => {
+    // try several common field names and also fall back to list_of_deliverables
+    return pick(['deliverables', 'list_of_deliverables', 'proposal_deliverables', 'proposal_items']) || null;
   }, [project]);
 
   // Parse JSON fields safely for rendering
@@ -188,7 +236,7 @@ export default function ProjectViewPage() {
               </div>
               <div className="flex items-center gap-2 text-xs">
                 <Link
-                  href={`/projects/${project.id}/edit`}
+                  href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
                   className="px-4 py-2 rounded-md border border-[#7F2487] text-[#7F2487] hover:bg-[#7F2487]/10 transition-colors"
                 >
                   Edit Project
@@ -205,16 +253,21 @@ export default function ProjectViewPage() {
 
             {/* Tabs */}
             <div className="bg-white border border-gray-200 rounded-lg px-6 py-3">
-              <div role="tablist" aria-label="Project sections" className="flex space-x-2">
+            <div role="tablist" aria-label="Project sections" className="flex flex-wrap gap-2">
                 {[
-                  { id: 'general', label: 'General Info' },
-                  { id: 'commercial', label: 'Commercial' },
-                  { id: 'activities', label: 'Project Activities' },
-                  { id: 'team', label: 'Project Team' },
-                  { id: 'procurement', label: 'Procurement' },
-                  { id: 'construction', label: 'Construction' },
-                  { id: 'risk', label: 'Risk & Issues' },
-                  { id: 'closeout', label: 'Closeout' }
+                  { id: 'project_details', label: 'Project Details' },
+                  { id: 'scope', label: 'Scope' },
+                  { id: 'minutes_kom_client', label: 'Minutes - KOM with Client' },
+                  { id: 'minutes_internal_meet', label: 'Minutes of the Internal Meet' },
+                  { id: 'documents_received', label: 'List of Documents Received' },
+                  { id: 'project_schedule', label: 'Project Schedule' },
+                  { id: 'project_activity', label: 'Project Activity' },
+                  { id: 'documents_issued', label: 'Documents Issued' },
+                  { id: 'project_handover', label: 'Project Handover' },
+                  { id: 'project_manhours', label: 'Project Manhours' },
+                  { id: 'query_log', label: 'Query Log' },
+                  { id: 'assumption', label: 'Assumption' },
+                  { id: 'lessons_learnt', label: 'Lessons Learnt' }
                 ].map((t) => (
                   <button
                     id={`tab-${t.id}`}
@@ -230,70 +283,137 @@ export default function ProjectViewPage() {
               </div>
             </div>
 
-            <section
-              id="panel-general"
-              role="tabpanel"
-              aria-labelledby="tab-general"
-              hidden={activeTab !== 'general'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
-            >
+            {activeTab === 'project_details' && (
+              <section
+                id="panel-project_details"
+                role="tabpanel"
+                aria-labelledby="tab-project_details"
+                className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              >
               <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                 <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
                 <h2 className="text-sm font-semibold text-black">General Information</h2>
               </div>
-              <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {basicInfo.map((item) => (
-                  <div key={item.label} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">{item.label}</p>
-                    <p className="text-sm font-medium text-black mt-1">{item.value || '—'}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Project Scope & Notes */}
-              <div className="px-6 py-4 border-t border-gray-200">
-                <div className="flex items-center gap-2 mb-4">
-                  <MapPinIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h3 className="text-sm font-semibold text-black">Project Scope & Notes</h3>
+              <div className="px-6 py-5 space-y-4">
+                {/* Basic Details (collapsible) */}
+                <div className="border-t border-gray-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('basic')}
+                    className="w-full flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
+                      <h3 className="text-sm font-semibold text-black">Basic Details</h3>
+                    </div>
+                    <div className="text-sm text-gray-500">{openSections.basic ? 'Hide' : 'Show'}</div>
+                  </button>
+                  {openSections.basic && (
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {basicDetailsList.map((item) => (
+                        <div key={item.label} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide">{item.label}</p>
+                          <p className="text-sm font-medium text-black mt-1">{item.value ?? '—'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-4">
-                  {scopeSummary.length === 0 ? (
-                    <p className="text-sm text-gray-500">
-                      No scope notes captured yet. Use the edit view to document overview, client responsibilities, and change history.
-                    </p>
-                  ) : (
-                    scopeSummary.map((note) => (
-                      <div key={note.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
-                        <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{note.title}</h4>
-                        <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{note.content}</p>
-                      </div>
-                    ))
+
+                {/* Scope (collapsible) */}
+                <div className="border-t border-gray-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('scope')}
+                    className="w-full flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MapPinIcon className="h-5 w-5 text-[#7F2487]" />
+                      <h3 className="text-sm font-semibold text-black">Scope</h3>
+                    </div>
+                    <div className="text-sm text-gray-500">{openSections.scope ? 'Hide' : 'Show'}</div>
+                  </button>
+                  {openSections.scope && (
+                    <div className="mt-3 space-y-3">
+                      {scopeField ? (
+                        <div className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                          <p className="text-sm text-gray-600 whitespace-pre-line">{scopeField}</p>
+                        </div>
+                      ) : scopeSummary.length > 0 ? (
+                        scopeSummary.map((note) => (
+                          <div key={note.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                            <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{note.title}</h4>
+                            <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{note.content}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-gray-500">No scope captured. Use the edit view to import scope from the linked proposal or add custom scope.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Unit / Qty (collapsible) */}
+                <div className="border-t border-gray-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('unitQty')}
+                    className="w-full flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ClipboardDocumentCheckIcon className="h-5 w-5 text-[#7F2487]" />
+                      <h3 className="text-sm font-semibold text-black">Unit / Qty</h3>
+                    </div>
+                    <div className="text-sm text-gray-500">{openSections.unitQty ? 'Hide' : 'Show'}</div>
+                  </button>
+                  {openSections.unitQty && (
+                    <div className="mt-3">
+                      {unitQtyField ? (
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                          <p className="text-sm text-gray-600">{unitQtyField}</p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">No unit/quantity data captured. Add unit/qty in the edit view or import from proposal.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Deliverables (collapsible) */}
+                <div className="border-t border-gray-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('deliverables')}
+                    className="w-full flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                      <h3 className="text-sm font-semibold text-black">Deliverables</h3>
+                    </div>
+                    <div className="text-sm text-gray-500">{openSections.deliverables ? 'Hide' : 'Show'}</div>
+                  </button>
+                  {openSections.deliverables && (
+                    <div className="mt-3 space-y-3">
+                      {deliverablesField ? (
+                        <div className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                          <p className="text-sm text-gray-600 whitespace-pre-line">{deliverablesField}</p>
+                        </div>
+                      ) : meetingDocuments.length > 0 ? (
+                        meetingDocuments.map((doc) => (
+                          <div key={doc.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                            <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{doc.title}</h4>
+                            <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{doc.content}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-gray-500">No deliverables captured. Import deliverables from the linked proposal or add them in the edit view.</p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
-
-              {/* Meeting & Documents */}
-              <div className="px-6 py-4 border-t border-gray-200">
-                <div className="flex items-center gap-2 mb-4">
-                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h3 className="text-sm font-semibold text-black">Documents & Meetings</h3>
-                </div>
-                <div className="space-y-4">
-                  {meetingDocuments.length === 0 ? (
-                    <p className="text-sm text-gray-500">
-                      No meeting or document details captured yet. Use the edit view to add project schedule, input documents, deliverables, and meeting information.
-                    </p>
-                  ) : (
-                    meetingDocuments.map((doc) => (
-                      <div key={doc.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
-                        <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{doc.title}</h4>
-                        <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{doc.content}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
+              </section>
+            )}
 
             {/* Commercial Tab */}
             <section

@@ -4,57 +4,123 @@ import { dbConnect } from '@/utils/database';
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
+    // Treat that as a missing id and return a 400 early to avoid spurious schema lookups.
+    if (!id || id === 'undefined') {
+      return Response.json({ success: false, error: 'Invalid project id parameter' }, { status: 400 });
+    }
     const projectIdInt = parseInt(id, 10);
 
     const db = await dbConnect();
 
-    // Try lookup by numeric primary id first. If not found, fallback to project_id (human readable)
+    // Inspect schema to avoid referencing missing columns (some envs have different project schemas)
+    let pkCol = null;
+    try {
+      const [pkRows] = await db.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
+      );
+      if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
+        pkCol = pkRows[0].COLUMN_NAME;
+      }
+    } catch (schemaErr) {
+      console.warn('Could not inspect primary key for projects table:', schemaErr.message || schemaErr);
+    }
+
+    // Also check for presence of human-readable id columns
+    let hasProjectIdCol = false;
+    let hasProjectCodeCol = false;
+    try {
+      const [cols] = await db.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME IN ('project_id','project_code')`
+      );
+      if (cols && cols.length > 0) {
+        for (const c of cols) {
+          if (c.COLUMN_NAME === 'project_id') hasProjectIdCol = true;
+          if (c.COLUMN_NAME === 'project_code') hasProjectCodeCol = true;
+        }
+      }
+    } catch (colErr) {
+      console.warn('Could not inspect projects columns:', colErr.message || colErr);
+    }
+
+    // Build a dynamic OR-based lookup using columns that actually exist in the table.
+    // This reduces the chance of missing a match when callers pass project_id or project_code.
+    let candidates = [];
     let rows = [];
-    if (!Number.isNaN(projectIdInt)) {
-      const [r] = await db.execute(`
-        SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
-        FROM projects p 
-        LEFT JOIN proposals pr ON p.proposal_id = pr.id
-        WHERE p.id = ?
-      `, [projectIdInt]);
-      rows = r || [];
+    try {
+      candidates = [];
+      if (pkCol) candidates.push(pkCol);
+      if (hasProjectIdCol && !candidates.includes('project_id')) candidates.push('project_id');
+      if (hasProjectCodeCol && !candidates.includes('project_code')) candidates.push('project_code');
+
+      if (candidates.length > 0) {
+        const whereParts = candidates.map((c) => `p.${c} = ?`).join(' OR ');
+        const params = candidates.map(() => id);
+        try {
+          const [r] = await db.execute(`SELECT p.* FROM projects p WHERE ${whereParts} LIMIT 1`, params);
+          rows = r || [];
+        } catch (orErr) {
+          console.warn('OR-based lookup failed, will try fallbacks individually:', orErr?.message || orErr);
+          rows = [];
+        }
+      }
+
+      // Fallback: if not found and id parses numeric, try numeric match against pkCol specifically
+      if ((!rows || rows.length === 0) && !Number.isNaN(projectIdInt) && pkCol) {
+        try {
+          const [rNum] = await db.execute(`SELECT p.* FROM projects p WHERE p.${pkCol} = ? LIMIT 1`, [projectIdInt]);
+          rows = rNum || [];
+        } catch (numErr) {
+          console.warn('Numeric PK lookup failed as last resort:', numErr.message || numErr);
+          rows = [];
+        }
+      }
+    } catch (lookupErr) {
+      console.warn('Project lookup attempts failed:', lookupErr?.message || lookupErr);
+      rows = [];
     }
 
     if (!rows || rows.length === 0) {
-      // fallback: try project_id column (string like 001-11-2025)
-      const [r2] = await db.execute(`
-        SELECT p.*, pr.proposal_id as linked_proposal_id, pr.proposal_title as proposal_title
-        FROM projects p 
-        LEFT JOIN proposals pr ON p.proposal_id = pr.id
-        WHERE p.project_id = ?
-      `, [id]);
-      rows = r2 || [];
-    }
-
-    if (!rows || rows.length === 0) {
+      console.warn('Project lookup did not find a match', { id, pkCol, candidates });
       await db.end();
       return Response.json({ 
         success: false, 
-        error: 'Project not found' 
+        error: 'Project not found',
+        details: { id, pkCol, candidates }
       }, { status: 404 });
     }
 
-    // Fetch associated project activities
+    const project = rows[0];
+
+    // Fetch associated project activities after we have the project row.
+    // Determine which key the activities table expects: prefer primary key value, fallback to project_id or project_code.
     let projectActivities = [];
     try {
-      const [activities] = await db.execute(
-        `SELECT * FROM project_activities WHERE project_id = ? ORDER BY created_at DESC`,
-        [projectId]
-      );
-      projectActivities = activities;
+      let activityKeyValue = null;
+      if (pkCol && project[pkCol] !== undefined && project[pkCol] !== null) {
+        activityKeyValue = project[pkCol];
+      } else if (project.project_id !== undefined && project.project_id !== null) {
+        activityKeyValue = project.project_id;
+      } else if (project.project_code !== undefined && project.project_code !== null) {
+        activityKeyValue = project.project_code;
+      }
+
+      if (activityKeyValue !== null) {
+        const [activities] = await db.execute(
+          `SELECT * FROM project_activities WHERE project_id = ? ORDER BY created_at DESC`,
+          [activityKeyValue]
+        );
+        projectActivities = activities || [];
+      } else {
+        // No suitable key to lookup activities; skip silently
+        projectActivities = [];
+      }
     } catch (actError) {
-      console.warn('Could not fetch project activities:', actError.message);
-      // Continue without activities if table doesn't exist yet
+      console.warn('Could not fetch project activities:', actError.message || actError);
+      projectActivities = [];
     }
-    
+
     await db.end();
-    
-    const project = rows[0];
     
     // Parse JSON fields if they exist
     if (project.planning_activities_list && typeof project.planning_activities_list === 'string') {
@@ -82,9 +148,14 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     console.error('Database error:', error);
+    // Include error message/short stack in response for easier local debugging
+    const details = error?.message || String(error);
+    const stack = error?.stack ? error.stack.split('\n').slice(0,5).join('\n') : undefined;
     return Response.json({ 
       success: false, 
-      error: 'Failed to fetch project' 
+      error: 'Failed to fetch project',
+      details,
+      stack
     }, { status: 500 });
   }
 }

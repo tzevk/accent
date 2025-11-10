@@ -85,7 +85,13 @@ export default function Proposals() {
       setProposals(prev => prev.map(p => p.id === proposal.id ? { ...p, status: 'CONVERTED', project_id: data.data.project.project_id } : p));
 
       alert('Proposal converted to project. Redirecting to project...');
-      router.push(`/projects/${data.data.project.project_id}/edit`);
+      const proj = data?.data?.project;
+      const targetId = proj?.project_id ?? proj?.project_code ?? proj?.id;
+      if (!targetId) {
+        alert('Project created but no redirect id returned. Open Projects list to view it.');
+      } else {
+        router.push(`/projects/${targetId}/edit`);
+      }
     } catch (err) {
       console.error('Convert error:', err);
       alert('Failed to convert proposal: ' + (err.message || err));

@@ -47,28 +47,64 @@ export async function GET() {
       await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
 
       // Update enum fields to use VARCHAR instead for more flexibility
-      await db.execute('ALTER TABLE projects MODIFY COLUMN status VARCHAR(50) DEFAULT \'NEW\'');
-      await db.execute('ALTER TABLE projects MODIFY COLUMN priority VARCHAR(50) DEFAULT \'MEDIUM\'');
-      await db.execute('ALTER TABLE projects MODIFY COLUMN type VARCHAR(50) DEFAULT \'ONGOING\'');
+      // Only run MODIFY if the column exists to avoid errors on older/newer schemas
+      try {
+        const [enumCols] = await db.execute(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME IN ('status','priority','type')`
+        );
+        const existingEnums = new Set((enumCols || []).map(c => c.COLUMN_NAME));
+        if (existingEnums.has('status')) {
+          await db.execute("ALTER TABLE projects MODIFY COLUMN status VARCHAR(50) DEFAULT 'NEW'");
+        }
+        if (existingEnums.has('priority')) {
+          await db.execute("ALTER TABLE projects MODIFY COLUMN priority VARCHAR(50) DEFAULT 'MEDIUM'");
+        }
+        if (existingEnums.has('type')) {
+          await db.execute("ALTER TABLE projects MODIFY COLUMN type VARCHAR(50) DEFAULT 'ONGOING'");
+        }
+      } catch (modifyErr) {
+        console.warn('Skipping MODIFY COLUMN for enum fields due to schema inspection error:', modifyErr?.message || modifyErr);
+      }
     } catch (err) {
       console.warn('Some ALTER TABLE statements failed, table might already be updated:', err);
     }
     
-    const [rows] = await db.execute(`
-      SELECT 
-        p.*,
-        c.company_name
-      FROM projects p
-      LEFT JOIN companies c ON p.company_id = c.id
-      ORDER BY p.created_at DESC
-    `);
+    // Check whether `company_id` exists on projects table before joining
+    const dbName = process.env.DB_NAME || null;
+    let rows;
+    if (dbName) {
+      try {
+        const [cols] = await db.execute(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects'`,
+          [dbName]
+        );
+        const existing = new Set(cols.map((c) => c.COLUMN_NAME));
+        if (existing.has('company_id')) {
+          const [r] = await db.execute(`
+            SELECT p.*, c.company_name
+            FROM projects p
+            LEFT JOIN companies c ON p.company_id = c.id
+            ORDER BY p.created_at DESC
+          `);
+          rows = r;
+        } else {
+          const [r] = await db.execute(`SELECT p.* FROM projects p ORDER BY p.created_at DESC`);
+          rows = r;
+        }
+      } catch (e) {
+        console.warn('Failed to inspect projects columns, falling back to simple select:', e?.message || e);
+        const [r] = await db.execute(`SELECT * FROM projects ORDER BY created_at DESC`);
+        rows = r;
+      }
+    } else {
+      // If DB name is not available, perform a safe simple select
+      const [r] = await db.execute(`SELECT * FROM projects ORDER BY created_at DESC`);
+      rows = r;
+    }
     
     await db.end();
     
-    return NextResponse.json({ 
-      success: true, 
-      data: rows 
-    });
+    return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Projects GET error:', error);
     return NextResponse.json({ 
@@ -396,27 +432,45 @@ export async function DELETE(request) {
     }
 
     const db = await dbConnect();
-    
-    // Check if project exists
-    const [existing] = await db.execute(
-      'SELECT id FROM projects WHERE id = ?',
-      [id]
-    );
 
-    if (existing.length === 0) {
-      await db.end();
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Project not found' 
-      }, { status: 404 });
+    // Inspect projects columns to determine a suitable key column to use for lookup/delete
+    let keyCol = null;
+    try {
+      const [pkRows] = await db.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
+      );
+      const [cols] = await db.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
+      );
+      const existing = new Set((cols || []).map(c => c.COLUMN_NAME));
+
+      if (existing.has('id')) keyCol = 'id';
+      else if (existing.has('project_id')) keyCol = 'project_id';
+      else if (existing.has('project_code')) keyCol = 'project_code';
+      else if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) keyCol = pkRows[0].COLUMN_NAME;
+      else keyCol = null;
+    } catch (inspErr) {
+      console.warn('Could not inspect projects table schema for DELETE, falling back to id:', inspErr?.message || inspErr);
+      keyCol = 'id';
     }
 
-    // Delete project
-    await db.execute(
-      'DELETE FROM projects WHERE id = ?',
-      [id]
-    );
-    
+    if (!keyCol) {
+      try { await db.end(); } catch {}
+      return NextResponse.json({ success: false, error: 'Could not determine projects primary key for deletion' }, { status: 500 });
+    }
+
+    // Check if project exists using resolved key column
+    const query = `SELECT ${keyCol} FROM projects WHERE ${keyCol} = ?`;
+    const [existing] = await db.execute(query, [id]);
+
+    if (!existing || existing.length === 0) {
+      await db.end();
+      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+    }
+
+    // Delete project using the resolved key
+    await db.execute(`DELETE FROM projects WHERE ${keyCol} = ?`, [id]);
+
     await db.end();
     
     return NextResponse.json({ 
