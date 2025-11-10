@@ -40,7 +40,7 @@ export default function Dashboard() {
   const [followupsByLead, setFollowupsByLead] = useState({});
   const [deltas, setDeltas] = useState({ leads: 0, proposals: 0, companies: 0, projects: 0 });
   const [analyticsPeriod, setAnalyticsPeriod] = useState('Weekly'); // Weekly | Monthly | Quarterly
-  const [salesMetric, setSalesMetric] = useState('value'); // 'count' | 'value'
+  const [salesMetric, setSalesMetric] = useState('count'); // 'count' | 'value' (default to count for wider compatibility)
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const fmtNum = new Intl.NumberFormat('en-IN');
@@ -57,46 +57,64 @@ export default function Dashboard() {
   const [salesTotals, setSalesTotals] = useState({ total: 0, conversion: 0 });
   const [projectSeries, setProjectSeries] = useState([]); // {label, value}[] for bar chart
   useEffect(() => {
-    // Load project analytics: series for counts and breakdown/status for income when metric=value
+    // Load project analytics: series for counts and breakdown/status. If metric=value has no data, auto-fallback to count.
     let abort = false;
+
+    const loadMetric = async (metricToUse) => {
+      const projUrl = `/api/analytics/projects?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(metricToUse)}`;
+      const res = await fetch(projUrl);
+      const json = await res.json();
+      if (!abort && json?.success) {
+        // Update bar series with project counts for the period (always based on counts in backend)
+        setProjectSeries(Array.isArray(json.series) ? json.series : []);
+        const breakdown = Array.isArray(json.breakdownByStatus) ? json.breakdownByStatus : [];
+        const hasNonZero = breakdown.some(d => (Number(d.value) || 0) > 0);
+        if (hasNonZero) {
+          const total = breakdown.reduce((a, b) => a + (Number(b.value) || 0), 0);
+          const completed = breakdown.find(d => String(d.name).toLowerCase().includes('completed'));
+          const conversion = total > 0 ? Math.round(((Number(completed?.value) || 0) / total) * 100) : 0;
+          setSalesData(breakdown);
+          setSalesTotals({ total, conversion });
+          return true;
+        }
+      }
+      // Try proposals analytics as a fallback
+      try {
+        const propUrl = `/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(metricToUse)}`;
+        const pres = await fetch(propUrl);
+        const pjson = await pres.json();
+        if (!abort && pjson?.success) {
+          const pdata = Array.isArray(pjson.data) ? pjson.data : [];
+          const hasNonZeroP = pdata.some(d => (Number(d.value) || 0) > 0);
+          if (hasNonZeroP) {
+            setSalesData(pdata);
+            setSalesTotals({ total: Number(pjson.total || 0), conversion: Number(pjson.conversion || 0) });
+            return true;
+          }
+        }
+      } catch {}
+      return false;
+    };
+
     const load = async () => {
       try {
-        const projUrl = `/api/analytics/projects?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`;
-        const res = await fetch(projUrl);
-        const json = await res.json();
-        if (!abort && json?.success) {
-          // Update bar series with project counts for the period
-          setProjectSeries(Array.isArray(json.series) ? json.series : []);
+        // 1) Try with the current metric
+        const ok = await loadMetric(salesMetric);
+        if (ok || abort) return;
 
-          const breakdown = Array.isArray(json.breakdownByStatus) ? json.breakdownByStatus : [];
-          const hasNonZero = breakdown.some(d => (Number(d.value) || 0) > 0);
-          if (hasNonZero) {
-            const total = breakdown.reduce((a, b) => a + (Number(b.value) || 0), 0);
-            const completed = breakdown.find(d => String(d.name).toLowerCase().includes('completed'));
-            const conversion = total > 0 ? Math.round(((Number(completed?.value) || 0) / total) * 100) : 0;
-            setSalesData(breakdown);
-            setSalesTotals({ total, conversion });
-            return; // done
+        // 2) If current metric is value and there is no data, auto-fallback to count (no user click required)
+        if (salesMetric === 'value') {
+          const okCount = await loadMetric('count');
+          if (!abort && okCount) {
+            setSalesMetric('count');
+            try { if (typeof window !== 'undefined') localStorage.setItem('salesMetric', 'count'); } catch {}
+            return;
           }
         }
 
-        // Fallback to proposals analytics (legacy sales) if project data is unavailable/zero
-        try {
-          const propUrl = `/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`;
-          const pres = await fetch(propUrl);
-          const pjson = await pres.json();
-          if (!abort && pjson?.success) {
-            const pdata = Array.isArray(pjson.data) ? pjson.data : [];
-            const hasNonZeroP = pdata.some(d => (Number(d.value) || 0) > 0);
-            if (hasNonZeroP) {
-              setSalesData(pdata);
-              setSalesTotals({ total: Number(pjson.total || 0), conversion: Number(pjson.conversion || 0) });
-              return;
-            }
-          }
-        } catch {}
-
+        // 3) Nothing found — clear visuals
         if (!abort) {
+          setProjectSeries([]);
           setSalesData([]);
           setSalesTotals({ total: 0, conversion: 0 });
         }
@@ -108,9 +126,23 @@ export default function Dashboard() {
         }
       }
     };
+
     load();
     return () => { abort = true; };
   }, [analyticsPeriod, salesMetric]);
+
+  // Persist and restore user's preferred sales metric
+  useEffect(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('salesMetric') : null;
+      if (saved === 'count' || saved === 'value') setSalesMetric(saved);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') localStorage.setItem('salesMetric', salesMetric);
+    } catch {}
+  }, [salesMetric]);
 
   // Compact Indian currency formatter (K, Lakh, Crore)
   const formatINRCompact = (n, withSymbol = true) => {
