@@ -78,21 +78,6 @@ export default function Dashboard() {
           return true;
         }
       }
-      // Try proposals analytics as a fallback
-      try {
-        const propUrl = `/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(metricToUse)}`;
-        const pres = await fetch(propUrl);
-        const pjson = await pres.json();
-        if (!abort && pjson?.success) {
-          const pdata = Array.isArray(pjson.data) ? pjson.data : [];
-          const hasNonZeroP = pdata.some(d => (Number(d.value) || 0) > 0);
-          if (hasNonZeroP) {
-            setSalesData(pdata);
-            setSalesTotals({ total: Number(pjson.total || 0), conversion: Number(pjson.conversion || 0) });
-            return true;
-          }
-        }
-      } catch {}
       return false;
     };
 
