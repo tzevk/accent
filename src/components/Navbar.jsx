@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import accentLogo from '@/../public/accent-logo.png';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import {
@@ -94,12 +95,12 @@ export default function Navbar() {
             <div className="flex items-center">
               <Link href="/dashboard" className="flex-shrink-0 flex items-center group">
                 <Image
-                  src="/accent-logo.png"
-                  alt="Accent"
-                  width={160}
-                  height={40}
+                  src={accentLogo}
+                  alt="Accent Techno Solutions logo"
+                  width={accentLogo.width}
+                  height={accentLogo.height}
                   priority
-                  className="h-10 w-auto object-contain"
+                  className="h-10 w-auto object-contain md:h-11"
                 />
               </Link>
             </div>
