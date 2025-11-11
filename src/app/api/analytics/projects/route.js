@@ -110,20 +110,23 @@ export async function GET(request) {
       console.warn('Failed to inspect projects table columns for analytics:', e?.message || e);
     }
 
-    // Overall totals in the window
+    // Effective date used for bucketing and filtering (fallback when created_at missing)
+    const EFFECTIVE_DT = "COALESCE(NULLIF(created_at, '0000-00-00 00:00:00'), CAST(start_date AS DATETIME), CAST(end_date AS DATETIME), CAST(target_date AS DATETIME), updated_at)";
+
+    // Overall totals in the window based on effective date
     let totalProjects = 0;
     let totalValue = 0;
     if (hasBudget) {
       const [totalsRows] = await db.execute(
         `SELECT COUNT(*) as cnt, COALESCE(SUM(COALESCE(budget,0)),0) as val
-         FROM projects WHERE created_at BETWEEN ? AND ?`,
+        FROM projects WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?`,
         [fmtDateSQL(start), fmtDateSQL(end)]
       );
       totalProjects = Number(totalsRows?.[0]?.cnt || 0);
       totalValue = Number(totalsRows?.[0]?.val || 0);
     } else {
       const [totalsRows] = await db.execute(
-        `SELECT COUNT(*) as cnt FROM projects WHERE created_at BETWEEN ? AND ?`,
+        `SELECT COUNT(*) as cnt FROM projects WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?`,
         [fmtDateSQL(start), fmtDateSQL(end)]
       );
       totalProjects = Number(totalsRows?.[0]?.cnt || 0);
@@ -138,7 +141,7 @@ export async function GET(request) {
                 COUNT(*) as cnt,
                 COALESCE(SUM(COALESCE(budget,0)),0) as val
          FROM projects
-         WHERE created_at BETWEEN ? AND ?
+         WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY UPPER(COALESCE(status,'NEW'))`,
         [fmtDateSQL(start), fmtDateSQL(end)]
       );
@@ -148,7 +151,7 @@ export async function GET(request) {
         `SELECT UPPER(COALESCE(status,'NEW')) as status,
                 COUNT(*) as cnt
          FROM projects
-         WHERE created_at BETWEEN ? AND ?
+         WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
          GROUP BY UPPER(COALESCE(status,'NEW'))`,
         [fmtDateSQL(start), fmtDateSQL(end)]
       );
@@ -163,23 +166,28 @@ export async function GET(request) {
     });
 
     // Build time-bucketed series for the bar chart
-    const labels = labelsForPeriod(period);
-    const series = labels.map(l => ({ label: l, value: 0 }));
+  const labels = labelsForPeriod(period);
+  const series = labels.map(l => ({ label: l, value: 0 }));
 
     const p = String(period || '').toLowerCase();
-    if (p === 'monthly') {
+    // When metric is 'value' but no budget column exists, keep series at zeros (fixed metric, no auto-switch)
+    if (metric === 'value' && !hasBudget) {
+      // leave series as initialized zeros
+    } else if (p === 'monthly') {
       // Last 12 months (oldest first)
       const now = new Date();
       const startMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      const selectAgg = metric === 'value' && hasBudget
+        ? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
+        : 'COUNT(*) as cnt';
       const [rows] = await db.execute(
-        `SELECT YEAR(created_at) as y, MONTH(created_at) as m, COUNT(*) as cnt
+        `SELECT YEAR(${EFFECTIVE_DT}) as y, MONTH(${EFFECTIVE_DT}) as m, ${selectAgg}
          FROM projects
-         WHERE created_at BETWEEN ? AND ?
-         GROUP BY YEAR(created_at), MONTH(created_at)
+         WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
+         GROUP BY YEAR(${EFFECTIVE_DT}), MONTH(${EFFECTIVE_DT})
          ORDER BY y, m`,
         [fmtDateSQL(startMonth), fmtDateSQL(end)]
       );
-      // Map results into the last 12 month labels
       const monthIdx = [];
       for (let i = 11; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -187,17 +195,20 @@ export async function GET(request) {
       }
       rows.forEach(r => {
         const pos = monthIdx.findIndex(x => x.y === Number(r.y) && x.m === Number(r.m));
-        if (pos >= 0) series[pos].value = Number(r.cnt || 0);
+        if (pos >= 0) series[pos].value = metric === 'value' && hasBudget ? Number(r.val || 0) : Number(r.cnt || 0);
       });
-    } else if (p === 'quarterly') {
+  } else if (p === 'quarterly') {
       // Last 4 quarters (oldest first)
       const now = new Date();
       const startQuarter = new Date(now.getFullYear(), now.getMonth() - 3 * 3, 1);
+      const selectAgg = metric === 'value' && hasBudget
+        ? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
+        : 'COUNT(*) as cnt';
       const [rows] = await db.execute(
-        `SELECT YEAR(created_at) as y, QUARTER(created_at) as q, COUNT(*) as cnt
+        `SELECT YEAR(${EFFECTIVE_DT}) as y, QUARTER(${EFFECTIVE_DT}) as q, ${selectAgg}
          FROM projects
-         WHERE created_at BETWEEN ? AND ?
-         GROUP BY YEAR(created_at), QUARTER(created_at)
+         WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
+         GROUP BY YEAR(${EFFECTIVE_DT}), QUARTER(${EFFECTIVE_DT})
          ORDER BY y, q`,
         [fmtDateSQL(startQuarter), fmtDateSQL(end)]
       );
@@ -208,25 +219,27 @@ export async function GET(request) {
       }
       rows.forEach(r => {
         const pos = qIdx.findIndex(x => x.y === Number(r.y) && x.q === Number(r.q));
-        if (pos >= 0) series[pos].value = Number(r.cnt || 0);
+        if (pos >= 0) series[pos].value = metric === 'value' && hasBudget ? Number(r.val || 0) : Number(r.cnt || 0);
       });
-    } else {
+  } else {
       // Weekly: last 7 days (oldest first)
       const now = new Date();
       const startDay = new Date(now);
       startDay.setDate(now.getDate() - 6);
       startDay.setHours(0, 0, 0, 0);
+      const selectAgg = metric === 'value' && hasBudget
+        ? 'COALESCE(SUM(COALESCE(budget,0)),0) as val'
+        : 'COUNT(*) as cnt';
       const [rows] = await db.execute(
-        `SELECT DATE(created_at) as d, COUNT(*) as cnt
+        `SELECT DATE(${EFFECTIVE_DT}) as d, ${selectAgg}
          FROM projects
-         WHERE created_at BETWEEN ? AND ?
-         GROUP BY DATE(created_at)
+         WHERE ${EFFECTIVE_DT} BETWEEN ? AND ?
+         GROUP BY DATE(${EFFECTIVE_DT})
          ORDER BY d`,
         [fmtDateSQL(startDay), fmtDateSQL(end)]
       );
-      // Index by date string yyyy-mm-dd
       const toKey = (d) => d.toISOString().slice(0,10);
-      const map = new Map(rows.map(r => [String(r.d), Number(r.cnt || 0)]));
+      const map = new Map(rows.map(r => [String(r.d), metric === 'value' && hasBudget ? Number(r.val || 0) : Number(r.cnt || 0)]));
       for (let i = 6, idx = 0; i >= 0; i--, idx++) {
         const d = new Date(now);
         d.setDate(now.getDate() - i);

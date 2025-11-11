@@ -81,6 +81,7 @@ const INITIAL_FORM = {
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
   { id: 'project_details', label: 'Project Details' },
+  { id: 'documentation', label: 'Documentation' },
   { id: 'scope', label: 'Scope' },
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'documents_received', label: 'List of Documents Received' },
@@ -174,6 +175,7 @@ function EditProjectForm() {
   // Input document list management
   const [inputDocumentsList, setInputDocumentsList] = useState([]);
   const [newInputDocument, setNewInputDocument] = useState('');
+  const [docMaster, setDocMaster] = useState([]);
   
   // Documentation tab - detailed document management
   const [documentsList, setDocumentsList] = useState([]);
@@ -533,14 +535,46 @@ function EditProjectForm() {
             }
           }
 
-          // Load input documents list from comma-separated string
+          // Load input documents list (supports legacy comma-separated or new JSON array format)
           if (project.input_document) {
-            const docs = project.input_document.split(',').map((doc, index) => ({
-              id: Date.now() + index,
-              text: doc.trim(),
-              addedAt: new Date().toISOString()
-            })).filter(doc => doc.text);
-            setInputDocumentsList(docs);
+            let parsedDocs = [];
+            try {
+              const maybeJson = project.input_document.trim();
+              if (maybeJson.startsWith('[')) {
+                const arr = JSON.parse(maybeJson);
+                if (Array.isArray(arr)) {
+                  parsedDocs = arr.map(d => ({
+                    id: d.id || Date.now() + Math.random(),
+                    text: d.text || d.name || '',
+                    name: d.name || d.text || '',
+                    fileUrl: d.fileUrl || null,
+                    thumbUrl: d.thumbUrl || null,
+                    addedAt: d.addedAt || new Date().toISOString()
+                  })).filter(d => d.text);
+                }
+              } else {
+                // legacy comma separated
+                parsedDocs = project.input_document.split(',').map((doc, index) => ({
+                  id: Date.now() + index,
+                  text: doc.trim(),
+                  name: doc.trim(),
+                  fileUrl: null,
+                  thumbUrl: null,
+                  addedAt: new Date().toISOString()
+                })).filter(doc => doc.text);
+              }
+            } catch (e) {
+              // fallback to comma split
+              parsedDocs = project.input_document.split(',').map((doc, index) => ({
+                id: Date.now() + index,
+                text: doc.trim(),
+                name: doc.trim(),
+                fileUrl: null,
+                thumbUrl: null,
+                addedAt: new Date().toISOString()
+              })).filter(doc => doc.text);
+            }
+            setInputDocumentsList(parsedDocs);
           }
 
             // Load documents received list (new structured array)
@@ -722,30 +756,87 @@ function EditProjectForm() {
       const newDoc = {
         id: Date.now(),
         text: newInputDocument.trim(),
+        name: newInputDocument.trim(),
+        fileUrl: null,
+        thumbUrl: null,
         addedAt: new Date().toISOString()
       };
-      setInputDocumentsList([...inputDocumentsList, newDoc]);
+      const updated = [...inputDocumentsList, newDoc];
+      setInputDocumentsList(updated);
       setNewInputDocument('');
-      
-      // Update form field with comma-separated list
-      const updatedList = [...inputDocumentsList, newDoc].map(doc => doc.text).join(', ');
-      setForm(prev => ({ ...prev, input_document: updatedList }));
+      // Persist as JSON array
+      setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
     }
   };
 
   const removeInputDocument = (id) => {
     const updatedList = inputDocumentsList.filter(doc => doc.id !== id);
     setInputDocumentsList(updatedList);
-    
-    // Update form field
-    const updatedText = updatedList.map(doc => doc.text).join(', ');
-    setForm(prev => ({ ...prev, input_document: updatedText }));
+    setForm(prev => ({ ...prev, input_document: JSON.stringify(updatedList) }));
   };
 
   const handleInputDocumentKeyPress = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       addInputDocument();
+    }
+  };
+
+  // Load document master for suggestions
+  useEffect(() => {
+    const loadDocMaster = async () => {
+      try {
+        const res = await fetchJSON('/api/document-master');
+        if (res?.success && Array.isArray(res.data)) {
+          setDocMaster(res.data);
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    };
+    loadDocMaster();
+  }, []);
+
+  // File upload for input documents (images / svg -> via /api/uploads). Other file types can be added later.
+  const handleInputDocumentFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const b64 = reader.result;
+        try {
+          const uploadResp = await fetchJSON('/api/uploads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, b64 })
+          });
+          if (uploadResp.success) {
+            const newDoc = {
+              id: Date.now(),
+              text: file.name,
+              name: file.name,
+              fileUrl: uploadResp.data.fileUrl,
+              thumbUrl: uploadResp.data.thumbUrl,
+              addedAt: new Date().toISOString()
+            };
+            const updated = [...inputDocumentsList, newDoc];
+            setInputDocumentsList(updated);
+            setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
+          } else {
+            alert(uploadResp.error || 'Upload failed');
+          }
+        } catch (err) {
+          console.error('Upload failed', err);
+          alert('Upload failed');
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      console.error('File processing error', e);
+    } finally {
+      // reset input so same file can be re-selected
+      event.target.value = '';
     }
   };
 
@@ -1446,6 +1537,29 @@ function EditProjectForm() {
                         </div>
                       )}
                     </div>
+
+                    {/* Suggestions from Document Master */}
+                    {docMaster && docMaster.length > 0 && (
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {docMaster
+                          .filter(d => !newInputDocument || (d.name?.toLowerCase().includes(newInputDocument.toLowerCase()) || d.doc_key?.toLowerCase().includes(newInputDocument.toLowerCase())))
+                          .slice(0, 8)
+                          .map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => {
+                                setNewInputDocument(d.name);
+                                addInputDocument();
+                              }}
+                              className="px-2 py-1 text-xs rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200"
+                              title={d.description || ''}
+                            >
+                              {d.name}
+                            </button>
+                          ))}
+                      </div>
+                    )}
 
                     {/* Scope (collapsible) */}
                     <div className="border-t border-gray-200 pt-4">
@@ -3283,6 +3397,11 @@ function EditProjectForm() {
                         <PlusIcon className="h-4 w-4" />
                         Add
                       </button>
+                      <label className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 cursor-pointer transition-colors flex items-center gap-1">
+                        <PlusIcon className="h-4 w-4" />
+                        Upload
+                        <input type="file" accept="image/*,.svg" onChange={handleInputDocumentFileUpload} className="hidden" />
+                      </label>
                     </div>
 
                     {/* List of added documents */}
@@ -3295,16 +3414,28 @@ function EditProjectForm() {
                           >
                             <div className="flex items-center gap-3">
                               <DocumentIcon className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-900">{doc.text}</span>
+                              {doc.fileUrl ? (
+                                <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-700 hover:underline" title="Open document">
+                                  {doc.name || doc.text}
+                                </a>
+                              ) : (
+                                <span className="text-sm text-gray-900">{doc.name || doc.text}</span>
+                              )}
+                              {doc.thumbUrl && (
+                                <img src={doc.thumbUrl} alt={doc.name || 'thumb'} className="h-8 w-8 rounded object-cover border border-blue-200" />
+                              )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => removeInputDocument(doc.id)}
-                              className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Remove document"
-                            >
-                              <XMarkIcon className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-500 hidden md:inline">{new Date(doc.addedAt).toLocaleDateString()}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeInputDocument(doc.id)}
+                                className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Remove document"
+                              >
+                                <XMarkIcon className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
