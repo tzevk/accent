@@ -192,6 +192,87 @@ export default function ProjectViewPage() {
     }
   }, [project]);
 
+  const parsedDocumentsReceived = useMemo(() => {
+    if (!project || !project.documents_received_list) return [];
+    try {
+      return typeof project.documents_received_list === 'string' ? JSON.parse(project.documents_received_list) : project.documents_received_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedDocumentsIssued = useMemo(() => {
+    if (!project || !project.documents_issued_list) return [];
+    try {
+      return typeof project.documents_issued_list === 'string' ? JSON.parse(project.documents_issued_list) : project.documents_issued_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedProjectHandover = useMemo(() => {
+    if (!project || !project.project_handover_list) return [];
+    try {
+      return typeof project.project_handover_list === 'string' ? JSON.parse(project.project_handover_list) : project.project_handover_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedProjectManhours = useMemo(() => {
+    if (!project || !project.project_manhours_list) return [];
+    try {
+      return typeof project.project_manhours_list === 'string' ? JSON.parse(project.project_manhours_list) : project.project_manhours_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedQueryLog = useMemo(() => {
+    if (!project || !project.project_query_log_list) return [];
+    try {
+      return typeof project.project_query_log_list === 'string' ? JSON.parse(project.project_query_log_list) : project.project_query_log_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedAssumptions = useMemo(() => {
+    if (!project || !project.project_assumption_list) return [];
+    try {
+      return typeof project.project_assumption_list === 'string' ? JSON.parse(project.project_assumption_list) : project.project_assumption_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedLessonsLearnt = useMemo(() => {
+    if (!project || !project.project_lessons_learnt_list) return [];
+    try {
+      return typeof project.project_lessons_learnt_list === 'string' ? JSON.parse(project.project_lessons_learnt_list) : project.project_lessons_learnt_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedProjectSchedule = useMemo(() => {
+    if (!project || !project.project_schedule_list) return [];
+    try {
+      return typeof project.project_schedule_list === 'string' ? JSON.parse(project.project_schedule_list) : project.project_schedule_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
+  const parsedProjectActivityRows = useMemo(() => {
+    if (!project || !project.project_activity_list) return [];
+    try {
+      return typeof project.project_activity_list === 'string' ? JSON.parse(project.project_activity_list) : project.project_activity_list;
+    } catch (err) {
+      return [];
+    }
+  }, [project]);
+
   if (loading) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
@@ -481,6 +562,237 @@ export default function ProjectViewPage() {
                 )}
               </div>
             </section>
+
+            {/* Documents Received Tab (read-only) */}
+            {activeTab === 'documents_received' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">List of Documents Received</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedDocumentsReceived && parsedDocumentsReceived.length > 0 ? (
+                    parsedDocumentsReceived.map((d, i) => (
+                      <div key={d.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{d.description || d.document_name || `Document ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Sr. No: {d.sr_no || d.id || i+1}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">
+                            <div>{d.date_received || d.received_date || '—'}</div>
+                            <div className="text-xs text-gray-500">{d.document_sent_by || ''}</div>
+                          </div>
+                        </div>
+                        {d.remarks ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{d.remarks}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No documents received recorded.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Documents Issued Tab (read-only) */}
+            {activeTab === 'documents_issued' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Documents Issued</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedDocumentsIssued && parsedDocumentsIssued.length > 0 ? (
+                    parsedDocumentsIssued.map((d, i) => (
+                      <div key={d.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{d.document_name || d.description || `Issued ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Doc No: {d.document_number || d.number || '—'} • Rev: {d.revision_number || d.revision || '—'}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">{d.issue_date || d.date || '—'}</div>
+                        </div>
+                        {d.remarks ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{d.remarks}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No documents issued recorded.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Project Handover Tab (read-only) */}
+            {activeTab === 'project_handover' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Project Handover</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedProjectHandover && parsedProjectHandover.length > 0 ? (
+                    parsedProjectHandover.map((r, i) => (
+                      <div key={r.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{r.output_by_accent || r.item || `Handover ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Sr. No: {r.sr_no || i+1}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">Requirement done: {r.requirement_accomplished || r.done || '—'}</div>
+                        </div>
+                        {r.remark ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{r.remark}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No handover records added.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Project Manhours Tab (read-only) */}
+            {activeTab === 'project_manhours' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Project Manhours</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedProjectManhours && parsedProjectManhours.length > 0 ? (
+                    parsedProjectManhours.map((m, i) => (
+                      <div key={m.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{m.name_of_engineer_designer || m.name || `Member ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Month: {m.month || '—'}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">Total: {Object.keys(m).filter(k=>k!== 'id' && k!=='month' && k!=='name_of_engineer_designer' && k!=='remarks').map(k => `${k}: ${m[k]}`).join(', ')}</div>
+                        </div>
+                        {m.remarks ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{m.remarks}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No manhours recorded.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Query Log Tab (read-only) */}
+            {activeTab === 'query_log' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Query Log</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedQueryLog && parsedQueryLog.length > 0 ? (
+                    parsedQueryLog.map((q, i) => (
+                      <div key={q.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{q.query_description || `Query ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Issued: {q.query_issued_date || '—'}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">Resolved: {q.query_resolved || '—'}</div>
+                        </div>
+                        {q.remark ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{q.remark}</p> : null}
+                        {q.reply_from_client ? <p className="mt-2 text-sm text-gray-600"><strong>Reply:</strong> {q.reply_from_client}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No queries logged.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Assumption Tab (read-only) */}
+            {activeTab === 'assumption' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Assumptions</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedAssumptions && parsedAssumptions.length > 0 ? (
+                    parsedAssumptions.map((a, i) => (
+                      <div key={a.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{a.assumption_description || `Assumption ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Sr. No: {a.sr_no || i+1}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">Taken By: {a.assumption_taken_by || '—'}</div>
+                        </div>
+                        {a.reason ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{a.reason}</p> : null}
+                        {a.remark ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{a.remark}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No assumptions recorded.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Lessons Learnt Tab (read-only) */}
+            {activeTab === 'lessons_learnt' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Lessons Learnt</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedLessonsLearnt && parsedLessonsLearnt.length > 0 ? (
+                    parsedLessonsLearnt.map((l, i) => (
+                      <div key={l.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{l.what_was_new || `Lesson ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Sr. No: {l.sr_no || i+1}</p>
+                          </div>
+                        </div>
+                        {l.difficulty_faced ? <p className="mt-2 text-sm text-gray-600"><strong>Difficulty:</strong> {l.difficulty_faced}</p> : null}
+                        {l.what_you_learn ? <p className="mt-2 text-sm text-gray-600"><strong>Learned:</strong> {l.what_you_learn}</p> : null}
+                        {l.areas_of_improvement ? <p className="mt-2 text-sm text-gray-600"><strong>Improvements:</strong> {l.areas_of_improvement}</p> : null}
+                        {l.remark ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{l.remark}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No lessons recorded.</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Project Schedule (read-only) */}
+            {activeTab === 'project_schedule' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Project Schedule</h2>
+                </div>
+                <div className="px-6 py-5 space-y-3">
+                  {parsedProjectSchedule && parsedProjectSchedule.length > 0 ? (
+                    parsedProjectSchedule.map((s, i) => (
+                      <div key={s.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-black">{s.activity_description || s.activity || `Schedule ${i+1}`}</h4>
+                            <p className="text-xs text-gray-500 mt-1">Sr. No: {s.sr_no || i+1}</p>
+                          </div>
+                          <div className="text-sm text-gray-600 text-right">{s.start_date || '—'} → {s.end_date || '—'}</div>
+                        </div>
+                        {s.remarks ? <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{s.remarks}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No schedule items captured.</p>
+                  )}
+                </div>
+              </section>
+            )}
 
 
 

@@ -267,6 +267,19 @@ export async function POST(request, { params }) {
     const id = randomUUID();
     const db = await dbConnect();
     await ensureTable(db);
+    // Ensure employees table has columns we may update here (best-effort, ignore errors)
+    try {
+      await db.execute('ALTER TABLE employees ADD COLUMN salary_structure TEXT');
+  } catch { /* ignore - column may already exist or ALTER not supported */ }
+    try {
+      await db.execute('ALTER TABLE employees ADD COLUMN gross_salary DECIMAL(12,2)');
+  } catch { /* ignore */ }
+    try {
+      await db.execute('ALTER TABLE employees ADD COLUMN total_deductions DECIMAL(12,2)');
+  } catch { /* ignore */ }
+    try {
+      await db.execute('ALTER TABLE employees ADD COLUMN net_salary DECIMAL(12,2)');
+  } catch { /* ignore */ }
 
     // Recompute authoritative salary breakdown server-side
     const computed = calculateSalaryBreakdown({
@@ -327,23 +340,80 @@ export async function POST(request, { params }) {
       paid_days: computed.breakdown.paid_days,
     };
 
-    await db.execute(
-      `INSERT INTO salary_master (
-        id, employee_id, effective_from, salary_type, basic_salary, attendance_days, total_working_days, loan_active, loan_emi, advance_payment,
-        additional_earnings, additional_deductions, pf, pt, mlwf, da, hra, conveyance, call_allowance, other_allowance,
-        gross_salary, leave_deduction, ot_pay, adjusted_gross, employee_pf, employer_pf, bonus, in_hand_salary, ctc, pl_used, pl_balance,
-        ot_hours, ot_rate, week_offs, working_days, paid_days
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [
-        ins.id, ins.employee_id, ins.effective_from, ins.salary_type, ins.basic_salary, ins.attendance_days, ins.total_working_days, ins.loan_active, ins.loan_emi, ins.advance_payment,
-        ins.additional_earnings, ins.additional_deductions, ins.pf, ins.pt, ins.mlwf, ins.da, ins.hra, ins.conveyance, ins.call_allowance, ins.other_allowance,
-        ins.gross_salary, ins.leave_deduction, ins.ot_pay, ins.adjusted_gross, ins.employee_pf, ins.employer_pf, ins.bonus, ins.in_hand_salary, ins.ctc, ins.pl_used, ins.pl_balance,
-        ins.ot_hours, ins.ot_rate, ins.week_offs, ins.working_days, ins.paid_days
-      ]
-    );
-    await db.end();
+    // Perform insert + optional employees update inside a transaction so both succeed or both fail
+    try {
+      await db.beginTransaction();
 
-    return NextResponse.json({ success: true, data: { id, computed } }, { status: 201 });
+      await db.execute(
+        `INSERT INTO salary_master (
+          id, employee_id, effective_from, salary_type, basic_salary, attendance_days, total_working_days, loan_active, loan_emi, advance_payment,
+          additional_earnings, additional_deductions, pf, pt, mlwf, da, hra, conveyance, call_allowance, other_allowance,
+          gross_salary, leave_deduction, ot_pay, adjusted_gross, employee_pf, employer_pf, bonus, in_hand_salary, ctc, pl_used, pl_balance,
+          ot_hours, ot_rate, week_offs, working_days, paid_days
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+        [
+          ins.id, ins.employee_id, ins.effective_from, ins.salary_type, ins.basic_salary, ins.attendance_days, ins.total_working_days, ins.loan_active, ins.loan_emi, ins.advance_payment,
+          ins.additional_earnings, ins.additional_deductions, ins.pf, ins.pt, ins.mlwf, ins.da, ins.hra, ins.conveyance, ins.call_allowance, ins.other_allowance,
+          ins.gross_salary, ins.leave_deduction, ins.ot_pay, ins.adjusted_gross, ins.employee_pf, ins.employer_pf, ins.bonus, ins.in_hand_salary, ins.ctc, ins.pl_used, ins.pl_balance,
+          ins.ot_hours, ins.ot_rate, ins.week_offs, ins.working_days, ins.paid_days
+        ]
+      );
+
+      // Prepare employee update fields: prefer explicit salary_structure from request, else persist computed summary
+      const empUpdates = [];
+      const empParams = [];
+      if (body && body.salary_structure) {
+        empUpdates.push('salary_structure = ?');
+        empParams.push(body.salary_structure);
+      }
+      // Persist computed gross/net/deductions to employee master for quick access in UI
+      if (ins.gross_salary !== undefined && ins.gross_salary !== null) {
+        empUpdates.push('gross_salary = ?');
+        empParams.push(ins.gross_salary);
+      }
+      if (ins.other_allowance !== undefined && ins.other_allowance !== null) {
+        // treat other_allowance as total_deductions if no explicit total_deductions provided
+        empUpdates.push('total_deductions = ?');
+        empParams.push(ins.other_allowance);
+      }
+      if (ins.in_hand_salary !== undefined && ins.in_hand_salary !== null) {
+        empUpdates.push('net_salary = ?');
+        empParams.push(ins.in_hand_salary);
+      }
+
+      if (empUpdates.length > 0) {
+        empParams.push(employeeId);
+        console.debug('[salary-api] POST: updating employees table with', empUpdates);
+        const [updateRes] = await db.execute(`UPDATE employees SET ${empUpdates.join(', ')} WHERE id = ?`, empParams);
+        console.debug('[salary-api] POST: employees update result', updateRes && updateRes.affectedRows ? updateRes.affectedRows : updateRes);
+        // If update didn't affect any row, rollback and surface an error to help debugging invisible writes
+        if (!updateRes || (typeof updateRes.affectedRows === 'number' && updateRes.affectedRows === 0)) {
+          try { await db.rollback(); } catch {}
+          try { await db.end(); } catch {}
+          console.error('[salary-api] POST: employees update affected 0 rows - rolling back transaction');
+          return NextResponse.json({ success: false, error: 'Failed to persist employee salary snapshot (no rows updated). Transaction rolled back.' }, { status: 500 });
+        }
+      }
+
+      await db.commit();
+      // Verify persisted salary_structure for visibility on refresh
+      try {
+        const [empCheck] = await db.execute('SELECT salary_structure, gross_salary, total_deductions, net_salary FROM employees WHERE id = ? LIMIT 1', [employeeId]);
+        await db.end();
+        const persisted = empCheck && empCheck[0] ? empCheck[0] : null;
+        console.debug('[salary-api] POST: persisted employee salary snapshot', persisted);
+        return NextResponse.json({ success: true, data: { id, computed, persisted } }, { status: 201 });
+      } catch (checkErr) {
+        try { await db.end(); } catch {}
+        console.warn('[salary-api] POST: verification query failed', checkErr?.message || checkErr);
+        return NextResponse.json({ success: true, data: { id, computed } }, { status: 201 });
+      }
+    } catch (txErr) {
+      try { await db.rollback(); } catch { /* ignore rollback errors */ }
+      try { await db.end(); } catch { /* ignore */ }
+      console.error('Transaction failed for salary master POST:', txErr);
+      return NextResponse.json({ success: false, error: 'Failed to save salary master (transaction rolled back)', details: txErr?.message }, { status: 500 });
+    }
   } catch (error) {
     console.error('POST salary master error:', error);
     return NextResponse.json({ success: false, error: 'Failed to save salary master', details: error.message }, { status: 500 });

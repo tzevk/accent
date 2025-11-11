@@ -30,8 +30,10 @@ export async function GET(request, { params }) {
       );
     }
 
+    // Return both `data` and `proposal` for backward compatibility with callers
     return NextResponse.json({
       success: true,
+      data: rows[0],
       proposal: rows[0]
     });
 

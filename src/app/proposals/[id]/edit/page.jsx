@@ -146,6 +146,7 @@ Dispute Resolution
 
     payment_terms: '',
   });
+  const [linkedLead, setLinkedLead] = useState(null);
 
   // Fetch once on mount (and when id changes)
   useEffect(() => {
@@ -254,6 +255,28 @@ Dispute Resolution
             enquiry_number: p.enquiry_number ?? '',
             enquiry_date: p.enquiry_date ?? '',
           }));
+
+          // If this proposal is linked to a lead, fetch lead details and prefill client/project fields
+          if (p?.lead_id) {
+            try {
+              const leadRes = await fetch(`/api/leads/${p.lead_id}`);
+              const leadJson = await leadRes.json();
+              if (leadJson?.success) {
+                const lead = leadJson.data;
+                setLinkedLead(lead);
+                setProposalData(prev => ({
+                  ...prev,
+                  // prefer existing proposal values, fallback to lead values
+                  client_name: prev.client_name || lead.company_name || lead.company || prev.client_name,
+                  description: prev.description || lead.description || prev.notes || prev.description,
+                  // also surface the lead id in the form data
+                  lead_id: p.lead_id
+                }));
+              }
+            } catch (e) {
+              console.warn('Failed to fetch linked lead', e);
+            }
+          }
         }
       } catch (e) {
         console.error('Error fetching proposal:', e);
@@ -333,6 +356,14 @@ Dispute Resolution
                 <p className="text-gray-600 text-sm">
                   {proposalData.proposal_title || 'Untitled Proposal'}
                 </p>
+                {(linkedLead || proposalData.lead_id) && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Linked Lead:{' '}
+                    <a href={`/leads/${linkedLead?.id || proposalData.lead_id}/edit`} className="text-indigo-600 hover:underline">
+                      {linkedLead?.id ? `${linkedLead.id}${linkedLead.company_name ? ` — ${linkedLead.company_name}` : ''}` : proposalData.lead_id}
+                    </a>
+                  </p>
+                )}
               </div>
             </div>
 
