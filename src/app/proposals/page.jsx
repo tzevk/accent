@@ -21,6 +21,7 @@ export default function Proposals() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [exporting, setExporting] = useState(false);
 
   // Fetch proposals data
   useEffect(() => {
@@ -113,11 +114,11 @@ export default function Proposals() {
   const downloadProposal = async (id) => {
     try {
       setDownloadingId(id);
-      const res = await fetch(`/api/proposals/export?id=${encodeURIComponent(id)}`);
-      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const res = await fetch(`/api/proposals/pdf?id=${encodeURIComponent(id)}`);
+      if (!res.ok) throw new Error(`PDF export failed (${res.status})`);
 
       const contentDisposition = res.headers.get('Content-Disposition') || res.headers.get('content-disposition');
-      let filename = `proposal_${id}.docx`;
+      let filename = `proposal_${id}.pdf`;
       if (contentDisposition) {
         const match = /filename\*?=([^;]+)/i.exec(contentDisposition);
         if (match) {
@@ -136,25 +137,63 @@ export default function Proposals() {
       window.URL.revokeObjectURL(url);
 
       // Success toast
-      const toast = document.createElement('div');
-      toast.textContent = `✅ Download complete: ${filename}`;
-      toast.style.position = 'fixed';
-      toast.style.bottom = '20px';
-      toast.style.right = '20px';
-      toast.style.background = '#1E293B';
-      toast.style.color = 'white';
-      toast.style.padding = '10px 16px';
-      toast.style.borderRadius = '8px';
-      toast.style.boxShadow = '0 4px 10px rgba(0,0,0,0.2)';
-      toast.style.zIndex = 9999;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      showToast(`✅ PDF download complete: ${filename}`);
     } catch (err) {
       console.error('Download failed:', err);
-      alert('Failed to download proposal. Please try again.');
+      alert('Failed to download PDF. Please try again.');
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const exportAllProposals = async () => {
+    try {
+      setExporting(true);
+      const res = await fetch('/api/proposals/pdf?all=true');
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+
+      const contentDisposition = res.headers.get('Content-Disposition') || res.headers.get('content-disposition');
+      let filename = `all_proposals_${new Date().toISOString().split('T')[0]}.pdf`;
+      if (contentDisposition) {
+        const match = /filename\*?=([^;]+)/i.exec(contentDisposition);
+        if (match) {
+          filename = decodeURIComponent(match[1].replace(/UTF-8''/i, '').replace(/["']/g, '').trim());
+        }
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      showToast(`✅ Exported ${proposals.length} proposals to PDF: ${filename}`);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export proposals. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const showToast = (message) => {
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.position = 'fixed';
+    toast.style.bottom = '20px';
+    toast.style.right = '20px';
+    toast.style.background = '#1E293B';
+    toast.style.color = 'white';
+    toast.style.padding = '10px 16px';
+    toast.style.borderRadius = '8px';
+    toast.style.boxShadow = '0 4px 10px rgba(0,0,0,0.2)';
+    toast.style.zIndex = 9999;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
   };
 
   return (
@@ -219,15 +258,23 @@ export default function Proposals() {
                   </select>
                 </div>
                 
-                <button className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
+                                <button className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
                   <ArrowUpTrayIcon className="h-4 w-4" />
                   <span>Import</span>
                 </button>
                 
-                <a href="/api/proposals/export" className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2">
-                  <ArrowDownTrayIcon className="h-4 w-4" />
-                  <span>Export</span>
-                </a>
+                <button 
+                  onClick={exportAllProposals}
+                  disabled={exporting}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 space-x-2 disabled:opacity-50"
+                >
+                  {exporting ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700"></div>
+                  ) : (
+                    <ArrowDownTrayIcon className="h-4 w-4" />
+                  )}
+                  <span>Export All PDF</span>
+                </button>
               </div>
             </div>
           </div>
@@ -332,7 +379,7 @@ export default function Proposals() {
                         <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
                         <h3 className="mt-2 text-sm font-medium text-gray-900">No proposals</h3>
                         <p className="mt-1 text-sm text-gray-500">
-                          Proposals are generated from leads using the "Convert to Proposal" button.
+                          Proposals are generated from leads using the &quot;Convert to Proposal&quot; button.
                         </p>
                       </td>
                     </tr>
@@ -389,10 +436,15 @@ export default function Proposals() {
                             </button>
                             <button
                               onClick={() => downloadProposal(proposal.id)}
-                              className="p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
-                              title="Export Proposal"
+                              disabled={downloadingId === proposal.id}
+                              className="p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Download PDF Quotation"
                             >
-                              <ArrowDownTrayIcon className="h-4 w-4" />
+                              {downloadingId === proposal.id ? (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700"></div>
+                              ) : (
+                                <ArrowDownTrayIcon className="h-4 w-4" />
+                              )}
                             </button>
                             <button 
                               onClick={() => router.push(`/proposals/${proposal.id}/edit`)}

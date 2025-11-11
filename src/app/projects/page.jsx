@@ -54,6 +54,16 @@ function ProjectsInner() {
   const [activeTab, setActiveTab] = useState(() => (viewParam === 'calendar' ? 'calendar' : 'list'));
   const [calendarDate, setCalendarDate] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Derived quick stats
+  const stats = useMemo(() => {
+    const total = projects.length;
+    const inProgress = projects.filter(p => String(p.status || '').toLowerCase().includes('progress')).length;
+    const completed = projects.filter(p => String(p.status || '').toLowerCase().includes('complete')).length;
+    const budgetTotal = projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
+    return { total, inProgress, completed, budgetTotal };
+  }, [projects]);
 
   useEffect(() => {
     fetchProjects();
@@ -199,8 +209,39 @@ function ProjectsInner() {
           <div className="px-8 pt-22 pb-8">
             {/* Header */}
             <div className="mb-6">
-              <h1 className="text-xl font-bold text-black">Projects</h1>
-              <p className="text-sm text-black">Manage and track your client projects</p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+                  <p className="text-sm text-gray-600">Manage and track your client projects</p>
+                </div>
+                <div className="hidden sm:flex items-center gap-2">
+                  <button
+                    onClick={handleNewProject}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white px-4 py-2 text-sm shadow-sm hover:bg-[#58105f]"
+                  >
+                    <PlusIcon className="h-4 w-4" /> New Project
+                  </button>
+                </div>
+              </div>
+              {/* Quick Stats */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">Total Projects</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</div>
+                </div>
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">In Progress</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.inProgress}</div>
+                </div>
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">Completed</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.completed}</div>
+                </div>
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">Total Budget</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{formatCurrency(stats.budgetTotal)}</div>
+                </div>
+              </div>
             </div>
 
             {/* Tabs (accessible) */}
@@ -268,48 +309,73 @@ function ProjectsInner() {
               {activeTab === 'list' && (
                 <div className="space-y-6">
                   {/* Action Bar */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center space-x-4">
-                      <button
-                        onClick={handleNewProject}
-                        className="bg-accent-primary hover:bg-accent-primary/90 text-white px-4 py-2 rounded-md inline-flex items-center space-x-2 transition-colors text-sm"
-                      >
-                        <PlusIcon className="h-4 w-4" />
-                        <span>New Project</span>
-                      </button>
-                      <div className="ml-4 flex items-center space-x-2">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="flex-1 flex items-center gap-2">
+                      <div className="relative w-full max-w-md">
                         <input
                           value={query}
                           onChange={(e) => setQuery(e.target.value)}
-                          placeholder="Search projects or client..."
-                          className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                          placeholder="Search by project or client"
+                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent placeholder:text-gray-400"
                         />
-                        <select
-                          value={statusFilter}
-                          onChange={(e) => setStatusFilter(e.target.value)}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md"
-                        >
-                          <option value="">All Statuses</option>
-                          <option value="NEW">NEW</option>
-                          <option value="planning">Planning</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="on-hold">On Hold</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                        <select
-                          value={priorityFilter}
-                          onChange={(e) => setPriorityFilter(e.target.value)}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md"
-                        >
-                          <option value="">All Priorities</option>
-                          <option value="High">High</option>
-                          <option value="Medium">Medium</option>
-                          <option value="Low">Low</option>
-                        </select>
+                        <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l3.386 3.387a1 1 0 01-1.414 1.414l-3.386-3.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
                       </div>
+                      <button
+                        onClick={() => setShowFilters(v => !v)}
+                        className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Filters
+                      </button>
+                      {(statusFilter || priorityFilter || query) && (
+                        <button
+                          onClick={() => { setQuery(''); setStatusFilter(''); setPriorityFilter(''); }}
+                          className="text-xs text-gray-600 underline"
+                        >Clear</button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleNewProject}
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white px-4 py-2 text-sm shadow-sm hover:bg-[#58105f] md:hidden"
+                      >
+                        <PlusIcon className="h-4 w-4" /> New
+                      </button>
                     </div>
                   </div>
+
+                  {showFilters && (
+                    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 flex flex-wrap items-center gap-2">
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="px-2 py-2 text-sm border border-gray-300 rounded-md"
+                      >
+                        <option value="">All Statuses</option>
+                        <option value="NEW">NEW</option>
+                        <option value="planning">Planning</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="on-hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      <select
+                        value={priorityFilter}
+                        onChange={(e) => setPriorityFilter(e.target.value)}
+                        className="px-2 py-2 text-sm border border-gray-300 rounded-md"
+                      >
+                        <option value="">All Priorities</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                      </select>
+                      {statusFilter && (
+                        <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-purple-50 text-[#64126D] border border-purple-200">Status: {formatLabel(statusFilter)}</span>
+                      )}
+                      {priorityFilter && (
+                        <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">Priority: {priorityFilter}</span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Projects Table */}
                   <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -356,7 +422,7 @@ function ProjectsInner() {
                                 return idB.localeCompare(idA);
                               })
                               .map((project, _idx) => (
-                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} className="hover:bg-gray-50">
+                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} className="hover:bg-purple-50/40">
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-sm font-mono text-gray-900">
                                     {project.project_id || '-'}
@@ -364,25 +430,25 @@ function ProjectsInner() {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div>
-                                    <div className="text-sm font-medium text-black">{project.name}</div>
-                                    <div className="text-xs text-black max-w-xs truncate">{project.description}</div>
+                                    <div className="text-sm font-semibold text-gray-900">{project.name}</div>
+                                    <div className="text-xs text-gray-600 max-w-xs truncate">{project.description}</div>
                                     <div className={`text-xs font-medium mt-1 ${getPriorityColor(project.priority)}`}>
                                       {formatLabel(project.priority || 'Unassigned')} Priority
                                     </div>
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <div className="text-sm text-black">{project.company_name || '-'}</div>
-                                  <div className="text-xs text-black">PM: {project.project_manager || 'Not assigned'}</div>
+                                  <div className="text-sm text-gray-900">{project.company_name || '-'}</div>
+                                  <div className="text-xs text-gray-600">PM: {project.project_manager || 'Not assigned'}</div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="text-sm text-black">
+                                  <div className="text-sm text-gray-900">
                                     <div className="flex items-center">
                                       <CalendarIcon className="h-3 w-3 mr-1 text-gray-400" />
                                       {formatDate(project.start_date)}
                                     </div>
                                     {project.end_date && (
-                                      <div className="text-xs text-black mt-1">to {formatDate(project.end_date)}</div>
+                                      <div className="text-xs text-gray-600 mt-1">to {formatDate(project.end_date)}</div>
                                     )}
                                   </div>
                                 </td>
@@ -391,7 +457,7 @@ function ProjectsInner() {
                                     {formatLabel(project.status)}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-black">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                                   {(() => {
                                     try {
                                       if (project.cost_breakup) {
@@ -403,7 +469,7 @@ function ProjectsInner() {
                                     return '-';
                                   })()}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-black">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                                   {formatCurrency(project.budget)}
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
@@ -411,28 +477,28 @@ function ProjectsInner() {
                                     <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
                                       <div className="bg-accent-primary h-1.5 rounded-full" style={{ width: `${project.progress || 0}%` }}></div>
                                     </div>
-                                    <span className="text-xs text-black">{project.progress || 0}%</span>
+                                    <span className="text-xs text-gray-700">{project.progress || 0}%</span>
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end space-x-1">
                                     <button
                                       onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}`)}
-                                      className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
+                                      className="p-1.5 text-[#64126D] hover:text-white hover:bg-[#64126D] rounded-full transition-colors"
                                       title="View Details"
                                     >
                                       <EyeIcon className="h-3 w-3" />
                                     </button>
                                     <button
                                       onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}/edit`)}
-                                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-full transition-colors"
+                                      className="p-1.5 text-gray-600 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                                       title="Edit Project"
                                     >
                                       <PencilIcon className="h-3 w-3" />
                                     </button>
                                     <button
                                       onClick={() => handleDelete(project.id ?? project.project_id ?? project.project_code)}
-                                      className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
+                                      className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 rounded-full transition-colors"
                                       title="Delete Project"
                                     >
                                       <TrashIcon className="h-3 w-3" />

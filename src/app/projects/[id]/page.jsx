@@ -90,19 +90,36 @@ export default function ProjectViewPage() {
     if (!project) return [];
     const docs = [];
     if (project.project_schedule) {
-      docs.push({ title: 'Project Schedule', content: project.project_schedule });
+      docs.push({ title: 'Project Schedule', content: project.project_schedule, type: 'text' });
     }
     if (project.input_document) {
-      docs.push({ title: 'Input Documents', content: project.input_document });
+      // Try JSON array format first
+      let type = 'text';
+      let parsed = null;
+      try {
+        const str = String(project.input_document).trim();
+        if (str.startsWith('[')) {
+          const arr = JSON.parse(str);
+          if (Array.isArray(arr)) {
+            type = 'list';
+            parsed = arr;
+          }
+        }
+      } catch {}
+      if (type === 'list') {
+        docs.push({ title: 'Input Documents', content: parsed, type: 'list' });
+      } else {
+        docs.push({ title: 'Input Documents', content: project.input_document, type: 'text' });
+      }
     }
     if (project.list_of_deliverables) {
-      docs.push({ title: 'List of Deliverables', content: project.list_of_deliverables });
+      docs.push({ title: 'List of Deliverables', content: project.list_of_deliverables, type: 'text' });
     }
     if (project.kickoff_meeting) {
-      docs.push({ title: 'Kickoff Meeting', content: project.kickoff_meeting });
+      docs.push({ title: 'Kickoff Meeting', content: project.kickoff_meeting, type: 'text' });
     }
     if (project.in_house_meeting) {
-      docs.push({ title: 'In House Meeting', content: project.in_house_meeting });
+      docs.push({ title: 'In House Meeting', content: project.in_house_meeting, type: 'text' });
     }
     return docs;
   }, [project]);
@@ -482,7 +499,27 @@ export default function ProjectViewPage() {
                         meetingDocuments.map((doc) => (
                           <div key={doc.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
                             <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{doc.title}</h4>
-                            <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{doc.content}</p>
+                            {doc.type === 'list' ? (
+                              <div className="mt-2 space-y-2">
+                                {doc.content.map((d, idx) => (
+                                  <div key={d.id || idx} className="flex items-center gap-3">
+                                    <DocumentTextIcon className="h-4 w-4 text-[#7F2487]" />
+                                    {d.fileUrl ? (
+                                      <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-[#7F2487] hover:underline">
+                                        {d.name || d.text}
+                                      </a>
+                                    ) : (
+                                      <span className="text-sm text-gray-700">{d.name || d.text}</span>
+                                    )}
+                                    {d.thumbUrl && (
+                                      <img src={d.thumbUrl} alt={d.name || 'thumb'} className="h-8 w-8 rounded object-cover border border-gray-200" />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{doc.content}</p>
+                            )}
                           </div>
                         ))
                       ) : (
