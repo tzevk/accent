@@ -599,7 +599,7 @@ function ProjectsInner() {
                             </div>
                             <div className="mt-2 space-y-2 overflow-y-auto max-h-32 pr-1">
                               {dayProjects.map((project) => (
-                                <div key={project.id} className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1">
+                                <div key={`${project.id ?? project.project_id ?? project.project_code ?? project.name ?? 'unknown'}`} className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1">
                                   <p className="text-xs font-semibold text-black truncate" title={project.name}>
                                     {project.name}
                                   </p>
