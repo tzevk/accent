@@ -67,7 +67,6 @@ function ProjectsInner() {
 
   useEffect(() => {
     fetchProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -465,7 +464,9 @@ function ProjectsInner() {
                                         const tot = cb.reduce((s, r) => s + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
                                         return tot > 0 ? formatCurrency(tot) : '-';
                                       }
-                                    } catch (e) {}
+                                    } catch {
+                                      // ignore parse errors
+                                    }
                                     return '-';
                                   })()}
                                 </td>
@@ -598,8 +599,8 @@ function ProjectsInner() {
                               </div>
                             </div>
                             <div className="mt-2 space-y-2 overflow-y-auto max-h-32 pr-1">
-                              {dayProjects.map((project) => (
-                                <div key={project.id} className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1">
+                              {dayProjects.map((project, _idx) => (
+                                <div key={project.id ?? project.project_id ?? project.project_code ?? _idx} className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1">
                                   <p className="text-xs font-semibold text-black truncate" title={project.name}>
                                     {project.name}
                                   </p>
