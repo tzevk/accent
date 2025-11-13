@@ -1,13 +1,17 @@
+import dotenv from 'dotenv';
 import mysql from 'mysql2/promise'
+
+// Load env from .env.local for server-side tools/scripts that may not automatically load it
+dotenv.config({ path: '.env.local' });
 
 let pool;
 
 export async function dbConnect() {
-  const host = process.env.DB_HOST || 'localhost'
-  const port = Number(process.env.DB_PORT) || 3306
-  const database = process.env.DB_NAME || 'accent'
-  const user = process.env.DB_USER || 'root'
-  const password = process.env.DB_PASSWORD || ''
+  const host = process.env.DB_HOST
+  const port = Number(process.env.DB_PORT)
+  const database = process.env.DB_NAME
+  const user = process.env.DB_USER
+  const password = process.env.DB_PASSWORD
   const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000) // ms
   const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 10)
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 2)

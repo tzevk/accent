@@ -736,7 +736,7 @@ export default function EditLead({ params }) {
                           </div>
                           <div className="flex space-x-2 ml-4">
                             <button
-                              onClick={() => setEditingFollowUp(followUp)}
+                              onClick={() => setEditingFollowUp(followUp.id)}
                               className="text-purple-600 hover:text-purple-800 p-1"
                             >
                               <PencilIcon className="h-4 w-4" />

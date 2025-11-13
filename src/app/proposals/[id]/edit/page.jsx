@@ -110,6 +110,7 @@ export default function EditProposalPage() {
 
     // New Quotation-related fields
     software: '',
+  software_items: [],
     duration: '',
     site_visit: '',
     quotation_validity: '',
@@ -232,6 +233,7 @@ Dispute Resolution
             progress: p.progress ?? 0,
             notes: p.notes ?? '',
             software: p.software ?? '',
+            software_items: Array.isArray(p.software_items) ? p.software_items : parseMaybe(p.software_items, []),
             duration: p.duration ?? p.project_duration_planned ?? '',
             site_visit: p.site_visit ?? '',
             quotation_validity: p.quotation_validity ?? '',
@@ -267,7 +269,8 @@ Dispute Resolution
                   client_name: prev.client_name || lead.company_name || lead.company || prev.client_name,
                   description: prev.description || lead.description || prev.notes || prev.description,
                   // also surface the lead id in the form data
-                  lead_id: p.lead_id
+                  lead_id: p.lead_id,
+                  enquiry_number: prev.enquiry_number || lead.id || p.lead_id
                 }));
               }
             } catch (e) {
@@ -301,6 +304,8 @@ Dispute Resolution
         'planned_hours_per_activity',
         'actual_hours_per_activity',
         'commercial_items',
+          'software_items',
+          'additional_fields',
       ].forEach((key) => {
         if (processed[key] && typeof processed[key] === 'object') {
           processed[key] = JSON.stringify(processed[key]);
@@ -379,9 +384,21 @@ Dispute Resolution
       {/* Tabs — sticky below header (adjust top if your Navbar is fixed) */}
       <div className="sticky top-16 z-30 bg-white border-b border-gray-200">
         <div className="w-full px-8">
-          <div className="flex overflow-x-auto -mb-px gap-2">
+          <div className="flex flex-wrap -mb-px gap-2">
+            {/* Reordered per user request: show primary tabs in the exact sequence specified */}
             <Tab label="Basic info" id="basic" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
             <Tab label="Scope of work" id="scope" activeTab={activeTab} setActiveTab={setActiveTab} icon={Cog6ToothIcon} />
+            <Tab label="Input documents" id="input_documents" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            <Tab label="Deliverables" id="deliverables" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            <Tab label="Software" id="software" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            {/* Schedule moved into Quotation Details as Duration; no separate Schedule tab */}
+            <Tab label="Mode of Delivery" id="mode_of_delivery" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            <Tab label="Revision" id="revision" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            <Tab label="Site Visit" id="site_visit" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            <Tab label="Quotation Validity" id="quotation_validity" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+            <Tab label="Exclusions" id="exclusions" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
+
+            {/* Keep remaining tabs after the primary sequence so we don't remove any functionality */}
             <Tab label="Commercials" id="commercials" activeTab={activeTab} setActiveTab={setActiveTab} icon={CurrencyDollarIcon} />
             <Tab label="Quotation details" id="quotation" activeTab={activeTab} setActiveTab={setActiveTab} icon={ChartBarIcon} />
           </div>
@@ -398,6 +415,35 @@ Dispute Resolution
             {activeTab === 'scope' && (
               <ScopeForm proposalData={proposalData} setProposalData={setProposalData} />
             )}
+            {activeTab === 'input_documents' && (
+              <InputDocumentsForm proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'deliverables' && (
+              <DeliverablesForm proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'software' && (
+              <SoftwareForm proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'schedule' && (
+              <ScheduleForm proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'mode_of_delivery' && (
+              <ModeOfDeliveryPage proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'revision' && (
+              <RevisionPage proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'site_visit' && (
+              <SiteVisitPage proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'quotation_validity' && (
+              <QuotationValidityPage proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'exclusions' && (
+              <ExclusionsPage proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+
+            {/* Keep existing secondary tabs after the primary ordered list */}
             {activeTab === 'commercials' && (
               <CommercialsForm proposalData={proposalData} setProposalData={setProposalData} />
             )}
@@ -419,6 +465,57 @@ Dispute Resolution
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------------- New main-tab pages ---------------------- */
+function SiteVisitPage({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  return (
+    <div className="space-y-6">
+      <Section title="Site Visit" subtitle="Site visit notes for the quotation" />
+      <Textarea label="Site Visit" rows={6} value={proposalData.site_visit} onChange={v => set('site_visit', v)} />
+    </div>
+  );
+}
+
+function QuotationValidityPage({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  return (
+    <div className="space-y-6">
+      <Section title="Quotation Validity" subtitle="Validity period for the quotation" />
+      <Text label="Quotation Validity" value={proposalData.quotation_validity} onChange={v => set('quotation_validity', v)} />
+    </div>
+  );
+}
+
+function ModeOfDeliveryPage({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  return (
+    <div className="space-y-6">
+      <Section title="Mode of Delivery" subtitle="How the deliverables will be delivered" />
+      <Text label="Mode of Delivery" value={proposalData.mode_of_delivery} onChange={v => set('mode_of_delivery', v)} />
+    </div>
+  );
+}
+
+function RevisionPage({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  return (
+    <div className="space-y-6">
+      <Section title="Revision" subtitle="Revision details for the quotation" />
+      <Text label="Revision" value={proposalData.revision} onChange={v => set('revision', v)} />
+    </div>
+  );
+}
+
+function ExclusionsPage({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  return (
+    <div className="space-y-6">
+      <Section title="Exclusions" subtitle="Exclusions applicable to the quotation" />
+      <Textarea label="Exclusions" rows={6} value={proposalData.exclusions} onChange={v => set('exclusions', v)} />
     </div>
   );
 }
@@ -525,22 +622,357 @@ function ScopeForm({ proposalData, setProposalData }) {
   return (
     <div className="space-y-8">
       <Section title="Scope of Work" subtitle="Define the scope and deliverables" />
-      <EditableList
-        label="Input Documents"
-        value={proposalData.input_document}
-        onChange={v => set('input_document', v)}
-        placeholder="One document per line"
-      />
-      <EditableList
-        label="List of Deliverables"
-        value={proposalData.list_of_deliverables}
-        onChange={v => set('list_of_deliverables', v)}
-        placeholder="One deliverable per line"
-      />
-      <Textarea label="Project Schedule Notes" rows={4} value={proposalData.project_schedule} onChange={v => set('project_schedule', v)} />
-      <Note>
-        Advanced fields (disciplines, activities, discipline descriptions, planning activities list, documents list) are stored as JSON and managed via specialized UIs.
-      </Note>
+      <Textarea label="Scope Summary" rows={6} value={proposalData.description} onChange={v => set('description', v)} />
+  <Note>Use the Input documents tab to manage input documents for this proposal.</Note>
+    </div>
+  );
+}
+
+function InputDocumentsForm({ proposalData, setProposalData }) {
+  const [docs, setDocs] = useState(() => {
+    if (!proposalData || !proposalData.input_document) return [];
+    const arr = String(proposalData.input_document)
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    return arr;
+  });
+  const [newDoc, setNewDoc] = useState('');
+
+  useEffect(() => {
+    // keep local docs in sync if parent changes externally
+    const arr = proposalData && proposalData.input_document
+      ? String(proposalData.input_document).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+      : [];
+    if (JSON.stringify(arr) !== JSON.stringify(docs)) setDocs(arr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposalData.input_document]);
+
+  const persist = (nextDocs) => {
+    setDocs(nextDocs);
+    setProposalData(prev => ({ ...prev, input_document: nextDocs.join('\n') }));
+  };
+
+  const handleAdd = () => {
+    const v = String(newDoc || '').trim();
+    if (!v) return;
+    const next = [...docs, v];
+    persist(next);
+    setNewDoc('');
+  };
+
+  const handleRemove = (idx) => {
+    const next = docs.filter((_, i) => i !== idx);
+    persist(next);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Section title="Input Documents" subtitle="Documents required as input for this proposal" />
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newDoc}
+          onChange={e => setNewDoc(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+          placeholder="Enter a document name or description…"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded"
+        />
+        <button type="button" onClick={handleAdd} className="px-4 py-2 bg-green-600 text-white rounded">Add</button>
+      </div>
+
+      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-100 border-b">
+              <th className="py-2 px-3 text-left">#</th>
+              <th className="py-2 px-3 text-left">Document</th>
+              <th className="py-2 px-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {docs.length ? docs.map((d, i) => (
+              <tr key={i} className="border-b">
+                <td className="py-2 px-3 w-12">{i + 1}</td>
+                <td className="py-2 px-3">{d}</td>
+                <td className="py-2 px-3 text-center">
+                  <button type="button" onClick={() => handleRemove(i)} className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded">Remove</button>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={3} className="py-4 px-3 text-sm text-gray-500">No input documents added.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DeliverablesForm({ proposalData, setProposalData }) {
+  // Implement single textbox + Add + table UI (same behaviour as InputDocumentsForm)
+  const [items, setItems] = useState(() => {
+    if (!proposalData || !proposalData.list_of_deliverables) return [];
+    const arr = String(proposalData.list_of_deliverables)
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    return arr;
+  });
+  const [newItem, setNewItem] = useState('');
+
+  useEffect(() => {
+    const arr = proposalData && proposalData.list_of_deliverables
+      ? String(proposalData.list_of_deliverables).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+      : [];
+    if (JSON.stringify(arr) !== JSON.stringify(items)) setItems(arr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposalData.list_of_deliverables]);
+
+  const persist = (next) => {
+    setItems(next);
+    setProposalData(prev => ({ ...prev, list_of_deliverables: next.join('\n') }));
+  };
+
+  const handleAdd = () => {
+    const v = String(newItem || '').trim();
+    if (!v) return;
+    const next = [...items, v];
+    persist(next);
+    setNewItem('');
+  };
+
+  const handleRemove = (idx) => {
+    const next = items.filter((_, i) => i !== idx);
+    persist(next);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Section title="Deliverables" subtitle="List of deliverables for this proposal" />
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newItem}
+          onChange={e => setNewItem(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+          placeholder="Enter a deliverable description…"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded"
+        />
+        <button type="button" onClick={handleAdd} className="px-4 py-2 bg-green-600 text-white rounded">Add</button>
+      </div>
+
+      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-100 border-b">
+              <th className="py-2 px-3 text-left">#</th>
+              <th className="py-2 px-3 text-left">Deliverable</th>
+              <th className="py-2 px-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length ? items.map((d, i) => (
+              <tr key={i} className="border-b">
+                <td className="py-2 px-3 w-12">{i + 1}</td>
+                <td className="py-2 px-3">{d}</td>
+                <td className="py-2 px-3 text-center">
+                  <button type="button" onClick={() => handleRemove(i)} className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded">Remove</button>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={3} className="py-4 px-3 text-sm text-gray-500">No deliverables added.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SoftwareForm({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+
+  const itemsInitial = Array.isArray(proposalData.software_items) ? proposalData.software_items : [];
+  const [items, setItems] = useState(itemsInitial);
+  const [masterSoftwares, setMasterSoftwares] = useState([]);
+  const [selectedMasterId, setSelectedMasterId] = useState('');
+
+  useEffect(() => {
+    setItems(Array.isArray(proposalData.software_items) ? proposalData.software_items : []);
+  }, [proposalData.software_items]);
+
+  // Load software master and flatten into a simple list for selection
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/software-master');
+        const json = await res.json();
+        if (!mounted) return;
+        if (json?.success && Array.isArray(json.data)) {
+          // Flatten categories -> softwares
+          const flat = [];
+          json.data.forEach(cat => {
+            (cat.softwares || []).forEach(sw => {
+              flat.push({ id: sw.id, name: sw.name, provider: sw.provider || '', versions: sw.versions || [] });
+            });
+          });
+          // sort by numeric id
+          flat.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+          setMasterSoftwares(flat);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const syncToParent = (next) => {
+    // sort numerically by id before persisting
+    const sorted = [...next].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    setItems(sorted);
+    set('software_items', sorted);
+  };
+
+  const addItem = () => {
+    // If user selected an item from master, add that. Otherwise add a blank row with next numeric id.
+    if (selectedMasterId) {
+      const chosen = masterSoftwares.find(s => String(s.id) === String(selectedMasterId));
+      if (!chosen) return;
+      // prevent duplicates by id
+      if (items.some(it => String(it.id) === String(chosen.id))) {
+        alert('This software is already added to the proposal.');
+        return;
+      }
+      const toAdd = { id: chosen.id, name: chosen.name || '', versions: Array.isArray(chosen.versions) ? chosen.versions : [], current_version: '', provider: chosen.provider || '' };
+      syncToParent([...items, toAdd]);
+      // clear selection
+      setSelectedMasterId('');
+      return;
+    }
+
+    // fallback: append a blank item with next available numeric id
+    const maxId = items.reduce((m, it) => Math.max(m, Number(it.id) || 0), 0);
+    const nextId = maxId + 1 || 1;
+    const next = [
+      ...items,
+      { id: nextId, name: '', versions: [], current_version: '', provider: '' },
+    ];
+    syncToParent(next);
+  };
+
+  const updateItem = (idx, field, value) => {
+    const next = items.map((it, i) => (i === idx ? { ...it, [field]: value } : it));
+    syncToParent(next);
+  };
+
+  const removeItem = (idx) => {
+    const next = items.filter((_, i) => i !== idx);
+    syncToParent(next);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Section title="Software" subtitle="Software inventory and versions" />
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <select value={selectedMasterId} onChange={e => setSelectedMasterId(e.target.value)} className="px-2 py-1 border rounded text-sm">
+            <option value="">Select from Software master…</option>
+            {masterSoftwares.map(sw => (
+              <option key={sw.id} value={sw.id}>{`${sw.id} — ${sw.name}${sw.provider ? ` (${sw.provider})` : ''}`}</option>
+            ))}
+          </select>
+          <button type="button" onClick={addItem} className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700">+ Add Selected / New</button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-100 border-b">
+              <th className="py-2 px-3 text-left">Software id</th>
+              <th className="py-2 px-3 text-left">Software name</th>
+              <th className="py-2 px-3 text-left">Software versions</th>
+              <th className="py-2 px-3 text-left">Current version</th>
+              <th className="py-2 px-3 text-left">Company provider</th>
+              <th className="py-2 px-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, idx) => (
+              <tr key={idx} className="border-b">
+                <td className="py-2 px-3 w-32">
+                  <input
+                    type="number"
+                    value={it.id}
+                    onChange={e => updateItem(idx, 'id', Number(e.target.value || 0))}
+                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                  />
+                </td>
+                <td className="py-2 px-3">
+                  <input
+                    type="text"
+                    value={it.name || ''}
+                    onChange={e => updateItem(idx, 'name', e.target.value)}
+                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                  />
+                </td>
+                <td className="py-2 px-3">
+                  <input
+                    type="text"
+                    value={(Array.isArray(it.versions) ? it.versions.join(', ') : String(it.versions || ''))}
+                    onChange={e => updateItem(idx, 'versions', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                    placeholder="v1.0, v1.1, v2.0"
+                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                  />
+                </td>
+                <td className="py-2 px-3 w-40">
+                  <input
+                    type="text"
+                    value={it.current_version || ''}
+                    onChange={e => updateItem(idx, 'current_version', e.target.value)}
+                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                  />
+                </td>
+                <td className="py-2 px-3 w-48">
+                  <input
+                    type="text"
+                    value={it.provider || ''}
+                    onChange={e => updateItem(idx, 'provider', e.target.value)}
+                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                  />
+                </td>
+                <td className="py-2 px-3 text-center">
+                  <button type="button" onClick={() => removeItem(idx)} className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded">Remove</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      
+    </div>
+  );
+}
+
+function ScheduleForm({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+
+  return (
+    <div className="space-y-8">
+      <Section title="Project Schedule" subtitle="Project schedule notes" />
+      <Textarea label="Project Schedule Notes" rows={6} value={proposalData.project_schedule} onChange={v => set('project_schedule', v)} />
+      <Note>These notes are stored on the proposal and will be saved when you use Save Changes.</Note>
     </div>
   );
 }
@@ -1062,6 +1494,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
 function QuotationForm({ proposalData, setProposalData }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
   const [termsOpen, setTermsOpen] = useState(false);
+  const [scopeTab, setScopeTab] = useState('schedule');
 
   return (
     <div className="space-y-8">
@@ -1071,36 +1504,109 @@ function QuotationForm({ proposalData, setProposalData }) {
           <DateField label="Date of Quotation" value={proposalData.quotation_date} onChange={v => set('quotation_date', v)} />
           <Text label="Enquiry No." value={proposalData.enquiry_number} onChange={v => set('enquiry_number', v)} />
           <DateField label="Date of Enquiry" value={proposalData.enquiry_date} onChange={v => set('enquiry_date', v)} />
-        <Text label="Project Duration (Planned)" placeholder="e.g., 6 months, 120 days…" value={proposalData.project_duration_planned} onChange={v => set('project_duration_planned', v)} />
+  <Text label="Duration" placeholder="e.g., 6 months, 120 days…" value={proposalData.duration} onChange={v => set('duration', v)} />
         <DateField label="Target Date" value={proposalData.target_date} onChange={v => set('target_date', v)} />
         <Text label="Lead ID (read-only if converted)" value={String(proposalData.lead_id ?? '')} onChange={v => set('lead_id', v)} readOnly />
 
         {/* Display fields from Scope tab */}
         <div className="lg:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Scope of Work</label>
-          <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800 whitespace-pre-line">{proposalData.project_schedule || '—'}</div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Input Document</label>
-          <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800">
-            {renderTextList(proposalData.input_document)}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Deliverables</label>
-          <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800">
-            {renderTextList(proposalData.list_of_deliverables)}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Scope of Work</label>
+
+              <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setScopeTab('documents')}
+                className={`px-3 py-1 text-sm rounded ${scopeTab === 'documents' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                Input Documents
+              </button>
+              <button
+                type="button"
+                onClick={() => setScopeTab('deliverables')}
+                className={`px-3 py-1 text-sm rounded ${scopeTab === 'deliverables' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                Deliverables
+              </button>
+            </div>
+
+            <div className="w-full px-3 py-3 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800">
+              {scopeTab === 'documents' && (
+                <div>{renderTextList(proposalData.input_document)}</div>
+              )}
+              {scopeTab === 'deliverables' && (
+                <div>{renderTextList(proposalData.list_of_deliverables)}</div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Quotation-specific editable fields */}
-        <Text label="Software" value={proposalData.software} onChange={v => set('software', v)} />
-        <Text label="Duration" value={proposalData.duration} onChange={v => set('duration', v)} />
-        <Text label="Site Visit" value={proposalData.site_visit} onChange={v => set('site_visit', v)} />
-        <Text label="Quotation Validity" value={proposalData.quotation_validity} onChange={v => set('quotation_validity', v)} />
-        <Text label="Mode of Delivery" value={proposalData.mode_of_delivery} onChange={v => set('mode_of_delivery', v)} />
-        <Text label="Revision" value={proposalData.revision} onChange={v => set('revision', v)} />
-        <Textarea label="Exclusions" rows={3} value={proposalData.exclusions} onChange={v => set('exclusions', v)} />
+  {/* Quotation-specific editable fields */}
+
+        {/* Quotation meta: display these fields read-only inside the Quotation Details tab */}
+        <div className="lg:col-span-2">
+          <Section title="Quotation Meta" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Site Visit</label>
+              <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.site_visit || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Scheduled</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.duration || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Validity</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.quotation_validity || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Delivery</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.mode_of_delivery || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Revision</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.revision || ''} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Exclusions</label>
+              <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" rows={4} value={proposalData.exclusions || ''} />
+            </div>
+          </div>
+
+          {/* Custom / additional fields (structured) */}
+          <div className="mt-4">
+            <h4 className="text-sm font-semibold">Custom fields</h4>
+            <p className="text-xs text-gray-500">Add arbitrary key/value fields to the quotation. These are saved as structured additional fields.</p>
+            <CustomFieldsEditor proposalData={proposalData} setProposalData={setProposalData} />
+          </div>
+        </div>
+
+        {/* Display software items in quotation view as a read-only list */}
+        <div className="lg:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Software</label>
+          <div className="w-full px-3 py-3 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800">
+            {Array.isArray(proposalData.software_items) && proposalData.software_items.length ? (
+              <ul className="list-none space-y-2">
+                {proposalData.software_items.map((s, i) => (
+                  <li key={i} className="p-2 border rounded bg-white">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm font-semibold">{s.name || 'Untitled'} {s.id ? <span className="text-xs text-gray-500">(ID: {s.id})</span> : null}</div>
+                        <div className="text-xs text-gray-600">Provider: {s.provider || '—'}</div>
+                      </div>
+                      <div className="text-right text-sm text-gray-700">
+                        <div>Current: {s.current_version || '—'}</div>
+                        <div className="text-xs text-gray-500">Versions: {(Array.isArray(s.versions) ? s.versions.join(', ') : String(s.versions || '—'))}</div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-gray-500">—</div>
+            )}
+          </div>
+        </div>
       </div>
       <div className="pt-4 space-y-6">
         <div>
@@ -1171,6 +1677,95 @@ function MeetingsForm({ proposalData, setProposalData }) {
         <DateField label="Internal Meeting Date" value={proposalData.internal_meeting_date} onChange={v => set('internal_meeting_date', v)} />
         <DateTimeField className="lg:col-span-2" label="Next Internal Meeting" value={proposalData.next_internal_meeting} onChange={v => set('next_internal_meeting', v)} />
       </div>
+    </div>
+  );
+}
+
+function CustomFieldsEditor({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newKey, setNewKey] = useState('');
+  const [newValue, setNewValue] = useState('');
+
+  const parseAdditional = (val) => {
+    if (!val) return [];
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === 'object') return Object.entries(parsed).map(([k, v]) => ({ key: k, value: v }));
+        return [];
+      } catch {
+        return [];
+      }
+    }
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') return Object.entries(val).map(([k, v]) => ({ key: k, value: v }));
+    return [];
+  };
+
+  const items = parseAdditional(proposalData.additional_fields);
+
+  const saveItems = (arr) => {
+    // store as JSON array
+    set('additional_fields', JSON.stringify(arr));
+  };
+
+  const handleAdd = () => {
+    const arr = items.length ? [...items] : [];
+    // if there is legacy text in additional_fields and items is empty, preserve it as a 'notes' field
+    if (!arr.length && proposalData.additional_fields && typeof proposalData.additional_fields === 'string') {
+      try {
+        JSON.parse(proposalData.additional_fields);
+      } catch {
+        if (proposalData.additional_fields.trim()) arr.push({ key: 'notes', value: proposalData.additional_fields });
+      }
+    }
+    arr.push({ key: newKey || 'custom', value: newValue });
+    saveItems(arr);
+    setNewKey(''); setNewValue(''); setShowAdd(false);
+  };
+
+  const handleRemove = (idx) => {
+    const arr = items.slice();
+    arr.splice(idx, 1);
+    saveItems(arr);
+  };
+
+  return (
+    <div className="mt-2">
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((it, idx) => (
+            <div key={idx} className="flex items-start justify-between p-2 border rounded bg-white">
+              <div>
+                <div className="text-sm font-medium">{it.key}</div>
+                <div className="text-sm text-gray-700">{it.value}</div>
+              </div>
+              <div>
+                <button onClick={() => handleRemove(idx)} className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded">Remove</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-500">No custom fields added yet.</div>
+      )}
+
+      {showAdd ? (
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+          <input value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="Field name" className="px-2 py-1 border rounded" />
+          <input value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="Value" className="px-2 py-1 border rounded" />
+          <div className="flex gap-2">
+            <button onClick={handleAdd} className="px-3 py-1 bg-green-600 text-white rounded">Add</button>
+            <button onClick={() => setShowAdd(false)} className="px-3 py-1 bg-gray-100 rounded">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <button onClick={() => setShowAdd(true)} className="px-3 py-1 bg-blue-600 text-white rounded">Add custom field</button>
+        </div>
+      )}
     </div>
   );
 }

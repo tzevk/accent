@@ -163,7 +163,7 @@ export async function POST(request) {
       'planned_hours_per_activity', 'actual_hours_per_activity', 'hours_variance_total', 'hours_variance_percentage',
       'productivity_index', 'client_contact_details', 'project_location_country',
       'project_location_city', 'project_location_site', 'status', 'priority', 'progress',
-      'notes', 'lead_id', 'project_id'
+     'notes', 'lead_id', 'enquiry_no', 'project_id'
     ];
 
     const values = [
@@ -238,7 +238,8 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
       (priority || 'MEDIUM').toUpperCase(),
       progress || 0,
       notes || null,
-      lead_id || null,
+     lead_id || null,
+     lead_id || null, // enquiry_no will mirror lead_id on create
       project_id || null
     ];
 

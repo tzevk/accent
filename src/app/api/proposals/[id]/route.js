@@ -520,6 +520,12 @@ export async function PUT(request, { params }) {
     pushIf('notes', body.notes ?? null);
     pushIf('lead_id', body.lead_id ?? null);
 
+    // Ensure enquiry_no mirrors lead_id when lead_id is provided; otherwise accept explicit enquiry_no
+    if (existing.has('enquiry_no')) {
+      const enquiryVal = body.lead_id ?? body.enquiry_no ?? null;
+      pushIf('enquiry_no', enquiryVal);
+    }
+
     // Quotation / related fields
     pushIf('client_name', body.client_name ?? body.client ?? null);
     pushIf('client_address', body.client_address ?? null);

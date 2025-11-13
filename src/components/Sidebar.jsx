@@ -92,6 +92,7 @@ export default function Sidebar() {
             <NavRow icon={UserGroupIcon} label="Employee Master" href="/employees" active={pathname.startsWith('/employees')} />
             <NavRow icon={UsersIcon} label="User Master" href="/masters/users" active={pathname.startsWith('/masters/users')} />
             <NavRow icon={DocumentTextIcon} label="Activity Master" href="/masters/activities" active={pathname.startsWith('/masters/activities')} />
+            <NavRow icon={DocumentTextIcon} label="Software Master" href="/masters/software" active={pathname.startsWith('/masters/software')} />
             <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />
             <NavRow icon={BuildingOfficeIcon} label="Vendor Master" href="/vendors" active={pathname.startsWith('/vendors')} />
             {/* Document Master removed from sidebar per request */}

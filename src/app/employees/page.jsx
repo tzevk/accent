@@ -51,19 +51,22 @@ const Avatar = ({ src, firstName, lastName, size = 40 }) => {
 
 
 export default function EmployeesPage() {
-  // Debug helper state: track floating save clicks so we can tell if clicks reach the component
-  const [salaryDebugClicks, setSalaryDebugClicks] = useState({ count: 0, last: null });
-
-  const handleFloatingDebugSave = async () => {
-    try {
-      const now = new Date().toISOString();
-      setSalaryDebugClicks(prev => ({ count: (prev.count || 0) + 1, last: now }));
-      console.debug('[salary][debug] floating debug save clicked', { selectedEmployeeId: selectedEmployee?.id, editingSalaryId, salaryInputs });
-      // Call the real submit handler (no event)
-      await submitSalaryMaster();
-    } catch (e) {
-      console.error('[salary][debug] floating save handler failed', e);
+  // (removed debug floating save helper) - production save flow uses submitSalaryMaster
+  // Safe profile photo change handler: forwards to canonical handler if present,
+  // otherwise shows a friendly error and avoids runtime ReferenceError while
+  // the file is mid-refactor.
+  const handleProfilePhotoChange_safe = async (e) => {
+    if (typeof handleProfilePhotoChange === 'function') {
+      try {
+        await handleProfilePhotoChange(e);
+      } catch (err) {
+        console.error('handleProfilePhotoChange invocation failed', err);
+      }
+      return;
     }
+    try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch {}
+    setFormErrors(prev => ({ ...prev, general: 'Photo upload temporarily unavailable while the editor is updating. Please try again.' }));
+    console.error('handleProfilePhotoChange is not available yet');
   };
   const defaultFormData = {
     // Personal details
@@ -175,6 +178,86 @@ export default function EmployeesPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   // Roles for System Role assignment
   const [roles, setRoles] = useState([]);
+  // Safe wrapper for opening the edit form. We add this wrapper to avoid TDZ/hoisting
+  // issues if the original `openEditForm` declaration is temporarily unavailable
+  // during ongoing edits. This mirrors the core behavior needed by the UI and
+  // keeps changes minimal.
+  const openEditForm_safe = (employee) => {
+    if (!employee) return;
+    try {
+      // Parse salary parts if present
+      let salaryParts = {};
+      if (employee.salary_structure) {
+        try {
+          const parsed = typeof employee.salary_structure === 'string' ? JSON.parse(employee.salary_structure) : employee.salary_structure;
+          if (parsed && typeof parsed === 'object') {
+            salaryParts = {
+              basic_salary: parsed.basic_salary ?? '',
+              hra: parsed.hra ?? '',
+              conveyance: parsed.conveyance ?? '',
+              medical_allowance: parsed.medical_allowance ?? '',
+              special_allowance: parsed.special_allowance ?? '',
+              incentives: parsed.incentives ?? '',
+              deductions: parsed.deductions ?? ''
+            };
+          }
+        } catch {}
+      }
+
+      const sysRoleId = (() => {
+        try {
+          const match = roles.find(r => r.role_name === employee.role);
+          return match ? String(match.id) : '';
+        } catch { return ''; }
+      })();
+
+      setFormData(prev => ({ ...defaultFormData, ...employee, ...salaryParts, system_role_id: sysRoleId, system_role_name: employee.role || '', hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '', joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '', dob: employee.dob ? employee.dob.split('T')[0] : '' }));
+      setSelectedEmployee(employee);
+      setFormErrors({});
+      setEditSubTab('personal');
+      setActiveTab('edit');
+    } catch (e) {
+      console.error('openEditForm_safe failed', e);
+    }
+  };
+  // Safe submit wrapper to avoid runtime ReferenceError if `handleSubmit` is temporarily
+  // undefined during an in-progress refactor. If the canonical `handleSubmit` exists
+  // it will be invoked; otherwise we show a friendly error and prevent default.
+  const handleSubmit_safe = async (e) => {
+    // Try calling the canonical handleSubmit if it's available. In some
+    // in-flight refactor states the `handleSubmit` binding may not be ready
+    // yet; retry a few times before failing gracefully.
+    const callIfReady = async () => {
+      if (typeof handleSubmit === 'function') {
+        try {
+          await handleSubmit(e);
+          return true;
+        } catch (err) {
+          // forward error to console but don't spam user with internal messages
+          console.error('handleSubmit invocation failed', err);
+          return false;
+        }
+      }
+      return false;
+    };
+
+    // Immediate attempt
+    if (await callIfReady()) return;
+
+    // Retry a few times (short backoff) in case of a transient binding order issue
+    const maxAttempts = 20;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      // small delay
+       
+      await new Promise(res => setTimeout(res, 50));
+       
+      if (await callIfReady()) return;
+    }
+
+    // If still not available, show a user-friendly message but avoid noisy console errors
+    try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch {}
+    setFormErrors(prev => ({ ...prev, general: 'Form submission temporarily unavailable. Please try again.' }));
+  };
   // Add Employee sub-tabs (like Projects edit tabs)
   const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
   const [addSubTab, setAddSubTab] = useState('personal');
@@ -317,7 +400,7 @@ export default function EmployeesPage() {
     });
   };
   
-  const [salaryCalculation, setSalaryCalculation] = useState(null);
+  // remove unused salaryCalculation state
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
   const [salarySuccess, setSalarySuccess] = useState('');
@@ -539,7 +622,8 @@ export default function EmployeesPage() {
   // Add attendance related extras
   // week_offs: weekly offs in the period; pl_use: paid leave used; pl_balance: informational
   // absent will be computed as derived below
-  const [attendanceExtras, setAttendanceExtras] = useState({ week_offs: '', pl_use: '', pl_balance: '' });
+  // attendance extras are not editable in this flow; keep default object
+  const attendanceExtras = { week_offs: '', pl_use: '', pl_balance: '' };
 
   // Evaluate a simple arithmetic formula safely against provided variables
   const evaluateFormula = (expr, vars) => {
@@ -552,8 +636,7 @@ export default function EmployeesPage() {
         const v = vars[key];
         return (typeof v === 'number' && isFinite(v)) ? String(v) : '0';
       });
-      // eslint-disable-next-line no-new-func
-      const fn = new Function(`return (${replaced});`);
+  const fn = new Function(`return (${replaced});`);
       const val = Number(fn());
       return isFinite(val) ? val : 0;
     } catch {
@@ -561,110 +644,7 @@ export default function EmployeesPage() {
     }
   };
 
-  // Compute locally for Add flow and for instant preview
-  const computeLocal = () => {
-    const salaryType = String(salaryInputs.salary_type || 'Monthly');
-    const applicable = salaryType; // keep same for now
-    const basicInput = componentConfig.basic;
-    const baseBasic = Number(salaryInputs.basic_salary || 0);
-    const additionalEarnings = Number(salaryInputs.additional_earnings || 0);
-    const additionalDeductions = Number(salaryInputs.additional_deductions || 0);
-    const loanActive = String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0;
-    const loanEmi = Number(salaryInputs.loan_emi || 0);
-    const advance = Number(salaryInputs.advance_payment || 0);
-    const totalDays = Number(salaryInputs.total_working_days || 0);
-    const weekOffs = Number(attendanceExtras.week_offs || 0);
-    const plUse = Number(attendanceExtras.pl_use || 0);
-    const attendanceDays = Number(salaryInputs.attendance_days || 0);
-
-    const effectiveDays = Math.max(0, totalDays - weekOffs);
-    const presentDays = Math.max(0, attendanceDays + plUse);
-    const computedAbsent = Math.max(0, effectiveDays - presentDays);
-
-    // Resolve components in order
-    const resolved = {};
-    // helper to resolve a component
-    const resolveComp = (key, defVal) => {
-      const conf = componentConfig[key] || { type: 'fixed', value: '' };
-      if (conf.type === 'formula') return evaluateFormula(String(conf.value || ''), resolved);
-      if (conf.type === 'fixed' && conf.value !== '') return Number(conf.value) || 0;
-      return defVal;
-    };
-
-    // Defaults mirroring server
-    const def_da = baseBasic * 0.10;
-    const def_hra = baseBasic * 0.40;
-    const def_conveyance = 1500;
-    const def_call = String(salaryType).toLowerCase() === 'monthly' ? 1500 : 0;
-    const def_other = baseBasic > 40000 ? 2000 : 1000;
-    const def_pf = Math.min(15000, baseBasic) * 0.12;
-    const grossForPTDefault = baseBasic + def_da + def_hra + def_conveyance + def_call + def_other + additionalEarnings;
-    const def_pt = grossForPTDefault > 7500 ? 200 : 0;
-    const now = new Date();
-    const def_mlwf = (now.getMonth() + 1) === 6 ? 10 : 0;
-
-    // Resolve with defaults available in 'resolved'
-    resolved.basic = resolveComp('basic', baseBasic);
-    resolved.da = resolveComp('da', def_da);
-    resolved.hra = resolveComp('hra', def_hra);
-    resolved.conveyance = resolveComp('conveyance', def_conveyance);
-    resolved.call_allowance = resolveComp('call_allowance', def_call);
-    resolved.other_allowance = resolveComp('other_allowance', def_other);
-
-    const gross = resolved.basic + resolved.da + resolved.hra + resolved.conveyance + resolved.call_allowance + resolved.other_allowance + additionalEarnings;
-
-    // Apply statutory flags to deductions - only calculate if enabled
-    resolved.pf = formData.stat_pf ? resolveComp('pf', def_pf) : 0;
-    resolved.pt = formData.stat_pt ? resolveComp('pt', def_pt) : 0;
-    resolved.mlwf = formData.stat_mlwf ? resolveComp('mlwf', def_mlwf) : 0;
-    resolved.esic = formData.stat_esic ? 0 : 0; // ESIC calculation can be added later
-    const totalDeductions = resolved.pf + resolved.pt + resolved.mlwf + additionalDeductions;
-
-    const netSalary = gross - totalDeductions;
-    const payablePct = effectiveDays > 0 ? presentDays / effectiveDays : 0;
-    const monthlySalary = netSalary * payablePct;
-    const hourlySalary = String(salaryType).toLowerCase() === 'hourly' && effectiveDays > 0 ? monthlySalary / (effectiveDays * 8) : 0;
-    const annualSalary = monthlySalary * 12;
-    // Apply TDS only if stat_tds is enabled
-    const tds = formData.stat_tds && annualSalary > 500000 ? annualSalary * 0.05 : 0;
-    const tdsMonthly = tds / 12;
-    const finalPayable = monthlySalary - (loanActive ? loanEmi : 0) - advance - tdsMonthly;
-
-    return {
-      inputs: {
-        salary_type: salaryType,
-        basic_salary: resolved.basic,
-        attendance_days: attendanceDays,
-        total_working_days: totalDays,
-        week_offs: weekOffs,
-        pl_use: plUse,
-        absent: computedAbsent,
-        loan_active: loanActive,
-        loan_emi: loanEmi,
-        advance_payment: advance,
-        effective_from: salaryInputs.effective_from || null,
-      },
-      earnings: {
-        da: resolved.da,
-        hra: resolved.hra,
-        conveyance: resolved.conveyance,
-        call_allowance: resolved.call_allowance,
-        other_allowance: resolved.other_allowance,
-        additional_earnings: additionalEarnings,
-        gross,
-      },
-      deductions: {
-        pf: resolved.pf,
-        pt: resolved.pt,
-        mlwf: resolved.mlwf,
-        esic: resolved.esic,
-        additional_deductions: additionalDeductions,
-        total_deductions: totalDeductions,
-      },
-      attendance: { absent_days: computedAbsent, payable_days_pct: payablePct },
-      summary: { net_salary: netSalary, monthly_salary: monthlySalary, hourly_salary: hourlySalary, annual_salary: annualSalary, tds, tds_monthly: tdsMonthly, final_payable: finalPayable },
-    };
-  };
+  // computeLocal helper removed — not used currently. Keep evaluateFormula for future formulas.
 
 
   // Fetch employees
@@ -782,36 +762,72 @@ export default function EmployeesPage() {
     const gross = salaryStructure.basic_salary + salaryStructure.hra + salaryStructure.conveyance + salaryStructure.medical_allowance + salaryStructure.special_allowance + salaryStructure.incentives;
     const net = gross - salaryStructure.deductions;
 
-    const payload = {
-      salary_structure: JSON.stringify(salaryStructure),
-      gross_salary: gross,
-      total_deductions: salaryStructure.deductions,
-      net_salary: net,
-    };
+    // employee-level payload is no longer used here; we persist salary rows via the salary endpoint
 
     try {
       setSalaryLoading(true);
-      const url = `/api/employees/${selectedEmployee.id}`;
-      const res = await fetch(url, {
-        method: 'PUT',
+
+      // Build the salary row payload for the salary endpoint. Include UI fields
+      // that belong to the salary record rather than the employee record.
+      const salaryPayload = {
+        ...salaryStructure,
+        gross_salary: gross,
+        total_deductions: salaryStructure.deductions,
+        net_salary: net,
+        attendance_days: Number(salaryInputs.attendance_days || 0),
+        total_working_days: Number(salaryInputs.total_working_days || 0),
+        loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
+        loan_emi: Number(salaryInputs.loan_emi || 0),
+        advance_payment: Number(salaryInputs.advance_payment || 0),
+        salary_type: salaryInputs.salary_type || 'Monthly',
+        effective_from: salaryInputs.effective_from || null,
+        additional_earnings: Number(salaryInputs.additional_earnings || 0),
+        additional_deductions: Number(salaryInputs.additional_deductions || 0),
+        pf: Number(salaryInputs.pf || 0),
+        pt: Number(salaryInputs.pt || 0),
+        mlwf: Number(salaryInputs.mlwf || 0),
+        pl_used: Number(salaryInputs.pl_used || 0),
+        pl_balance: Number(salaryInputs.pl_balance || 0),
+      };
+
+      // Determine whether to create or update a salary row
+      const isUpdate = !!editingSalaryId;
+      const salaryUrl = isUpdate
+        ? `/api/employees/${selectedEmployee.id}/salary/${editingSalaryId}`
+        : `/api/employees/${selectedEmployee.id}/salary`;
+
+      const res = await fetch(salaryUrl, {
+        method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(salaryPayload),
       });
-      const json = await res.json();
-      if (res.ok && json.success) {
-        setSalarySuccess('Salary structure saved successfully.');
+      const json = await res.json().catch(() => null);
+
+      if (res.ok && json && (json.success || json.id)) {
+        setSalarySuccess('Salary saved successfully.');
         setSalaryError('');
-        // Update selectedEmployee with new data
-        setSelectedEmployee(prev => prev ? { ...prev, ...payload } : prev);
-        // Refresh employees list
+
+        // If server returned the saved row, update salaryRows and selectedEmployee
+  // Refresh salary rows for the employee to ensure consistency
+  try { await loadSalaryRows(selectedEmployee.id); } catch { /* ignore */ }
+
+        // Also update the employee record summary locally so list shows latest gross/net
+        setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
+        // clear edit mode after successful save
+        setEditingSalaryId(null);
+        // store raw server response for troubleshooting / UI preview
+        try { setSalaryRaw(json); } catch (e) { /* ignore */ }
+        // clear success message after a short delay to reduce UI noise
+        setTimeout(() => { try { setSalarySuccess(''); } catch (e) {} }, 3000);
+        // Refresh employees list summary in background
         fetchEmployees();
       } else {
-        setSalaryError(json.error || 'Failed to save salary structure.');
+        setSalaryError((json && (json.error || json.message)) || 'Failed to save salary.');
         setSalarySuccess('');
       }
     } catch (err) {
-      console.error('Failed to submit salary structure', err);
-      setSalaryError('Network or server error while saving salary structure.');
+      console.error('Failed to submit salary', err);
+      setSalaryError('Network or server error while saving salary.');
       setSalarySuccess('');
     } finally {
       setSalaryLoading(false);
@@ -867,6 +883,88 @@ export default function EmployeesPage() {
       setFormErrors((prev) => ({ ...prev, general: err?.message || 'Failed to upload photo. Please try again.' }));
     } finally {
       setPhotoUploading(false);
+    }
+  };
+
+  // Save the currently computed salary (from salaryData) as a salary row.
+  const saveCalculatedSalary = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    setSalaryError('');
+    setSalarySuccess('');
+    if (!selectedEmployee?.id) {
+      setSalaryError('Select an employee first.');
+      return;
+    }
+
+    // Build salary structure from computed salaryData where available,
+    // falling back to salaryInputs for missing pieces.
+    const salaryStructure = {
+      basic_salary: Number(salaryData.basic_da || salaryInputs.basic_salary || 0) || 0,
+      hra: Number(salaryData.hra || salaryInputs.hra || 0) || 0,
+      conveyance: Number(salaryData.conveyance_allowance || salaryInputs.conveyance || 0) || 0,
+      medical_allowance: Number(salaryData.medical_allowance || salaryInputs.medical_allowance || 0) || 0,
+      special_allowance: Number(salaryData.special_allowance || salaryInputs.special_allowance || 0) || 0,
+      incentives: Number(salaryData.incentives || salaryInputs.incentives || 0) || 0,
+      deductions: Number((Number(salaryData.employee_pf || 0) + Number(salaryData.employee_pt || 0) + Number(salaryData.other_deductions || 0) + Number(salaryData.mlwf_employee || 0)) || salaryInputs.deductions || 0) || 0,
+      effective_from: salaryInputs.effective_from || salaryData.effective_from || null,
+    };
+
+    const gross = Number(salaryData.adjusted_gross || salaryData.gross_salary || 0) || 0;
+    const net = Number(salaryData.in_hand_salary || salaryData.net_salary || 0) || Math.max(0, gross - (salaryStructure.deductions || 0));
+
+    try {
+      setSalaryLoading(true);
+
+      const salaryPayload = {
+        ...salaryStructure,
+        gross_salary: gross,
+        total_deductions: salaryStructure.deductions,
+        net_salary: net,
+        attendance_days: Number(salaryInputs.attendance_days || salaryData.paid_days || 0),
+        total_working_days: Number(salaryInputs.total_working_days || salaryData.total_working_days || 0),
+        loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
+        loan_emi: Number(salaryInputs.loan_emi || 0),
+        advance_payment: Number(salaryInputs.advance_payment || 0),
+        salary_type: salaryInputs.salary_type || 'Monthly',
+        effective_from: salaryInputs.effective_from || salaryData.effective_from || null,
+        additional_earnings: Number(salaryInputs.additional_earnings || 0),
+        additional_deductions: Number(salaryInputs.additional_deductions || 0),
+        pf: Number(salaryInputs.pf || salaryData.employee_pf || 0),
+        pt: Number(salaryInputs.pt || salaryData.employee_pt || 0),
+        mlwf: Number(salaryInputs.mlwf || salaryData.mlwf_employee || 0),
+        pl_used: Number(salaryInputs.pl_used || 0),
+        pl_balance: Number(salaryInputs.pl_balance || salaryData.pl_balance || 0),
+      };
+
+      const isUpdate = !!editingSalaryId;
+      const salaryUrl = isUpdate
+        ? `/api/employees/${selectedEmployee.id}/salary/${editingSalaryId}`
+        : `/api/employees/${selectedEmployee.id}/salary`;
+
+      const res = await fetch(salaryUrl, {
+        method: isUpdate ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(salaryPayload),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && json && (json.success || json.id)) {
+        setSalarySuccess('Calculated salary saved successfully.');
+        setSalaryError('');
+        try { await loadSalaryRows(selectedEmployee.id); } catch {}
+        setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
+        setEditingSalaryId(null);
+        fetchEmployees();
+      } else {
+        setSalaryError((json && (json.error || json.message)) || 'Failed to save calculated salary.');
+        setSalarySuccess('');
+      }
+    } catch (err) {
+      console.error('Failed to save calculated salary', err);
+      setSalaryError('Network or server error while saving calculated salary.');
+      setSalarySuccess('');
+    } finally {
+      setSalaryLoading(false);
     }
   };
 
@@ -945,7 +1043,18 @@ export default function EmployeesPage() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                              <div className="mt-4">
+                                <button
+                                  type="button"
+                                  onClick={submitSalaryMaster}
+                                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-500 text-white rounded-lg hover:from-green-700 hover:to-teal-600"
+                                >
+                                  {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
+                                </button>
+                                {salaryError && <p className="mt-2 text-sm text-red-600">{salaryError}</p>}
+                                {salarySuccess && <p className="mt-2 text-sm text-green-600">{salarySuccess}</p>}
+                              </div>
+                            </div>
                 );
               }
 
@@ -1213,7 +1322,7 @@ export default function EmployeesPage() {
                                     <EyeIcon className="h-4 w-4" />
                                   </button>
                                   <button
-                                    onClick={() => openEditForm(employee)}
+                                    onClick={() => openEditForm_safe(employee)}
                                     className="text-blue-600 hover:text-blue-900 p-2 rounded-lg hover:bg-blue-50 transition-colors"
                                     title="Edit Employee"
                                   >
@@ -1387,7 +1496,7 @@ export default function EmployeesPage() {
                     </div>
                   )}
 
-                  <form onSubmit={handleSubmit} className="space-y-8">
+                  <form onSubmit={handleSubmit_safe} className="space-y-8">
                     {formErrors.general && (
                       <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
                         {formErrors.general}
@@ -1404,7 +1513,7 @@ export default function EmployeesPage() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
-                            <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
+                            <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange_safe} className="block text-sm text-gray-600" />
                             {photoUploading && <p className="text-xs text-purple-600 mt-1">Uploading...</p>}
                           </div>
                         </div>
@@ -1714,16 +1823,19 @@ export default function EmployeesPage() {
                                 <p className="text-sm text-purple-700 mt-1">Annual Leave: 21 days (April - March financial year)</p>
                                 <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
                               </div>
+                              <div className="mt-4">
+                                <button
+                                  type="button"
+                                  onClick={submitSalaryMaster}
+                                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-500 text-white rounded-lg hover:from-green-700 hover:to-teal-600"
+                                >
+                                  {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
+                                </button>
+                                {salaryError && <p className="mt-2 text-sm text-red-600">{salaryError}</p>}
+                                {salarySuccess && <p className="mt-2 text-sm text-green-600">{salarySuccess}</p>}
+                              </div>
                             </div>
-                            <div className="flex-shrink-0">
-                              <button
-                                type="button"
-                                onClick={submitSalaryMaster}
-                                className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md text-sm"
-                              >
-                                {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : (selectedEmployee?.id ? 'Save Salary' : 'Save (save employee first)'))}
-                              </button>
-                            </div>
+                            <div className="flex-shrink-0">{/* Save button moved below summary */}</div>
                           </div>
                         </div>
                         {/* DB-backed salary preview / selector */}
@@ -2209,6 +2321,24 @@ export default function EmployeesPage() {
                                 </div>
                               </div>
                             </div>
+                            <div className="mt-4 space-y-2">
+                              <button
+                                type="button"
+                                onClick={submitSalaryMaster}
+                                className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-500 text-white rounded-lg hover:from-green-700 hover:to-teal-600"
+                              >
+                                {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={saveCalculatedSalary}
+                                className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 border border-green-600 text-green-700 rounded-lg bg-white hover:bg-green-50"
+                              >
+                                Save Calculated Salary
+                              </button>
+                              {salaryError && <p className="mt-2 text-sm text-red-600">{salaryError}</p>}
+                              {salarySuccess && <p className="mt-2 text-sm text-green-600">{salarySuccess}</p>}
+                            </div>
                           </div>
 
                           {/* Right Column - Live Preview */}
@@ -2271,13 +2401,20 @@ export default function EmployeesPage() {
                                   </div>
                                 </div>
                               </div>
-                              <div className="mt-4">
+                              <div className="mt-4 space-y-2">
                                 <button
                                   type="button"
                                   onClick={submitSalaryMaster}
                                   className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-500 text-white rounded-lg hover:from-green-700 hover:to-teal-600"
                                 >
                                   {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={saveCalculatedSalary}
+                                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 border border-green-600 text-green-700 rounded-lg bg-white hover:bg-green-50"
+                                >
+                                  Save Calculated Salary
                                 </button>
                                 {salaryError && <p className="mt-2 text-sm text-red-600">{salaryError}</p>}
                                 {salarySuccess && <p className="mt-2 text-sm text-green-600">{salarySuccess}</p>}
@@ -2541,7 +2678,7 @@ export default function EmployeesPage() {
                     </nav>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-8">
+                  <form onSubmit={handleSubmit_safe} className="space-y-8">
                     {formErrors.general && (
                       <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
                         {formErrors.general}
@@ -2559,7 +2696,7 @@ export default function EmployeesPage() {
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
-                              <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
+                              <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange_safe} className="block text-sm text-gray-600" />
                               {photoUploading && <p className="text-xs text-purple-600 mt-1">Uploading...</p>}
                             </div>
                           </div>
@@ -2864,15 +3001,7 @@ export default function EmployeesPage() {
                                 <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
                               </div>
                             </div>
-                            <div className="flex-shrink-0">
-                              <button
-                                type="button"
-                                onClick={submitSalaryMaster}
-                                className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md text-sm"
-                              >
-                                {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : (selectedEmployee?.id ? 'Save Salary' : 'Save (save employee first)'))}
-                              </button>
-                            </div>
+                            <div className="flex-shrink-0">{/* Save button moved below summary */}</div>
                           </div>
                         </div>
 
@@ -3325,6 +3454,12 @@ export default function EmployeesPage() {
                       <div className="flex space-x-4">
                         <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
                         <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Updating...' : 'Update Employee'}</button>
+                        {editSubTab === 'salary' && (
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={submitSalaryMaster} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">{salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}</button>
+                            <button type="button" onClick={saveCalculatedSalary} className="px-4 py-2 border border-green-600 text-green-700 rounded-lg text-sm bg-white">Save Calculated Salary</button>
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -3377,7 +3512,7 @@ export default function EmployeesPage() {
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => openEditForm(selectedEmployee)}
+                      onClick={() => openEditForm_safe(selectedEmployee)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#64126D] text-white hover:bg-[#5a0f62] shadow-sm transition-colors"
                     >
                       <PencilIcon className="h-4 w-4" />
@@ -3742,23 +3877,7 @@ export default function EmployeesPage() {
             </div>
           )}
           </div>
-          {/* Floating debug Save button (visible when Salary tab active) */}
-          {(addSubTab === 'salary' || editSubTab === 'salary') && (
-            <div className="fixed bottom-6 right-6 z-[9999]">
-              <div className="flex flex-col items-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleFloatingDebugSave}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-lg hover:bg-indigo-700 focus:outline-none"
-                >
-                  Debug Save Salary
-                </button>
-                <div className="text-xs text-gray-700 bg-white px-2 py-1 rounded shadow-sm">
-                  Clicks: {salaryDebugClicks.count || 0}{salaryDebugClicks.last ? ` • ${new Date(salaryDebugClicks.last).toLocaleTimeString()}` : ''}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* salary floating debug removed */}
         </div>
       </div>
     </div>

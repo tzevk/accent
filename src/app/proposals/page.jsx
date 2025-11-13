@@ -344,13 +344,10 @@ export default function Proposals() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Proposal
+                      Proposal ID *
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Client
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Value
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
@@ -366,7 +363,7 @@ export default function Proposals() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {loading ? (
                     <tr>
-                      <td colSpan="6" className="px-6 py-4 text-center">
+                      <td colSpan="5" className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]"></div>
                           <span className="ml-2 text-gray-500">Loading proposals...</span>
@@ -375,7 +372,7 @@ export default function Proposals() {
                     </tr>
                   ) : filteredProposals.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="px-6 py-12 text-center">
+                      <td colSpan="5" className="px-6 py-12 text-center">
                         <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
                         <h3 className="mt-2 text-sm font-medium text-gray-900">No proposals</h3>
                         <p className="mt-1 text-sm text-gray-500">
@@ -395,23 +392,19 @@ export default function Proposals() {
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">
-                                {proposal.proposal_title || proposal.title || 'Untitled Proposal'}
+                                {proposal.proposal_id || proposal.proposal_number || `#${proposal.id}`}
                               </div>
                               <div className="text-sm text-gray-500">
-                                {proposal.proposal_id || proposal.proposal_number || `#${proposal.id}`}
+                                {proposal.proposal_title || proposal.title || 'Untitled Proposal'}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{proposal.client || '—'}</div>
+                          <div className="text-sm text-gray-900">{proposal.client_name || proposal.client || '—'}</div>
                           <div className="text-sm text-gray-500">{proposal.contact_email || ''}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {proposal.value ? `$${proposal.value.toLocaleString()}` : '—'}
-                          </div>
-                        </td>
+                        {/* Value column removed as requested */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             proposal.status === 'approved' ? 'bg-green-100 text-green-800' :
