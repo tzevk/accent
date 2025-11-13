@@ -2915,7 +2915,7 @@ function EditProjectForm() {
 
                   {teamMembers.length === 0 ? (
                     <div className="text-center py-12 text-sm text-gray-500">
-                      No team members assigned. Click "Add Team Member" to begin.
+                      No team members assigned. Click &quot;Add Team Member&quot; to begin.
                     </div>
                   ) : (
                     <div className="overflow-x-auto">

@@ -4,9 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
-  PlusIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   ClockIcon,
   Cog6ToothIcon,
   MapPinIcon,

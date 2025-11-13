@@ -1,13 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ShieldCheckIcon, 
-  UserGroupIcon, 
   AdjustmentsHorizontalIcon,
   CheckIcon,
   XMarkIcon,
-  CogIcon,
   LockClosedIcon,
   LockOpenIcon
 } from '@heroicons/react/24/outline';
@@ -18,7 +16,6 @@ export default function RBACPermissionsManager({
   targetId, 
   targetName,
   onPermissionsUpdated,
-  initialPermissions = [],
   readOnly = false 
 }) {
   const [permissions, setPermissions] = useState({});
@@ -32,15 +29,7 @@ export default function RBACPermissionsManager({
   const [filterDirectOnly, setFilterDirectOnly] = useState(false);
   const [collapsedResources, setCollapsedResources] = useState({});
 
-  useEffect(() => {
-    if (targetId) {
-      fetchPermissions();
-    } else {
-      setLoading(false);
-    }
-  }, [targetId, type]);
-
-  const fetchPermissions = async () => {
+  const fetchPermissions = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -66,7 +55,15 @@ export default function RBACPermissionsManager({
     } finally {
       setLoading(false);
     }
-  };
+  }, [targetId, type]);
+
+  useEffect(() => {
+    if (targetId) {
+      fetchPermissions();
+    } else {
+      setLoading(false);
+    }
+  }, [targetId, type, fetchPermissions]);
 
   const updatePermissions = async (newPermissions, action = 'replace') => {
     try {
@@ -265,14 +262,14 @@ export default function RBACPermissionsManager({
     let resources = Object.entries(RESOURCES);
     
     if (filterGrantedOnly) {
-      resources = resources.filter(([key, resource]) => {
+      resources = resources.filter(([, resource]) => {
         const effective = effectivePermissions[resource] || [];
         return effective.length > 0;
       });
     }
     
     if (filterDirectOnly && type === 'user') {
-      resources = resources.filter(([key, resource]) => {
+      resources = resources.filter(([, resource]) => {
         const userPerms = permissions[resource] || [];
         return userPerms.length > 0;
       });
@@ -458,7 +455,7 @@ export default function RBACPermissionsManager({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {getFilteredResources().map(([resourceKey, resource]) => {
+              {getFilteredResources().map(([, resource]) => {
                 const counts = getPermissionCount(resource);
                 const isCollapsed = collapsedResources[resource];
                 
@@ -654,7 +651,7 @@ export default function RBACPermissionsManager({
               <div className="h-3 w-3 bg-green-500 rounded-full shadow-sm" />
               <div>
                 <div className="font-medium text-gray-900">Role Inherited</div>
-                <div className="text-xs text-gray-600">From user's role</div>
+                <div className="text-xs text-gray-600">From user&apos;s role</div>
               </div>
             </div>
             <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-purple-100">

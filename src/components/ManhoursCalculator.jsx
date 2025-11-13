@@ -10,8 +10,8 @@ export default function ManhoursCalculator({ value, onChange }) {
     // compute days assuming 8 hours per day and distribute across resources
     const computedDays = resources > 0 ? (hours / (8 * resources)) : 0;
     setDays(Number(computedDays.toFixed(2)));
-    onChange && onChange(hours);
-  }, [hours, resources]);
+    if (onChange) onChange(hours);
+  }, [hours, resources, onChange]);
 
   return (
     <div className="bg-white p-3 rounded-md border border-gray-200">
