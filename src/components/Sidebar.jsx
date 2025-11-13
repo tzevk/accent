@@ -67,7 +67,7 @@ export default function Sidebar() {
   return (
     <aside
       data-pinned={pinned}
-      className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-white ${pinned ? 'w-[260px]' : 'w-[64px] hover:w-[260px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
+      className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px]' : 'w-[64px] hover:w-[260px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
     >
       <div className="h-full flex flex-col">
         {/* Top spacing to replace removed brand block */}

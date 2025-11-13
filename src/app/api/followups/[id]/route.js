@@ -4,7 +4,7 @@ import { dbConnect } from '@/utils/database';
 export async function GET(request, { params }) {
   let db;
   try {
-    const { id } = await params;
+    const { id } = params;
     
     if (!id || isNaN(parseInt(id))) {
       return Response.json({ success: false, error: 'Valid follow-up ID is required' }, { status: 400 });
@@ -37,7 +37,7 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   let db;
   try {
-    const { id } = await params;
+    const { id } = params;
     const data = await request.json();
     
     if (!id || isNaN(parseInt(id))) {
@@ -114,7 +114,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   let db;
   try {
-    const { id } = await params;
+    const { id } = params;
     
     if (!id || isNaN(parseInt(id))) {
       return Response.json({ success: false, error: 'Valid follow-up ID is required' }, { status: 400 });

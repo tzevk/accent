@@ -547,41 +547,7 @@ export default function ProposalPage() {
   }, [proposal]);
 
   // Parse complex JSON fields from proposal for rendering in view
-  const parsedDisciplines = useMemo(() => {
-    if (!proposal || !proposal.disciplines) return [];
-    try {
-      return typeof proposal.disciplines === 'string' ? JSON.parse(proposal.disciplines) : proposal.disciplines;
-    } catch (e) {
-      return [];
-    }
-  }, [proposal]);
 
-  const parsedActivities = useMemo(() => {
-    if (!proposal || !proposal.activities) return [];
-    try {
-      return typeof proposal.activities === 'string' ? JSON.parse(proposal.activities) : proposal.activities;
-    } catch (e) {
-      return [];
-    }
-  }, [proposal]);
-
-  const parsedPlanningActivities = useMemo(() => {
-    if (!proposal || !proposal.planning_activities_list) return [];
-    try {
-      return typeof proposal.planning_activities_list === 'string' ? JSON.parse(proposal.planning_activities_list) : proposal.planning_activities_list;
-    } catch (e) {
-      return [];
-    }
-  }, [proposal]);
-
-  const parsedDocumentsList = useMemo(() => {
-    if (!proposal || !proposal.documents_list) return [];
-    try {
-      return typeof proposal.documents_list === 'string' ? JSON.parse(proposal.documents_list) : proposal.documents_list;
-    } catch (e) {
-      return [];
-    }
-  }, [proposal]);
 
   const parsedCommercialItems = useMemo(() => {
     if (!proposal || !proposal.commercial_items) return [];
@@ -589,7 +555,7 @@ export default function ProposalPage() {
       return Array.isArray(proposal.commercial_items)
         ? proposal.commercial_items
         : (typeof proposal.commercial_items === 'string' ? JSON.parse(proposal.commercial_items) : []);
-    } catch (e) {
+    } catch {
       return [];
     }
   }, [proposal]);
@@ -598,19 +564,12 @@ export default function ProposalPage() {
     if (!proposal || !proposal.planned_hours_by_discipline) return {};
     try {
       return typeof proposal.planned_hours_by_discipline === 'string' ? JSON.parse(proposal.planned_hours_by_discipline) : proposal.planned_hours_by_discipline;
-    } catch (e) {
+    } catch {
       return {};
     }
   }, [proposal]);
 
-  const parsedPlannedHoursPerActivity = useMemo(() => {
-    if (!proposal || !proposal.planned_hours_per_activity) return {};
-    try {
-      return typeof proposal.planned_hours_per_activity === 'string' ? JSON.parse(proposal.planned_hours_per_activity) : proposal.planned_hours_per_activity;
-    } catch (e) {
-      return {};
-    }
-  }, [proposal]);
+  // REMOVED unused parsedPlannedHoursPerActivity
 
   useEffect(() => {
     const fetchMeta = async () => {

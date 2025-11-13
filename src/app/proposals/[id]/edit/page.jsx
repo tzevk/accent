@@ -1,14 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import {
   DocumentTextIcon,
-  ClockIcon,
   CurrencyDollarIcon,
-  MapPinIcon,
-  UsersIcon,
   ChartBarIcon,
   Cog6ToothIcon,
   ArrowLeftIcon,
@@ -160,7 +157,7 @@ Dispute Resolution
           if (pid) {
             setProposalData(prev => ({ ...prev, proposal_id: pid }));
           }
-        } catch (e) {
+        } catch {
           // ignore
         }
         const res = await fetch(`/api/proposals/${proposalId}`);
@@ -286,7 +283,7 @@ Dispute Resolution
     };
 
     fetchProposal();
-  }, [proposalId]);
+  }, [proposalId, searchParams]);
 
   const handleSave = async () => {
     try {
@@ -559,7 +556,7 @@ function EditableList({ label, value, onChange, placeholder = '' }) {
     if (JSON.stringify(external) !== JSON.stringify(items.filter(Boolean))) {
       setItems(external.length ? external : ['']);
     }
-  }, [value]);
+  }, [value, items]);
 
   const update = (idx, v) => {
     setItems(prev => {
@@ -665,7 +662,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
       if (found) return { ...it, activity_ids: [found.id], discipline_id: found.function_id };
       return it;
     }));
-  }, [activityOptions]);
+  }, [activityOptions, items]);
 
   // Normalize legacy single sub_activity_id into sub_activity_ids array
   useEffect(() => {
@@ -674,7 +671,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
       if (!it.sub_activity_id || (it.sub_activity_ids && it.sub_activity_ids.length)) return it;
       return { ...it, sub_activity_ids: [it.sub_activity_id] };
     }));
-  }, [subActivityOptions]);
+  }, [subActivityOptions, items]);
 
   // When sub-activities load, for items that have an activity selected but no sub_activity_ids,
   // default to selecting all sub-activities for that activity and populate defaults (manhours/rate)
@@ -705,7 +702,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
       });
       return changed ? next : prev;
     });
-  }, [subActivityOptions]);
+  }, [subActivityOptions, items]);
 
   useEffect(() => {
     // Keep parent state in sync
@@ -1278,22 +1275,22 @@ function Text({ label, value, onChange, placeholder = '', required = false, read
   );
 }
 
-function ProposalIdField({ label, value, onChange, required = false }) {
+function ProposalIdField({ label, value, onChange }) {
   // value is full proposal_id string. We split into three parts:
   //   prefix (read-only) e.g. ATSPL/Q/MM/YYYY/
   //   series (editable) e.g. 076
   //   suffix (editable) last 3 digits
-  const defaultPrefix = () => {
+  const defaultPrefix = useCallback(() => {
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const year = now.getFullYear();
     const next = year + 1;
     return `ATSPL/Q/${month}/${year}-${next}/`;
-  };
+  }, []);
 
   const defaultSeries = '076';
 
-  const splitId = (val) => {
+  const splitId = useCallback((val) => {
     if (!val) return { prefix: defaultPrefix(), series: defaultSeries };
     const s = String(val).trim();
     // Legacy numeric id like P<digits> (e.g. P123456789) -> try to extract a 3-digit series from digits
@@ -1324,7 +1321,7 @@ function ProposalIdField({ label, value, onChange, required = false }) {
     }
 
     return { prefix: defaultPrefix(), series: defaultSeries };
-  };
+  }, [defaultPrefix, defaultSeries]);
 
   const { prefix: initialPrefix, series: initialSeries } = splitId(value);
   const [pref, setPref] = useState(initialPrefix || defaultPrefix());
@@ -1335,7 +1332,7 @@ function ProposalIdField({ label, value, onChange, required = false }) {
     const s = splitId(value);
     setPref(s.prefix || defaultPrefix());
     setSeries(s.series || defaultSeries);
-  }, [value]);
+  }, [value, splitId, defaultPrefix]);
 
   const updateParent = (nextPref, nextSeries) => {
     const padSeries = String(nextSeries || '').padStart(3, '0');

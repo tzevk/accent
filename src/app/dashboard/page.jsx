@@ -2,7 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchJSON } from '@/utils/http';
 import dynamic from 'next/dynamic';
 import { 
@@ -56,6 +56,8 @@ export default function Dashboard() {
   const [salesData, setSalesData] = useState([]);
   const [salesTotals, setSalesTotals] = useState({ total: 0, conversion: 0 });
   const [projectSeries, setProjectSeries] = useState([]); // {label, value}[] for bar chart
+  
+  
   useEffect(() => {
     // Load project analytics: series for counts and breakdown/status. If metric=value has no data, auto-fallback to count.
     let abort = false;
@@ -103,7 +105,7 @@ export default function Dashboard() {
           setSalesData([]);
           setSalesTotals({ total: 0, conversion: 0 });
         }
-      } catch (e) {
+      } catch {
         if (!abort) {
           setProjectSeries([]);
           setSalesData([]);
@@ -150,13 +152,77 @@ export default function Dashboard() {
     return `${withSymbol ? '₹' : ''}${sign}${fixed}${suffix}`;
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+// 1. Fetch Stats - safe, no dependencies
+useEffect(() => {
+  fetchStats();
+}, []);
 
-  useEffect(() => {
-    fetchLeadsPage(leadsPage);
-  }, [leadsPage, sortBy, sortOrder]);
+// 2. Define fetchLeadsPage BEFORE using it in another useEffect
+const fetchLeadsPage = useCallback(async (page) => {
+  try {
+    setLeadsLoading(true);
+    setLeadsError(null);
+
+    const res = await fetch(
+      `/api/leads?page=${page}&limit=${rowsPerPage}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`
+    );
+    const data = await res.json();
+
+    if (data.success) {
+      const rawLeads = Array.isArray(data.data?.leads) ? data.data.leads : [];
+
+      const normalized = rawLeads.map(l => ({
+        id: l.id ?? l.lead_id ?? null,
+        lead_id: l.lead_id ?? null,
+        city: l.city ?? l.location ?? '',
+        contact_name: l.contact_name ?? l.director ?? '',
+        enquiry_status: l.enquiry_status ?? l.status ?? '',
+        enquiry_date: l.enquiry_date ?? l.deadline ?? l.created_at ?? null,
+        created_at: l.created_at ?? null,
+      }));
+
+      setLeadsList(normalized);
+      setLeadsTotal(Number(data.data.pagination?.total || normalized.length || 0));
+      setLeadsError(null);
+    } else {
+      setLeadsError(data.error || 'Failed to fetch leads');
+      setLeadsList([]);
+      setLeadsTotal(0);
+    }
+
+    // fetch followups
+    try {
+      const fuRes = await fetch('/api/followups');
+      const fuData = await fuRes.json();
+      const map = {};
+
+      (fuData.data || []).forEach(f => {
+        map[f.lead_id] = (map[f.lead_id] || 0) + 1;
+      });
+
+      setFollowupsByLead(map);
+    } catch (e) {
+      console.warn('Followups fetch failed (optional):', e);
+    }
+
+  } catch (e) {
+    console.error('Failed to fetch leads page', e);
+    setLeadsError('Failed to fetch leads');
+    setLeadsList([]);
+    setLeadsTotal(0);
+  } finally {
+    setLeadsLoading(false);
+  }
+}, [rowsPerPage, sortBy, sortOrder]); 
+// only depends on sort order + rowsPerPage
+// IMPORTANT: does NOT depend on leadsPage or it will break pagination
+// IMPORTANT: stable reference => safe for useEffect
+  
+
+// 3. This useEffect now safely runs AFTER the callback is initialized
+useEffect(() => {
+  fetchLeadsPage(leadsPage);
+}, [leadsPage, sortBy, sortOrder, fetchLeadsPage]);
 
   // Persist analytics period across visits
   useEffect(() => {
@@ -339,54 +405,6 @@ export default function Dashboard() {
     }
   };
 
-  const fetchLeadsPage = async (page) => {
-    try {
-      setLeadsLoading(true);
-      setLeadsError(null);
-      const res = await fetch(`/api/leads?page=${page}&limit=${rowsPerPage}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`);
-      const data = await res.json();
-      if (data.success) {
-        // Defensive normalization: ensure array of objects
-        const rawLeads = Array.isArray(data.data?.leads) ? data.data.leads : [];
-        // Map legacy or partially populated columns to what the table expects
-        const normalized = rawLeads.map(l => ({
-          id: l.id ?? l.lead_id ?? null,
-          lead_id: l.lead_id ?? null,
-          city: l.city ?? l.location ?? '',
-          contact_name: l.contact_name ?? l.director ?? '',
-          enquiry_status: l.enquiry_status ?? l.status ?? '',
-          enquiry_date: l.enquiry_date ?? l.deadline ?? l.created_at ?? null,
-          created_at: l.created_at ?? null,
-        }));
-        setLeadsList(normalized);
-        setLeadsTotal(Number(data.data.pagination?.total || normalized.length || 0));
-        setLeadsError(null);
-      } else {
-        setLeadsError(data.error || 'Failed to fetch leads');
-        setLeadsList([]);
-        setLeadsTotal(0);
-      }
-      // Fetch followups once per page load to compute visiting counts
-      try {
-        const fuRes = await fetch('/api/followups');
-        const fuData = await fuRes.json();
-        const map = {};
-        (fuData.data || []).forEach(f => {
-          map[f.lead_id] = (map[f.lead_id] || 0) + 1;
-        });
-        setFollowupsByLead(map);
-      } catch (e) {
-        console.warn('Followups fetch failed (optional):', e);
-      }
-    } catch (e) {
-      console.error('Failed to fetch leads page', e);
-      setLeadsError('Failed to fetch leads');
-      setLeadsList([]);
-      setLeadsTotal(0);
-    } finally {
-      setLeadsLoading(false);
-    }
-  };
 
   const toggleSort = (field) => {
     if (sortBy === field) {

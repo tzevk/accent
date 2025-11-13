@@ -161,9 +161,9 @@ export async function GET(request, { params }) {
 }
 
 // PUT - Update project
-export async function PUT(request, { params }) {
+export async function PUT(request) {
   try {
-    const { id } = await params;
+  // Extract id from request or context as needed
     const data = await request.json();
     const db = await dbConnect();
 

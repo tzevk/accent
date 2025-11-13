@@ -92,7 +92,7 @@ function ProjectsInner() {
       if (result.success) setProjects(result.data);
       else console.error('Error fetching projects:', result.error);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+          console.error('Error fetching projects:', error.message);
     } finally {
       setLoading(false);
     }

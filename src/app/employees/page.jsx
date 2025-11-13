@@ -1,7 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 
 import {
@@ -11,18 +11,14 @@ import {
   FunnelIcon,
   PencilIcon,
   TrashIcon,
-  EyeIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
+    EyeIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
   DocumentArrowDownIcon,
-  CogIcon,
-  CalculatorIcon,
-  CalendarDaysIcon,
   CurrencyDollarIcon,
+  CalendarDaysIcon,
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
-  EyeIcon as EyeOutlineIcon,
-  ChartBarIcon
 } from '@heroicons/react/24/outline';
 
 
@@ -53,37 +49,6 @@ const Avatar = ({ src, firstName, lastName, size = 40 }) => {
   );
 };
 
-// Custom hook for debounced input handling
-const useDebouncedInput = (value, onChange, delay = 300) => {
-  const [localValue, setLocalValue] = React.useState(value);
-  const timeoutRef = React.useRef();
-
-  React.useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
-
-  const handleChange = (newValue) => {
-    setLocalValue(newValue);
-    
-    // Clear existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    // Set new timeout
-    timeoutRef.current = setTimeout(() => {
-      onChange(newValue);
-    }, delay);
-  };
-
-  const handleBlur = () => {
-    // Clear timeout and update immediately on blur
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      onChange(localValue);
-    }
-  };
-  return [localValue, handleChange, handleBlur];
-};
 
 export default function EmployeesPage() {
   // Debug helper state: track floating save clicks so we can tell if clicks reach the component
@@ -361,6 +326,9 @@ export default function EmployeesPage() {
   const [salaryRaw, setSalaryRaw] = useState(null);
   const [editingSalaryId, setEditingSalaryId] = useState(null);
 
+  // Memoize manual_overrides JSON so we can use a stable dependency in effects
+  const salaryManualOverridesString = useMemo(() => JSON.stringify(salaryData.manual_overrides || {}), [salaryData.manual_overrides]);
+
   // Comprehensive reactive salary engine
   useEffect(() => {
     // compute derived values based on inputs and manual overrides
@@ -482,7 +450,7 @@ export default function EmployeesPage() {
     salaryData.ot_hours,
     salaryData.ot_rate,
     salaryData.total_working_hours,
-    JSON.stringify(salaryData.manual_overrides)
+    salaryManualOverridesString
   ]);
 
   // Fetch persisted salary rows for the selected employee and map primary fields into the UI

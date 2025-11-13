@@ -21,7 +21,7 @@ export default function RolesMaster() {
       const j = await res.json();
       if (j.success) setRoles(j.data || []);
     } catch (e) {
-      console.error(e);
+        console.error('An error occurred while fetching roles');
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ export default function RolesMaster() {
       const j = await res.json();
       if (j.success) fetchRoles(); else alert('Error: ' + (j.error || 'Unknown'));
     } catch (e) {
-      console.error(e);
+        console.error('An error occurred while deleting the role');
       alert('Failed to delete');
     }
   };
