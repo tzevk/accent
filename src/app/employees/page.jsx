@@ -25,146 +25,6 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/outline';
 
-// Simple Salary Calculator Component
-const SalaryCalculator = React.memo(({ basicSalary, onCalculate }) => {
-  const [earnings, setEarnings] = useState({
-    basic: parseFloat(basicSalary) || 0,
-    da: 0,
-    hra: 0,
-    allowances: 0
-  });
-
-  const [deductions, setDeductions] = useState({
-    pf: 0,
-    pt: 0,
-    esi: 0,
-    tds: 0
-  });
-
-  const grossSalary = Object.values(earnings).reduce((sum, val) => sum + val, 0);
-  const totalDeductions = Object.values(deductions).reduce((sum, val) => sum + val, 0);
-  const netSalary = grossSalary - totalDeductions;
-
-  useEffect(() => {
-    onCalculate({ gross: grossSalary, net: netSalary, earnings, deductions });
-  }, [grossSalary, netSalary, earnings, deductions, onCalculate]);
-
-  const updateEarning = (key, value) => {
-    setEarnings(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
-  };
-
-  const updateDeduction = (key, value) => {
-    setDeductions(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Earnings */}
-      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-        <h6 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
-          <ArrowTrendingUpIcon className="h-4 w-4 mr-2" />
-          Earnings
-        </h6>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Basic Salary</label>
-            <input 
-              type="number" 
-              value={earnings.basic} 
-              onChange={(e) => updateEarning('basic', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">DA (Dearness Allowance)</label>
-            <input 
-              type="number" 
-              value={earnings.da} 
-              onChange={(e) => updateEarning('da', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">HRA (House Rent Allowance)</label>
-            <input 
-              type="number" 
-              value={earnings.hra} 
-              onChange={(e) => updateEarning('hra', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Other Allowances</label>
-            <input 
-              type="number" 
-              value={earnings.allowances} 
-              onChange={(e) => updateEarning('allowances', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div className="pt-2 border-t border-green-300">
-            <div className="flex justify-between text-sm font-semibold text-green-800">
-              <span>Total Earnings:</span>
-              <span>₹{grossSalary.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Deductions */}
-      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-        <h6 className="text-sm font-semibold text-red-800 mb-3 flex items-center">
-          <ArrowTrendingDownIcon className="h-4 w-4 mr-2" />
-          Deductions
-        </h6>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">PF (Provident Fund)</label>
-            <input 
-              type="number" 
-              value={deductions.pf} 
-              onChange={(e) => updateDeduction('pf', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">PT (Professional Tax)</label>
-            <input 
-              type="number" 
-              value={deductions.pt} 
-              onChange={(e) => updateDeduction('pt', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">ESI (Employee State Insurance)</label>
-            <input 
-              type="number" 
-              value={deductions.esi} 
-              onChange={(e) => updateDeduction('esi', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">TDS (Tax Deducted at Source)</label>
-            <input 
-              type="number" 
-              value={deductions.tds} 
-              onChange={(e) => updateDeduction('tds', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div className="pt-2 border-t border-red-300">
-            <div className="flex justify-between text-sm font-semibold text-red-800">
-              <span>Total Deductions:</span>
-              <span>₹{totalDeductions.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 const Avatar = ({ src, firstName, lastName, size = 40 }) => {
   const initials = `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();
@@ -626,167 +486,87 @@ export default function EmployeesPage() {
   ]);
 
   // Fetch persisted salary rows for the selected employee and map primary fields into the UI
-  const loadSalaryRows = async (empId) => {
-    // Robust fetch with a couple retries to handle transient network issues (ECONNRESET etc.)
+  const loadSalaryRows = useCallback(async (empId) => {
     console.debug('[salary] loadSalaryRows called for', empId);
-    if (!empId) return;
+    if (!empId || !selectedEmployee) return;
     setSalaryLoading(true);
     setSalaryError('');
-    const url = `/api/employees/${empId}/salary`;
-    console.debug('[salary] fetching', url);
-
-    let lastErr = null;
-    const maxAttempts = 2;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const res = await fetch(url);
-        console.debug('[salary] fetch response status', res.status);
-        if (!res.ok) {
-          // Try to read body for more details but protect against binary/empty responses
-          let txt = '';
-          try { txt = await res.text(); } catch (e) { txt = `Status ${res.status}`; }
-          console.error('[salary] fetch failed:', txt || `Status ${res.status}`);
-          throw new Error(txt || `Status ${res.status}`);
-        }
-        const resJson = await res.json();
-        console.debug('[salary] response json', resJson);
-        // success - clear lastErr and proceed with normal flow
-        lastErr = null;
-        // normalize payload below
-        setSalaryRaw(resJson);
-        let rows = [];
-        if (resJson && resJson.success) {
-          const payload = resJson.data;
-          if (!payload) {
-            rows = [];
-          } else if (Array.isArray(payload)) {
-            rows = payload;
-          } else if (payload.record) {
-            rows = [payload.record];
-          } else if (payload.rows) {
-            rows = payload.rows;
-          } else {
-            rows = [payload];
-          }
-          if (rows.length === 0 && payload && payload.computed) {
-            const comp = payload.computed;
-            const fake = {
-              gross_salary: comp.inputs?.gross_salary ?? null,
-              basic_da: comp.breakdown?.basic_da ?? null,
-              hra: comp.breakdown?.hra ?? null,
-              conveyance_allowance: comp.breakdown?.conveyance_allowance ?? null,
-              call_allowance: null,
-              other_allowance: comp.inputs?.other_allowance ?? null,
-              effective_from: (payload.record && (payload.record.effective_from || payload.record.effectiveFrom)) || null,
-            };
-            console.debug('[salary] using server computed as fake row', fake);
-            rows = [fake];
-          }
-        } else {
-          rows = [];
-        }
-        // sort and set state
-        rows.sort((a, b) => {
-          const da = a?.effective_from ? new Date(a.effective_from) : null;
-          const db = b?.effective_from ? new Date(b.effective_from) : null;
-          if (da && db) return db - da;
-          if (db) return 1;
-          if (da) return -1;
-          return 0;
-        });
-        setSalaryRows(rows);
-
-        if (rows.length > 0) {
-          const row = rows[0];
-          const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
-          const basic = row.basic ?? row.BASIC ?? row.Basic;
-          const da = row.da ?? row.DA ?? row.Da;
-          const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? undefined);
-          const hra = row.hra ?? row.HRA ?? undefined;
-          const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? undefined;
-          const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? undefined;
-          const other = row.other_allowance ?? row.other ?? row.other_allow ?? undefined;
-
-          console.debug('[salary] mapping record -> UI', { gross: g, basicDaCombined, hra, convey, callAllow, other, effective_from: row.effective_from });
-
-          setSalaryData(prev => {
-            const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
-            const basic = row.basic ?? row.BASIC ?? row.Basic;
-            const da = row.da ?? row.DA ?? row.Da;
-            const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? prev.basic_da);
-            const hra = row.hra ?? row.HRA ?? prev.hra;
-            const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? prev.conveyance_allowance;
-            const callAllow = row.call_allowance ?? row.call ?? prev.call_allowance;
-            const other = row.other_allowance ?? row.other ?? row.other_allow ?? prev.other_allowance;
-
-            const prevMO = prev.manual_overrides || {};
-            const newMO = { ...prevMO };
-            if (newMO.basic_da) delete newMO.basic_da;
-            if (newMO.hra) delete newMO.hra;
-            if (newMO.conveyance_allowance) delete newMO.conveyance_allowance;
-            if (callAllow !== undefined || row.call_allowance !== undefined) newMO.call_allowance = true;
-            if (other !== undefined || row.other_allowance !== undefined) newMO.other_allowance = true;
-
-            return {
-              ...prev,
-              gross_salary: g !== undefined && g !== null ? g : prev.gross_salary,
-              basic_da: prev.basic_da,
-              hra: prev.hra,
-              conveyance_allowance: prev.conveyance_allowance,
-              call_allowance: callAllow !== undefined ? callAllow : prev.call_allowance,
-              other_allowance: other !== undefined ? other : prev.other_allowance,
-              effective_from: row.effective_from ?? prev.effective_from,
-              manual_overrides: newMO
-            };
-          });
-
-          try {
-            setSalaryInputs(prev => ({
-              ...prev,
-              basic_salary: row.basic ?? row.basic_salary ?? row.BASIC ?? prev.basic_salary,
-              da: row.da ?? row.DA ?? prev.da,
-              hra: row.hra ?? row.HRA ?? prev.hra,
-              conveyance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance,
-              call_allowance: row.call_allowance ?? row.call ?? prev.call_allowance,
-              other_allowance: row.other_allowance ?? row.other ?? prev.other_allowance,
-              effective_from: row.effective_from ?? prev.effective_from,
-              pl_used: row.pl_used ?? prev.pl_used,
-              pl_balance: row.pl_balance ?? prev.pl_balance,
-            }));
-            console.debug('[salary] salaryInputs populated from DB', { basic_salary: row.basic ?? row.basic_salary, da: row.da, hra: row.hra, conveyance: row.conveyance, call_allowance: row.call_allowance, other_allowance: row.other_allowance });
-          } catch (e) { console.error('[salary] failed to set salaryInputs', e); }
-
-        }
-
-        // success - exit retry loop
-        break;
-      } catch (err) {
-        lastErr = err;
-        console.warn(`[salary] attempt ${attempt} failed:`, err?.message || err);
-        // If last attempt, surface error to UI
-        if (attempt === maxAttempts) {
-          const msg = (err && err.message) ? err.message : String(err || 'Unknown error');
-          setSalaryError(`Failed to load salary rows: ${msg}`);
-          setSalaryRows([]);
-        } else {
-          // small backoff before retrying
-          await new Promise(r => setTimeout(r, 300 * attempt));
+    try {
+      // Parse salary_structure from selectedEmployee
+      let salaryStructure = {};
+      if (selectedEmployee.salary_structure) {
+        try {
+          salaryStructure = typeof selectedEmployee.salary_structure === 'string'
+            ? JSON.parse(selectedEmployee.salary_structure)
+            : selectedEmployee.salary_structure;
+        } catch (e) {
+          console.error('[salary] failed to parse salary_structure', e);
+          salaryStructure = {};
         }
       }
-    }
 
-    // ensure loading flag is cleared once attempts finish
-    setSalaryLoading(false);
-  };
+      // Populate salaryInputs from salaryStructure
+      setSalaryInputs({
+        basic_salary: salaryStructure.basic_salary || '',
+        hra: salaryStructure.hra || '',
+        conveyance: salaryStructure.conveyance || '',
+        medical_allowance: salaryStructure.medical_allowance || '',
+        special_allowance: salaryStructure.special_allowance || '',
+        incentives: salaryStructure.incentives || '',
+        deductions: salaryStructure.deductions || '',
+        effective_from: salaryStructure.effective_from || '',
+        // Keep other fields as defaults
+        attendance_days: '',
+        total_working_days: '',
+        loan_active: 'No',
+        loan_emi: '',
+        advance_payment: '',
+        salary_type: 'Monthly',
+        additional_earnings: '',
+        additional_deductions: '',
+        pf: '',
+        pt: '',
+        mlwf: '',
+        da: '',
+        call_allowance: '',
+        other_allowance: '',
+        pl_used: '',
+        pl_balance: '',
+      });
+
+      // Set salaryData for display
+      setSalaryData({
+        gross_salary: selectedEmployee.gross_salary || 0,
+        total_deductions: selectedEmployee.total_deductions || 0,
+        net_salary: selectedEmployee.net_salary || 0,
+      });
+
+      // Set salaryRows to a single row for display
+      setSalaryRows([{
+        id: 1,
+        ...salaryStructure,
+        gross_salary: selectedEmployee.gross_salary,
+        total_deductions: selectedEmployee.total_deductions,
+        net_salary: selectedEmployee.net_salary,
+      }]);
+
+      setSalaryRaw({ success: true, data: { rows: [] } }); // Dummy for compatibility
+    } catch (err) {
+      console.error('[salary] failed to load salary data', err);
+      setSalaryError('Failed to load salary data.');
+    } finally {
+      setSalaryLoading(false);
+    }
+  }, [selectedEmployee]);
 
   useEffect(() => {
     loadSalaryRows(selectedEmployee?.id);
-  }, [selectedEmployee?.id]);
+  }, [selectedEmployee?.id, loadSalaryRows]);
 
   // Also reload when the Salary tab is shown to the user
   useEffect(() => {
     if (editSubTab === 'salary') loadSalaryRows(selectedEmployee?.id);
-  }, [editSubTab, selectedEmployee?.id]);
+  }, [editSubTab, selectedEmployee?.id, loadSalaryRows]);
 
   // Add attendance related extras
   // week_offs: weekly offs in the period; pl_use: paid leave used; pl_balance: informational
@@ -1010,104 +790,65 @@ export default function EmployeesPage() {
     setSalaryError('');
     setSalarySuccess('');
     if (!selectedEmployee?.id) {
-      setSalaryError('Select an employee first. In Add flow, save the employee to auto-create salary.');
+      setSalaryError('Select an employee first.');
       return;
     }
     if (!salaryInputs.basic_salary || Number(salaryInputs.basic_salary) <= 0) {
       setSalaryError('Basic Salary is required and must be greater than 0.');
       return;
     }
-    if (!salaryInputs.effective_from) {
-      setSalaryError('Effective From date is required.');
-      return;
-    }
-    // Build compact salary structure from salaryInputs so we can persist it atomically
-    const rawForStruct = {
-      basic_salary: salaryInputs.basic_salary,
-      hra: salaryInputs.hra,
-      conveyance: salaryInputs.conveyance,
-      medical_allowance: salaryInputs.medical_allowance,
-      special_allowance: salaryInputs.special_allowance,
-      incentives: salaryInputs.incentives,
-      deductions: salaryInputs.deductions
+
+    // Build salary structure object from inputs
+    const salaryStructure = {
+      basic_salary: Number(salaryInputs.basic_salary) || 0,
+      hra: Number(salaryInputs.hra) || 0,
+      conveyance: Number(salaryInputs.conveyance) || 0,
+      medical_allowance: Number(salaryInputs.medical_allowance) || 0,
+      special_allowance: Number(salaryInputs.special_allowance) || 0,
+      incentives: Number(salaryInputs.incentives) || 0,
+      deductions: Number(salaryInputs.deductions) || 0,
+      effective_from: salaryInputs.effective_from || null,
     };
-    const providedStruct = Object.fromEntries(
-      Object.entries(rawForStruct)
-        .filter(([_, v]) => v !== '' && v != null && !Number.isNaN(Number(v)))
-        .map(([k, v]) => [k, Number(v)])
-    );
+
+    // Calculate gross and net
+    const gross = salaryStructure.basic_salary + salaryStructure.hra + salaryStructure.conveyance + salaryStructure.medical_allowance + salaryStructure.special_allowance + salaryStructure.incentives;
+    const net = gross - salaryStructure.deductions;
 
     const payload = {
-      basic_salary: Number(salaryInputs.basic_salary || 0),
-      attendance_days: Number(salaryInputs.attendance_days || 0),
-      total_working_days: Number(salaryInputs.total_working_days || 0),
-      loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
-      loan_emi: Number(salaryInputs.loan_emi || 0),
-      advance_payment: Number(salaryInputs.advance_payment || 0),
-      salary_type: salaryInputs.salary_type,
-      effective_from: salaryInputs.effective_from,
-      additional_earnings: Number(salaryInputs.additional_earnings || 0),
-      additional_deductions: Number(salaryInputs.additional_deductions || 0),
-      pf: Number(salaryInputs.pf || 0),
-      pt: Number(salaryInputs.pt || 0),
-      mlwf: Number(salaryInputs.mlwf || 0),
-      da: salaryInputs.da === '' ? null : Number(salaryInputs.da),
-      hra: salaryInputs.hra === '' ? null : Number(salaryInputs.hra),
-      conveyance: salaryInputs.conveyance === '' ? null : Number(salaryInputs.conveyance),
-      call_allowance: salaryInputs.call_allowance === '' ? null : Number(salaryInputs.call_allowance),
-      other_allowance: salaryInputs.other_allowance === '' ? null : Number(salaryInputs.other_allowance),
-      // Preserve paid leave usage and balance so server stores PL info
-      pl_used: Number(salaryInputs.pl_used || 0),
-      pl_balance: Number(salaryInputs.pl_balance || 0),
+      salary_structure: JSON.stringify(salaryStructure),
+      gross_salary: gross,
+      total_deductions: salaryStructure.deductions,
+      net_salary: net,
     };
-    // Include compact salary_structure so server will persist salary_structure + employee summary inside the same transaction
-    if (Object.keys(providedStruct).length > 0) {
-      payload.salary_structure = JSON.stringify(providedStruct);
-      const gross = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives']
-        .map(k => Number((providedStruct && providedStruct[k]) || 0))
-        .reduce((a,b) => a + b, 0);
-      const ded = Number((providedStruct && providedStruct.deductions) || 0) || 0;
-      if (gross) payload.gross_salary = gross;
-      if (ded) payload.total_deductions = ded;
-      if (gross || ded) payload.net_salary = Math.max(0, gross - ded);
-    }
+
     try {
       setSalaryLoading(true);
-      // If editing an existing salary row, send PUT with body.id = editingSalaryId
-      const url = `/api/employees/${selectedEmployee.id}/salary`;
-      const method = editingSalaryId ? 'PUT' : 'POST';
-      if (editingSalaryId) payload.id = editingSalaryId;
+      const url = `/api/employees/${selectedEmployee.id}`;
       const res = await fetch(url, {
-        method,
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      let json = null;
-      try { json = await res.json(); } catch {}
-      if (res.ok && json && json.success) {
-        // refresh with latest snapshot
-        // const fresh = await fetch(`/api/employees/${selectedEmployee.id}/salary`).then(r => r.json()).catch(() => null);
-        // if (fresh?.success && fresh?.data) setSalaryServerData(fresh.data.computed);
-        setSalarySuccess(editingSalaryId ? 'Salary entry updated successfully.' : 'Salary entry saved successfully.');
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setSalarySuccess('Salary structure saved successfully.');
         setSalaryError('');
-        // If we included a compact salary structure, update the UI's selectedEmployee immediately so the view shows it
-        try {
-          if (payload.salary_structure) {
-            const gross = payload.gross_salary || null;
-            const ded = payload.total_deductions || null;
-            setSelectedEmployee(prev => prev ? { ...prev, salary_structure: payload.salary_structure, gross_salary: gross ?? prev.gross_salary, total_deductions: ded ?? prev.total_deductions, net_salary: payload.net_salary ?? prev.net_salary } : prev);
-          }
-        } catch (e) { /* ignore UI update failure */ }
-        // Clear editing state on success
-        setEditingSalaryId(null);
-        // Refresh employees list and salary rows to keep master list in sync
+        // Update selectedEmployee with new data
+        setSelectedEmployee(prev => prev ? { ...prev, ...payload } : prev);
+        // Refresh employees list
         fetchEmployees();
-        loadSalaryRows(selectedEmployee?.id);
       } else {
-        const msg = (json && (json.error || json.message)) || 'Failed to save salary entry';
-        setSalaryError(msg);
+        setSalaryError(json.error || 'Failed to save salary structure.');
         setSalarySuccess('');
-      }     } catch (err) {       console.error('Failed to submit salary master', err);       setSalaryError('Network or server error while saving salary entry.');       setSalarySuccess('');     } finally {       setSalaryLoading(false);     }   };    // Handle form submission     const handleSubmit = async (e) => {     e.preventDefault();     setLoading(true);     setFormErrors({});      try {       const url = selectedEmployee ? `/api/employees?id=${selectedEmployee.id}` : '/api/employees';       const method = selectedEmployee ? 'PUT' : 'POST';    // Prepare payload aligned with API       const payload = { ...formData };       // If a System Role is selected, mirror the human-friendly role name on the employee record       if (formData.system_role_id) {         const picked = roles.find(r => String(r.id) === String(formData.system_role_id));         if (picked) {           payload.role = picked.role_name;           payload.system_role_name = picked.role_name;         }       }       // Normalize enum-like fields to match DB       if (payload.gender) {         const g = String(payload.gender).toLowerCase();         payload.gender = g === 'male' ? 'Male' : g === 'female' ? 'Female' : 'Other';       }       if (payload.marital_status) {         const m = String(payload.marital_status).toLowerCase();         payload.marital_status = m === 'single' ? 'Single' : m === 'married' ? 'Married' : 'Other';       }       // Mirror status to employment_status if only one is set       if (payload.employment_status && !payload.status) payload.status = payload.employment_status;       if (payload.status && !payload.employment_status) payload.employment_status = payload.status;       // Prepare salary structure merging logic       // Use values from the form payload, falling back to values the user may have entered       // in the separate Salary tab (salaryInputs). This ensures salary-structure is saved       // whether the user edited the main form or the Salary sub-tab.       const rawParts = {         basic_salary: payload.basic_salary ?? salaryInputs.basic_salary,         hra: payload.hra ?? salaryInputs.hra,         conveyance: payload.conveyance ?? salaryInputs.conveyance,         medical_allowance: payload.medical_allowance ?? salaryInputs.medical_allowance,         special_allowance: payload.special_allowance ?? salaryInputs.special_allowance,         incentives: payload.incentives ?? salaryInputs.incentives,         deductions: payload.deductions ?? salaryInputs.deductions       };       // Filter to only numeric values user actually provided       const providedParts = Object.fromEntries(         Object.entries(rawParts)           .filter(([_, v]) => v !== '' && v != null && !Number.isNaN(Number(v)))           .map(([k, v]) => [k, Number(v)])       );       let mergedStruct = null;       if (Object.keys(providedParts).length > 0) {         if (method === 'PUT' && selectedEmployee?.salary_structure) {           try {             const existing = typeof selectedEmployee.salary_structure === 'string'               ? JSON.parse(selectedEmployee.salary_structure)               : (selectedEmployee.salary_structure || {});             mergedStruct = { ...(existing || {}), ...providedParts };           } catch {             mergedStruct = { ...providedParts };           }         } else {           mergedStruct = { ...providedParts };         }         payload.salary_structure = JSON.stringify(mergedStruct);         // Compute salary summary from merged values         const gross = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives']           .map(k => Number((mergedStruct && mergedStruct[k]) || 0))           .reduce((a,b) => a + b, 0);         const ded = Number((mergedStruct && mergedStruct.deductions) || 0);         if (gross) payload.gross_salary = gross;         if (ded) payload.total_deductions = ded;         if (gross || ded) payload.net_salary = Math.max(0, gross - ded);       }       // Bank fields: API supports account_holder_name       if (payload.bank_account_no === '') delete payload.bank_account_no;       if (payload.bank_ifsc === '') delete payload.bank_ifsc;       // Cleanup UI-only fields       delete payload.account_number; // replaced by bank_account_no       delete payload.ifsc; // replaced by bank_ifsc       delete payload.biometric_id; // replaced by biometric_code       // Convert booleans to 0/1 for tinyint flags       ['bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds'].forEach((k) => {         if (typeof payload[k] === 'boolean') payload[k] = payload[k] ? 1 : 0;       });        // PUT requires `id` in body (API reads from body, not query)       if (selectedEmployee?.id && method === 'PUT') {         payload.id = selectedEmployee.id;       }        // Do not overwrite date fields if user left them empty; normalize valid dates       ['hire_date','joining_date','dob','exit_date'].forEach((k) => {         if (payload[k] == null || payload[k] === '') {           if (method === 'PUT') delete payload[k];         } else if (typeof payload[k] === 'string') {           payload[k] = payload[k].slice(0, 10);         }       });        // For updates, avoid sending empty strings/nulls for any field to prevent clearing existing DB values       if (method === 'PUT') {         Object.keys(payload).forEach((k) => {           if (k === 'id') return; // required for PUT           const v = payload[k];           if (v === '' || v === null || v === undefined) delete payload[k];         });       }        const response = await fetch(url, {         method,         headers: {           'Content-Type': 'application/json',         },         body: JSON.stringify(payload),       });        let respJson = null;       let respText = null;       try { respJson = await response.json(); } catch (e) {         try { respText = await response.text(); } catch (e2) { /* ignore */ }       }        if (response.ok) {         // If this was a create, and salary inputs are present, create salary entry too         if (method === 'POST' && respJson?.employeeId) {           const hasSalaryBasics = salaryInputs?.effective_from && salaryInputs?.basic_salary !== '';           if (hasSalaryBasics) {             try {               const salaryPayload = {                 basic_salary: Number(salaryInputs.basic_salary || 0),                 attendance_days: Number(salaryInputs.attendance_days || 0),                 total_working_days: Number(salaryInputs.total_working_days || 0),                 loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,                 loan_emi: Number(salaryInputs.loan_emi || 0),                 advance_payment: Number(salaryInputs.advance_payment || 0),                 salary_type: salaryInputs.salary_type,                 effective_from: salaryInputs.effective_from,                 additional_earnings: Number(salaryInputs.additional_earnings || 0),                 additional_deductions: Number(salaryInputs.additional_deductions || 0),                 pf: Number(salaryInputs.pf || 0),                 pt: Number(salaryInputs.pt || 0),                 mlwf: Number(salaryInputs.mlwf || 0),                 // Persist PL usage and remaining balance when creating salary along with employee                 pl_used: Number(salaryInputs.pl_used || 0),                 pl_balance: Number(salaryInputs.pl_balance || 0),               };               await fetch(`/api/employees/${respJson.employeeId}/salary`, {                 method: 'POST',                 headers: { 'Content-Type': 'application/json' },                 body: JSON.stringify(salaryPayload)               }).catch(() => {});             } catch (e) {               // Do not block employee creation if salary creation fails               console.warn('Salary entry creation failed but employee saved:', e);             }           }         }         // Apply System Role to linked user if selected         try {           const roleId = formData.system_role_id || '';           const employeeDbId = selectedEmployee ? selectedEmployee.id : respJson?.employeeId;           if (roleId && employeeDbId) {             await applySystemRoleToLinkedUser(employeeDbId, roleId);           }         } catch {}          setSuccessMessage(selectedEmployee ? 'Employee updated successfully!' : 'Employee added successfully!');         // Reset filters so the new record is visible         setSearchTerm('');         setSelectedDepartment('');         setSelectedStatus('');         setCurrentPage(1);         setActiveTab('list');         setFormData(defaultFormData);         setSelectedEmployee(null);         fetchEmployees();       } else {         const error = respJson || {};         const fallback = respText || (error.error || error.message) || `Request failed: ${response.status}`;         setFormErrors(error.errors || { general: fallback || 'An error occurred' });       }     } catch (error) {       console.error('Error saving employee:', error);       setFormErrors({ general: 'An error occurred while saving the employee' });     } finally {       setLoading(false);     }   };      // Handle delete   const handleDelete = async (employee) => {     if (!window.confirm(`Are you sure you want to delete ${employee.first_name} ${employee.last_name}?`)) {       return;     }      setLoading(true);     try {       const response = await fetch(`/api/employees?id=${employee.id}`, {         method: 'DELETE',       });              if (response.ok) {         setSuccessMessage('Employee deleted successfully!');         fetchEmployees();       } else {         const error = await response.json();         setFormErrors({ general: error.message || 'Failed to delete employee' });       }     } catch (error) {       console.error('Error deleting employee:', error);       setFormErrors({ general: 'An error occurred while deleting the employee' });     } finally {       setLoading(false);     }   };    const openEditForm = (employee) => {     // Parse salary_structure JSON (if present) into granular fields so user sees current values     let salaryParts = {};     try {       if (employee?.salary_structure) {         const parsed = typeof employee.salary_structure === 'string'           ? JSON.parse(employee.salary_structure)           : employee.salary_structure;         if (parsed && typeof parsed === 'object') {           salaryParts = {             basic_salary: parsed.basic_salary ?? '',             hra: parsed.hra ?? '',             conveyance: parsed.conveyance ?? '',             medical_allowance: parsed.medical_allowance ?? '',             special_allowance: parsed.special_allowance ?? '',             incentives: parsed.incentives ?? '',             deductions: parsed.deductions ?? ''           };         }       }     } catch {}      setFormData({       ...defaultFormData,       ...employee,       ...salaryParts,       system_role_id: (() => {         try {           const match = roles.find(r => r.role_name === employee.role);           return match ? String(match.id) : '';         } catch { return ''; }       })(),       system_role_name: employee.role || '',       hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '',       joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '',       dob: employee.dob ? employee.dob.split('T')[0] : ''     });     setSelectedEmployee(employee);     setFormErrors({});     setEditSubTab('personal'); // Initialize to first tab     setActiveTab('edit');   };    const openViewForm = (employee) => {     setSelectedEmployee(employee);     setActiveTab('view');   };    // Handle CSV import   const handleImport = async (e) => {     e.preventDefault();     if (!importFile) return;      setLoading(true);     setFormErrors({});      try {       const formData = new FormData();       formData.append('file', importFile);        const response = await fetch('/api/employees/import', {         method: 'POST',         body: formData       });        const data = await response.json();        if (response.ok) {         setImportResults(data.summary);         setSuccessMessage('Import completed successfully!');         fetchEmployees(); // Refresh the employee list         setImportFile(null);       } else {         setFormErrors({ general: data.error });         if (data.details) {           setFormErrors({ general: data.error, details: data.details });         }       }     } catch (error) {       setFormErrors({ general: 'An error occurred during import. Please try again.' });     } finally {       setLoading(false);     }   };    // Download CSV template   const downloadTemplate = async (format = 'csv') => {     try {       const response = await fetch(`/api/employees/import?format=${format}`);       const blob = await response.blob();       const url = window.URL.createObjectURL(blob);       const a = document.createElement('a');       a.href = url;       a.download = format === 'excel' ? 'employee_template.xlsx' : 'employee_template.csv';       document.body.appendChild(a);       a.click();       window.URL.revokeObjectURL(url);       document.body.removeChild(a);     } catch (error) {       console.error('Error downloading template:', error);     }   };    const openAddForm = () => {     setFormData(defaultFormData);     setFormErrors({});     setAddSubTab('personal');     setActiveTab('add');   };    // Helper: update linked user's role if a user account exists for this employee
+      }
+    } catch (err) {
+      console.error('Failed to submit salary structure', err);
+      setSalaryError('Network or server error while saving salary structure.');
+      setSalarySuccess('');
+    } finally {
+      setSalaryLoading(false);
+    }
+  };    // Handle form submission     const handleSubmit = async (e) => {     e.preventDefault();     setLoading(true);     setFormErrors({});      try {       const url = selectedEmployee ? `/api/employees?id=${selectedEmployee.id}` : '/api/employees';       const method = selectedEmployee ? 'PUT' : 'POST';    // Prepare payload aligned with API       const payload = { ...formData };       // If a System Role is selected, mirror the human-friendly role name on the employee record       if (formData.system_role_id) {         const picked = roles.find(r => String(r.id) === String(formData.system_role_id));         if (picked) {           payload.role = picked.role_name;           payload.system_role_name = picked.role_name;         }       }       // Normalize enum-like fields to match DB       if (payload.gender) {         const g = String(payload.gender).toLowerCase();         payload.gender = g === 'male' ? 'Male' : g === 'female' ? 'Female' : 'Other';       }       if (payload.marital_status) {         const m = String(payload.marital_status).toLowerCase();         payload.marital_status = m === 'single' ? 'Single' : m === 'married' ? 'Married' : 'Other';       }       // Mirror status to employment_status if only one is set       if (payload.employment_status && !payload.status) payload.status = payload.employment_status;       if (payload.status && !payload.employment_status) payload.employment_status = payload.status;       // Prepare salary structure merging logic       // Use values from the form payload, falling back to values the user may have entered       // in the separate Salary tab (salaryInputs). This ensures salary-structure is saved       // whether the user edited the main form or the Salary sub-tab.       const rawParts = {         basic_salary: payload.basic_salary ?? salaryInputs.basic_salary,         hra: payload.hra ?? salaryInputs.hra,         conveyance: payload.conveyance ?? salaryInputs.conveyance,         medical_allowance: payload.medical_allowance ?? salaryInputs.medical_allowance,         special_allowance: payload.special_allowance ?? salaryInputs.special_allowance,         incentives: payload.incentives ?? salaryInputs.incentives,         deductions: payload.deductions ?? salaryInputs.deductions       };       // Filter to only numeric values user actually provided       const providedParts = Object.fromEntries(         Object.entries(rawParts)           .filter(([_, v]) => v !== '' && v != null && !Number.isNaN(Number(v)))           .map(([k, v]) => [k, Number(v)])       );       let mergedStruct = null;       if (Object.keys(providedParts).length > 0) {         if (method === 'PUT' && selectedEmployee?.salary_structure) {           try {             const existing = typeof selectedEmployee.salary_structure === 'string'               ? JSON.parse(selectedEmployee.salary_structure)               : (selectedEmployee.salary_structure || {});             mergedStruct = { ...(existing || {}), ...providedParts };           } catch {             mergedStruct = { ...providedParts };           }         } else {           mergedStruct = { ...providedParts };         }         payload.salary_structure = JSON.stringify(mergedStruct);         // Compute salary summary from merged values         const gross = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives']           .map(k => Number((mergedStruct && mergedStruct[k]) || 0))           .reduce((a,b) => a + b, 0);         const ded = Number((mergedStruct && mergedStruct.deductions) || 0);         if (gross) payload.gross_salary = gross;         if (ded) payload.total_deductions = ded;         if (gross || ded) payload.net_salary = Math.max(0, gross - ded);       }       // Bank fields: API supports account_holder_name       if (payload.bank_account_no === '') delete payload.bank_account_no;       if (payload.bank_ifsc === '') delete payload.bank_ifsc;       // Cleanup UI-only fields       delete payload.account_number; // replaced by bank_account_no       delete payload.ifsc; // replaced by bank_ifsc       delete payload.biometric_id; // replaced by biometric_code       // Convert booleans to 0/1 for tinyint flags       ['bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds'].forEach((k) => {         if (typeof payload[k] === 'boolean') payload[k] = payload[k] ? 1 : 0;       });        // PUT requires `id` in body (API reads from body, not query)       if (selectedEmployee?.id && method === 'PUT') {         payload.id = selectedEmployee.id;       }        // Do not overwrite date fields if user left them empty; normalize valid dates       ['hire_date','joining_date','dob','exit_date'].forEach((k) => {         if (payload[k] == null || payload[k] === '') {           if (method === 'PUT') delete payload[k];         } else if (typeof payload[k] === 'string') {           payload[k] = payload[k].slice(0, 10);         }       });        // For updates, avoid sending empty strings/nulls for any field to prevent clearing existing DB values       if (method === 'PUT') {         Object.keys(payload).forEach((k) => {           if (k === 'id') return; // required for PUT           const v = payload[k];           if (v === '' || v === null || v === undefined) delete payload[k];         });       }        const response = await fetch(url, {         method,         headers: {           'Content-Type': 'application/json',         },         body: JSON.stringify(payload),       });        let respJson = null;       let respText = null;       try { respJson = await response.json(); } catch (e) {         try { respText = await response.text(); } catch (e2) { /* ignore */ }       }        if (response.ok) {         // If this was a create, and salary inputs are present, create salary entry too         if (method === 'POST' && respJson?.employeeId) {           const hasSalaryBasics = salaryInputs?.effective_from && salaryInputs?.basic_salary !== '';           if (hasSalaryBasics) {             try {               const salaryPayload = {                 basic_salary: Number(salaryInputs.basic_salary || 0),                 attendance_days: Number(salaryInputs.attendance_days || 0),                 total_working_days: Number(salaryInputs.total_working_days || 0),                 loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,                 loan_emi: Number(salaryInputs.loan_emi || 0),                 advance_payment: Number(salaryInputs.advance_payment || 0),                 salary_type: salaryInputs.salary_type,                 effective_from: salaryInputs.effective_from,                 additional_earnings: Number(salaryInputs.additional_earnings || 0),                 additional_deductions: Number(salaryInputs.additional_deductions || 0),                 pf: Number(salaryInputs.pf || 0),                 pt: Number(salaryInputs.pt || 0),                 mlwf: Number(salaryInputs.mlwf || 0),                 // Persist PL usage and remaining balance when creating salary along with employee                 pl_used: Number(salaryInputs.pl_used || 0),                 pl_balance: Number(salaryInputs.pl_balance || 0),               };               await fetch(`/api/employees/${respJson.employeeId}/salary`, {                 method: 'POST',                 headers: { 'Content-Type': 'application/json' },                 body: JSON.stringify(salaryPayload)               }).catch(() => {});             } catch (e) {               // Do not block employee creation if salary creation fails               console.warn('Salary entry creation failed but employee saved:', e);             }           }         }         // Apply System Role to linked user if selected         try {           const roleId = formData.system_role_id || '';           const employeeDbId = selectedEmployee ? selectedEmployee.id : respJson?.employeeId;           if (roleId && employeeDbId) {             await applySystemRoleToLinkedUser(employeeDbId, roleId);           }         } catch {}          setSuccessMessage(selectedEmployee ? 'Employee updated successfully!' : 'Employee added successfully!');         // Reset filters so the new record is visible         setSearchTerm('');         setSelectedDepartment('');         setSelectedStatus('');         setCurrentPage(1);         setActiveTab('list');         setFormData(defaultFormData);         setSelectedEmployee(null);         fetchEmployees();       } else {         const error = respJson || {};         const fallback = respText || (error.error || error.message) || `Request failed: ${response.status}`;         setFormErrors(error.errors || { general: fallback || 'An error occurred' });       }     } catch (error) {       console.error('Error saving employee:', error);       setFormErrors({ general: 'An error occurred while saving the employee' });     } finally {       setLoading(false);     }   };      // Handle delete   const handleDelete = async (employee) => {     if (!window.confirm(`Are you sure you want to delete ${employee.first_name} ${employee.last_name}?`)) {       return;     }      setLoading(true);     try {       const response = await fetch(`/api/employees?id=${employee.id}`, {         method: 'DELETE',       });              if (response.ok) {         setSuccessMessage('Employee deleted successfully!');         fetchEmployees();       } else {         const error = await response.json();         setFormErrors({ general: error.message || 'Failed to delete employee' });       }     } catch (error) {       console.error('Error deleting employee:', error);       setFormErrors({ general: 'An error occurred while deleting the employee' });     } finally {       setLoading(false);     }   };    const openEditForm = (employee) => {     // Parse salary_structure JSON (if present) into granular fields so user sees current values     let salaryParts = {};     try {       if (employee?.salary_structure) {         const parsed = typeof employee.salary_structure === 'string'           ? JSON.parse(employee.salary_structure)           : employee.salary_structure;         if (parsed && typeof parsed === 'object') {           salaryParts = {             basic_salary: parsed.basic_salary ?? '',             hra: parsed.hra ?? '',             conveyance: parsed.conveyance ?? '',             medical_allowance: parsed.medical_allowance ?? '',             special_allowance: parsed.special_allowance ?? '',             incentives: parsed.incentives ?? '',             deductions: parsed.deductions ?? ''           };         }       }     } catch {}      setFormData({       ...defaultFormData,       ...employee,       ...salaryParts,       system_role_id: (() => {         try {           const match = roles.find(r => r.role_name === employee.role);           return match ? String(match.id) : '';         } catch { return ''; }       })(),       system_role_name: employee.role || '',       hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '',       joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '',       dob: employee.dob ? employee.dob.split('T')[0] : ''     });     setSelectedEmployee(employee);     setFormErrors({});     setEditSubTab('personal'); // Initialize to first tab     setActiveTab('edit');   };    const openViewForm = (employee) => {     setSelectedEmployee(employee);     setActiveTab('view');   };    // Handle CSV import   const handleImport = async (e) => {     e.preventDefault();     if (!importFile) return;      setLoading(true);     setFormErrors({});      try {       const formData = new FormData();       formData.append('file', importFile);        const response = await fetch('/api/employees/import', {         method: 'POST',         body: formData       });        const data = await response.json();        if (response.ok) {         setImportResults(data.summary);         setSuccessMessage('Import completed successfully!');         fetchEmployees(); // Refresh the employee list         setImportFile(null);       } else {         setFormErrors({ general: data.error });         if (data.details) {           setFormErrors({ general: data.error, details: data.details });         }       }     } catch (error) {       setFormErrors({ general: 'An error occurred during import. Please try again.' });     } finally {       setLoading(false);     }   };    // Download CSV template   const downloadTemplate = async (format = 'csv') => {     try {       const response = await fetch(`/api/employees/import?format=${format}`);       const blob = await response.blob();       const url = window.URL.createObjectURL(blob);       const a = document.createElement('a');       a.href = url;       a.download = format === 'excel' ? 'employee_template.xlsx' : 'employee_template.csv';       document.body.appendChild(a);       a.click();       window.URL.revokeObjectURL(url);       document.body.removeChild(a);     } catch (error) {       console.error('Error downloading template:', error);     }   };    const openAddForm = () => {     setFormData(defaultFormData);     setFormErrors({});     setAddSubTab('personal');     setActiveTab('add');   };    // Helper: update linked user's role if a user account exists for this employee
   const applySystemRoleToLinkedUser = async (employeeDbId, roleId) => {
     try {
       if (!employeeDbId || !roleId) return;
