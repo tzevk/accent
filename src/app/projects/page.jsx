@@ -73,6 +73,11 @@ function ProjectsInner() {
   const [sortDir, setSortDir] = useState('desc');
   const projKey = (p) => String(p.id ?? p.project_id ?? p.project_code ?? '');
   const [boardOrder, setBoardOrder] = useState({});
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const [draggingKey, setDraggingKey] = useState(null);
+  const [dragOverKey, setDragOverKey] = useState(null);
+  const [dragInsertPos, setDragInsertPos] = useState(null); // 'before' | 'after' | null
+  const [justDroppedKey, setJustDroppedKey] = useState(null);
 
   const toggleSort = (field) => {
     setSortBy((prev) => {
@@ -152,7 +157,8 @@ function ProjectsInner() {
   }, [docProjectId]);
 
   useEffect(() => {
-    setActiveTab(viewParam === 'calendar' ? 'calendar' : 'list');
+    // Sync active tab from URL param; default to 'list' when absent
+    setActiveTab(viewParam || 'list');
   }, [viewParam]);
 
   useEffect(() => {
@@ -369,9 +375,9 @@ function ProjectsInner() {
                       tabIndex={isActive ? 0 : -1}
                       onClick={() => {
                         setActiveTab(tab.id);
-                        // keep search params in sync
+                        // keep search params in sync: set 'view' to the tab id
                         const url = new URL(window.location.href);
-                        url.searchParams.set('view', tab.id === 'calendar' ? 'calendar' : 'list');
+                        url.searchParams.set('view', tab.id);
                         window.history.replaceState({}, '', url);
                       }}
                       onKeyDown={(e) => {
@@ -379,13 +385,13 @@ function ProjectsInner() {
                           const next = arr[(idx + 1) % arr.length];
                           setActiveTab(next.id);
                           const url = new URL(window.location.href);
-                          url.searchParams.set('view', next.id === 'calendar' ? 'calendar' : 'list');
+                          url.searchParams.set('view', next.id);
                           window.history.replaceState({}, '', url);
                         } else if (e.key === 'ArrowLeft') {
                           const prev = arr[(idx - 1 + arr.length) % arr.length];
                           setActiveTab(prev.id);
                           const url = new URL(window.location.href);
-                          url.searchParams.set('view', prev.id === 'calendar' ? 'calendar' : 'list');
+                          url.searchParams.set('view', prev.id);
                           window.history.replaceState({}, '', url);
                         }
                       }}
@@ -939,12 +945,28 @@ function ProjectsInner() {
                         <div
                           key={col.id}
                           onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            const key = e.dataTransfer.getData('text/plain');
+                          onDragEnter={() => setDragOverCol(col.id)}
+                          onDragLeave={(e) => {
+                            // If leaving the column area, clear highlight
+                            if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol((cur) => (cur === col.id ? null : cur));
+                          }}
+                          onTouchMove={() => {
+                            // Basic mobile: mark current column while moving
+                            setDragOverCol(col.id);
+                          }}
+                          onTouchEnd={() => {
+                            // Drop into column on touch end (append)
+                            const key = draggingKey;
                             if (!key) return;
                             const srcCol = BOARD_COLUMNS.find((c) => (boardOrder[c.id] || []).includes(key))?.id;
                             const dstCol = col.id;
                             if (!srcCol) return;
+                            setDragOverCol(null);
+                            setDraggingKey(null);
+                            setDragOverKey(null);
+                            setDragInsertPos(null);
+                            setJustDroppedKey(key);
+                            setTimeout(() => setJustDroppedKey(null), 300);
                             setBoardOrder((prev) => {
                               const next = { ...prev };
                               const srcArr = Array.isArray(next[srcCol]) ? next[srcCol].filter((k) => k !== key) : [];
@@ -971,7 +993,58 @@ function ProjectsInner() {
                               }
                             }
                           }}
-                          className="rounded-lg border p-3 transition-colors bg-gray-50 border-gray-200"
+                          onDrop={(e) => {
+                            const key = e.dataTransfer.getData('text/plain');
+                            if (!key) return;
+                            const srcCol = BOARD_COLUMNS.find((c) => (boardOrder[c.id] || []).includes(key))?.id;
+                            const dstCol = col.id;
+                            if (!srcCol) return;
+                            setDragOverCol(null);
+                            setDraggingKey(null);
+                            const targetKey = dragOverKey;
+                            const insertPos = dragInsertPos;
+                            setDragOverKey(null);
+                            setDragInsertPos(null);
+                            setJustDroppedKey(key);
+                            setTimeout(() => setJustDroppedKey(null), 300);
+                            setBoardOrder((prev) => {
+                              const next = { ...prev };
+                              const srcArr = Array.isArray(next[srcCol]) ? next[srcCol].filter((k) => k !== key) : [];
+                              let dstArr = Array.isArray(next[dstCol]) ? [...next[dstCol]] : [];
+                              if (srcCol === dstCol && targetKey && dstArr.includes(targetKey) && key) {
+                                // move within same column relative to hovered card
+                                const idx = dstArr.indexOf(targetKey);
+                                const insertIndex = Math.max(0, Math.min(dstArr.length, idx + (insertPos === 'after' ? 1 : 0)));
+                                dstArr = dstArr.filter((k) => k !== key);
+                                dstArr.splice(insertIndex, 0, key);
+                              } else if (key) {
+                                // cross-column or no specific target — append
+                                dstArr = dstArr.filter((k) => k !== key);
+                                dstArr.push(key);
+                              }
+                              next[srcCol] = srcArr;
+                              next[dstCol] = dstArr;
+                              return next;
+                            });
+                            if (srcCol !== dstCol) {
+                              const p = findProjectByKey(key);
+                              if (p) {
+                                const prevStatus = p.status;
+                                const newStatus = dstCol;
+                                setProjects((prev) => prev.map((it) => it === p ? { ...it, status: newStatus } : it));
+                                fetchJSON(`/api/projects/${p.id ?? p.project_id ?? p.project_code}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: newStatus })
+                                }).catch((err) => {
+                                  console.error('Failed to persist status change', err);
+                                  setProjects((prev) => prev.map((it) => it === p ? { ...it, status: prevStatus } : it));
+                                  alert('Failed to update status on server. Please retry.');
+                                });
+                              }
+                            }
+                          }}
+                          className={`rounded-lg border p-3 transition-colors ${dragOverCol === col.id ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}
                         >
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-semibold text-black">{col.label}</h4>
@@ -988,9 +1061,27 @@ function ProjectsInner() {
                                   onDragStart={(e) => {
                                     e.dataTransfer.setData('text/plain', key);
                                     e.dataTransfer.effectAllowed = 'move';
+                                    setDraggingKey(key);
                                   }}
-                                  className="bg-white rounded-md border px-3 py-2 shadow-sm"
+                                  onDragEnd={() => {
+                                    setDraggingKey(null);
+                                    setDragOverKey(null);
+                                    setDragInsertPos(null);
+                                  }}
+                                  onDragOver={(e) => {
+                                    // Allow drop and calculate relative position
+                                    e.preventDefault();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const offsetY = e.clientY - rect.top;
+                                    const before = offsetY < rect.height / 2;
+                                    setDragOverKey(key);
+                                    setDragInsertPos(before ? 'before' : 'after');
+                                  }}
+                                  className={`bg-white rounded-md border px-3 py-2 shadow-sm transition-all duration-200 ease-out cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:shadow-md ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
                                 >
+                                  {dragOverKey === key && dragInsertPos === 'before' && (
+                                    <div className="-mt-2 mb-2 h-1 bg-purple-200 rounded animate-pulse" />
+                                  )}
                                   <div className="flex items-center justify-between">
                                     <div className="text-sm font-semibold text-black truncate" title={project.name}>{project.name || project.project_id}</div>
                                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getStatusColor(project.status)}`}>{formatLabel(project.status)}</span>
@@ -1000,6 +1091,9 @@ function ProjectsInner() {
                                     <span className="text-[11px] text-gray-600">Budget: {formatCurrency(project.budget || 0)}</span>
                                     <span className="text-[11px] text-gray-600">{project.progress || 0}%</span>
                                   </div>
+                                  {dragOverKey === key && dragInsertPos === 'after' && (
+                                    <div className="mt-2 -mb-2 h-1 bg-purple-200 rounded animate-pulse" />
+                                  )}
                                 </div>
                               );
                             })}
