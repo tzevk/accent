@@ -159,9 +159,10 @@ export async function POST(request) {
 
     const db = await dbConnect();
     
-    // If a proposal_id is provided, prefer company information from that proposal
-    let effectiveCompanyId = company_id || null;
-    let effectiveClientName = client_name || null;
+  // If a proposal_id is provided, prefer company information from that proposal
+  let effectiveCompanyId = company_id || null;
+  // use data.client_name (may be present in payload) rather than an undefined variable
+  let effectiveClientName = data.client_name || null;
 
     if (proposal_id) {
       try {

@@ -1,7 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { 
@@ -23,6 +23,15 @@ export default function ProposalPage() {
   const [proposal, setProposal] = useState(null);
   const [linkedLead, setLinkedLead] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Local form state for editing proposal
+  const [formData, setFormData] = useState({
+    title: '',
+    value: '',
+    due_date: '',
+    notes: '',
+    client_name: ''
+  });
+  const [isEditing, setIsEditing] = useState(false);
 
   // Versions & approvals state
   const [versions, setVersions] = useState([]);
@@ -122,7 +131,8 @@ export default function ProposalPage() {
             client_name: proposalData?.client_name || ''
           });
         } else {
-          console.error('Error fetching proposal:', result?.error);
+          // Defensive logging: result may be undefined or not contain error field
+          console.error('Error fetching proposal:', result?.error ?? result ?? 'Unexpected empty response');
         }
       } catch (error) {
         console.error('Error:', error);
@@ -535,6 +545,31 @@ export default function ProposalPage() {
       if (j?.success) setApprovals(j.data || []);
     } catch (e) { console.error('approvals fetch', e); }
   }, [proposal]);
+
+  // Parse complex JSON fields from proposal for rendering in view
+
+
+  const parsedCommercialItems = useMemo(() => {
+    if (!proposal || !proposal.commercial_items) return [];
+    try {
+      return Array.isArray(proposal.commercial_items)
+        ? proposal.commercial_items
+        : (typeof proposal.commercial_items === 'string' ? JSON.parse(proposal.commercial_items) : []);
+    } catch {
+      return [];
+    }
+  }, [proposal]);
+
+  const parsedPlannedHoursByDiscipline = useMemo(() => {
+    if (!proposal || !proposal.planned_hours_by_discipline) return {};
+    try {
+      return typeof proposal.planned_hours_by_discipline === 'string' ? JSON.parse(proposal.planned_hours_by_discipline) : proposal.planned_hours_by_discipline;
+    } catch {
+      return {};
+    }
+  }, [proposal]);
+
+  // REMOVED unused parsedPlannedHoursPerActivity
 
   useEffect(() => {
     const fetchMeta = async () => {
@@ -1096,8 +1131,151 @@ export default function ProposalPage() {
                   </div>
                 </div>
               </div>
+                {/* Scope / Commercials / Quotation / Meetings / Financial / Hours / Location (read-only mirrors of edit page) */}
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Scope of Work</h3>
+                  <div className="space-y-3">
+                    <p className="text-gray-700 whitespace-pre-wrap">{proposal.scope_of_work || proposal.scope || proposal.project_description || '—'}</p>
+                    {parsedPlanningActivities && parsedPlanningActivities.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 mt-2">Planned Activities</h4>
+                        <ul className="mt-2 space-y-2">
+                          {parsedPlanningActivities.map((pa, idx) => (
+                            <li key={pa.id || idx} className="text-sm text-gray-700 border border-gray-100 rounded p-2 bg-gray-50">
+                              <div className="font-medium">{pa.activity || pa.activity_description || `Activity ${idx+1}`}</div>
+                              <div className="text-xs text-gray-500">{pa.start_date || pa.start || ''} → {pa.end_date || pa.end || ''}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {parsedDocumentsList && parsedDocumentsList.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 mt-2">Attached Documents</h4>
+                        <ul className="mt-2 space-y-2">
+                          {parsedDocumentsList.map((d, i) => (
+                            <li key={d.id || i} className="text-sm text-gray-700">
+                              {d.name || d.document_name || `Doc ${i+1}`} {d.remarks ? `— ${d.remarks}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-              {/* Versions */}
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Commercials</h3>
+                  <div className="overflow-x-auto">
+                    {parsedCommercialItems && parsedCommercialItems.length > 0 ? (
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="text-xs text-gray-500">
+                            <th className="px-3 py-2">Sr. No</th>
+                            <th className="px-3 py-2">Activity</th>
+                            <th className="px-3 py-2">Manhours</th>
+                            <th className="px-3 py-2">Rate</th>
+                            <th className="px-3 py-2">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parsedCommercialItems.map((c, i) => (
+                            <tr key={c.id || i} className="border-t border-gray-100">
+                              <td className="px-3 py-2 align-top">{c.sr_no || i+1}</td>
+                              <td className="px-3 py-2 align-top">{c.activities || c.scope_of_work || c.activity || '—'}</td>
+                              <td className="px-3 py-2 align-top">{c.man_hours ?? c.manhours ?? '—'}</td>
+                              <td className="px-3 py-2 align-top">{c.man_hour_rate ?? c.rate ?? '—'}</td>
+                              <td className="px-3 py-2 align-top">{c.total_amount ?? c.amount ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="text-sm text-gray-500">No commercial items added.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Quotation & Terms</h3>
+                  <div className="space-y-3">
+                    <div><span className="text-sm text-gray-500">Quotation No:</span> <span className="text-sm text-gray-900">{proposal.quotation_number || '—'}</span></div>
+                    <div><span className="text-sm text-gray-500">Quotation Date:</span> <span className="text-sm text-gray-900">{proposal.quotation_date || '—'}</span></div>
+                    <div><span className="text-sm text-gray-500">Enquiry No:</span> <span className="text-sm text-gray-900">{proposal.enquiry_number || '—'}</span></div>
+                    <div><span className="text-sm text-gray-500">Enquiry Date:</span> <span className="text-sm text-gray-900">{proposal.enquiry_date || '—'}</span></div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 mt-2">Billing & Payment Terms</h4>
+                      <p className="text-gray-700 whitespace-pre-wrap">{proposal.billing || proposal.billing_and_payment || proposal.billing_payment_terms || proposal.billing_payment || proposal.billingAndPayment || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Meetings</h3>
+                  <div className="space-y-3">
+                    <div><span className="text-sm text-gray-500">Kickoff Meeting:</span> <span className="text-sm text-gray-900">{proposal.kickoff_meeting || '—'}</span></div>
+                    <div><span className="text-sm text-gray-500">Kickoff Date:</span> <span className="text-sm text-gray-900">{proposal.kickoff_meeting_date || '—'}</span></div>
+                    <div><span className="text-sm text-gray-500">Internal Meeting:</span> <span className="text-sm text-gray-900">{proposal.in_house_meeting || proposal.internal_meeting_date || '—'}</span></div>
+                    <div><span className="text-sm text-gray-500">Next Internal Meeting:</span> <span className="text-sm text-gray-900">{proposal.next_internal_meeting || '—'}</span></div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Financials</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 border border-gray-100 rounded p-3">
+                      <p className="text-xs text-gray-500">Budget</p>
+                      <p className="text-sm font-medium text-gray-900">{proposal.budget ?? '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-100 rounded p-3">
+                      <p className="text-xs text-gray-500">Cost to Company</p>
+                      <p className="text-sm font-medium text-gray-900">{proposal.cost_to_company ?? '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-100 rounded p-3">
+                      <p className="text-xs text-gray-500">Profitability %</p>
+                      <p className="text-sm font-medium text-gray-900">{proposal.profitability_estimate ?? '—'}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-sm text-gray-700">
+                    <p><strong>Major Risks:</strong> {proposal.major_risks || '—'}</p>
+                    <p className="mt-1"><strong>Mitigation:</strong> {proposal.mitigation_plans || '—'}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Hours & Productivity</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 border border-gray-100 rounded p-3">
+                      <p className="text-xs text-gray-500">Planned Hours Total</p>
+                      <p className="text-sm font-medium text-gray-900">{proposal.planned_hours_total ?? '—'}</p>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-100 rounded p-3">
+                      <p className="text-xs text-gray-500">Actual Hours Total</p>
+                      <p className="text-sm font-medium text-gray-900">{proposal.actual_hours_total ?? '—'}</p>
+                    </div>
+                  </div>
+                  {parsedPlannedHoursByDiscipline && Object.keys(parsedPlannedHoursByDiscipline).length > 0 && (
+                    <div className="mt-3">
+                      <h4 className="text-sm font-semibold text-gray-900">Planned Hours by Discipline</h4>
+                      <ul className="mt-2 text-sm text-gray-700">
+                        {Object.entries(parsedPlannedHoursByDiscipline).map(([k,v]) => (
+                          <li key={k}>{k}: {v}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Location</h3>
+                  <div className="space-y-2 text-sm text-gray-700">
+                    <p><strong>Country:</strong> {proposal.project_location_country || '—'}</p>
+                    <p><strong>City:</strong> {proposal.project_location_city || '—'}</p>
+                    <p><strong>Site:</strong> {proposal.project_location_site || '—'}</p>
+                  </div>
+                </div>
+
+                {/* Versions */}
               <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Versions</h3>
                 <div className="space-y-3">

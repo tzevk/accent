@@ -13,8 +13,8 @@ import {
   EyeIcon,
   PencilIcon,
   TrashIcon,
-  FunnelIcon
 } from '@heroicons/react/24/outline';
+// FunnelIcon is no longer used and has been removed.
 
 export default function Vendors() {
   const router = useRouter();

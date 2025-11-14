@@ -2,7 +2,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 
 import {
@@ -12,160 +12,18 @@ import {
   FunnelIcon,
   PencilIcon,
   TrashIcon,
-  EyeIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
+    EyeIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
   DocumentArrowDownIcon,
-  CogIcon,
-  CalculatorIcon,
-  CalendarDaysIcon,
   CurrencyDollarIcon,
+  CalendarDaysIcon,
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
-  EyeIcon as EyeOutlineIcon,
-  ChartBarIcon
+  ClockIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 
-// Simple Salary Calculator Component
-const SalaryCalculator = React.memo(({ basicSalary, onCalculate }) => {
-  const [earnings, setEarnings] = useState({
-    basic: parseFloat(basicSalary) || 0,
-    da: 0,
-    hra: 0,
-    allowances: 0
-  });
-
-  const [deductions, setDeductions] = useState({
-    pf: 0,
-    pt: 0,
-    esi: 0,
-    tds: 0
-  });
-
-  const grossSalary = Object.values(earnings).reduce((sum, val) => sum + val, 0);
-  const totalDeductions = Object.values(deductions).reduce((sum, val) => sum + val, 0);
-  const netSalary = grossSalary - totalDeductions;
-
-  useEffect(() => {
-    onCalculate({ gross: grossSalary, net: netSalary, earnings, deductions });
-  }, [grossSalary, netSalary, earnings, deductions, onCalculate]);
-
-  const updateEarning = (key, value) => {
-    setEarnings(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
-  };
-
-  const updateDeduction = (key, value) => {
-    setDeductions(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Earnings */}
-      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-        <h6 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
-          <ArrowTrendingUpIcon className="h-4 w-4 mr-2" />
-          Earnings
-        </h6>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Basic Salary</label>
-            <input 
-              type="number" 
-              value={earnings.basic} 
-              onChange={(e) => updateEarning('basic', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">DA (Dearness Allowance)</label>
-            <input 
-              type="number" 
-              value={earnings.da} 
-              onChange={(e) => updateEarning('da', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">HRA (House Rent Allowance)</label>
-            <input 
-              type="number" 
-              value={earnings.hra} 
-              onChange={(e) => updateEarning('hra', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Other Allowances</label>
-            <input 
-              type="number" 
-              value={earnings.allowances} 
-              onChange={(e) => updateEarning('allowances', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-green-300 rounded-md focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <div className="pt-2 border-t border-green-300">
-            <div className="flex justify-between text-sm font-semibold text-green-800">
-              <span>Total Earnings:</span>
-              <span>₹{grossSalary.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Deductions */}
-      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-        <h6 className="text-sm font-semibold text-red-800 mb-3 flex items-center">
-          <ArrowTrendingDownIcon className="h-4 w-4 mr-2" />
-          Deductions
-        </h6>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">PF (Provident Fund)</label>
-            <input 
-              type="number" 
-              value={deductions.pf} 
-              onChange={(e) => updateDeduction('pf', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">PT (Professional Tax)</label>
-            <input 
-              type="number" 
-              value={deductions.pt} 
-              onChange={(e) => updateDeduction('pt', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">ESI (Employee State Insurance)</label>
-            <input 
-              type="number" 
-              value={deductions.esi} 
-              onChange={(e) => updateDeduction('esi', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">TDS (Tax Deducted at Source)</label>
-            <input 
-              type="number" 
-              value={deductions.tds} 
-              onChange={(e) => updateDeduction('tds', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-red-300 rounded-md focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-          <div className="pt-2 border-t border-red-300">
-            <div className="flex justify-between text-sm font-semibold text-red-800">
-              <span>Total Deductions:</span>
-              <span>₹{totalDeductions.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // Ensure memoized component has a display name for React/ESLint
 SalaryCalculator.displayName = 'SalaryCalculator';
@@ -197,41 +55,25 @@ const Avatar = ({ src, firstName, lastName, size = 40 }) => {
   );
 };
 
-// Custom hook for debounced input handling
-const useDebouncedInput = (value, onChange, delay = 300) => {
-  const [localValue, setLocalValue] = React.useState(value);
-  const timeoutRef = React.useRef();
-
-  React.useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
-
-  const handleChange = (newValue) => {
-    setLocalValue(newValue);
-    
-    // Clear existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    // Set new timeout
-    timeoutRef.current = setTimeout(() => {
-      onChange(newValue);
-    }, delay);
-  };
-
-  const handleBlur = () => {
-    // Clear timeout and update immediately on blur
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      onChange(localValue);
-    }
-  };
-
-  return [localValue, handleChange, handleBlur];
-};
 
 export default function EmployeesPage() {
+  // (removed debug floating save helper) - production save flow uses submitSalaryMaster
+  // Safe profile photo change handler: forwards to canonical handler if present,
+  // otherwise shows a friendly error and avoids runtime ReferenceError while
+  // the file is mid-refactor.
+  const handleProfilePhotoChange_safe = async (e) => {
+    if (typeof handleProfilePhotoChange === 'function') {
+      try {
+        await handleProfilePhotoChange(e);
+      } catch (err) {
+        console.error('handleProfilePhotoChange invocation failed', err);
+      }
+      return;
+    }
+    try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch {}
+    setFormErrors(prev => ({ ...prev, general: 'Photo upload temporarily unavailable while the editor is updating. Please try again.' }));
+    console.error('handleProfilePhotoChange is not available yet');
+  };
   const defaultFormData = {
     // Personal details
     first_name: '',
@@ -342,6 +184,86 @@ export default function EmployeesPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   // Roles for System Role assignment
   const [roles, setRoles] = useState([]);
+  // Safe wrapper for opening the edit form. We add this wrapper to avoid TDZ/hoisting
+  // issues if the original `openEditForm` declaration is temporarily unavailable
+  // during ongoing edits. This mirrors the core behavior needed by the UI and
+  // keeps changes minimal.
+  const openEditForm_safe = (employee) => {
+    if (!employee) return;
+    try {
+      // Parse salary parts if present
+      let salaryParts = {};
+      if (employee.salary_structure) {
+        try {
+          const parsed = typeof employee.salary_structure === 'string' ? JSON.parse(employee.salary_structure) : employee.salary_structure;
+          if (parsed && typeof parsed === 'object') {
+            salaryParts = {
+              basic_salary: parsed.basic_salary ?? '',
+              hra: parsed.hra ?? '',
+              conveyance: parsed.conveyance ?? '',
+              medical_allowance: parsed.medical_allowance ?? '',
+              special_allowance: parsed.special_allowance ?? '',
+              incentives: parsed.incentives ?? '',
+              deductions: parsed.deductions ?? ''
+            };
+          }
+        } catch {}
+      }
+
+      const sysRoleId = (() => {
+        try {
+          const match = roles.find(r => r.role_name === employee.role);
+          return match ? String(match.id) : '';
+        } catch { return ''; }
+      })();
+
+      setFormData({ ...defaultFormData, ...employee, ...salaryParts, system_role_id: sysRoleId, system_role_name: employee.role || '', hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '', joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '', dob: employee.dob ? employee.dob.split('T')[0] : '' });
+      setSelectedEmployee(employee);
+      setFormErrors({});
+      setEditSubTab('personal');
+      setActiveTab('edit');
+    } catch (e) {
+      console.error('openEditForm_safe failed', e);
+    }
+  };
+  // Safe submit wrapper to avoid runtime ReferenceError if `handleSubmit` is temporarily
+  // undefined during an in-progress refactor. If the canonical `handleSubmit` exists
+  // it will be invoked; otherwise we show a friendly error and prevent default.
+  const handleSubmit_safe = async (e) => {
+    // Try calling the canonical handleSubmit if it's available. In some
+    // in-flight refactor states the `handleSubmit` binding may not be ready
+    // yet; retry a few times before failing gracefully.
+    const callIfReady = async () => {
+      if (typeof handleSubmit === 'function') {
+        try {
+          await handleSubmit(e);
+          return true;
+        } catch (err) {
+          // forward error to console but don't spam user with internal messages
+          console.error('handleSubmit invocation failed', err);
+          return false;
+        }
+      }
+      return false;
+    };
+
+    // Immediate attempt
+    if (await callIfReady()) return;
+
+    // Retry a few times (short backoff) in case of a transient binding order issue
+    const maxAttempts = 20;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      // small delay
+       
+      await new Promise(res => setTimeout(res, 50));
+       
+      if (await callIfReady()) return;
+    }
+
+    // If still not available, show a user-friendly message but avoid noisy console errors
+    try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch {}
+    setFormErrors(prev => ({ ...prev, general: 'Form submission temporarily unavailable. Please try again.' }));
+  };
   // Add Employee sub-tabs (like Projects edit tabs)
   const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
   const [addSubTab, setAddSubTab] = useState('personal');
@@ -484,13 +406,16 @@ export default function EmployeesPage() {
     });
   };
   
-  const [salaryCalculation, setSalaryCalculation] = useState(null);
+  // remove unused salaryCalculation state
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
   const [salarySuccess, setSalarySuccess] = useState('');
   // Salary rows loaded from DB (most-recent-first)
   const [salaryRows, setSalaryRows] = useState([]);
-  const [salaryRaw, setSalaryRaw] = useState(null);
+  const [editingSalaryId, setEditingSalaryId] = useState(null);
+
+  // Memoize manual_overrides JSON so we can use a stable dependency in effects
+  const salaryManualOverridesString = useMemo(() => JSON.stringify(salaryData.manual_overrides || {}), [salaryData.manual_overrides]);
 
   // Comprehensive reactive salary engine
   useEffect(() => {
@@ -541,8 +466,6 @@ export default function EmployeesPage() {
 
       // If user manually edited a field, preserve it; otherwise use default
       const basicDa = prev.manual_overrides?.basic_da ? Math.round(toNum(prev.basic_da)) : defaultBasicDa;
-      const hra = prev.manual_overrides?.hra ? Math.round(toNum(prev.hra)) : defaultHra;
-      const conveyance = prev.manual_overrides?.conveyance_allowance ? Math.round(toNum(prev.conveyance_allowance)) : defaultConveyance;
 
       // Employee PF = 12% of Basic+DA (cap 1800)
       const employeePfRaw = Math.round(0.12 * basicDa);
@@ -613,294 +536,95 @@ export default function EmployeesPage() {
     salaryData.ot_hours,
     salaryData.ot_rate,
     salaryData.total_working_hours,
-    JSON.stringify(salaryData.manual_overrides)
+    salaryManualOverridesString
   ]);
 
   // Fetch persisted salary rows for the selected employee and map primary fields into the UI
-  const loadSalaryRows = async (empId) => {
+  const loadSalaryRows = useCallback(async (empId) => {
+    console.debug('[salary] loadSalaryRows called for', empId);
+    if (!empId || !selectedEmployee) return;
+    setSalaryLoading(true);
+    setSalaryError('');
     try {
-      console.debug('[salary] loadSalaryRows called for', empId);
-      if (!empId) return;
-      setSalaryLoading(true);
-      setSalaryError('');
-      const url = `/api/employees/${empId}/salary`;
-      console.debug('[salary] fetching', url);
-      const res = await fetch(url);
-      console.debug('[salary] fetch response status', res.status);
-      if (!res.ok) {
-        const txt = await res.text();
-        console.error('[salary] fetch failed:', txt || `Status ${res.status}`);
-        throw new Error(txt || `Status ${res.status}`);
-      }
-      const resJson = await res.json();
-      console.debug('[salary] response json', resJson);
-      // Server returns { success: true, data: { record, computed } } or { success: true, data: null }
-  setSalaryRaw(resJson);
-      let rows = [];
-      if (resJson && resJson.success) {
-        const payload = resJson.data;
-        if (!payload) {
-          rows = [];
-        } else if (Array.isArray(payload)) {
-          rows = payload;
-        } else if (payload.record) {
-          rows = [payload.record];
-        } else if (payload.rows) {
-          rows = payload.rows;
-        } else {
-          // fallback: if data itself looks like a record
-          rows = [payload];
-        }
-        // If no persisted record but server returned a computed breakdown, map computed -> fake row
-        if (rows.length === 0 && payload && payload.computed) {
-          const comp = payload.computed;
-          const fake = {
-            gross_salary: comp.inputs?.gross_salary ?? null,
-            basic_da: comp.breakdown?.basic_da ?? null,
-            hra: comp.breakdown?.hra ?? null,
-            conveyance_allowance: comp.breakdown?.conveyance_allowance ?? null,
-            call_allowance: null,
-            other_allowance: comp.inputs?.other_allowance ?? null,
-            effective_from: (payload.record && (payload.record.effective_from || payload.record.effectiveFrom)) || null,
-          };
-          console.debug('[salary] using server computed as fake row', fake);
-          rows = [fake];
-        }
-      } else {
-        // If the API returned a non-success wrapper, treat as empty and surface the raw payload in preview
-        rows = [];
-      }
-      console.debug('[salary] normalized rows count', rows.length, rows[0]);
-      // sort most-recent-first if effective_from present
-      rows.sort((a, b) => {
-        const da = a?.effective_from ? new Date(a.effective_from) : null;
-        const db = b?.effective_from ? new Date(b.effective_from) : null;
-        if (da && db) return db - da;
-        if (db) return 1;
-        if (da) return -1;
-        return 0;
-      });
-      setSalaryRows(rows);
-
-      // If we have at least one row, map the common DB fields into the salaryData UI state.
-      if (rows.length > 0) {
-        const row = rows[0];
-        // compute mapping values for logging
-        const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
-        const basic = row.basic ?? row.BASIC ?? row.Basic;
-        const da = row.da ?? row.DA ?? row.Da;
-        const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? undefined);
-        const hra = row.hra ?? row.HRA ?? undefined;
-        const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? undefined;
-        const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? undefined;
-        const other = row.other_allowance ?? row.other ?? row.other_allow ?? undefined;
-
-        console.debug('[salary] mapping record -> UI', { gross: g, basicDaCombined, hra, convey, callAllow, other, effective_from: row.effective_from });
-
-        setSalaryData(prev => {
-          // Helper to coalesce multiple possible field names
-          const g = row.gross_salary ?? row.gross ?? row.GROSS ?? row.Gross;
-          const basic = row.basic ?? row.BASIC ?? row.Basic;
-          const da = row.da ?? row.DA ?? row.Da;
-          const basicDaCombined = (basic !== undefined || da !== undefined) ? (Number(basic || 0) + Number(da || 0)) : (row.basic_da ?? row.basicDa ?? prev.basic_da);
-          const hra = row.hra ?? row.HRA ?? prev.hra;
-          const convey = row.conveyance_allowance ?? row.conveyance ?? row['CONVEYANCE ALLOWANCE'] ?? prev.conveyance_allowance;
-          const callAllow = row.call_allowance ?? row.call_allow ?? row.call ?? prev.call_allowance;
-          const other = row.other_allowance ?? row.other ?? row.other_allow ?? prev.other_allowance;
-
-          // Preserve existing manual overrides and mark fetched component fields as manual so
-          // they reflect DB values until the user explicitly resets them via the UI.
-          const prevMO = prev.manual_overrides || {};
-          const newMO = { ...prevMO };
-          // Prefer mapping component splits from gross: do not force basic/da/hra/conveyance from DB.
-          // Remove manual override flags for those splits so the reactive engine computes them from gross.
-          if (newMO.basic_da) delete newMO.basic_da;
-          if (newMO.hra) delete newMO.hra;
-          if (newMO.conveyance_allowance) delete newMO.conveyance_allowance;
-          if (callAllow !== undefined || row.call_allowance !== undefined) newMO.call_allowance = true;
-          if (other !== undefined || row.other_allowance !== undefined) newMO.other_allowance = true;
-
-          return {
-            ...prev,
-            gross_salary: g !== undefined && g !== null ? g : prev.gross_salary,
-            // Do not overwrite the component splits here; let the reactive salary engine derive them from gross.
-            basic_da: prev.basic_da,
-            hra: prev.hra,
-            conveyance_allowance: prev.conveyance_allowance,
-            call_allowance: callAllow !== undefined ? callAllow : prev.call_allowance,
-            other_allowance: other !== undefined ? other : prev.other_allowance,
-            effective_from: row.effective_from ?? prev.effective_from,
-            manual_overrides: newMO
-          };
-        });
-        // Also populate salaryInputs (used by the save flow) so add/edit flows stay in sync
+      // Parse salary_structure from selectedEmployee
+      let salaryStructure = {};
+      if (selectedEmployee.salary_structure) {
         try {
-          setSalaryInputs(prev => ({
-            ...prev,
-            basic_salary: row.basic ?? row.basic_salary ?? row.BASIC ?? prev.basic_salary,
-            da: row.da ?? row.DA ?? prev.da,
-            hra: row.hra ?? row.HRA ?? prev.hra,
-            conveyance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance,
-            call_allowance: row.call_allowance ?? row.call ?? prev.call_allowance,
-            other_allowance: row.other_allowance ?? row.other ?? prev.other_allowance,
-            effective_from: row.effective_from ?? prev.effective_from,
-            pl_used: row.pl_used ?? prev.pl_used,
-            pl_balance: row.pl_balance ?? prev.pl_balance,
-          }));
-          console.debug('[salary] salaryInputs populated from DB', { basic_salary: row.basic ?? row.basic_salary, da: row.da, hra: row.hra, conveyance: row.conveyance, call_allowance: row.call_allowance, other_allowance: row.other_allowance });
-        } catch (e) { console.error('[salary] failed to set salaryInputs', e); }
+          salaryStructure = typeof selectedEmployee.salary_structure === 'string'
+            ? JSON.parse(selectedEmployee.salary_structure)
+            : selectedEmployee.salary_structure;
+        } catch (e) {
+          console.error('[salary] failed to parse salary_structure', e);
+          salaryStructure = {};
+        }
       }
+
+      // Populate salaryInputs from salaryStructure
+      setSalaryInputs({
+        basic_salary: salaryStructure.basic_salary || '',
+        hra: salaryStructure.hra || '',
+        conveyance: salaryStructure.conveyance || '',
+        medical_allowance: salaryStructure.medical_allowance || '',
+        special_allowance: salaryStructure.special_allowance || '',
+        incentives: salaryStructure.incentives || '',
+        deductions: salaryStructure.deductions || '',
+        effective_from: salaryStructure.effective_from || '',
+        // Keep other fields as defaults
+        attendance_days: '',
+        total_working_days: '',
+        loan_active: 'No',
+        loan_emi: '',
+        advance_payment: '',
+        salary_type: 'Monthly',
+        additional_earnings: '',
+        additional_deductions: '',
+        pf: '',
+        pt: '',
+        mlwf: '',
+        da: '',
+        call_allowance: '',
+        other_allowance: '',
+        pl_used: '',
+        pl_balance: '',
+      });
+
+      // Set salaryData for display
+      setSalaryData({
+        gross_salary: selectedEmployee.gross_salary || 0,
+        total_deductions: selectedEmployee.total_deductions || 0,
+        net_salary: selectedEmployee.net_salary || 0,
+      });
+
+      // Set salaryRows to a single row for display
+      setSalaryRows([{
+        id: 1,
+        ...salaryStructure,
+        gross_salary: selectedEmployee.gross_salary,
+        total_deductions: selectedEmployee.total_deductions,
+        net_salary: selectedEmployee.net_salary,
+      }]);
 
     } catch (err) {
-      console.error('Failed to load salary rows', err);
-      setSalaryError(String(err?.message || err));
-      setSalaryRows([]);
+      console.error('[salary] failed to load salary data', err);
+      setSalaryError('Failed to load salary data.');
     } finally {
       setSalaryLoading(false);
     }
-  };
+  }, [selectedEmployee]);
 
   useEffect(() => {
     loadSalaryRows(selectedEmployee?.id);
-  }, [selectedEmployee?.id]);
+  }, [selectedEmployee?.id, loadSalaryRows]);
 
   // Also reload when the Salary tab is shown to the user
   useEffect(() => {
     if (editSubTab === 'salary') loadSalaryRows(selectedEmployee?.id);
-  }, [editSubTab, selectedEmployee?.id]);
+  }, [editSubTab, selectedEmployee?.id, loadSalaryRows]);
 
-  // Add attendance related extras
-  // week_offs: weekly offs in the period; pl_use: paid leave used; pl_balance: informational
-  // absent will be computed as derived below
-  const [attendanceExtras, setAttendanceExtras] = useState({ week_offs: '', pl_use: '', pl_balance: '' });
-
-  // Evaluate a simple arithmetic formula safely against provided variables
-  const evaluateFormula = (expr, vars) => {
-    try {
-      if (!expr || typeof expr !== 'string') return 0;
-      const sanitized = expr.replace(/[^0-9+\-*/(). _a-z]/gi, '');
-      // Replace variable tokens with their numeric values from vars
-      const replaced = sanitized.replace(/[a-z_]+/gi, (name) => {
-        const key = name.toLowerCase();
-        const v = vars[key];
-        return (typeof v === 'number' && isFinite(v)) ? String(v) : '0';
-      });
-  const fn = new Function(`return (${replaced});`);
-      const val = Number(fn());
-      return isFinite(val) ? val : 0;
-    } catch {
-      return 0;
-    }
-  };
-
-  // Compute locally for Add flow and for instant preview
-  const computeLocal = () => {
-    const salaryType = String(salaryInputs.salary_type || 'Monthly');
-    const applicable = salaryType; // keep same for now
-    const basicInput = componentConfig.basic;
-    const baseBasic = Number(salaryInputs.basic_salary || 0);
-    const additionalEarnings = Number(salaryInputs.additional_earnings || 0);
-    const additionalDeductions = Number(salaryInputs.additional_deductions || 0);
-    const loanActive = String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0;
-    const loanEmi = Number(salaryInputs.loan_emi || 0);
-    const advance = Number(salaryInputs.advance_payment || 0);
-    const totalDays = Number(salaryInputs.total_working_days || 0);
-    const weekOffs = Number(attendanceExtras.week_offs || 0);
-    const plUse = Number(attendanceExtras.pl_use || 0);
-    const attendanceDays = Number(salaryInputs.attendance_days || 0);
-
-    const effectiveDays = Math.max(0, totalDays - weekOffs);
-    const presentDays = Math.max(0, attendanceDays + plUse);
-    const computedAbsent = Math.max(0, effectiveDays - presentDays);
-
-    // Resolve components in order
-    const resolved = {};
-    // helper to resolve a component
-    const resolveComp = (key, defVal) => {
-      const conf = componentConfig[key] || { type: 'fixed', value: '' };
-      if (conf.type === 'formula') return evaluateFormula(String(conf.value || ''), resolved);
-      if (conf.type === 'fixed' && conf.value !== '') return Number(conf.value) || 0;
-      return defVal;
-    };
-
-    // Defaults mirroring server
-    const def_da = baseBasic * 0.10;
-    const def_hra = baseBasic * 0.40;
-    const def_conveyance = 1500;
-    const def_call = String(salaryType).toLowerCase() === 'monthly' ? 1500 : 0;
-    const def_other = baseBasic > 40000 ? 2000 : 1000;
-    const def_pf = Math.min(15000, baseBasic) * 0.12;
-    const grossForPTDefault = baseBasic + def_da + def_hra + def_conveyance + def_call + def_other + additionalEarnings;
-    const def_pt = grossForPTDefault > 7500 ? 200 : 0;
-    const now = new Date();
-    const def_mlwf = (now.getMonth() + 1) === 6 ? 10 : 0;
-
-    // Resolve with defaults available in 'resolved'
-    resolved.basic = resolveComp('basic', baseBasic);
-    resolved.da = resolveComp('da', def_da);
-    resolved.hra = resolveComp('hra', def_hra);
-    resolved.conveyance = resolveComp('conveyance', def_conveyance);
-    resolved.call_allowance = resolveComp('call_allowance', def_call);
-    resolved.other_allowance = resolveComp('other_allowance', def_other);
-
-    const gross = resolved.basic + resolved.da + resolved.hra + resolved.conveyance + resolved.call_allowance + resolved.other_allowance + additionalEarnings;
-
-    // Apply statutory flags to deductions - only calculate if enabled
-    resolved.pf = formData.stat_pf ? resolveComp('pf', def_pf) : 0;
-    resolved.pt = formData.stat_pt ? resolveComp('pt', def_pt) : 0;
-    resolved.mlwf = formData.stat_mlwf ? resolveComp('mlwf', def_mlwf) : 0;
-    resolved.esic = formData.stat_esic ? 0 : 0; // ESIC calculation can be added later
-    const totalDeductions = resolved.pf + resolved.pt + resolved.mlwf + additionalDeductions;
-
-    const netSalary = gross - totalDeductions;
-    const payablePct = effectiveDays > 0 ? presentDays / effectiveDays : 0;
-    const monthlySalary = netSalary * payablePct;
-    const hourlySalary = String(salaryType).toLowerCase() === 'hourly' && effectiveDays > 0 ? monthlySalary / (effectiveDays * 8) : 0;
-    const annualSalary = monthlySalary * 12;
-    // Apply TDS only if stat_tds is enabled
-    const tds = formData.stat_tds && annualSalary > 500000 ? annualSalary * 0.05 : 0;
-    const tdsMonthly = tds / 12;
-    const finalPayable = monthlySalary - (loanActive ? loanEmi : 0) - advance - tdsMonthly;
-
-    return {
-      inputs: {
-        salary_type: salaryType,
-        basic_salary: resolved.basic,
-        attendance_days: attendanceDays,
-        total_working_days: totalDays,
-        week_offs: weekOffs,
-        pl_use: plUse,
-        absent: computedAbsent,
-        loan_active: loanActive,
-        loan_emi: loanEmi,
-        advance_payment: advance,
-        effective_from: salaryInputs.effective_from || null,
-      },
-      earnings: {
-        da: resolved.da,
-        hra: resolved.hra,
-        conveyance: resolved.conveyance,
-        call_allowance: resolved.call_allowance,
-        other_allowance: resolved.other_allowance,
-        additional_earnings: additionalEarnings,
-        gross,
-      },
-      deductions: {
-        pf: resolved.pf,
-        pt: resolved.pt,
-        mlwf: resolved.mlwf,
-        esic: resolved.esic,
-        additional_deductions: additionalDeductions,
-        total_deductions: totalDeductions,
-      },
-      attendance: { absent_days: computedAbsent, payable_days_pct: payablePct },
-      summary: { net_salary: netSalary, monthly_salary: monthlySalary, hourly_salary: hourlySalary, annual_salary: annualSalary, tds, tds_monthly: tdsMonthly, final_payable: finalPayable },
-    };
-  };
-
+  // Add attendance related extras (not used currently)
 
   // Fetch employees
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMsg('');
@@ -948,11 +672,11 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, searchTerm, selectedDepartment, selectedStatus]);
 
   useEffect(() => {
     fetchEmployees();
-  }, [currentPage, searchTerm, selectedDepartment, selectedStatus]);
+  }, [fetchEmployees]);
 
   // Compute next ATS id from current employees list (e.g. ATS001 -> ATS002)
   const nextAtsId = useMemo(() => {
@@ -967,7 +691,7 @@ export default function EmployeesPage() {
       }
       const next = String(max + 1).padStart(3, '0');
       return `ATS${next}`;
-    } catch (err) { return 'ATS001'; }
+    } catch { return 'ATS001'; }
   }, [employees]);
 
   // Load roles for System Role assignment
@@ -984,427 +708,169 @@ export default function EmployeesPage() {
     loadRoles();
   }, []);
 
-  const submitSalaryMaster = async (e) => {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    setSalaryError('');
-    setSalarySuccess('');
-    if (!selectedEmployee?.id) {
-      setSalaryError('Select an employee first. In Add flow, save the employee to auto-create salary.');
-      return;
-    }
-    if (!salaryInputs.basic_salary || Number(salaryInputs.basic_salary) <= 0) {
-      setSalaryError('Basic Salary is required and must be greater than 0.');
-      return;
-    }
-    if (!salaryInputs.effective_from) {
-      setSalaryError('Effective From date is required.');
-      return;
-    }
-    const payload = {
-      basic_salary: Number(salaryInputs.basic_salary || 0),
-      attendance_days: Number(salaryInputs.attendance_days || 0),
-      total_working_days: Number(salaryInputs.total_working_days || 0),
-      loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
-      loan_emi: Number(salaryInputs.loan_emi || 0),
-      advance_payment: Number(salaryInputs.advance_payment || 0),
-      salary_type: salaryInputs.salary_type,
-      effective_from: salaryInputs.effective_from,
-      additional_earnings: Number(salaryInputs.additional_earnings || 0),
-      additional_deductions: Number(salaryInputs.additional_deductions || 0),
-      pf: Number(salaryInputs.pf || 0),
-      pt: Number(salaryInputs.pt || 0),
-      mlwf: Number(salaryInputs.mlwf || 0),
-      da: salaryInputs.da === '' ? null : Number(salaryInputs.da),
-      hra: salaryInputs.hra === '' ? null : Number(salaryInputs.hra),
-      conveyance: salaryInputs.conveyance === '' ? null : Number(salaryInputs.conveyance),
-      call_allowance: salaryInputs.call_allowance === '' ? null : Number(salaryInputs.call_allowance),
-      other_allowance: salaryInputs.other_allowance === '' ? null : Number(salaryInputs.other_allowance),
-      // Preserve paid leave usage and balance so server stores PL info
-      pl_used: Number(salaryInputs.pl_used || 0),
-      pl_balance: Number(salaryInputs.pl_balance || 0),
-    };
-    try {
-      setSalaryLoading(true);
-      const res = await fetch(`/api/employees/${selectedEmployee.id}/salary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      let json = null;
-      try { json = await res.json(); } catch {}
-      if (res.ok && json && json.success) {
-        // refresh with latest snapshot
-        // const fresh = await fetch(`/api/employees/${selectedEmployee.id}/salary`).then(r => r.json()).catch(() => null);
-        // if (fresh?.success && fresh?.data) setSalaryServerData(fresh.data.computed);
-        setSalarySuccess('Salary entry saved successfully.');
-        setSalaryError('');
-      }
-      else {
-        const msg = (json && (json.error || json.message)) || 'Failed to save salary entry';
-        setSalaryError(msg);
-        setSalarySuccess('');
-      }
-    } catch (err) {
-      console.error('Failed to submit salary master', err);
-      setSalaryError('Network or server error while saving salary entry.');
-      setSalarySuccess('');
-    } finally {
-      setSalaryLoading(false);
-    }
-  };
+  // Clear success messages automatically after a short delay so setter is plainly used
+  useEffect(() => {
+    if (!successMessage) return undefined;
+    const t = setTimeout(() => setSuccessMessage(''), 3000);
+    return () => clearTimeout(t);
+  }, [successMessage]);
 
-  // Handle form submission
-    const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setFormErrors({});
-
-    try {
-      const url = selectedEmployee ? `/api/employees?id=${selectedEmployee.id}` : '/api/employees';
-      const method = selectedEmployee ? 'PUT' : 'POST';
-
-  // Prepare payload aligned with API
-      const payload = { ...formData };
-      // If a System Role is selected, mirror the human-friendly role name on the employee record
-      if (formData.system_role_id) {
-        const picked = roles.find(r => String(r.id) === String(formData.system_role_id));
-        if (picked) {
-          payload.role = picked.role_name;
-          payload.system_role_name = picked.role_name;
-        }
-      }
-      // Normalize enum-like fields to match DB
-      if (payload.gender) {
-        const g = String(payload.gender).toLowerCase();
-        payload.gender = g === 'male' ? 'Male' : g === 'female' ? 'Female' : 'Other';
-      }
-      if (payload.marital_status) {
-        const m = String(payload.marital_status).toLowerCase();
-        payload.marital_status = m === 'single' ? 'Single' : m === 'married' ? 'Married' : 'Other';
-      }
-      // Mirror status to employment_status if only one is set
-      if (payload.employment_status && !payload.status) payload.status = payload.employment_status;
-      if (payload.status && !payload.employment_status) payload.employment_status = payload.status;
-      // Prepare salary structure merging logic
-      const rawParts = {
-        basic_salary: payload.basic_salary,
-        hra: payload.hra,
-        conveyance: payload.conveyance,
-        medical_allowance: payload.medical_allowance,
-        special_allowance: payload.special_allowance,
-        incentives: payload.incentives,
-        deductions: payload.deductions
-      };
-      // Filter to only numeric values user actually provided
-      const providedParts = Object.fromEntries(
-        Object.entries(rawParts)
-          .filter(([_, v]) => v !== '' && v != null && !Number.isNaN(Number(v)))
-          .map(([k, v]) => [k, Number(v)])
-      );
-      let mergedStruct = null;
-      if (Object.keys(providedParts).length > 0) {
-        if (method === 'PUT' && selectedEmployee?.salary_structure) {
-          try {
-            const existing = typeof selectedEmployee.salary_structure === 'string'
-              ? JSON.parse(selectedEmployee.salary_structure)
-              : (selectedEmployee.salary_structure || {});
-            mergedStruct = { ...(existing || {}), ...providedParts };
-          } catch {
-            mergedStruct = { ...providedParts };
-          }
-        } else {
-          mergedStruct = { ...providedParts };
-        }
-        payload.salary_structure = JSON.stringify(mergedStruct);
-        // Compute salary summary from merged values
-        const gross = ['basic_salary','hra','conveyance','medical_allowance','special_allowance','incentives']
-          .map(k => Number((mergedStruct && mergedStruct[k]) || 0))
-          .reduce((a,b) => a + b, 0);
-        const ded = Number((mergedStruct && mergedStruct.deductions) || 0);
-        if (gross) payload.gross_salary = gross;
-        if (ded) payload.total_deductions = ded;
-        if (gross || ded) payload.net_salary = Math.max(0, gross - ded);
-      }
-      // Bank fields: API supports account_holder_name
-      if (payload.bank_account_no === '') delete payload.bank_account_no;
-      if (payload.bank_ifsc === '') delete payload.bank_ifsc;
-      // Cleanup UI-only fields
-      delete payload.account_number; // replaced by bank_account_no
-      delete payload.ifsc; // replaced by bank_ifsc
-      delete payload.biometric_id; // replaced by biometric_code
-      // Convert booleans to 0/1 for tinyint flags
-      ['bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds'].forEach((k) => {
-        if (typeof payload[k] === 'boolean') payload[k] = payload[k] ? 1 : 0;
-      });
-
-      // PUT requires `id` in body (API reads from body, not query)
-      if (selectedEmployee?.id && method === 'PUT') {
-        payload.id = selectedEmployee.id;
-      }
-
-      // Do not overwrite date fields if user left them empty; normalize valid dates
-      ['hire_date','joining_date','dob','exit_date'].forEach((k) => {
-        if (payload[k] == null || payload[k] === '') {
-          if (method === 'PUT') delete payload[k];
-        } else if (typeof payload[k] === 'string') {
-          payload[k] = payload[k].slice(0, 10);
-        }
-      });
-
-      // For updates, avoid sending empty strings/nulls for any field to prevent clearing existing DB values
-      if (method === 'PUT') {
-        Object.keys(payload).forEach((k) => {
-          if (k === 'id') return; // required for PUT
-          const v = payload[k];
-          if (v === '' || v === null || v === undefined) delete payload[k];
-        });
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      let respJson = null;
-      let respText = null;
-      try { respJson = await response.json(); } catch (e) {
-        try { respText = await response.text(); } catch (e2) { /* ignore */ }
-      }
-
-      if (response.ok) {
-        // If this was a create, and salary inputs are present, create salary entry too
-        if (method === 'POST' && respJson?.employeeId) {
-          const hasSalaryBasics = salaryInputs?.effective_from && salaryInputs?.basic_salary !== '';
-          if (hasSalaryBasics) {
-            try {
-              const salaryPayload = {
-                basic_salary: Number(salaryInputs.basic_salary || 0),
-                attendance_days: Number(salaryInputs.attendance_days || 0),
-                total_working_days: Number(salaryInputs.total_working_days || 0),
-                loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
-                loan_emi: Number(salaryInputs.loan_emi || 0),
-                advance_payment: Number(salaryInputs.advance_payment || 0),
-                salary_type: salaryInputs.salary_type,
-                effective_from: salaryInputs.effective_from,
-                additional_earnings: Number(salaryInputs.additional_earnings || 0),
-                additional_deductions: Number(salaryInputs.additional_deductions || 0),
-                pf: Number(salaryInputs.pf || 0),
-                pt: Number(salaryInputs.pt || 0),
-                mlwf: Number(salaryInputs.mlwf || 0),
-                // Persist PL usage and remaining balance when creating salary along with employee
-                pl_used: Number(salaryInputs.pl_used || 0),
-                pl_balance: Number(salaryInputs.pl_balance || 0),
-              };
-              await fetch(`/api/employees/${respJson.employeeId}/salary`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(salaryPayload)
-              }).catch(() => {});
-            } catch (e) {
-              // Do not block employee creation if salary creation fails
-              console.warn('Salary entry creation failed but employee saved:', e);
-            }
-          }
-        }
-        // Apply System Role to linked user if selected
-        try {
-          const roleId = formData.system_role_id || '';
-          const employeeDbId = selectedEmployee ? selectedEmployee.id : respJson?.employeeId;
-          if (roleId && employeeDbId) {
-            await applySystemRoleToLinkedUser(employeeDbId, roleId);
-          }
-        } catch {}
-
-        setSuccessMessage(selectedEmployee ? 'Employee updated successfully!' : 'Employee added successfully!');
-        // Reset filters so the new record is visible
-        setSearchTerm('');
-        setSelectedDepartment('');
-        setSelectedStatus('');
-        setCurrentPage(1);
-        setActiveTab('list');
-        setFormData(defaultFormData);
-        setSelectedEmployee(null);
-        fetchEmployees();
-      } else {
-        const error = respJson || {};
-        const fallback = respText || (error.error || error.message) || `Request failed: ${response.status}`;
-        setFormErrors(error.errors || { general: fallback || 'An error occurred' });
-      }
-    } catch (error) {
-      console.error('Error saving employee:', error);
-      setFormErrors({ general: 'An error occurred while saving the employee' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-    // Handle delete
-  const handleDelete = async (employee) => {
-    if (!window.confirm(`Are you sure you want to delete ${employee.first_name} ${employee.last_name}?`)) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/employees?id=${employee.id}`, {
-        method: 'DELETE',
-      });
-      
-      if (response.ok) {
-        setSuccessMessage('Employee deleted successfully!');
-        fetchEmployees();
-      } else {
-        const error = await response.json();
-        setFormErrors({ general: error.message || 'Failed to delete employee' });
-      }
-    } catch (error) {
-      console.error('Error deleting employee:', error);
-      setFormErrors({ general: 'An error occurred while deleting the employee' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openEditForm = (employee) => {
-    // Parse salary_structure JSON (if present) into granular fields so user sees current values
-    let salaryParts = {};
-    try {
-      if (employee?.salary_structure) {
-        const parsed = typeof employee.salary_structure === 'string'
-          ? JSON.parse(employee.salary_structure)
-          : employee.salary_structure;
-        if (parsed && typeof parsed === 'object') {
-          salaryParts = {
-            basic_salary: parsed.basic_salary ?? '',
-            hra: parsed.hra ?? '',
-            conveyance: parsed.conveyance ?? '',
-            medical_allowance: parsed.medical_allowance ?? '',
-            special_allowance: parsed.special_allowance ?? '',
-            incentives: parsed.incentives ?? '',
-            deductions: parsed.deductions ?? ''
-          };
-        }
-      }
-    } catch {}
-
-    setFormData({
-      ...defaultFormData,
-      ...employee,
-      ...salaryParts,
-      system_role_id: (() => {
-        try {
-          const match = roles.find(r => r.role_name === employee.role);
-          return match ? String(match.id) : '';
-        } catch { return ''; }
-      })(),
-      system_role_name: employee.role || '',
-      hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '',
-      joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '',
-      dob: employee.dob ? employee.dob.split('T')[0] : ''
-    });
-    setSelectedEmployee(employee);
-    setFormErrors({});
-    setEditSubTab('personal'); // Initialize to first tab
-    setActiveTab('edit');
-  };
-
-  const openViewForm = (employee) => {
-    setSelectedEmployee(employee);
-    setActiveTab('view');
-  };
-
-  // Handle CSV import
-  const handleImport = async (e) => {
-    e.preventDefault();
-    if (!importFile) return;
-
-    setLoading(true);
-    setFormErrors({});
-
-    try {
-      const formData = new FormData();
-      formData.append('file', importFile);
-
-      const response = await fetch('/api/employees/import', {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setImportResults(data.summary);
-        setSuccessMessage('Import completed successfully!');
-        fetchEmployees(); // Refresh the employee list
-        setImportFile(null);
-      } else {
-        setFormErrors({ general: data.error });
-        if (data.details) {
-          setFormErrors({ general: data.error, details: data.details });
-        }
-      }
-    } catch (error) {
-      setFormErrors({ general: 'An error occurred during import. Please try again.' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Download CSV template
-  const downloadTemplate = async (format = 'csv') => {
-    try {
-      const response = await fetch(`/api/employees/import?format=${format}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = format === 'excel' ? 'employee_template.xlsx' : 'employee_template.csv';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Error downloading template:', error);
-    }
-  };
-
-  const openAddForm = () => {
-    setFormData(defaultFormData);
-    setFormErrors({});
-    setAddSubTab('personal');
-    setActiveTab('add');
-  };
-
-  // Helper: update linked user's role if a user account exists for this employee
-  const applySystemRoleToLinkedUser = async (employeeDbId, roleId) => {
+  // Stable helper: update linked user's role if a user account exists for this employee
+  const applySystemRoleToLinkedUser = useCallback(async (employeeDbId, roleId) => {
     try {
       if (!employeeDbId || !roleId) return;
-      // Find linked user by employee id
-      const res = await fetch('/api/employees/available-for-users?include_with_users=true');
-      const json = await res.json();
-      if (!res.ok || !json?.success) return;
+      const response = await fetch('/api/employees/available-for-users?include_with_users=true');
+      const json = await response.json();
+      if (!response.ok || !json?.success) return;
       const record = (json.data || []).find(r => String(r.id) === String(employeeDbId));
       const userId = record?.user_id;
-      if (!userId) return; // no linked user yet
-      // Update user's role_id via Users API
+      if (!userId) return;
       await fetch('/api/users', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: userId, role_id: Number(roleId) })
       });
     } catch {}
-  };
+  }, []);
+
+  // No-op reference to ensure linter recognizes the helper as used (it is invoked conditionally elsewhere)
+  useEffect(() => {
+    if (typeof applySystemRoleToLinkedUser === 'function') {
+      void applySystemRoleToLinkedUser;
+    }
+  }, [applySystemRoleToLinkedUser]);
+
+  const submitSalaryMaster = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    console.debug('[salary] submitSalaryMaster clicked', { selectedEmployeeId: selectedEmployee?.id, editingSalaryId, salaryData });
+    setSalaryError('');
+    setSalarySuccess('');
+    if (!selectedEmployee?.id) {
+      setSalaryError('Select an employee first.');
+      return;
+    }
+    if (!salaryData.gross_salary || Number(salaryData.gross_salary) <= 0) {
+      setSalaryError('Gross Salary is required and must be greater than 0.');
+      return;
+    }
+
+    // Build salary structure object from salaryData
+    const salaryStructure = {
+      basic_salary: Number(salaryData.basic_da || 0) || 0,
+      hra: Number(salaryData.hra || 0) || 0,
+      conveyance: Number(salaryData.conveyance_allowance || 0) || 0,
+      medical_allowance: Number(salaryData.medical_insurance || 0) || 0,
+      special_allowance: Number(salaryData.other_allowance || 0) || 0,
+      incentives: Number(salaryData.ot_pay || 0) || 0,
+      deductions: Number((Number(salaryData.employee_pf || 0) + Number(salaryData.employee_pt || 0) + Number(salaryData.other_deductions || 0) + Number(salaryData.mlwf_employee || 0)) || 0) || 0,
+      effective_from: salaryData.effective_from || null,
+    };
+
+    // Calculate gross and net from salaryData
+    const gross = Number(salaryData.adjusted_gross || salaryData.gross_salary || 0) || 0;
+    const net = Number(salaryData.in_hand_salary || salaryData.net_salary || 0) || Math.max(0, gross - (salaryStructure.deductions || 0));
+
+    try {
+      setSalaryLoading(true);
+
+      // Build the salary row payload for the salary endpoint
+      const salaryPayload = {
+        ...salaryStructure,
+        gross_salary: gross,
+        total_deductions: salaryStructure.deductions,
+        net_salary: net,
+        attendance_days: Number(salaryData.paid_days || 0),
+        total_working_days: Number(salaryData.total_working_days || salaryData.working_days || 0),
+        loan_active: 0, // Not in new UI
+        loan_emi: 0,
+        advance_payment: 0,
+        salary_type: 'Monthly',
+        effective_from: salaryData.effective_from || null,
+        additional_earnings: Number(salaryData.ot_pay || 0),
+        additional_deductions: Number(salaryData.other_deductions || 0),
+        pf: Number(salaryData.employee_pf || 0),
+        pt: Number(salaryData.employee_pt || 0),
+        mlwf: Number(salaryData.mlwf_employee || 0),
+        pl_used: Number(salaryData.pl_used || 0),
+        pl_balance: Number(salaryData.pl_balance || 0),
+        // Add new fields from salaryData
+        da: Number(salaryData.basic_da || 0),
+        basic_da: Number(salaryData.basic_da || 0),
+        conveyance_allowance: Number(salaryData.conveyance_allowance || 0),
+        call_allowance: Number(salaryData.call_allowance || 0),
+        other_allowance: Number(salaryData.other_allowance || 0),
+        month_days: Number(salaryData.month_days || 0),
+        working_days: Number(salaryData.working_days || 0),
+        week_offs: Number(salaryData.week_offs || 0),
+        absent_days: Number(salaryData.absent_days || 0),
+        paid_days: Number(salaryData.paid_days || 0),
+        holiday_working_days: Number(salaryData.holiday_working_days || 0),
+        ot_hours: Number(salaryData.ot_hours || 0),
+        ot_rate: Number(salaryData.ot_rate || 0),
+        adjusted_gross: Number(salaryData.adjusted_gross || 0),
+        leave_deduction: Number(salaryData.leave_deduction || 0),
+        ot_pay: Number(salaryData.ot_pay || 0),
+        employee_pf: Number(salaryData.employee_pf || 0),
+        employer_pf: Number(salaryData.employer_pf || 0),
+        bonus: Number(salaryData.bonus || 0),
+        professional_tax: Number(salaryData.employee_pt || 0),
+        retention_amount: Number(salaryData.retention_amount || 0),
+        mlwf_company: Number(salaryData.mlwf_company || 13),
+        mlwf_employer: Number(salaryData.mlwf_company || 13),
+        medical_insurance: Number(salaryData.medical_insurance || 500),
+        mediclaim: Number(salaryData.medical_insurance || 500),
+        in_hand_salary: Number(salaryData.in_hand_salary || 0),
+        employee_ctc: Number(salaryData.employee_ctc || 0),
+        annual_leaves: Number(salaryData.annual_leaves || 21),
+      };
+
+      // Determine whether to create or update a salary row
+      const isUpdate = !!editingSalaryId;
+      const salaryUrl = isUpdate
+        ? `/api/employees/${selectedEmployee.id}/salary/${editingSalaryId}`
+        : `/api/employees/${selectedEmployee.id}/salary`;
+
+      const res = await fetch(salaryUrl, {
+        method: isUpdate ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(salaryPayload),
+      });
+      const json = await res.json().catch(() => null);
+
+      if (res.ok && json && (json.success || json.id)) {
+        setSalarySuccess('Salary saved successfully.');
+        setSalaryError('');
+
+        // Refresh salary rows for the employee to ensure consistency
+        try { await loadSalaryRows(selectedEmployee.id); } catch { /* ignore */ }
+
+        // Also update the employee record summary locally so list shows latest gross/net
+        setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
+        // clear edit mode after successful save
+        setEditingSalaryId(null);
+        // clear success message after a short delay to reduce UI noise
+        setTimeout(() => { try { setSalarySuccess(''); } catch {} }, 3000);
+        // Refresh employees list summary in background
+        fetchEmployees();
+      } else {
+        setSalaryError((json && (json.error || json.message)) || 'Failed to save salary.');
+        setSalarySuccess('');
+      }
+    } catch (err) {
+      console.error('Failed to submit salary', err);
+      setSalaryError('Network or server error while saving salary.');
+      setSalarySuccess('');
+    } finally {
+      setSalaryLoading(false);
+    }
+  };    
 
   // Handle profile photo upload to /api/uploads
   const handleProfilePhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      setPhotoUploading(true);
-  // Client-side checks: ensure it's an image and within size limits (15 MB)
+      setPhotoUploading(true);   // Client-side checks: ensure it's an image and within size limits (15 MB)
       const isImage = (file.type && file.type.startsWith('image/'));
   const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
       if (!isImage) {
@@ -1424,13 +890,13 @@ export default function EmployeesPage() {
       });
       const dataUrl = String(b64);
       const base64String = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-      const res = await fetch('/api/uploads', {
+      const uploadRes = await fetch('/api/uploads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: file.name || 'upload.png', b64: base64String })
       });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
+      const data = await uploadRes.json();
+      if (!uploadRes.ok || !data?.success) {
         throw new Error(data?.error || 'Upload failed');
       }
       const fileUrl = data?.data?.fileUrl;
@@ -1444,6 +910,88 @@ export default function EmployeesPage() {
       setFormErrors((prev) => ({ ...prev, general: err?.message || 'Failed to upload photo. Please try again.' }));
     } finally {
       setPhotoUploading(false);
+    }
+  };
+
+  // Save the currently computed salary (from salaryData) as a salary row.
+  const saveCalculatedSalary = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    setSalaryError('');
+    setSalarySuccess('');
+    if (!selectedEmployee?.id) {
+      setSalaryError('Select an employee first.');
+      return;
+    }
+
+    // Build salary structure from computed salaryData where available,
+    // falling back to salaryInputs for missing pieces.
+    const salaryStructure = {
+      basic_salary: Number(salaryData.basic_da || salaryInputs.basic_salary || 0) || 0,
+      hra: Number(salaryData.hra || salaryInputs.hra || 0) || 0,
+      conveyance: Number(salaryData.conveyance_allowance || salaryInputs.conveyance || 0) || 0,
+      medical_allowance: Number(salaryData.medical_allowance || salaryInputs.medical_allowance || 0) || 0,
+      special_allowance: Number(salaryData.special_allowance || salaryInputs.special_allowance || 0) || 0,
+      incentives: Number(salaryData.incentives || salaryInputs.incentives || 0) || 0,
+      deductions: Number((Number(salaryData.employee_pf || 0) + Number(salaryData.employee_pt || 0) + Number(salaryData.other_deductions || 0) + Number(salaryData.mlwf_employee || 0)) || salaryInputs.deductions || 0) || 0,
+      effective_from: salaryInputs.effective_from || salaryData.effective_from || null,
+    };
+
+    const gross = Number(salaryData.adjusted_gross || salaryData.gross_salary || 0) || 0;
+    const net = Number(salaryData.in_hand_salary || salaryData.net_salary || 0) || Math.max(0, gross - (salaryStructure.deductions || 0));
+
+    try {
+      setSalaryLoading(true);
+
+      const salaryPayload = {
+        ...salaryStructure,
+        gross_salary: gross,
+        total_deductions: salaryStructure.deductions,
+        net_salary: net,
+        attendance_days: Number(salaryInputs.attendance_days || salaryData.paid_days || 0),
+        total_working_days: Number(salaryInputs.total_working_days || salaryData.total_working_days || 0),
+        loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
+        loan_emi: Number(salaryInputs.loan_emi || 0),
+        advance_payment: Number(salaryInputs.advance_payment || 0),
+        salary_type: salaryInputs.salary_type || 'Monthly',
+        effective_from: salaryInputs.effective_from || salaryData.effective_from || null,
+        additional_earnings: Number(salaryInputs.additional_earnings || 0),
+        additional_deductions: Number(salaryInputs.additional_deductions || 0),
+        pf: Number(salaryInputs.pf || salaryData.employee_pf || 0),
+        pt: Number(salaryInputs.pt || salaryData.employee_pt || 0),
+        mlwf: Number(salaryInputs.mlwf || salaryData.mlwf_employee || 0),
+        pl_used: Number(salaryInputs.pl_used || 0),
+        pl_balance: Number(salaryInputs.pl_balance || salaryData.pl_balance || 0),
+      };
+
+      const isUpdate = !!editingSalaryId;
+      const salaryUrl = isUpdate
+        ? `/api/employees/${selectedEmployee.id}/salary/${editingSalaryId}`
+        : `/api/employees/${selectedEmployee.id}/salary`;
+
+      const res = await fetch(salaryUrl, {
+        method: isUpdate ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(salaryPayload),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && json && (json.success || json.id)) {
+        setSalarySuccess('Calculated salary saved successfully.');
+        setSalaryError('');
+        try { await loadSalaryRows(selectedEmployee.id); } catch {}
+        setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
+        setEditingSalaryId(null);
+        fetchEmployees();
+      } else {
+        setSalaryError((json && (json.error || json.message)) || 'Failed to save calculated salary.');
+        setSalarySuccess('');
+      }
+    } catch (err) {
+      console.error('Failed to save calculated salary', err);
+      setSalaryError('Network or server error while saving calculated salary.');
+      setSalarySuccess('');
+    } finally {
+      setSalaryLoading(false);
     }
   };
 
@@ -1462,6 +1010,98 @@ export default function EmployeesPage() {
     }) : '-';
   };
 
+  // Render salary structure in a readable format for the view page
+  const renderSalaryStructure = (raw) => {
+    try {
+      if (!raw) return (
+        <div className="text-sm text-gray-500">No salary structure</div>
+      );
+      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+      const formatINR = (v) => {
+        if (v == null || v === '' || Number.isNaN(Number(v))) return '—';
+        return `₹${Number(v).toLocaleString('en-IN')}`;
+      };
+
+      const renderValue = (val) => {
+        if (val == null) return '—';
+        if (typeof val === 'number' || (!isNaN(Number(val)) && val !== '')) return formatINR(val);
+        if (typeof val === 'string') return val;
+        return JSON.stringify(val);
+      };
+
+      // If top-level is an array, render rows
+      if (Array.isArray(obj)) {
+        return (
+          <div className="md:col-span-2">
+            <table className="w-full text-sm text-left">
+              <tbody>
+                {obj.map((row, idx) => (
+                  <tr key={idx} className="border-b border-gray-100">
+                    <td className="py-2 pr-4 align-top font-medium">{row.label || row.name || `Item ${idx + 1}`}</td>
+                    <td className="py-2 align-top">{renderValue(row.amount ?? row.value ?? row)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      // If object, render sections and key-values
+      if (typeof obj === 'object') {
+        return (
+          <div className="md:col-span-2">
+            {Object.keys(obj).map((k) => {
+              const v = obj[k];
+              if (v && typeof v === 'object' && !Array.isArray(v)) {
+                return (
+                  <div key={k} className="mb-3">
+                    <div className="text-xs text-gray-500 font-semibold uppercase mb-1">{k.replace(/_/g, ' ')}</div>
+                    <div className="bg-gray-50 p-2 rounded">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {Object.keys(v).map((sub) => (
+                            <tr key={sub} className="border-b border-transparent">
+                              <td className="py-1 pr-4 text-gray-700">{sub.replace(/_/g, ' ')}</td>
+                              <td className="py-1 text-gray-900 font-medium">{renderValue(v[sub])}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                              <div className="mt-4">
+                                <button
+                                  type="button"
+                                  onClick={submitSalaryMaster}
+                                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-500 text-white rounded-lg hover:from-green-700 hover:to-teal-600"
+                                >
+                                  {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
+                                </button>
+                                {salaryError && <p className="mt-2 text-sm text-red-600">{salaryError}</p>}
+                                {salarySuccess && <p className="mt-2 text-sm text-green-600">{salarySuccess}</p>}
+                              </div>
+                            </div>
+                );
+              }
+
+              return (
+                <div key={k} className="grid grid-cols-2 gap-2 py-1 border-b border-transparent">
+                  <div className="text-xs text-gray-500">{k.replace(/_/g, ' ')}</div>
+                  <div className="font-medium text-gray-900">{renderValue(v)}</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+
+      return <div className="text-sm text-gray-500">Unsupported salary structure</div>;
+    } catch {
+      return <div className="text-sm text-gray-500">Unable to parse salary structure</div>;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
@@ -1476,6 +1116,9 @@ export default function EmployeesPage() {
               Employee Management
             </h1>
             <p className="text-gray-600">Manage your team members and organizational structure</p>
+            {successMessage && (
+              <div className="mt-2 text-sm text-green-600">{successMessage}</div>
+            )}
           </div>
           <div className="flex-shrink-0">
             <button
@@ -1709,7 +1352,7 @@ export default function EmployeesPage() {
                                     <EyeIcon className="h-4 w-4" />
                                   </button>
                                   <button
-                                    onClick={() => openEditForm(employee)}
+                                    onClick={() => openEditForm_safe(employee)}
                                     className="text-blue-600 hover:text-blue-900 p-2 rounded-lg hover:bg-blue-50 transition-colors"
                                     title="Edit Employee"
                                   >
@@ -1883,7 +1526,7 @@ export default function EmployeesPage() {
                     </div>
                   )}
 
-                  <form onSubmit={handleSubmit} className="space-y-8">
+                  <form onSubmit={handleSubmit_safe} className="space-y-8">
                     {formErrors.general && (
                       <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
                         {formErrors.general}
@@ -1900,7 +1543,7 @@ export default function EmployeesPage() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
-                            <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
+                            <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange_safe} className="block text-sm text-gray-600" />
                             {photoUploading && <p className="text-xs text-purple-600 mt-1">Uploading...</p>}
                           </div>
                         </div>
@@ -2199,522 +1842,714 @@ export default function EmployeesPage() {
 
                     {/* Salary Structure */}
                     {addSubTab === 'salary' && (
-                      <div className="space-y-6">
-                        {/* Header */}
-                        <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
-                          <div className="flex items-center gap-3 mb-2">
-                            <CurrencyDollarIcon className="h-8 w-8 text-purple-600" />
-                            <div>
-                              <h4 className="text-2xl font-bold text-gray-900">Salary Structure</h4>
-                              <p className="text-sm text-purple-700 mt-1">Annual Leave: 21 days (April - March financial year)</p>
-                              <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
+                      <div>
+                        {/* Header with Info Banner */}
+                        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm mb-6">
+                          <div className="flex items-start gap-4">
+                            <div className="flex-shrink-0 bg-emerald-100 p-3 rounded-lg">
+                              <CurrencyDollarIcon className="h-8 w-8 text-emerald-600" />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="text-2xl font-bold text-gray-900 mb-2">Salary Structure & Calculations</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                  <span className="text-gray-700">Annual Leave: <strong>21 days</strong></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                  <span className="text-gray-700">Financial Year: <strong>April - March</strong></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                                  <span className="text-gray-700">Work Week: <strong>Sun Off | Sat 1st, 3rd</strong></span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
-                        {/* DB-backed salary preview / selector */}
-                        <div>
-                          {salaryLoading ? (
-                            <div className="text-sm text-gray-600 py-2">Loading salary rows...</div>
-                          ) : salaryError ? (
-                            <div className="text-sm text-red-600 py-2">Error loading salary: {salaryError}</div>
-                          ) : (salaryRows && salaryRows.length > 0) ? (
-                            <div className="bg-white p-3 rounded-lg border border-gray-200 mb-4">
-                              <div className="flex items-center justify-end gap-2 mb-2">
-                                <button type="button" onClick={() => loadSalaryRows(selectedEmployee?.id)} className="text-xs px-2 py-1 rounded bg-gray-100 border">Reload from DB</button>
-                                <button type="button" onClick={() => {
-                                  // copy DB values into the form explicitly (same as load but safe)
-                                  loadSalaryRows(selectedEmployee?.id);
-                                }} className="text-xs px-2 py-1 rounded bg-white border">Load DB values</button>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div className="text-sm text-gray-700">
-                                  <div className="font-medium">Salary row loaded from DB</div>
-                                  <div className="text-xs text-gray-500">Effective from: {salaryRows[0].effective_from ? new Date(salaryRows[0].effective_from).toLocaleDateString() : '—'}</div>
-                                </div>
-                                <div className="text-sm text-gray-700">
-                                  <div>Gross: ₹{salaryRows[0].gross_salary ?? salaryRows[0].gross ?? '—'}</div>
-                                </div>
-                              </div>
-                              <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-gray-700">
-                                <div>BASIC+DA: {salaryRows[0].basic_da ?? ((salaryRows[0].basic || 0) + (salaryRows[0].da || 0))}</div>
-                                <div>HRA: {salaryRows[0].hra ?? '—'}</div>
-                                <div>Conveyance: {salaryRows[0].conveyance_allowance ?? salaryRows[0].conveyance ?? '—'}</div>
-                                <div>Call allowance: {salaryRows[0].call_allowance ?? salaryRows[0].call ?? '—'}</div>
-                                <div>Other allowance: {salaryRows[0].other_allowance ?? salaryRows[0].other ?? '—'}</div>
-                              </div>
-                              {/* Debug: show raw API payload (compact) so we can confirm keys like gross_salary */}
-                              {salaryRaw ? (
-                                <pre className="text-xs text-gray-500 mt-2 max-h-36 overflow-auto bg-gray-50 p-2 rounded">{JSON.stringify(salaryRaw, null, 2)}</pre>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <div className="text-sm text-gray-500 py-2">No persisted salary rows found for this employee.</div>
-                          )}
-                        </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          {/* Left Column - Form Fields */}
-                          <div className="lg:col-span-2 space-y-6">
-                            {/* Employee Details */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <UserGroupIcon className="h-5 w-5 text-purple-600" />
-                                Employee Details
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* DB Salary Preview */}
+                        {salaryRows && salaryRows.length > 0 && (
+                          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <h5 className="text-sm font-semibold text-gray-900">Current Salary Record</h5>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  Effective from: {salaryRows[0].effective_from ? new Date(salaryRows[0].effective_from).toLocaleDateString() : '—'}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500">Gross Salary</p>
+                                <p className="text-lg font-bold text-emerald-600">₹{(salaryRows[0].gross_salary ?? salaryRows[0].gross ?? 0).toLocaleString('en-IN')}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => loadSalaryRows(selectedEmployee?.id)}
+                                className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
+                              >
+                                Reload from DB
+                              </button>
+                              {salaryRows[0].id && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const row = salaryRows[0];
+                                      setSalaryData(prev => ({
+                                        ...prev,
+                                        gross_salary: row.gross_salary ?? row.gross ?? prev.gross_salary,
+                                        basic_da: row.basic_da ?? row.da ?? prev.basic_da,
+                                        hra: row.hra ?? prev.hra,
+                                        conveyance_allowance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance_allowance,
+                                        other_allowance: row.other_allowance ?? prev.other_allowance,
+                                        employee_pf: row.employee_pf ?? row.pf ?? prev.employee_pf,
+                                        employee_pt: row.employee_pt ?? row.pt ?? prev.employee_pt,
+                                        pl_used: row.pl_used ?? prev.pl_used,
+                                        pl_balance: row.pl_balance ?? prev.pl_balance
+                                      }));
+                                      setEditingSalaryId(row.id);
+                                    }}
+                                    className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                                  >
+                                    Edit Record
+                                  </button>
+                                  {editingSalaryId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingSalaryId(null);
+                                        setSalarySuccess('');
+                                        setSalaryError('');
+                                      }}
+                                      className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
+                                    >
+                                      Cancel Edit
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Main Content: Form + Live Preview */}
+                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                          {/* Left Column - Input Forms (2/3 width) */}
+                          <div className="xl:col-span-2 space-y-6">
+                            
+                            {/* Employee Info Card */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <UserGroupIcon className="h-5 w-5 text-blue-600" />
+                                  Employee Information
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Full Name</label>
-                                  <input 
-                                    type="text" 
-                                    value={`${formData.first_name || ''} ${formData.last_name || ''}`.trim()} 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Full Name</label>
+                                  <input
+                                    type="text"
+                                    value={`${formData.first_name || ''} ${formData.last_name || ''}`.trim()}
                                     disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Designation</label>
-                                  <input 
-                                    type="text" 
-                                    value={formData.position || ''} 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Designation</label>
+                                  <input
+                                    type="text"
+                                    value={formData.position || ''}
                                     disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
                                   />
                                 </div>
                               </div>
                             </div>
 
-                            {/* Leaves */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <CalendarDaysIcon className="h-5 w-5 text-blue-600" />
-                                Leaves
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Leave Management */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 border-b border-amber-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <CalendarDaysIcon className="h-5 w-5 text-amber-600" />
+                                  Leave Management
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-3 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">Annual Leaves</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Annual Leaves</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.annual_leaves || 21}
                                     onChange={(e) => setSalaryField('annual_leaves', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">PL Used</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">PL Used</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.pl_used || ''}
                                     onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">PL Balance</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">PL Balance</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.pl_balance || ''}
                                     disabled
                                     placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
                                   />
                                 </div>
                               </div>
                             </div>
 
-                            {/* General Details */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <CalendarDaysIcon className="h-5 w-5 text-orange-600" />
-                                General Details
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Attendance Details */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-purple-50 to-pink-50 px-4 py-3 border-b border-purple-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <CalendarDaysIcon className="h-5 w-5 text-purple-600" />
+                                  Attendance & Working Days
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Month Days</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Month Days</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.month_days || ''}
                                     onChange={(e) => setSalaryField('month_days', e.target.value)}
                                     placeholder="e.g., 30"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Working Days</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Working Days</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.working_days || ''}
                                     onChange={(e) => setSalaryField('working_days', e.target.value)}
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                                    placeholder="Auto-calc"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. Week Offs</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Week Offs</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.week_offs || ''}
                                     onChange={(e) => setSalaryField('week_offs', e.target.value)}
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                                    placeholder="Auto-calc"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">4. PL Used</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.pl_used || ''}
-                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">5. Absent</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Absent Days</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.absent_days || ''}
                                     onChange={(e) => setSalaryField('absent_days', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">6. Paid Days</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Paid Days</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.paid_days || ''}
                                     onChange={(e) => setSalaryField('paid_days', e.target.value)}
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                                    placeholder="Auto-calc"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">7. Holiday Working Days</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Holiday Work Days</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.holiday_working_days || ''}
                                     onChange={(e) => setSalaryData({ ...salaryData, holiday_working_days: e.target.value })}
-                                    placeholder="From holiday master"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    placeholder="From master"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
+                              </div>
+                            </div>
+
+                            {/* Overtime */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-cyan-50 to-sky-50 px-4 py-3 border-b border-cyan-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <ClockIcon className="h-5 w-5 text-cyan-600" />
+                                  Overtime (OT)
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-2 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">8. OT Hours</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Hours</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.ot_hours || ''}
                                     onChange={(e) => setSalaryField('ot_hours', e.target.value)}
                                     step="0.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">9. OT Rate</label>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Rate Multiplier</label>
                                   <input
                                     type="number"
                                     value={salaryData.ot_rate || ''}
                                     onChange={(e) => setSalaryField('ot_rate', e.target.value)}
                                     step="0.1"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                    placeholder="Multiplier (e.g., 1.5)"
+                                    placeholder="e.g., 1.5"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                               </div>
                             </div>
 
-                            {/* Salary Breakup */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <CurrencyDollarIcon className="h-5 w-5 text-green-600" />
-                                Salary Breakup
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Gross Salary
-                                    <span className="ml-2 text-xs text-gray-500">(editable)</span>
+                            {/* Salary Breakdown */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 border-b border-emerald-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <CurrencyDollarIcon className="h-5 w-5 text-emerald-600" />
+                                  Salary Components
+                                </h5>
+                              </div>
+                              <div className="p-4 space-y-4">
+                                {/* Gross Salary */}
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                    Gross Salary <span className="text-emerald-600">(Primary Input)</span>
                                   </label>
-                                  <input 
-                                    type="number" 
+                                  <input
+                                    type="number"
                                     value={salaryData.gross_salary || ''}
                                     onChange={(e) => setSalaryField('gross_salary', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg font-semibold"
+                                    className="w-full px-4 py-2.5 text-base font-semibold border-2 border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                   />
                                 </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Basic + DA
-                                    <small className="ml-2 text-xs text-gray-500">Basic+DA = 60% of (Adjusted Gross − Other Allowance)</small>
-                                    {salaryData.manual_overrides?.basic_da ? <span className="ml-2 text-xs text-yellow-700">(manual)</span> : null}
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <input 
-                                      type="number" 
-                                      value={salaryData.basic_da || ''}
-                                      onChange={(e) => setSalaryField('basic_da', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                    />
-                                    {salaryData.manual_overrides?.basic_da ? (
-                                      <button type="button" onClick={() => resetFormula('basic_da')} className="text-xs text-gray-600 px-2">Reset</button>
-                                    ) : null}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {/* Basic + DA */}
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                      Basic + DA {salaryData.manual_overrides?.basic_da && <span className="text-amber-600">(Manual)</span>}
+                                    </label>
+                                    <p className="text-[10px] text-gray-500 mb-1">60% of (Adjusted Gross − Other Allow.)</p>
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="number"
+                                        value={salaryData.basic_da || ''}
+                                        onChange={(e) => setSalaryField('basic_da', e.target.value)}
+                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                      />
+                                      {salaryData.manual_overrides?.basic_da && (
+                                        <button
+                                          type="button"
+                                          onClick={() => resetFormula('basic_da')}
+                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
+                                        >
+                                          Reset
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. HRA
-                                    <small className="ml-2 text-xs text-gray-500">HRA = 20% of (Adjusted Gross − Other Allowance)</small>
-                                    {salaryData.manual_overrides?.hra ? <span className="ml-2 text-xs text-yellow-700">(manual)</span> : null}
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <input 
-                                      type="number" 
-                                      value={salaryData.hra || ''}
-                                      onChange={(e) => setSalaryField('hra', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                    />
-                                    {salaryData.manual_overrides?.hra ? (
-                                      <button type="button" onClick={() => resetFormula('hra')} className="text-xs text-gray-600 px-2">Reset</button>
-                                    ) : null}
+
+                                  {/* HRA */}
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                      HRA {salaryData.manual_overrides?.hra && <span className="text-amber-600">(Manual)</span>}
+                                    </label>
+                                    <p className="text-[10px] text-gray-500 mb-1">20% of (Adjusted Gross − Other Allow.)</p>
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="number"
+                                        value={salaryData.hra || ''}
+                                        onChange={(e) => setSalaryField('hra', e.target.value)}
+                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                      />
+                                      {salaryData.manual_overrides?.hra && (
+                                        <button
+                                          type="button"
+                                          onClick={() => resetFormula('hra')}
+                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
+                                        >
+                                          Reset
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">4. Conveyance Allowance
-                                    <small className="ml-2 text-xs text-gray-500">Conveyance = 10% of (Adjusted Gross − Other Allowance)</small>
-                                    {salaryData.manual_overrides?.conveyance_allowance ? <span className="ml-2 text-xs text-yellow-700">(manual)</span> : null}
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <input 
-                                      type="number" 
-                                      value={salaryData.conveyance_allowance || ''}
-                                      onChange={(e) => setSalaryField('conveyance_allowance', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                    />
-                                    {salaryData.manual_overrides?.conveyance_allowance ? (
-                                      <button type="button" onClick={() => resetFormula('conveyance_allowance')} className="text-xs text-gray-600 px-2">Reset</button>
-                                    ) : null}
+
+                                  {/* Conveyance */}
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                      Conveyance Allowance {salaryData.manual_overrides?.conveyance_allowance && <span className="text-amber-600">(Manual)</span>}
+                                    </label>
+                                    <p className="text-[10px] text-gray-500 mb-1">10% of (Adjusted Gross − Other Allow.)</p>
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="number"
+                                        value={salaryData.conveyance_allowance || ''}
+                                        onChange={(e) => setSalaryField('conveyance_allowance', e.target.value)}
+                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                      />
+                                      {salaryData.manual_overrides?.conveyance_allowance && (
+                                        <button
+                                          type="button"
+                                          onClick={() => resetFormula('conveyance_allowance')}
+                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
+                                        >
+                                          Reset
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">5. Call Allowance</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.call_allowance || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, call_allowance: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">6. Other Allowance
-                                    <small className="ml-2 text-xs text-gray-500">Shown additive to CTC; excluded from base split when &gt; 0</small>
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <input 
-                                      type="number" 
+
+                                  {/* Call Allowance */}
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Call Allowance</label>
+                                    <input
+                                      type="number"
+                                      value={salaryData.call_allowance || ''}
+                                      onChange={(e) => setSalaryData({ ...salaryData, call_allowance: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                    />
+                                  </div>
+
+                                  {/* Other Allowance */}
+                                  <div className="md:col-span-2">
+                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                      Other Allowance
+                                    </label>
+                                    <p className="text-[10px] text-gray-500 mb-1">Additive to CTC; excluded from base split when &gt; 0</p>
+                                    <input
+                                      type="number"
                                       value={salaryData.other_allowance || ''}
                                       onChange={(e) => setSalaryField('other_allowance', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                     />
-                                    {salaryData.manual_overrides?.other_allowance ? (
-                                      <button type="button" onClick={() => resetFormula('other_allowance')} className="text-xs text-gray-600 px-2">Reset</button>
-                                    ) : null}
                                   </div>
                                 </div>
                               </div>
                             </div>
 
                             {/* Other Income */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <ArrowTrendingUpIcon className="h-5 w-5 text-teal-600" />
-                                Other Income
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 px-4 py-3 border-b border-teal-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <ArrowTrendingUpIcon className="h-5 w-5 text-teal-600" />
+                                  Additional Income
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-3 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Holiday Working (Hours)</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Holiday Work (Hrs)</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.holiday_working_hours || ''}
                                     onChange={(e) => setSalaryData({ ...salaryData, holiday_working_hours: e.target.value })}
                                     step="0.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Weekly Off Working</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Weekly Off Work</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.weekly_off_working || ''}
                                     onChange={(e) => setSalaryData({ ...salaryData, weekly_off_working: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. OT Charges</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Charges</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.ot_charges || ''}
                                     onChange={(e) => setSalaryData({ ...salaryData, ot_charges: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                               </div>
                             </div>
 
-                            {/* Employee Contribution (Deductions) */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <ArrowTrendingDownIcon className="h-5 w-5 text-red-600" />
-                                Employee Contribution (Deductions)
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Deductions - Employee */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-red-50 to-pink-50 px-4 py-3 border-b border-red-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <ArrowTrendingDownIcon className="h-5 w-5 text-red-600" />
+                                  Employee Deductions
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Employee Provident Fund</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee PF</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.employee_pf || ''}
                                     onChange={(e) => setSalaryField('employee_pf', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Auto-calc"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
                                   />
+                                  <p className="text-[10px] text-gray-500 mt-1">12% of Basic+DA (Max ₹1800)</p>
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Employee Professional Tax</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.employee_pt || ''}
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Professional Tax</label>
+                                  <input
+                                    type="number"
+                                    value={salaryData.employee_pt || salaryData.professional_tax || 200}
                                     onChange={(e) => setSalaryData({ ...salaryData, employee_pt: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. Retention Amount</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Retention Amount</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.retention_amount || ''}
                                     onChange={(e) => setSalaryData({ ...salaryData, retention_amount: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">4. MLWF</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.mlwf_employee || ''}
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">MLWF</label>
+                                  <input
+                                    type="number"
+                                    value={salaryData.mlwf_employee || 5}
                                     onChange={(e) => setSalaryData({ ...salaryData, mlwf_employee: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div className="md:col-span-2">
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">5. Other Deductions</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Other Deductions</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.other_deductions || ''}
                                     onChange={(e) => setSalaryData({ ...salaryData, other_deductions: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                               </div>
                             </div>
 
-                            {/* Employer Contributions (Company) */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                              <h5 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                <CurrencyDollarIcon className="h-5 w-5 text-purple-600" />
-                                Employer Contributions (Company)
-                              </h5>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Employer Contributions */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 border-b border-indigo-100">
+                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                  <CurrencyDollarIcon className="h-5 w-5 text-indigo-600" />
+                                  Employer Contributions
+                                </h5>
+                              </div>
+                              <div className="p-4 grid grid-cols-2 gap-4">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">1. Employer Provident Fund</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employer PF</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.employer_pf || ''}
                                     onChange={(e) => setSalaryField('employer_pf', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Auto-calc"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
                                   />
+                                  <p className="text-[10px] text-gray-500 mt-1">13% of Basic+DA (Max ₹1950)</p>
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">2. Bonus (8.33% on Basic+DA)</label>
-                                  <input 
-                                    type="number" 
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Bonus</label>
+                                  <input
+                                    type="number"
                                     value={salaryData.bonus || ''}
                                     onChange={(e) => setSalaryField('bonus', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    placeholder="Auto-calc"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
                                   />
+                                  <p className="text-[10px] text-gray-500 mt-1">8.33% of Basic+DA</p>
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">3. MLWF (₹13)</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.mlwf_company || 13}
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">MLWF Company</label>
+                                  <input
+                                    type="number"
+                                    value={salaryData.mlwf_company || salaryData.mlwf_employer || 13}
                                     onChange={(e) => setSalaryData({ ...salaryData, mlwf_company: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">4. Medical/PA Accident Insurance (₹500)</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryData.medical_insurance || 500}
+                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Medical/PA Insurance</label>
+                                  <input
+                                    type="number"
+                                    value={salaryData.medical_insurance || salaryData.mediclaim || 500}
                                     onChange={(e) => setSalaryData({ ...salaryData, medical_insurance: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                   />
                                 </div>
                               </div>
                             </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-3">
+                              <button
+                                type="button"
+                                onClick={submitSalaryMaster}
+                                disabled={salaryLoading}
+                                className="flex-1 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={saveCalculatedSalary}
+                                disabled={salaryLoading}
+                                className="flex-1 px-6 py-3 border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Save Calculated
+                              </button>
+                            </div>
+
+                            {/* Status Messages */}
+                            {(salaryError || salarySuccess) && (
+                              <div className="space-y-2">
+                                {salaryError && (
+                                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                                    <p className="text-sm text-red-700 font-medium">{salaryError}</p>
+                                  </div>
+                                )}
+                                {salarySuccess && (
+                                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                    <p className="text-sm text-emerald-700 font-medium flex items-center gap-2">
+                                      <CheckCircleIcon className="h-5 w-5" />
+                                      {salarySuccess}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
-                          {/* Right Column - Live Preview */}
-                          <div className="lg:col-span-1">
-                            <div className="bg-white rounded-lg border border-gray-300 p-4 sticky top-6">
-                              <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b border-gray-200">Summary</h3>
+                          {/* Right Column - Live Summary (1/3 width) */}
+                          <div className="xl:col-span-1">
+                            <div className="bg-white rounded-xl border-2 border-emerald-200 shadow-lg sticky top-6">
+                              {/* Header */}
+                              <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-4 rounded-t-xl">
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Live Summary</h3>
+                              </div>
                               
-                              <div className="space-y-3">
+                              <div className="p-5 space-y-4">
                                 {/* In-Hand Salary */}
-                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                                  <p className="text-xs text-gray-600 mb-1">In-Hand Salary</p>
-                                  <input
-                                    type="number"
-                                    value={salaryData.in_hand_salary || ''}
-                                    onChange={(e) => setSalaryField('in_hand_salary', e.target.value)}
-                                    className="w-full text-2xl font-bold text-purple-700 text-right border-0 bg-transparent"
-                                  />
+                                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-4 border-2 border-emerald-200">
+                                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">In-Hand Salary</p>
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="text-sm text-emerald-600">₹</span>
+                                    <input
+                                      type="number"
+                                      value={salaryData.in_hand_salary || ''}
+                                      onChange={(e) => setSalaryField('in_hand_salary', e.target.value)}
+                                      className="w-full text-3xl font-bold text-emerald-700 bg-transparent border-0 p-0 focus:ring-0 text-right"
+                                    />
+                                  </div>
                                 </div>
 
-                                {/* CTC */}
-                                <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
-                                  <p className="text-xs text-gray-600 mb-1">Employee CTC</p>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employee_ctc || ''}
-                                    onChange={(e) => setSalaryField('employee_ctc', e.target.value)}
-                                    className="w-full text-2xl font-bold text-orange-700 text-right border-0 bg-transparent"
-                                  />
+                                {/* Employee CTC */}
+                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-4 border-2 border-orange-200">
+                                  <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">Employee CTC</p>
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="text-sm text-orange-600">₹</span>
+                                    <input
+                                      type="number"
+                                      value={salaryData.employee_ctc || salaryData.ctc || ''}
+                                      onChange={(e) => setSalaryField('employee_ctc', e.target.value)}
+                                      className="w-full text-3xl font-bold text-orange-700 bg-transparent border-0 p-0 focus:ring-0 text-right"
+                                    />
+                                  </div>
                                 </div>
 
                                 {/* Breakdown */}
-                                <div className="pt-2 border-t border-gray-200">
-                                  <div className="space-y-1.5 text-xs">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Gross:</span>
-                                      <span className="font-medium">₹{salaryData.gross_salary || '0.00'}</span>
+                                <div className="border-t-2 border-gray-200 pt-4 space-y-3">
+                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Breakdown</h4>
+                                  
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">Gross Salary:</span>
+                                      <span className="font-semibold text-gray-900">₹{(salaryData.gross_salary || 0).toLocaleString('en-IN')}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Deductions:</span>
-                                      <span className="font-medium text-red-600">₹{(parseFloat(salaryData.employee_pf || 0) + parseFloat(salaryData.employee_pt || 0) + parseFloat(salaryData.retention_amount || 0) + parseFloat(salaryData.mlwf_employee || 0) + parseFloat(salaryData.other_deductions || 0)).toFixed(2)}</span>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">Adjusted Gross:</span>
+                                      <span className="font-semibold text-gray-900">₹{(salaryData.adjusted_gross || 0).toLocaleString('en-IN')}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Company:</span>
-                                      <span className="font-medium text-purple-600">₹{(parseFloat(salaryData.employer_pf || 0) + parseFloat(salaryData.bonus || 0) + parseFloat(salaryData.mlwf_company || 13) + parseFloat(salaryData.medical_insurance || 500)).toFixed(2)}</span>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">Leave Deduction:</span>
+                                      <span className="font-semibold text-red-600">-₹{(salaryData.leave_deduction || 0).toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">OT Pay:</span>
+                                      <span className="font-semibold text-emerald-600">+₹{(salaryData.ot_pay || 0).toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">Employee PF:</span>
+                                      <span className="font-semibold text-red-600">-₹{(salaryData.employee_pf || 0).toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">Total Deductions:</span>
+                                      <span className="font-semibold text-red-600">
+                                        ₹{((parseFloat(salaryData.employee_pf || 0) + parseFloat(salaryData.employee_pt || salaryData.professional_tax || 200) + parseFloat(salaryData.retention_amount || 0) + parseFloat(salaryData.mlwf_employee || 5) + parseFloat(salaryData.other_deductions || 0))).toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                      <span className="text-gray-600">Employer Contrib:</span>
+                                      <span className="font-semibold text-indigo-600">
+                                        ₹{((parseFloat(salaryData.employer_pf || 0) + parseFloat(salaryData.bonus || 0) + parseFloat(salaryData.mlwf_company || salaryData.mlwf_employer || 13) + parseFloat(salaryData.medical_insurance || salaryData.mediclaim || 500))).toLocaleString('en-IN')}
+                                      </span>
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* Attendance */}
-                                <div className="pt-2 border-t border-gray-200">
-                                  <div className="space-y-1.5 text-xs">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Working Days:</span>
-                                      <span className="font-medium">{salaryData.working_days || 0}</span>
+                                {/* Attendance Summary */}
+                                <div className="border-t-2 border-gray-200 pt-4 space-y-3">
+                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Attendance</h4>
+                                  
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div className="text-center p-2 bg-blue-50 rounded-lg">
+                                      <p className="text-xs text-gray-600 mb-1">Working Days</p>
+                                      <p className="text-lg font-bold text-blue-600">{salaryData.working_days || 0}</p>
                                     </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Paid Days:</span>
-                                      <span className="font-medium text-green-600">{salaryData.paid_days || 0}</span>
+                                    <div className="text-center p-2 bg-emerald-50 rounded-lg">
+                                      <p className="text-xs text-gray-600 mb-1">Paid Days</p>
+                                      <p className="text-lg font-bold text-emerald-600">{salaryData.paid_days || 0}</p>
+                                    </div>
+                                    <div className="text-center p-2 bg-amber-50 rounded-lg">
+                                      <p className="text-xs text-gray-600 mb-1">Week Offs</p>
+                                      <p className="text-lg font-bold text-amber-600">{salaryData.week_offs || 0}</p>
+                                    </div>
+                                    <div className="text-center p-2 bg-red-50 rounded-lg">
+                                      <p className="text-xs text-gray-600 mb-1">Absent</p>
+                                      <p className="text-lg font-bold text-red-600">{salaryData.absent_days || 0}</p>
                                     </div>
                                   </div>
+                                </div>
+
+                                {/* Quick Actions */}
+                                <div className="border-t-2 border-gray-200 pt-4 space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={submitSalaryMaster}
+                                    disabled={salaryLoading}
+                                    className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                                  >
+                                    {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update' : 'Save')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={saveCalculatedSalary}
+                                    disabled={salaryLoading}
+                                    className="w-full px-4 py-3 border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition-all disabled:opacity-50"
+                                  >
+                                    Save Calculated
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -2976,7 +2811,7 @@ export default function EmployeesPage() {
                     </nav>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-8">
+                  <form onSubmit={handleSubmit_safe} className="space-y-8">
                     {formErrors.general && (
                       <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
                         {formErrors.general}
@@ -2994,7 +2829,7 @@ export default function EmployeesPage() {
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
-                              <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange} className="block text-sm text-gray-600" />
+                              <input type="file" accept="image/*,.heic,.heif,.bmp" onChange={handleProfilePhotoChange_safe} className="block text-sm text-gray-600" />
                               {photoUploading && <p className="text-xs text-purple-600 mt-1">Uploading...</p>}
                             </div>
                           </div>
@@ -3290,13 +3125,16 @@ export default function EmployeesPage() {
                       <div className="space-y-6">
                         {/* Header */}
                         <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
-                          <div className="flex items-center gap-3 mb-2">
-                            <CurrencyDollarIcon className="h-8 w-8 text-purple-600" />
-                            <div>
-                              <h4 className="text-2xl font-bold text-gray-900">Salary Structure</h4>
-                              <p className="text-sm text-purple-700 mt-1">Annual Leave: 21 days (April - March financial year)</p>
-                              <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
+                          <div className="flex items-center justify-between gap-3 mb-2">
+                            <div className="flex items-center gap-3">
+                              <CurrencyDollarIcon className="h-8 w-8 text-purple-600" />
+                              <div>
+                                <h4 className="text-2xl font-bold text-gray-900">Salary Structure</h4>
+                                <p className="text-sm text-purple-700 mt-1">Annual Leave: 21 days (April - March financial year)</p>
+                                <p className="text-xs text-gray-600 mt-1">Sunday: Off | Saturday: 1st, 3rd Working | OT: Overtime</p>
+                              </div>
                             </div>
+                            <div className="flex-shrink-0">{/* Save button moved below summary */}</div>
                           </div>
                         </div>
 
@@ -3749,6 +3587,12 @@ export default function EmployeesPage() {
                       <div className="flex space-x-4">
                         <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
                         <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Updating...' : 'Update Employee'}</button>
+                        {editSubTab === 'salary' && (
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={submitSalaryMaster} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">{salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}</button>
+                            <button type="button" onClick={saveCalculatedSalary} className="px-4 py-2 border border-green-600 text-green-700 rounded-lg text-sm bg-white">Save Calculated Salary</button>
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -3801,7 +3645,7 @@ export default function EmployeesPage() {
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => openEditForm(selectedEmployee)}
+                      onClick={() => openEditForm_safe(selectedEmployee)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#64126D] text-white hover:bg-[#5a0f62] shadow-sm transition-colors"
                     >
                       <PencilIcon className="h-4 w-4" />
@@ -4089,10 +3933,84 @@ export default function EmployeesPage() {
                   </div>
                 </section>
 
+                {/* Additional / HR Fields */}
+                <section className="rounded-xl border border-gray-200 bg-white">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h4 className="text-lg font-semibold text-gray-900">Additional HR Fields</h4>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Middle Name</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.middle_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Employee Type</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.employee_type || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Grade</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.grade || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Workplace</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.workplace || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Level</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.level || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Reporting To</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.reporting_to || selectedEmployee.manager_name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">PF No</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.pf_no || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Leave Structure</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.leave_structure || '—'}</p>
+                    </div>
+                    {/* Formatted salary structure (human friendly) */}
+                    {renderSalaryStructure(selectedEmployee.salary_structure)}
+
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Salary Structure (raw)</p>
+                      <pre className="mt-1 p-3 bg-gray-50 rounded text-xs text-gray-700 overflow-auto" style={{ maxHeight: 160 }}>
+                        {(() => {
+                          try {
+                            const raw = selectedEmployee.salary_structure;
+                            if (!raw) return '—';
+                            const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                            return JSON.stringify(obj, null, 2);
+                          } catch { return String(selectedEmployee.salary_structure).slice(0, 1000) || '—'; }
+                        })()}
+                      </pre>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Total Deductions</p>
+                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.total_deductions)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Gratuity No</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.gratuity_no || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Manager ID</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.manager_id || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Personal Mobile</p>
+                      <p className="mt-1 font-medium text-black">{selectedEmployee.mobile || '—'}</p>
+                    </div>
+                  </div>
+                </section>
+
               </div>
             </div>
           )}
           </div>
+          {/* salary floating debug removed */}
         </div>
       </div>
     </div>

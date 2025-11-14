@@ -7,9 +7,9 @@ import { getCurrentUser } from '@/utils/api-permissions';
  */
 export async function getServerAuth() {
   try {
-    const cookieStore = cookies();
-    const authCookie = cookieStore.get('auth');
-    const userIdCookie = cookieStore.get('user_id');
+  const cookieStore = await cookies();
+  const authCookie = cookieStore.get('auth');
+  const userIdCookie = cookieStore.get('user_id');
 
     if (!authCookie || !userIdCookie) {
       return { authenticated: false, user: null, error: 'No active session' };

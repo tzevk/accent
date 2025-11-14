@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import { memo, useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, Sector } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function InteractiveDonutBase({
   data = [],
@@ -17,7 +17,7 @@ function InteractiveDonutBase({
   animationEasing = 'ease-out',
   valueFormatter,
 }) {
-  const palette = colors.length ? colors : ['#FBBF24', '#10B981', '#60A5FA', '#F87171', '#A78BFA'];
+  const palette = useMemo(() => colors.length ? colors : ['#FBBF24', '#10B981', '#60A5FA', '#F87171', '#A78BFA'], [colors]);
 
   const chartData = useMemo(() => (
     (data || []).map((d, i) => ({

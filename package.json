@@ -8,14 +8,17 @@
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+  "lint": "eslint",
+  "migrate:add-enquiry-no": "node scripts/add-enquiry-no.js",
     "migrate:add-project-lists": "node scripts/add-project-lists.js",
     "clear-leads": "node scripts/clear-leads.js",
     "setup": "node setup-backend.js",
-    "update-dates": "node scripts/update-projects-dates.js"
+    "update-dates": "node scripts/update-projects-dates.js",
+    "db:check": "node scripts/db-connections-check.js",
+    "db:kill": "node scripts/db-kill-connections.js"
   },
   "dependencies": {
-    "@hello-pangea/dnd": "^16.5.0",
+    "@babel/parser": "^7.28.5",
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -24,6 +27,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.15",
     "@react-pdf/renderer": "^4.3.1",
+    "acorn": "^8.15.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

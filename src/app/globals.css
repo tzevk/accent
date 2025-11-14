@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Sidebar/card background (keeps sign-in and sidebar in sync) */
+  --sidebar-bg: #4D025B;
   /* Map Next font variables to Tailwind v4 tokens without using @theme */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

@@ -129,6 +129,7 @@ function ProjectsInner() {
 
   useEffect(() => {
     fetchProjects();
+     
   }, []);
 
   useEffect(() => {
@@ -179,13 +180,13 @@ function ProjectsInner() {
       if (result.success) setProjects(result.data);
       else console.error('Error fetching projects:', result.error);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+          console.error('Error fetching projects:', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNewProject = () => router.push('/projects/new');
+
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this project?')) return;
@@ -293,24 +294,28 @@ function ProjectsInner() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-6 sm:px-8 pt-12 pb-8">
-            {/* Hero */}
-            <div className="relative mb-8">
-              <div className="rounded-2xl bg-gradient-to-r from-[#64126D] via-[#7a2a86] to-[#9b45a6] p-6 sm:p-8 shadow-sm text-white overflow-hidden">
-                <div className="flex items-start justify-between gap-6">
-                  <div className="max-w-2xl">
-                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">Projects</h1>
-                    <p className="mt-2 text-sm sm:text-base text-purple-100">Plan work, track progress and budgets, and manage timelines. Switch views to see calendar or list.</p>
-                  </div>
-                  <div className="hidden sm:flex items-center gap-2">
-                    <button
-                      onClick={handleNewProject}
-                      className="inline-flex items-center gap-2 rounded-xl bg-white/15 backdrop-blur px-4 py-2 text-sm font-medium shadow-sm hover:bg-white/25 transition"
-                    >
-                      <PlusIcon className="h-4 w-4" />
-                      <span>New Project</span>
-                    </button>
-                  </div>
+          <div className="px-8 pt-22 pb-8">
+            {/* Header */}
+            <div className="mb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+                  <p className="text-sm text-gray-600">Manage and track your client projects</p>
+                </div>
+              </div>
+              {/* Quick Stats */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">Total Projects</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</div>
+                </div>
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">In Progress</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.inProgress}</div>
+                </div>
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="text-xs text-gray-600">Completed</div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.completed}</div>
                 </div>
                 {/* Quick Stats */}
                 <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -444,14 +449,6 @@ function ProjectsInner() {
                         >Clear</button>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleNewProject}
-                        className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white px-4 py-2 text-sm shadow-sm hover:bg-[#58105f] md:hidden"
-                      >
-                        <PlusIcon className="h-4 w-4" /> New
-                      </button>
-                    </div>
                   </div>
 
                   {showFilters && (
@@ -517,17 +514,9 @@ function ProjectsInner() {
                         </div>
                       </div>
                     ) : projects.length === 0 ? (
-                      <div className="p-10 text-center">
-                        <div className="mx-auto w-16 h-16 rounded-full bg-purple-50 flex items-center justify-center">
-                          <FolderIcon className="h-8 w-8 text-[#64126D]" />
-                        </div>
-                        <h3 className="mt-3 text-base font-semibold text-black">No projects yet</h3>
-                        <p className="mt-1 text-sm text-gray-600">Create your first project to start planning and tracking.</p>
-                        <div className="mt-4">
-                          <button onClick={handleNewProject} className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white px-4 py-2 text-sm shadow-sm hover:bg-[#58105f]">
-                            <PlusIcon className="h-4 w-4" /> New Project
-                          </button>
-                        </div>
+                      <div className="p-6 text-center">
+                        <FolderIcon className="mx-auto h-10 w-10 text-gray-400" />
+                        <h3 className="mt-2 text-sm font-medium text-black">No projects found</h3>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
@@ -645,9 +634,7 @@ function ProjectsInner() {
                                         const tot = cb.reduce((s, r) => s + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
                                         return tot > 0 ? formatCurrency(tot) : '-';
                                       }
-                                    } catch {
-                                      // ignore parse errors
-                                    }
+                                    } catch {}
                                     return '-';
                                   })()}
                                 </td>
@@ -665,21 +652,21 @@ function ProjectsInner() {
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end space-x-1">
                                     <button
-                                      onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}`)}
+                                      onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
                                       className="p-1.5 text-[#64126D] hover:text-white hover:bg-[#64126D] rounded-full transition-colors"
                                       title="View Details"
                                     >
                                       <EyeIcon className="h-3 w-3" />
                                     </button>
                                     <button
-                                      onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}/edit`)}
+                                      onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
                                       className="p-1.5 text-gray-600 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                                       title="Edit Project"
                                     >
                                       <PencilIcon className="h-3 w-3" />
                                     </button>
                                     <button
-                                      onClick={() => handleDelete(project.id ?? project.project_id ?? project.project_code)}
+                                      onClick={() => handleDelete(project.project_id ?? project.id ?? project.project_code)}
                                       className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 rounded-full transition-colors"
                                       title="Delete Project"
                                     >
@@ -780,8 +767,8 @@ function ProjectsInner() {
                               </div>
                             </div>
                             <div className="mt-2 space-y-2 overflow-y-auto max-h-32 pr-1">
-                              {dayProjects.map((project, _idx) => (
-                                <div key={project.id ?? project.project_id ?? project.project_code ?? _idx} className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1">
+                              {dayProjects.map((project) => (
+                                <div key={`${project.id ?? project.project_id ?? project.project_code ?? project.name ?? 'unknown'}`} className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1">
                                   <p className="text-xs font-semibold text-black truncate" title={project.name}>
                                     {project.name}
                                   </p>

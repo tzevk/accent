@@ -909,7 +909,7 @@ export default function EnhancedUsersMaster() {
               <div>
                 <h3 className="text-lg font-semibold text-red-900 mb-2">Access Denied</h3>
                 <p className="text-sm text-red-800 mb-2">
-                  You do not have permission to manage permissions. Only administrators can access this section.
+                  You don&apos;t have permission to manage permissions. Only administrators can access this section.
                 </p>
                 <p className="text-xs text-red-700">
                   If you believe you should have access, please contact your system administrator.

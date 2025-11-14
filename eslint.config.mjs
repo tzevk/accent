@@ -9,22 +9,30 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+
+// Default ignores (use the `ignores` property instead of .eslintignore)
+const ignores = [
+  "node_modules/**",
+  ".next/**",
+  "out/**",
+  "build/**",
+  "next-env.d.ts",
+  "._*",
+  "**/._*",
+  "._**",
+  "**/._**",
+  "*.backup",
+  "*.orig",
+  "*.log",
+  "_package-lock.json",
+  "_node_modules",
+];
+
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     files: ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"],
-    ignores: [
-      "node_modules/**",
-      ".next/**",
-      "out/**",
-      "build/**",
-      "next-env.d.ts",
-      // Ignore macOS resource-fork / hidden files that sometimes appear as ._filename
-      "._*",
-      "**/._*",
-      "._**",
-      "**/._**",
-    ],
+    ignores,
   },
 ];
 

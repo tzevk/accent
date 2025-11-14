@@ -30,8 +30,10 @@ export async function GET(request, { params }) {
       );
     }
 
+    // Return both `data` and `proposal` for backward compatibility with callers
     return NextResponse.json({
       success: true,
+      data: rows[0],
       proposal: rows[0]
     });
 
@@ -517,6 +519,12 @@ export async function PUT(request, { params }) {
     pushIf('due_date', body.due_date ?? body.target_date ?? null);
     pushIf('notes', body.notes ?? null);
     pushIf('lead_id', body.lead_id ?? null);
+
+    // Ensure enquiry_no mirrors lead_id when lead_id is provided; otherwise accept explicit enquiry_no
+    if (existing.has('enquiry_no')) {
+      const enquiryVal = body.lead_id ?? body.enquiry_no ?? null;
+      pushIf('enquiry_no', enquiryVal);
+    }
 
     // Quotation / related fields
     pushIf('client_name', body.client_name ?? body.client ?? null);

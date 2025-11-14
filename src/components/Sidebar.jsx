@@ -4,9 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
-  PlusIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   ClockIcon,
   Cog6ToothIcon,
   MapPinIcon,
@@ -69,7 +67,7 @@ export default function Sidebar() {
   return (
     <aside
       data-pinned={pinned}
-      className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-white ${pinned ? 'w-[260px]' : 'w-[64px] hover:w-[260px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
+      className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px]' : 'w-[64px] hover:w-[260px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
     >
       <div className="h-full flex flex-col">
         {/* Top spacing to replace removed brand block */}
@@ -94,6 +92,7 @@ export default function Sidebar() {
             <NavRow icon={UserGroupIcon} label="Employee Master" href="/employees" active={pathname.startsWith('/employees')} />
             <NavRow icon={UsersIcon} label="User Master" href="/masters/users" active={pathname.startsWith('/masters/users')} />
             <NavRow icon={DocumentTextIcon} label="Activity Master" href="/masters/activities" active={pathname.startsWith('/masters/activities')} />
+            <NavRow icon={DocumentTextIcon} label="Software Master" href="/masters/software" active={pathname.startsWith('/masters/software')} />
             <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />
             <NavRow icon={BuildingOfficeIcon} label="Vendor Master" href="/vendors" active={pathname.startsWith('/vendors')} />
             {/* Document Master removed from sidebar per request */}

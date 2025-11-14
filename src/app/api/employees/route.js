@@ -2,6 +2,22 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
 
+// Helper to detect primary key column for employees table
+async function detectEmployeePrimaryKey(connection) {
+  try {
+    const [pkRows] = await connection.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND CONSTRAINT_NAME = 'PRIMARY'`
+    );
+    if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
+      return pkRows[0].COLUMN_NAME;
+    }
+  } catch (err) {
+    console.warn('Could not detect employees primary key:', err.message);
+  }
+  return 'id'; // Default fallback
+}
+
 // Helpers to ensure columns exist even on older MySQL/MariaDB where IF NOT EXISTS isn't supported
 async function getExistingColumns(connection) {
   const [rows] = await connection.execute('SHOW COLUMNS FROM employees');
@@ -384,17 +400,16 @@ export async function PUT(request) {
       );
     }
 
-  const connection = await dbConnect();
-  await ensureBaseEmployeesTable(connection);
-  await ensureEmployeesTable(connection);
+    const connection = await dbConnect();
+    await ensureBaseEmployeesTable(connection);
+    await ensureEmployeesTable(connection);
+    const pkCol = await detectEmployeePrimaryKey(connection);
 
     // Check if employee exists
     const [existing] = await connection.execute(
-      'SELECT id FROM employees WHERE id = ?',
+      `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
       [data.id]
-    );
-
-    if (existing.length === 0) {
+    );    if (existing.length === 0) {
       await connection.end();
       return NextResponse.json(
         { error: 'Employee not found' },
@@ -405,7 +420,7 @@ export async function PUT(request) {
     // Check for duplicate employee_id or email (excluding current employee)
     if (data.employee_id || data.email) {
       const [duplicates] = await connection.execute(
-        'SELECT id FROM employees WHERE (employee_id = ? OR email = ?) AND id != ?',
+        `SELECT ${pkCol} FROM employees WHERE (employee_id = ? OR email = ?) AND ${pkCol} != ?`,
         [data.employee_id, data.email, data.id]
       );
 
@@ -456,7 +471,7 @@ export async function PUT(request) {
     values.push(data.id);
 
     await connection.execute(
-      `UPDATE employees SET ${updateFields.join(', ')} WHERE id = ?`,
+      `UPDATE employees SET ${updateFields.join(', ')} WHERE ${pkCol} = ?`,
       values
     );
 
@@ -521,16 +536,15 @@ export async function DELETE(request) {
       );
     }
 
-  const connection = await dbConnect();
+    const connection = await dbConnect();
   await ensureBaseEmployeesTable(connection);
+    const pkCol = await detectEmployeePrimaryKey(connection);
 
     // Check if employee exists
     const [existing] = await connection.execute(
-      'SELECT id FROM employees WHERE id = ?',
+      `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
       [id]
-    );
-
-    if (existing.length === 0) {
+    );    if (existing.length === 0) {
       await connection.end();
       return NextResponse.json(
         { error: 'Employee not found' },
@@ -554,7 +568,7 @@ export async function DELETE(request) {
 
     // Delete employee
     await connection.execute(
-      'DELETE FROM employees WHERE id = ?',
+      `DELETE FROM employees WHERE ${pkCol} = ?`,
       [id]
     );
     // Optionally deactivate linked user instead of hard delete

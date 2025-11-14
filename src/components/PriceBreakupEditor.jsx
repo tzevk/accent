@@ -8,7 +8,7 @@ export default function PriceBreakupEditor({ value, onChange }) {
   const [rows, setRows] = useState(value && Array.isArray(value) ? normalize(value) : [{ id: ++nextId.current, label: 'Item 1', quantity: 1, unitPrice: 0 }]);
 
   useEffect(() => {
-    if (typeof onChange === 'function') onChange(rows);
+    if (onChange) onChange(rows);
   }, [rows, onChange]);
 
   const updateRow = (idx, field, val) => {

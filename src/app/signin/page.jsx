@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { Poppins } from 'next/font/google';
+import Image from 'next/image';
 
 // Font setup
 const poppins = Poppins({
@@ -22,12 +23,6 @@ export default function SignIn() {
   const [error, setError] = useState('');
 
   // 🪄 Adaptive gradient style and sizing for different platforms
-  const [gradientStyle, setGradientStyle] = useState({
-    background:
-      'radial-gradient(1000px 700px at 50% 35%, #d3a9ce 0%, #b177c1 35%, #9041a0 65%, #6c1b7a 100%)',
-    filter: 'saturate(1.05) brightness(1.08)',
-    transition: 'background 0.4s ease, filter 0.4s ease',
-  });
   
   const [isWindows, setIsWindows] = useState(false);
   const [platformStyles, setPlatformStyles] = useState({});
@@ -78,8 +73,8 @@ export default function SignIn() {
 
   return (
     <div
-      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
-      style={gradientStyle}
+      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden bg-[var(--sidebar-bg)]`}
+      style={platformStyles}
     >
       {/* Background overlay: lighter glow on Mac, subtle darkening on Windows */}
       {/* Soft glow (original across all platforms) */}
@@ -96,7 +91,7 @@ export default function SignIn() {
       >
         {/* Logo */}
         <div className={`flex justify-center ${isWindows ? 'mb-5' : 'mb-6'}`}>
-          <img
+          <Image
             src="/accent-logo.png"
             alt="Accent Techno Solutions"
             className={`object-contain ${
@@ -104,6 +99,8 @@ export default function SignIn() {
                 ? 'h-[95px] sm:h-[105px]' 
                 : 'h-[110px] sm:h-[120px]'
             }`}
+            width={64}
+            height={64}
           />
         </div>
 

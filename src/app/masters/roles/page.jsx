@@ -20,8 +20,8 @@ export default function RolesMaster() {
       const res = await fetch('/api/roles');
       const j = await res.json();
       if (j.success) setRoles(j.data || []);
-    } catch (e) {
-      console.error(e);
+    } catch {
+        console.error('An error occurred while fetching roles');
     } finally {
       setLoading(false);
     }
@@ -67,8 +67,8 @@ export default function RolesMaster() {
       const res = await fetch(`/api/roles?id=${id}`, { method: 'DELETE' });
       const j = await res.json();
       if (j.success) fetchRoles(); else alert('Error: ' + (j.error || 'Unknown'));
-    } catch (e) {
-      console.error(e);
+    } catch {
+        console.error('An error occurred while deleting the role');
       alert('Failed to delete');
     }
   };
@@ -124,7 +124,7 @@ export default function RolesMaster() {
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-black">{r.role_key}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-black">{r.display_name || '-'}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-black">
-                            {(r.permissions && (() => { try { return JSON.parse(r.permissions).join(', '); } catch(e){ return '-'; } })()) || '-'}
+                            {(r.permissions && (() => { try { return JSON.parse(r.permissions).join(', '); } catch{ return '-'; } })()) || '-'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                             <div className="flex items-center justify-end space-x-2">

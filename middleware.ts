@@ -27,7 +27,7 @@ export function middleware(req: NextRequest) {
   if (isPublicPath(pathname)) {
     // If user is already authenticated and tries to access /signin, redirect to dashboard
     if (pathname === '/signin') {
-      const authToken = req.cookies.get('auth_token')?.value
+      const authToken = req.cookies.get('auth')?.value
       if (authToken) {
         const url = req.nextUrl.clone()
         url.pathname = '/dashboard'
@@ -38,7 +38,7 @@ export function middleware(req: NextRequest) {
   }
 
   // All other routes require auth
-  const authToken = req.cookies.get('auth_token')?.value
+  const authToken = req.cookies.get('auth')?.value
   if (!authToken) {
     // If it's an API request, return 401 JSON instead of redirect
     if (pathname.startsWith('/api')) {
