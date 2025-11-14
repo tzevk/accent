@@ -738,60 +738,86 @@ export default function EmployeesPage() {
 
   const submitSalaryMaster = async (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    console.debug('[salary] submitSalaryMaster clicked', { selectedEmployeeId: selectedEmployee?.id, editingSalaryId, salaryInputs });
+    console.debug('[salary] submitSalaryMaster clicked', { selectedEmployeeId: selectedEmployee?.id, editingSalaryId, salaryData });
     setSalaryError('');
     setSalarySuccess('');
     if (!selectedEmployee?.id) {
       setSalaryError('Select an employee first.');
       return;
     }
-    if (!salaryInputs.basic_salary || Number(salaryInputs.basic_salary) <= 0) {
-      setSalaryError('Basic Salary is required and must be greater than 0.');
+    if (!salaryData.gross_salary || Number(salaryData.gross_salary) <= 0) {
+      setSalaryError('Gross Salary is required and must be greater than 0.');
       return;
     }
 
-    // Build salary structure object from inputs
+    // Build salary structure object from salaryData
     const salaryStructure = {
-      basic_salary: Number(salaryInputs.basic_salary) || 0,
-      hra: Number(salaryInputs.hra) || 0,
-      conveyance: Number(salaryInputs.conveyance) || 0,
-      medical_allowance: Number(salaryInputs.medical_allowance) || 0,
-      special_allowance: Number(salaryInputs.special_allowance) || 0,
-      incentives: Number(salaryInputs.incentives) || 0,
-      deductions: Number(salaryInputs.deductions) || 0,
-      effective_from: salaryInputs.effective_from || null,
+      basic_salary: Number(salaryData.basic_da || 0) || 0,
+      hra: Number(salaryData.hra || 0) || 0,
+      conveyance: Number(salaryData.conveyance_allowance || 0) || 0,
+      medical_allowance: Number(salaryData.medical_insurance || 0) || 0,
+      special_allowance: Number(salaryData.other_allowance || 0) || 0,
+      incentives: Number(salaryData.ot_pay || 0) || 0,
+      deductions: Number((Number(salaryData.employee_pf || 0) + Number(salaryData.employee_pt || 0) + Number(salaryData.other_deductions || 0) + Number(salaryData.mlwf_employee || 0)) || 0) || 0,
+      effective_from: salaryData.effective_from || null,
     };
 
-    // Calculate gross and net
-    const gross = salaryStructure.basic_salary + salaryStructure.hra + salaryStructure.conveyance + salaryStructure.medical_allowance + salaryStructure.special_allowance + salaryStructure.incentives;
-    const net = gross - salaryStructure.deductions;
-
-    // employee-level payload is no longer used here; we persist salary rows via the salary endpoint
+    // Calculate gross and net from salaryData
+    const gross = Number(salaryData.adjusted_gross || salaryData.gross_salary || 0) || 0;
+    const net = Number(salaryData.in_hand_salary || salaryData.net_salary || 0) || Math.max(0, gross - (salaryStructure.deductions || 0));
 
     try {
       setSalaryLoading(true);
 
-      // Build the salary row payload for the salary endpoint. Include UI fields
-      // that belong to the salary record rather than the employee record.
+      // Build the salary row payload for the salary endpoint
       const salaryPayload = {
         ...salaryStructure,
         gross_salary: gross,
         total_deductions: salaryStructure.deductions,
         net_salary: net,
-        attendance_days: Number(salaryInputs.attendance_days || 0),
-        total_working_days: Number(salaryInputs.total_working_days || 0),
-        loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
-        loan_emi: Number(salaryInputs.loan_emi || 0),
-        advance_payment: Number(salaryInputs.advance_payment || 0),
-        salary_type: salaryInputs.salary_type || 'Monthly',
-        effective_from: salaryInputs.effective_from || null,
-        additional_earnings: Number(salaryInputs.additional_earnings || 0),
-        additional_deductions: Number(salaryInputs.additional_deductions || 0),
-        pf: Number(salaryInputs.pf || 0),
-        pt: Number(salaryInputs.pt || 0),
-        mlwf: Number(salaryInputs.mlwf || 0),
-        pl_used: Number(salaryInputs.pl_used || 0),
-        pl_balance: Number(salaryInputs.pl_balance || 0),
+        attendance_days: Number(salaryData.paid_days || 0),
+        total_working_days: Number(salaryData.total_working_days || salaryData.working_days || 0),
+        loan_active: 0, // Not in new UI
+        loan_emi: 0,
+        advance_payment: 0,
+        salary_type: 'Monthly',
+        effective_from: salaryData.effective_from || null,
+        additional_earnings: Number(salaryData.ot_pay || 0),
+        additional_deductions: Number(salaryData.other_deductions || 0),
+        pf: Number(salaryData.employee_pf || 0),
+        pt: Number(salaryData.employee_pt || 0),
+        mlwf: Number(salaryData.mlwf_employee || 0),
+        pl_used: Number(salaryData.pl_used || 0),
+        pl_balance: Number(salaryData.pl_balance || 0),
+        // Add new fields from salaryData
+        da: Number(salaryData.basic_da || 0),
+        basic_da: Number(salaryData.basic_da || 0),
+        conveyance_allowance: Number(salaryData.conveyance_allowance || 0),
+        call_allowance: Number(salaryData.call_allowance || 0),
+        other_allowance: Number(salaryData.other_allowance || 0),
+        month_days: Number(salaryData.month_days || 0),
+        working_days: Number(salaryData.working_days || 0),
+        week_offs: Number(salaryData.week_offs || 0),
+        absent_days: Number(salaryData.absent_days || 0),
+        paid_days: Number(salaryData.paid_days || 0),
+        holiday_working_days: Number(salaryData.holiday_working_days || 0),
+        ot_hours: Number(salaryData.ot_hours || 0),
+        ot_rate: Number(salaryData.ot_rate || 0),
+        adjusted_gross: Number(salaryData.adjusted_gross || 0),
+        leave_deduction: Number(salaryData.leave_deduction || 0),
+        ot_pay: Number(salaryData.ot_pay || 0),
+        employee_pf: Number(salaryData.employee_pf || 0),
+        employer_pf: Number(salaryData.employer_pf || 0),
+        bonus: Number(salaryData.bonus || 0),
+        professional_tax: Number(salaryData.employee_pt || 0),
+        retention_amount: Number(salaryData.retention_amount || 0),
+        mlwf_company: Number(salaryData.mlwf_company || 13),
+        mlwf_employer: Number(salaryData.mlwf_company || 13),
+        medical_insurance: Number(salaryData.medical_insurance || 500),
+        mediclaim: Number(salaryData.medical_insurance || 500),
+        in_hand_salary: Number(salaryData.in_hand_salary || 0),
+        employee_ctc: Number(salaryData.employee_ctc || 0),
+        annual_leaves: Number(salaryData.annual_leaves || 21),
       };
 
       // Determine whether to create or update a salary row
@@ -811,16 +837,13 @@ export default function EmployeesPage() {
         setSalarySuccess('Salary saved successfully.');
         setSalaryError('');
 
-        // If server returned the saved row, update salaryRows and selectedEmployee
-  // Refresh salary rows for the employee to ensure consistency
-  try { await loadSalaryRows(selectedEmployee.id); } catch { /* ignore */ }
+        // Refresh salary rows for the employee to ensure consistency
+        try { await loadSalaryRows(selectedEmployee.id); } catch { /* ignore */ }
 
         // Also update the employee record summary locally so list shows latest gross/net
         setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
         // clear edit mode after successful save
         setEditingSalaryId(null);
-        // store raw server response for troubleshooting / UI preview
-          try { setSalaryRaw(json); } catch { /* ignore */ }
         // clear success message after a short delay to reduce UI noise
         setTimeout(() => { try { setSalarySuccess(''); } catch {} }, 3000);
         // Refresh employees list summary in background
@@ -1815,9 +1838,9 @@ export default function EmployeesPage() {
 
                     {/* Salary Structure */}
                     {addSubTab === 'salary' && (
-                      <div className="space-y-6">
+                      <div>
                         {/* Header with Info Banner */}
-                        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm">
+                        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm mb-6">
                           <div className="flex items-start gap-4">
                             <div className="flex-shrink-0 bg-emerald-100 p-3 rounded-lg">
                               <CurrencyDollarIcon className="h-8 w-8 text-emerald-600" />

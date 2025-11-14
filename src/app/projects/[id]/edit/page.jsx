@@ -95,10 +95,7 @@ const TABS = [
   { id: 'lessons_learnt', label: 'Lessons Learnt' }
 ];
 
-const STATUS_OPTIONS = ['NEW', 'planning', 'in-progress', 'on-hold', 'completed', 'cancelled'];
-const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
-const INDUSTRY_OPTIONS = ['Construction', 'Energy', 'Infrastructure', 'Manufacturing', 'IT', 'Healthcare'];
 const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'];
 const PAYMENT_TERMS_OPTIONS = ['Net 30', 'Net 45', 'Net 60', 'Advance'];
 const INVOICING_STATUS_OPTIONS = ['Uninvoiced', 'Partially Invoiced', 'Invoiced', 'Paid'];
@@ -132,8 +129,6 @@ function EditProjectForm() {
   const [activeTab, setActiveTab] = useState('general');
   const [companies, setCompanies] = useState([]);
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
-  const [activities, setActivities] = useState([]);
-  const [subActivities, setSubActivities] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [form, setForm] = useState(INITIAL_FORM);
   const [projectActivities, setProjectActivities] = useState([]);
@@ -145,17 +140,9 @@ function EditProjectForm() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expandedActivities, setExpandedActivities] = useState({}); // Track which activities are expanded
   // Sub-Activity dropdown UI state (per-activity)
   const [openSubActivityDropdowns, setOpenSubActivityDropdowns] = useState({});
   const [subActivitySearch, setSubActivitySearch] = useState({});
-  
-  // Collapsible sections state for enhanced General Info
-  const [expandedSections, setExpandedSections] = useState({
-    planning: true,      // Project Planning section
-    documentation: true, // Documentation section  
-    meetings: true       // Meetings section
-  });
 
   // Collapsible sections for General / Project Details (Basic, Scope, Unit/Qty, Deliverables)
   const [openSections, setOpenSections] = useState({
@@ -166,11 +153,6 @@ function EditProjectForm() {
   });
 
   const toggleSection = (key) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
-
-  // File management state
-  const [inputDocuments, setInputDocuments] = useState([]);
-  const [deliverables, setDeliverables] = useState([]);
-  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   // Input document list management with categories and full document details
   const [inputDocumentsList, setInputDocumentsList] = useState([]);
@@ -188,18 +170,9 @@ function EditProjectForm() {
     subLot: '' 
   });
   const [docMaster, setDocMaster] = useState([]);
-  const [selectedDocCategory, setSelectedDocCategory] = useState('all'); // Filter: all, lot, sublot, date, others
   
   // Documentation tab - detailed document management
   const [documentsList, setDocumentsList] = useState([]);
-  const [newDocument, setNewDocument] = useState({
-    name: '',
-    number: '',
-    revision: '',
-    quantity: '',
-    sentBy: '',
-    remarks: ''
-  });
 
   // Documents Received - structured table rows
   const [documentsReceived, setDocumentsReceived] = useState([]);
@@ -248,22 +221,6 @@ function EditProjectForm() {
     remarks: ''
   });
   const newScheduleDescRef = useRef(null);
-
-  // Project Activity / Daily Activity rows
-  const [projectActivityRows, setProjectActivityRows] = useState([]);
-  const [newActivity, setNewActivity] = useState({
-    date: '',
-    daily_activity: '',
-    unit_qty: '',
-    planned_hours: '',
-    start_time: '',
-    end_time: '',
-    actual_hours: '',
-    activity_done_by: '',
-    status_completed: '',
-    remark: ''
-  });
-  const newActivityDescRef = useRef(null);
 
   // Project Manhours - structured rows
   const [projectManhours, setProjectManhours] = useState([]);
@@ -576,7 +533,7 @@ function EditProjectForm() {
                 ? JSON.parse(project.team_members) 
                 : project.team_members;
               setTeamMembers(Array.isArray(parsed) ? parsed : []);
-            } catch (e) {
+            } catch {
               setTeamMembers([]);
             }
           }
@@ -588,7 +545,7 @@ function EditProjectForm() {
                 ? JSON.parse(project.project_activities_list) 
                 : project.project_activities_list;
               setProjectActivities(Array.isArray(parsed) ? parsed : []);
-            } catch (e) {
+            } catch {
               setProjectActivities([]);
             }
           }
@@ -600,7 +557,7 @@ function EditProjectForm() {
                 ? JSON.parse(project.planning_activities_list) 
                 : project.planning_activities_list;
               setPlanningActivities(Array.isArray(parsed) ? parsed : []);
-            } catch (e) {
+            } catch {
               setPlanningActivities([]);
             }
           }
@@ -612,7 +569,7 @@ function EditProjectForm() {
                 ? JSON.parse(project.documents_list) 
                 : project.documents_list;
               setDocumentsList(Array.isArray(parsed) ? parsed : []);
-            } catch (e) {
+            } catch {
               setDocumentsList([]);
             }
           }
@@ -645,7 +602,7 @@ function EditProjectForm() {
                   addedAt: new Date().toISOString()
                 })).filter(doc => doc.text);
               }
-            } catch (e) {
+            } catch {
               // fallback to comma split
               parsedDocs = project.input_document.split(',').map((doc, index) => ({
                 id: Date.now() + index,
@@ -666,7 +623,7 @@ function EditProjectForm() {
                   ? JSON.parse(project.documents_received_list)
                   : project.documents_received_list;
                 setDocumentsReceived(Array.isArray(parsed) ? parsed : []);
-              } catch (e) {
+              } catch {
                 setDocumentsReceived([]);
               }
             } else {
@@ -680,7 +637,7 @@ function EditProjectForm() {
                   ? JSON.parse(project.project_query_log_list)
                   : project.project_query_log_list;
                 setQueryLog(Array.isArray(parsed) ? parsed : []);
-              } catch (e) {
+              } catch {
                 setQueryLog([]);
               }
             } else {
@@ -694,7 +651,7 @@ function EditProjectForm() {
                   ? JSON.parse(project.project_assumption_list)
                   : project.project_assumption_list;
                 setAssumptions(Array.isArray(parsed) ? parsed : []);
-              } catch (e) {
+              } catch {
                 setAssumptions([]);
               }
             } else {
@@ -708,7 +665,7 @@ function EditProjectForm() {
                   ? JSON.parse(project.project_lessons_learnt_list)
                   : project.project_lessons_learnt_list;
                 setLessonsLearnt(Array.isArray(parsed) ? parsed : []);
-              } catch (e) {
+              } catch {
                 setLessonsLearnt([]);
               }
             } else {
@@ -722,7 +679,7 @@ function EditProjectForm() {
                         ? JSON.parse(project.internal_meetings_list)
                         : project.internal_meetings_list;
                       setInternalMeetings(Array.isArray(parsed) ? parsed : []);
-                    } catch (e) {
+                    } catch {
                       setInternalMeetings([]);
                     }
                   } else if (project.internal_meeting_no || project.internal_meeting_title || project.internal_persons_involved) {
@@ -755,7 +712,7 @@ function EditProjectForm() {
     };
 
     fetchProject();
-  }, [id]);
+  }, [id, projectActivities.length]);
 
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
@@ -772,9 +729,9 @@ function EditProjectForm() {
         clearTimeout(autoSaveTimeout);
       }
     };
-  }, [autoSaveTimeout]);
+  }, [autoSaveTimeout, projectActivities.length]);
 
-  const autoSave = async (formData) => {
+  const autoSave = async () => {
     try {
       setSaving(true);
       const result = await fetchJSON(`/api/projects/${id}`, {
@@ -825,11 +782,6 @@ function EditProjectForm() {
     }, 2000);
     
     setAutoSaveTimeout(timeout);
-  };
-
-  const handleProgressChange = (event) => {
-    const value = Number(event.target.value);
-    setForm((prev) => ({ ...prev, progress: Number.isNaN(value) ? 0 : value }));
   };
 
   // Input Document List Management with Categories and Full Details
@@ -891,7 +843,7 @@ function EditProjectForm() {
         if (res?.success && Array.isArray(res.data)) {
           setDocMaster(res.data);
         }
-      } catch (e) {
+      } catch {
         // non-fatal
       }
     };
@@ -938,31 +890,6 @@ function EditProjectForm() {
     } finally {
       // reset input so same file can be re-selected
       event.target.value = '';
-    }
-  };
-
-  // Documentation Tab - Detailed Document Management
-  const addDocument = () => {
-    if (newDocument.name.trim()) {
-      const doc = {
-        id: Date.now(),
-        name: newDocument.name.trim(),
-        number: newDocument.number.trim(),
-        revision: newDocument.revision.trim(),
-        quantity: newDocument.quantity.trim(),
-        sentBy: newDocument.sentBy.trim(),
-        remarks: newDocument.remarks.trim(),
-        addedAt: new Date().toISOString()
-      };
-      setDocumentsList([...documentsList, doc]);
-      setNewDocument({
-        name: '',
-        number: '',
-        revision: '',
-        quantity: '',
-        sentBy: '',
-        remarks: ''
-      });
     }
   };
 
@@ -1099,25 +1026,6 @@ function EditProjectForm() {
     setLessonsLearnt(prev => prev.filter(r => r.id !== id));
   };
 
-  // Project Activity helpers
-  const addActivityRow = () => {
-    if (!newActivity.daily_activity || !newActivity.daily_activity.trim()) return;
-    const defaultSr = newActivity.sr_no && String(newActivity.sr_no).trim() !== '' ? newActivity.sr_no : String(projectActivityRows.length + 1);
-    const defaultDate = newActivity.date || new Date().toISOString().slice(0,10);
-    const row = { ...newActivity, id: Date.now(), sr_no: defaultSr, date: defaultDate };
-    setProjectActivityRows(prev => [...prev, row]);
-    setNewActivity({ sr_no: '', date: '', daily_activity: '', unit_qty: '', planned_hours: '', start_time: '', end_time: '', actual_hours: '', activity_done_by: '', status_completed: '', remark: '' });
-    setTimeout(() => newActivityDescRef.current?.focus(), 10);
-  };
-
-  const updateActivityRow = (id, field, value) => {
-    setProjectActivityRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-  };
-
-  const removeActivityRow = (id) => {
-    setProjectActivityRows(prev => prev.filter(r => r.id !== id));
-  };
-
   // Project Schedule helpers (add/update/remove)
   const addSchedule = () => {
     if (!newSchedule.activity_description || !newSchedule.activity_description.trim()) return;
@@ -1138,14 +1046,6 @@ function EditProjectForm() {
 
   const removeSchedule = (id) => {
     setProjectSchedule(prev => prev.filter(r => r.id !== id));
-  };
-
-  const removeDocument = (id) => {
-    setDocumentsList(documentsList.filter(doc => doc.id !== id));
-  };
-
-  const updateDocumentField = (field, value) => {
-    setNewDocument(prev => ({ ...prev, [field]: value }));
   };
 
   // Project Planning Tab - Activity Management
@@ -1294,14 +1194,6 @@ function EditProjectForm() {
     setInternalMeetings(prev => prev.filter(m => m.id !== id));
   };
 
-  // Toggle activity expansion
-  const toggleActivityExpansion = (activityKey) => {
-    setExpandedActivities(prev => ({
-      ...prev,
-      [activityKey]: !prev[activityKey]
-    }));
-  };
-
   // Team Member Management
   const addTeamMember = () => {
     setTeamMembers([...teamMembers, {
@@ -1345,82 +1237,6 @@ function EditProjectForm() {
       }
       return member;
     }));
-  };
-
-  // File Management
-  const handleFileUpload = async (files, documentType) => {
-    if (!files || files.length === 0) return;
-    
-    setUploadingFiles(true);
-    
-    try {
-      const uploadedFiles = [];
-      
-      for (const file of Array.from(files)) {
-        // Validate file size (10MB limit)
-        if (file.size > 10 * 1024 * 1024) {
-          alert(`File ${file.name} is too large. Maximum size is 10MB.`);
-          continue;
-        }
-        
-        // Validate file type
-        const allowedTypes = ['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
-        const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-        if (!allowedTypes.includes(fileExtension)) {
-          alert(`File ${file.name} type is not supported. Allowed: PDF, DOCX, XLS, PNG, JPG`);
-          continue;
-        }
-        
-        // Generate version number
-        const existingFiles = documentType === 'input' ? inputDocuments : deliverables;
-        const baseName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-        const existingVersions = existingFiles.filter(f => f.name.startsWith(baseName));
-        const version = existingVersions.length > 0 ? `v${existingVersions.length + 1}.0` : 'v1.0';
-        
-        // Create file object
-        const fileObj = {
-          id: Date.now() + Math.random(),
-          name: file.name,
-          version: version,
-          size: file.size,
-          type: file.type,
-          uploadDate: new Date().toISOString(),
-          tag: 'Reference', // Default tag
-          file: file // Store actual file for upload
-        };
-        
-        uploadedFiles.push(fileObj);
-      }
-      
-      // Update appropriate state
-      if (documentType === 'input') {
-        setInputDocuments(prev => [...prev, ...uploadedFiles]);
-      } else {
-        setDeliverables(prev => [...prev, ...uploadedFiles]);
-      }
-      
-    } catch (error) {
-      console.error('File upload error:', error);
-      alert('Failed to upload files');
-    } finally {
-      setUploadingFiles(false);
-    }
-  };
-
-  const removeFile = (fileId, documentType) => {
-    if (documentType === 'input') {
-      setInputDocuments(prev => prev.filter(f => f.id !== fileId));
-    } else {
-      setDeliverables(prev => prev.filter(f => f.id !== fileId));
-    }
-  };
-
-  const updateFileTag = (fileId, tag, documentType) => {
-    if (documentType === 'input') {
-      setInputDocuments(prev => prev.map(f => f.id === fileId ? { ...f, tag } : f));
-    } else {
-      setDeliverables(prev => prev.map(f => f.id === fileId ? { ...f, tag } : f));
-    }
   };
 
   // Calculate totals
@@ -4406,19 +4222,6 @@ function EditProjectForm() {
                         </thead>
                         <tbody>
                           {teamMembers.map((member) => {
-                            const employee = employees.find(e => String(e.id) === String(member.employee_id));
-                            const selectedActivity = projectActivities.find(pa => String(pa.id) === String(member.activity_id) && pa.type === 'activity');
-
-                            // Find the function/discipline for this activity or use explicit member.discipline
-                            let functionName = '—';
-                            if (member.discipline) {
-                              const func = functions.find(f => String(f.id) === String(member.discipline));
-                              if (func) functionName = func.function_name;
-                            } else if (selectedActivity && selectedActivity.function_id) {
-                              const func = functions.find(f => String(f.id) === String(selectedActivity.function_id));
-                              if (func) functionName = func.function_name;
-                            }
-                            
                             return (
                               <tr key={member.id} className="border-b border-gray-200 hover:bg-gray-50">
                                 <td className="py-2 px-3">

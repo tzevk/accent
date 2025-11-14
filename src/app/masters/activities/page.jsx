@@ -4,19 +4,6 @@ import Navbar from '@/components/Navbar';
 import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
-// Fixed disciplines (cannot be edited)
-const FIXED_DISCIPLINES = [
-  { name: 'PROCESS ENGINEERING' },
-  { name: 'CIVIL/STRUCTURAL' },
-  { name: 'MECHANICAL', children: ['STATIC', 'ROTATING'] },
-  { name: 'PIPING' },
-  { name: 'FIREFIGHTING' },
-  { name: 'HVAC' },
-  { name: 'ELECTRICAL' },
-  { name: 'INSTRUMENTATION' },
-  { name: 'PROJECT MANAGEMENT' },
-];
-
 // Empty sub-activity object
 const EMPTY_SUB_ACTIVITY = {
   name: "",
@@ -31,7 +18,6 @@ export default function ActivityMasterPage() {
   const [subActivityForm, setSubActivityForm] = useState(EMPTY_SUB_ACTIVITY);
   const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
-  const [editingSubId, setEditingSubId] = useState(null);
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [showDisciplineForm, setShowDisciplineForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -39,14 +25,11 @@ export default function ActivityMasterPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activities, setActivities] = useState([]);
   const [subActivities, setSubActivities] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [activityForm, setActivityForm] = useState({ activity_name: '' });
   
 
   // Fetch disciplines with nested activities and sub-activities
   useEffect(() => {
-    setLoading(true);
     (async () => {
       try {
         const res = await fetch('/api/activity-master');
@@ -58,8 +41,6 @@ export default function ActivityMasterPage() {
       } catch (err) {
         console.error('Failed to fetch activity master', err);
         setDisciplines([]);
-      } finally {
-        setLoading(false);
       }
     })();
   }, []);
@@ -107,16 +88,6 @@ export default function ActivityMasterPage() {
       return matchDiscipline || matchActivity;
     });
   }, [disciplines, searchTerm]);
-
-  const selectedDiscipline = useMemo(
-    () => disciplines.find((d) => d.id === selectedDisciplineId) || null,
-    [disciplines, selectedDisciplineId]
-  );
-
-  const selectedActivity = useMemo(
-    () => activities.find((a) => a.id === selectedActivityId) || null,
-    [activities, selectedActivityId]
-  );
 
   // Discipline management removed — disciplines are fixed list
   const handleCreateDiscipline = () => {

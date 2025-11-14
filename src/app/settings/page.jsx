@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { groupPermissionsByResource } from '@/utils/rbac';
@@ -113,7 +114,7 @@ export default function SettingsPage() {
     });
   };
 
-  const fetchProfile = async ({ silent = false } = {}) => {
+  const fetchProfile = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const res = await fetch('/api/settings/profile', { cache: 'no-store', credentials: 'include' });
@@ -127,11 +128,11 @@ export default function SettingsPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [fetchProfile]);
 
   const updateSettings = async (payload, successMessage) => {
     const res = await fetch('/api/settings/profile', {
@@ -341,9 +342,11 @@ export default function SettingsPage() {
             <div className="flex items-center gap-5">
               <div className="relative h-20 w-20 shrink-0">
                 {avatarUrl ? (
-                  <img
+                  <Image
                     src={avatarUrl}
                     alt={displayName}
+                    width={80}
+                    height={80}
                     className="h-20 w-20 rounded-2xl object-cover shadow-lg"
                   />
                 ) : (

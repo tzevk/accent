@@ -2,8 +2,9 @@
 
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
 import {
   CalendarIcon,
@@ -17,8 +18,6 @@ import {
   DocumentTextIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline';
-
-const INFO_PAIR = (label, value) => ({ label, value });
 
 export default function ProjectViewPage() {
   const params = useParams();
@@ -53,26 +52,6 @@ export default function ProjectViewPage() {
 
     loadProject();
   }, [id]);
-
-  const basicInfo = useMemo(() => {
-    if (!project) return [];
-    return [
-      INFO_PAIR('Project Code', project.project_id || `PRJ-${project.id}`),
-      INFO_PAIR('Client', project.client_name || '—'),
-      INFO_PAIR('Project Manager', project.project_manager || '—'),
-      INFO_PAIR('Project Type', project.type || '—'),
-      INFO_PAIR('Status', project.status || '—'),
-      INFO_PAIR('Priority', project.priority || '—'),
-      INFO_PAIR('Progress', `${project.progress || 0}%`),
-      INFO_PAIR('Start Date', project.start_date || '—'),
-      INFO_PAIR('End Date', project.end_date || '—'),
-      INFO_PAIR('Target Date', project.target_date || '—'),
-      INFO_PAIR('Assigned To', project.assigned_to || '—'),
-      INFO_PAIR('Budget', project.budget ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(project.budget) : '—'),
-      INFO_PAIR('Company ID', project.company_id || '—'),
-      INFO_PAIR('Proposal ID', project.proposal_id || project.linked_proposal_id || '—')
-    ];
-  }, [project]);
 
   const scopeSummary = useMemo(() => {
     if (!project) return [];
@@ -134,14 +113,14 @@ export default function ProjectViewPage() {
 
   const toggleSection = (key) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
 
-  const pick = (keys = []) => {
+  const pick = useCallback((keys = []) => {
     if (!project) return null;
     for (const k of keys) {
       const v = project[k];
       if (v !== undefined && v !== null && String(v).trim() !== '') return v;
     }
     return null;
-  };
+  }, [project]);
 
   const basicDetailsList = useMemo(() => {
     if (!project) return [];
@@ -155,29 +134,29 @@ export default function ProjectViewPage() {
       { label: 'Estimated Manhours', value: pick(['estimated_manhours', 'manhours', 'estimated_hours']) },
       { label: 'Project Type', value: pick(['type', 'project_type']) }
     ];
-  }, [project]);
+  }, [pick]);
 
   const scopeField = useMemo(() => {
     return (
       pick(['scope_of_work', 'proposal_scope', 'scope', 'description']) || null
     );
-  }, [project]);
+  }, [pick]);
 
   const unitQtyField = useMemo(() => {
     return pick(['unit_qty', 'unit', 'quantity', 'units', 'unit_quantity']) || null;
-  }, [project]);
+  }, [pick]);
 
   const deliverablesField = useMemo(() => {
     // try several common field names and also fall back to list_of_deliverables
     return pick(['deliverables', 'list_of_deliverables', 'proposal_deliverables', 'proposal_items']) || null;
-  }, [project]);
+  }, [project, pick]);
 
   // Parse JSON fields safely for rendering
   const parsedTeamMembers = useMemo(() => {
     if (!project || !project.team_members) return [];
     try {
       return typeof project.team_members === 'string' ? JSON.parse(project.team_members) : project.team_members;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -186,25 +165,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_activities_list) return [];
     try {
       return typeof project.project_activities_list === 'string' ? JSON.parse(project.project_activities_list) : project.project_activities_list;
-    } catch (err) {
-      return [];
-    }
-  }, [project]);
-
-  const parsedPlanningActivities = useMemo(() => {
-    if (!project || !project.planning_activities_list) return [];
-    try {
-      return typeof project.planning_activities_list === 'string' ? JSON.parse(project.planning_activities_list) : project.planning_activities_list;
-    } catch (err) {
-      return [];
-    }
-  }, [project]);
-
-  const parsedDocumentsList = useMemo(() => {
-    if (!project || !project.documents_list) return [];
-    try {
-      return typeof project.documents_list === 'string' ? JSON.parse(project.documents_list) : project.documents_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -213,7 +174,7 @@ export default function ProjectViewPage() {
     if (!project || !project.documents_received_list) return [];
     try {
       return typeof project.documents_received_list === 'string' ? JSON.parse(project.documents_received_list) : project.documents_received_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -222,7 +183,7 @@ export default function ProjectViewPage() {
     if (!project || !project.documents_issued_list) return [];
     try {
       return typeof project.documents_issued_list === 'string' ? JSON.parse(project.documents_issued_list) : project.documents_issued_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -231,7 +192,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_handover_list) return [];
     try {
       return typeof project.project_handover_list === 'string' ? JSON.parse(project.project_handover_list) : project.project_handover_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -240,7 +201,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_manhours_list) return [];
     try {
       return typeof project.project_manhours_list === 'string' ? JSON.parse(project.project_manhours_list) : project.project_manhours_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -249,7 +210,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_query_log_list) return [];
     try {
       return typeof project.project_query_log_list === 'string' ? JSON.parse(project.project_query_log_list) : project.project_query_log_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -258,7 +219,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_assumption_list) return [];
     try {
       return typeof project.project_assumption_list === 'string' ? JSON.parse(project.project_assumption_list) : project.project_assumption_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -267,7 +228,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_lessons_learnt_list) return [];
     try {
       return typeof project.project_lessons_learnt_list === 'string' ? JSON.parse(project.project_lessons_learnt_list) : project.project_lessons_learnt_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -276,16 +237,7 @@ export default function ProjectViewPage() {
     if (!project || !project.project_schedule_list) return [];
     try {
       return typeof project.project_schedule_list === 'string' ? JSON.parse(project.project_schedule_list) : project.project_schedule_list;
-    } catch (err) {
-      return [];
-    }
-  }, [project]);
-
-  const parsedProjectActivityRows = useMemo(() => {
-    if (!project || !project.project_activity_list) return [];
-    try {
-      return typeof project.project_activity_list === 'string' ? JSON.parse(project.project_activity_list) : project.project_activity_list;
-    } catch (err) {
+    } catch {
       return [];
     }
   }, [project]);
@@ -512,7 +464,7 @@ export default function ProjectViewPage() {
                                       <span className="text-sm text-gray-700">{d.name || d.text}</span>
                                     )}
                                     {d.thumbUrl && (
-                                      <img src={d.thumbUrl} alt={d.name || 'thumb'} className="h-8 w-8 rounded object-cover border border-gray-200" />
+                                      <Image src={d.thumbUrl} alt={d.name || 'thumb'} width={32} height={32} className="h-8 w-8 rounded object-cover border border-gray-200" />
                                     )}
                                   </div>
                                 ))}

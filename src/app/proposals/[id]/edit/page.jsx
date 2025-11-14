@@ -977,61 +977,6 @@ function ScheduleForm({ proposalData, setProposalData }) {
   );
 }
 
-function EditableList({ label, value, onChange, placeholder = '' }) {
-  // value is stored as a single string with newlines
-  const itemsInitial = value ? String(value).split(/\r?\n/).map(s => s.trim()).filter(Boolean) : [];
-  const [items, setItems] = useState(itemsInitial.length ? itemsInitial : ['']);
-
-  useEffect(() => {
-    // sync when parent value changes externally
-    const external = value ? String(value).split(/\r?\n/).map(s => s.trim()).filter(Boolean) : [];
-    if (JSON.stringify(external) !== JSON.stringify(items.filter(Boolean))) {
-      setItems(external.length ? external : ['']);
-    }
-  }, [value, items]);
-
-  const update = (idx, v) => {
-    setItems(prev => {
-      const next = [...prev];
-      next[idx] = v;
-      const filtered = next.map(s => s.trim()).filter(Boolean);
-      onChange(filtered.join('\n'));
-      return next;
-    });
-  };
-
-  const add = () => setItems(prev => [...prev, '']);
-  const remove = (idx) => setItems(prev => {
-    const next = prev.filter((_, i) => i !== idx);
-    const filtered = next.map(s => s.trim()).filter(Boolean);
-    onChange(filtered.join('\n'));
-    return next.length ? next : [''];
-  });
-
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="space-y-2">
-        {items.map((it, idx) => (
-          <div key={idx} className="flex gap-2">
-            <input
-              type="text"
-              value={it}
-              placeholder={placeholder}
-              onChange={e => update(idx, e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
-            />
-            <button type="button" onClick={() => remove(idx)} className="px-2 py-1 text-sm bg-red-50 text-red-700 rounded">✕</button>
-          </div>
-        ))}
-      </div>
-      <div className="mt-2">
-        <button type="button" onClick={add} className="inline-flex items-center px-3 py-1 bg-green-50 text-green-700 text-sm rounded">+ Add</button>
-      </div>
-    </div>
-  );
-}
-
 function CommercialsForm({ proposalData, setProposalData }) {
   const [items, setItems] = useState(
     Array.isArray(proposalData.commercial_items) && proposalData.commercial_items.length

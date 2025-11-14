@@ -2,8 +2,8 @@
 
 import Navbar from '@/components/Navbar';
 import { fetchJSON } from '@/utils/http';
-import { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { PlusIcon } from '@heroicons/react/24/outline';
 
 const EMPTY_DOC = { id: '', doc_key: '', name: '', description: '', status: 'active' };
 const STATUS_OPTIONS = ['active', 'inactive'];
@@ -11,7 +11,6 @@ const STATUS_OPTIONS = ['active', 'inactive'];
 export default function DocumentMasterPage() {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(EMPTY_DOC);
@@ -20,30 +19,27 @@ export default function DocumentMasterPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    loadDocs();
-  }, []);
-
-  const loadDocs = async () => {
+  const loadDocs = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
   const json = await fetchJSON('/api/document-master');
       if (json.success) {
         setDocs(json.data || []);
         if (!selectedId && (json.data || []).length > 0) setSelectedId((json.data || [])[0].id);
       } else {
-        setError(json.error || 'Failed to load document master');
         setDocs([]);
       }
     } catch (err) {
       console.error('Document master fetch error', err);
-      setError(err.message || 'Failed to load document master');
       setDocs([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedId]);
+
+  useEffect(() => {
+    loadDocs();
+  }, [loadDocs]);
 
   const filtered = useMemo(() => {
     if (!searchTerm) return docs;

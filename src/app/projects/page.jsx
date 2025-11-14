@@ -448,7 +448,7 @@ function ProjectsInner() {
                                         const tot = cb.reduce((s, r) => s + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
                                         return tot > 0 ? formatCurrency(tot) : '-';
                                       }
-                                    } catch (e) {}
+                                    } catch {}
                                     return '-';
                                   })()}
                                 </td>
