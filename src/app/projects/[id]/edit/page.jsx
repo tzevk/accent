@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 
 const INITIAL_FORM = {
@@ -81,7 +81,7 @@ const INITIAL_FORM = {
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
   { id: 'project_details', label: 'Project Details' },
-  { id: 'documentation', label: 'Documentation' },
+  { id: 'input_documents', label: 'Input Documents' },
   { id: 'scope', label: 'Scope' },
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'documents_received', label: 'List of Documents Received' },
@@ -172,10 +172,23 @@ function EditProjectForm() {
   const [deliverables, setDeliverables] = useState([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
 
-  // Input document list management
+  // Input document list management with categories and full document details
   const [inputDocumentsList, setInputDocumentsList] = useState([]);
-  const [newInputDocument, setNewInputDocument] = useState('');
+  const [newInputDocument, setNewInputDocument] = useState({ 
+    sr_no: '',
+    date_received: '',
+    description: '',
+    drawing_number: '',
+    revision_number: '',
+    unit_qty: '',
+    document_sent_by: '',
+    remarks: '',
+    category: 'lot', 
+    lotNumber: '', 
+    subLot: '' 
+  });
   const [docMaster, setDocMaster] = useState([]);
+  const [selectedDocCategory, setSelectedDocCategory] = useState('all'); // Filter: all, lot, sublot, date, others
   
   // Documentation tab - detailed document management
   const [documentsList, setDocumentsList] = useState([]);
@@ -191,7 +204,6 @@ function EditProjectForm() {
   // Documents Received - structured table rows
   const [documentsReceived, setDocumentsReceived] = useState([]);
   const [newReceivedDoc, setNewReceivedDoc] = useState({
-    sr_no: '',
     date_received: '',
     description: '',
     drawing_number: '',
@@ -205,7 +217,6 @@ function EditProjectForm() {
   // Documents Issued - structured table rows (Document Issued to Client)
   const [documentsIssued, setDocumentsIssued] = useState([]);
   const [newIssuedDoc, setNewIssuedDoc] = useState({
-    sr_no: '',
     document_name: '',
     document_number: '',
     revision_number: '',
@@ -217,7 +228,6 @@ function EditProjectForm() {
   // Project Handover - structured rows (handover checklist)
   const [projectHandover, setProjectHandover] = useState([]);
   const [newHandoverRow, setNewHandoverRow] = useState({
-    sr_no: '',
     output_by_accent: '',
     requirement_accomplished: '',
     remark: '',
@@ -242,7 +252,6 @@ function EditProjectForm() {
   // Project Activity / Daily Activity rows
   const [projectActivityRows, setProjectActivityRows] = useState([]);
   const [newActivity, setNewActivity] = useState({
-    sr_no: '',
     date: '',
     daily_activity: '',
     unit_qty: '',
@@ -259,7 +268,6 @@ function EditProjectForm() {
   // Project Manhours - structured rows
   const [projectManhours, setProjectManhours] = useState([]);
   const [newManhourRow, setNewManhourRow] = useState({
-    sr_no: '',
     month: '',
     name_of_engineer_designer: '',
     engineering: '',
@@ -276,7 +284,6 @@ function EditProjectForm() {
   // Query Log - structured rows
   const [queryLog, setQueryLog] = useState([]);
   const [newQuery, setNewQuery] = useState({
-    sr_no: '',
     query_description: '',
     query_issued_date: '',
     reply_from_client: '',
@@ -290,7 +297,6 @@ function EditProjectForm() {
   // Assumptions - structured rows
   const [assumptions, setAssumptions] = useState([]);
   const [newAssumption, setNewAssumption] = useState({
-    sr_no: '',
     assumption_description: '',
     reason: '',
     assumption_taken_by: '',
@@ -301,7 +307,6 @@ function EditProjectForm() {
   // Lessons Learnt - structured rows
   const [lessonsLearnt, setLessonsLearnt] = useState([]);
   const [newLesson, setNewLesson] = useState({
-    sr_no: '',
     what_was_new: '',
     difficulty_faced: '',
     what_you_learn: '',
@@ -416,7 +421,6 @@ function EditProjectForm() {
           setForm({
             project_id: project.project_id || '',
             name: project.name || '',
-            client_name: project.client_name || '',
             client_contact_details: project.client_contact_details || '',
             project_location_country: project.project_location_country || '',
             project_location_city: project.project_location_city || '',
@@ -486,6 +490,84 @@ function EditProjectForm() {
             kickoff_points_discussed: project.kickoff_points_discussed || '',
             kickoff_persons_involved: project.kickoff_persons_involved || ''
           });
+
+          // Fetch proposal if proposal_id exists to auto-populate common fields
+          if (project.proposal_id) {
+            try {
+              const proposalResult = await fetchJSON(`/api/proposals/${project.proposal_id}`);
+              if (proposalResult.success && proposalResult.data) {
+                const proposal = proposalResult.data;
+                // Map all common fields from proposal to project
+                setForm(prev => ({
+                  ...prev,
+                  // Company/Client information
+                  name: prev.name || proposal.client_name, // Use proposal client_name as project name if not set
+                  client_contact_details: proposal.client_contact_details || prev.client_contact_details,
+                  
+                  // Scope & Deliverables
+                  scope_of_work: proposal.scope_of_work || prev.scope_of_work,
+                  deliverables: proposal.deliverables || prev.deliverables,
+                  input_documents: proposal.input_documents || prev.input_documents,
+                  list_of_deliverables: proposal.list_of_deliverables || prev.list_of_deliverables,
+                  
+                  // Project specifications
+                  software_included: proposal.software_included || prev.software_included,
+                  duration: proposal.duration || prev.duration,
+                  mode_of_delivery: proposal.mode_of_delivery || prev.mode_of_delivery,
+                  revision: proposal.revision || prev.revision,
+                  site_visit: proposal.site_visit || prev.site_visit,
+                  
+                  // Financial terms
+                  billing_and_payment_terms: proposal.billing_and_payment_terms || prev.billing_and_payment_terms,
+                  payment_terms: proposal.payment_terms || prev.payment_terms,
+                  quotation_validity: proposal.quotation_validity || prev.quotation_validity,
+                  project_value: proposal.total_amount || proposal.project_value || prev.project_value,
+                  currency: proposal.currency || prev.currency,
+                  
+                  // Terms & Conditions
+                  exclusion: proposal.exclusion || prev.exclusion,
+                  other_terms_and_conditions: proposal.other_terms_and_conditions || prev.other_terms_and_conditions,
+                  
+                  // Project details
+                  estimated_manhours: proposal.estimated_manhours || proposal.estimated_hours || prev.estimated_manhours,
+                  unit_qty: proposal.unit_qty || proposal.unit || prev.unit_qty,
+                  description: proposal.description || proposal.project_description || prev.description,
+                  notes: proposal.notes || prev.notes
+                }));
+
+                // Fetch proposal activities if they exist and project activities are empty
+                if (!project.project_activities_list || projectActivities.length === 0) {
+                  if (proposal.activities) {
+                    try {
+                      const proposalActivities = typeof proposal.activities === 'string' 
+                        ? JSON.parse(proposal.activities) 
+                        : proposal.activities;
+                      
+                      if (Array.isArray(proposalActivities) && proposalActivities.length > 0) {
+                        // Map proposal activities to project activities format
+                        const mappedActivities = proposalActivities.map(act => ({
+                          id: act.id || Date.now() + Math.random(),
+                          type: act.type || 'activity',
+                          source: 'proposal',
+                          name: act.name || act.activity_name || '',
+                          status: act.status || 'NEW',
+                          deliverables: act.deliverables || '',
+                          manhours: act.manhours || 0,
+                          assigned_users: act.assigned_users || [],
+                          function_name: act.function_name || 'From Proposal'
+                        }));
+                        setProjectActivities(mappedActivities);
+                      }
+                    } catch (err) {
+                      console.warn('Failed to parse proposal activities:', err);
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('Failed to fetch proposal:', err);
+            }
+          }
 
           // Load team members
           if (project.team_members) {
@@ -750,20 +832,39 @@ function EditProjectForm() {
     setForm((prev) => ({ ...prev, progress: Number.isNaN(value) ? 0 : value }));
   };
 
-  // Input Document List Management
+  // Input Document List Management with Categories and Full Details
   const addInputDocument = () => {
-    if (newInputDocument.trim()) {
+    if (newInputDocument.description.trim()) {
       const newDoc = {
         id: Date.now(),
-        text: newInputDocument.trim(),
-        name: newInputDocument.trim(),
-        fileUrl: null,
-        thumbUrl: null,
+        sr_no: newInputDocument.sr_no || String(inputDocumentsList.length + 1),
+        date_received: newInputDocument.date_received || new Date().toISOString().split('T')[0],
+        description: newInputDocument.description.trim(),
+        drawing_number: newInputDocument.drawing_number || '',
+        revision_number: newInputDocument.revision_number || '',
+        unit_qty: newInputDocument.unit_qty || '',
+        document_sent_by: newInputDocument.document_sent_by || '',
+        remarks: newInputDocument.remarks || '',
+        category: newInputDocument.category || 'others',
+        lotNumber: newInputDocument.lotNumber || '',
+        subLot: newInputDocument.subLot || '',
         addedAt: new Date().toISOString()
       };
       const updated = [...inputDocumentsList, newDoc];
       setInputDocumentsList(updated);
-      setNewInputDocument('');
+      setNewInputDocument({ 
+        sr_no: '',
+        date_received: '',
+        description: '',
+        drawing_number: '',
+        revision_number: '',
+        unit_qty: '',
+        document_sent_by: '',
+        remarks: '',
+        category: 'lot', 
+        lotNumber: '', 
+        subLot: '' 
+      });
       // Persist as JSON array
       setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
     }
@@ -776,7 +877,7 @@ function EditProjectForm() {
   };
 
   const handleInputDocumentKeyPress = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && (e.target.name === 'description' || e.target.name === 'drawing_number')) {
       e.preventDefault();
       addInputDocument();
     }
@@ -870,17 +971,15 @@ function EditProjectForm() {
     // Basic validation: require description
     if (!newReceivedDoc.description || !newReceivedDoc.description.trim()) return;
 
-    // Defaults: auto-increment sr_no and default date to today if not provided
-    const defaultSr = newReceivedDoc.sr_no && String(newReceivedDoc.sr_no).trim() !== '' ? newReceivedDoc.sr_no : String(documentsReceived.length + 1);
+    // Default date to today if not provided
     const today = new Date().toISOString().slice(0,10);
     const doc = { 
       ...newReceivedDoc, 
       id: Date.now(),
-      sr_no: defaultSr,
       date_received: newReceivedDoc.date_received || today
     };
     setDocumentsReceived(prev => [...prev, doc]);
-    setNewReceivedDoc({ sr_no: '', date_received: '', description: '', drawing_number: '', revision_number: '', unit_qty: '', document_sent_by: '', remarks: '' });
+    setNewReceivedDoc({ date_received: '', description: '', drawing_number: '', revision_number: '', unit_qty: '', document_sent_by: '', remarks: '' });
 
     // Focus description input for fast entry
     setTimeout(() => {
@@ -899,11 +998,10 @@ function EditProjectForm() {
   // Documents Issued helpers
   const addIssuedDocument = () => {
     if (!newIssuedDoc.document_name || !newIssuedDoc.document_name.trim()) return;
-    const defaultSr = newIssuedDoc.sr_no && String(newIssuedDoc.sr_no).trim() !== '' ? newIssuedDoc.sr_no : String(documentsIssued.length + 1);
     const issueDate = newIssuedDoc.issue_date || new Date().toISOString().slice(0,10);
-    const doc = { ...newIssuedDoc, id: Date.now(), sr_no: defaultSr, issue_date: issueDate };
+    const doc = { ...newIssuedDoc, id: Date.now(), issue_date: issueDate };
     setDocumentsIssued(prev => [...prev, doc]);
-    setNewIssuedDoc({ sr_no: '', document_name: '', document_number: '', revision_number: '', issue_date: '', remarks: '' });
+    setNewIssuedDoc({ document_name: '', document_number: '', revision_number: '', issue_date: '', remarks: '' });
     setTimeout(() => newIssuedDescRef.current?.focus(), 10);
   };
 
@@ -918,10 +1016,9 @@ function EditProjectForm() {
   // Project Handover helpers
   const addHandoverRow = () => {
     if (!newHandoverRow.output_by_accent || !newHandoverRow.output_by_accent.trim()) return;
-    const defaultSr = newHandoverRow.sr_no && String(newHandoverRow.sr_no).trim() !== '' ? newHandoverRow.sr_no : String(projectHandover.length + 1);
-    const row = { ...newHandoverRow, id: Date.now(), sr_no: defaultSr };
+    const row = { ...newHandoverRow, id: Date.now() };
     setProjectHandover(prev => [...prev, row]);
-    setNewHandoverRow({ sr_no: '', output_by_accent: '', requirement_accomplished: '', remark: '', hand_over: '' });
+    setNewHandoverRow({ output_by_accent: '', requirement_accomplished: '', remark: '', hand_over: '' });
     setTimeout(() => newHandoverDescRef.current?.focus(), 10);
   };
 
@@ -936,10 +1033,9 @@ function EditProjectForm() {
   // Project Manhours helpers
   const addManhourRow = () => {
     if (!newManhourRow.name_of_engineer_designer || !newManhourRow.name_of_engineer_designer.trim()) return;
-    const defaultSr = newManhourRow.sr_no && String(newManhourRow.sr_no).trim() !== '' ? newManhourRow.sr_no : String(projectManhours.length + 1);
-    const row = { ...newManhourRow, id: Date.now(), sr_no: defaultSr };
+    const row = { ...newManhourRow, id: Date.now() };
     setProjectManhours(prev => [...prev, row]);
-    setNewManhourRow({ sr_no: '', month: '', name_of_engineer_designer: '', engineering: '', designer: '', drafting: '', checking: '', coordination: '', site_visit: '', others: '', remarks: '' });
+    setNewManhourRow({ month: '', name_of_engineer_designer: '', engineering: '', designer: '', drafting: '', checking: '', coordination: '', site_visit: '', others: '', remarks: '' });
     setTimeout(() => newManhourNameRef.current?.focus(), 10);
   };
 
@@ -954,11 +1050,10 @@ function EditProjectForm() {
   // Query Log helpers
   const addQueryRow = () => {
     if (!newQuery.query_description || !newQuery.query_description.trim()) return;
-    const defaultSr = newQuery.sr_no && String(newQuery.sr_no).trim() !== '' ? newQuery.sr_no : String(queryLog.length + 1);
     const issuedDate = newQuery.query_issued_date || new Date().toISOString().slice(0,10);
-    const row = { ...newQuery, id: Date.now(), sr_no: defaultSr, query_issued_date: issuedDate };
+    const row = { ...newQuery, id: Date.now(), query_issued_date: issuedDate };
     setQueryLog(prev => [...prev, row]);
-    setNewQuery({ sr_no: '', query_description: '', query_issued_date: '', reply_from_client: '', reply_received_date: '', query_updated_by: '', query_resolved: '', remark: '' });
+    setNewQuery({ query_description: '', query_issued_date: '', reply_from_client: '', reply_received_date: '', query_updated_by: '', query_resolved: '', remark: '' });
     setTimeout(() => newQueryDescRef.current?.focus(), 10);
   };
 
@@ -973,10 +1068,9 @@ function EditProjectForm() {
   // Assumption helpers
   const addAssumptionRow = () => {
     if (!newAssumption.assumption_description || !newAssumption.assumption_description.trim()) return;
-    const defaultSr = newAssumption.sr_no && String(newAssumption.sr_no).trim() !== '' ? newAssumption.sr_no : String(assumptions.length + 1);
-    const row = { ...newAssumption, id: Date.now(), sr_no: defaultSr };
+    const row = { ...newAssumption, id: Date.now() };
     setAssumptions(prev => [...prev, row]);
-    setNewAssumption({ sr_no: '', assumption_description: '', reason: '', assumption_taken_by: '', remark: '' });
+    setNewAssumption({ assumption_description: '', reason: '', assumption_taken_by: '', remark: '' });
     setTimeout(() => newAssumptionDescRef.current?.focus(), 10);
   };
 
@@ -991,10 +1085,9 @@ function EditProjectForm() {
   // Lessons Learnt helpers
   const addLessonRow = () => {
     if (!newLesson.what_was_new || !newLesson.what_was_new.trim()) return;
-    const defaultSr = newLesson.sr_no && String(newLesson.sr_no).trim() !== '' ? newLesson.sr_no : String(lessonsLearnt.length + 1);
-    const row = { ...newLesson, id: Date.now(), sr_no: defaultSr };
+    const row = { ...newLesson, id: Date.now() };
     setLessonsLearnt(prev => [...prev, row]);
-    setNewLesson({ sr_no: '', what_was_new: '', difficulty_faced: '', what_you_learn: '', areas_of_improvement: '', remark: '' });
+    setNewLesson({ what_was_new: '', difficulty_faced: '', what_you_learn: '', areas_of_improvement: '', remark: '' });
     setTimeout(() => newLessonDescRef.current?.focus(), 10);
   };
 
@@ -1146,9 +1239,21 @@ function EditProjectForm() {
     const row = {
       id: Date.now(),
       type: 'manual',
+      source: 'manual',
       name,
       status: 'NEW',
-      deliverables: ''
+      deliverables: '',
+      manhours: 0,
+      unit_qty: '',
+      planned_hours: 0,
+      start_time: '',
+      end_time: '',
+      actual_hours: 0,
+      activity_done_by: '',
+      status_completed: '',
+      remark: '',
+      assigned_users: [],
+      function_name: 'Manual / Other'
     };
     setProjectActivities(prev => [...prev, row]);
     setNewScopeActivityName('');
@@ -1377,7 +1482,9 @@ function EditProjectForm() {
       });
 
       if (result.success) {
-        router.push(`/projects/${id}`);
+        alert('Project updated successfully!');
+        // Stay on edit page instead of redirecting to view page
+        // router.push(`/projects/${id}`);
       } else {
         alert(result.error || 'Failed to update project');
       }
@@ -1412,66 +1519,73 @@ function EditProjectForm() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <form onSubmit={handleSubmit} className="px-8 pt-22 pb-8 space-y-6">
-            {/* Header */}
-            <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="inline-flex items-center text-xs text-gray-600 hover:text-black transition-colors"
-                >
-                  <ArrowLeftIcon className="h-4 w-4 mr-1" />
-                  Back to Project
-                </button>
-                <h1 className="mt-3 text-2xl font-bold text-black">Edit Project</h1>
-                <p className="text-sm text-gray-600">
-                  Comprehensive project management with activities and team builder
-                </p>
-              </div>
-              
-              {/* Auto-save Status */}
-              <div className="flex items-center space-x-3">
-                {saving && (
-                  <div className="flex items-center text-xs text-blue-600">
-                    <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
+          <form onSubmit={handleSubmit} className="px-8 pt-22 pb-8 space-y-4">
+            {/* Compact Header */}
+            <header className="bg-white border-b border-gray-200 px-6 py-4 -mx-8 -mt-22 mb-20 sticky top-16 z-10 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="p-2 text-gray-600 hover:text-[#7F2487] hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Back to Project"
+                  >
+                    <ArrowLeftIcon className="h-5 w-5" />
+                  </button>
+                  <div>
+                    <h1 className="text-xl font-bold text-gray-900">Edit Project</h1>
                   </div>
-                )}
+                </div>
                 
-                {lastSaved && !saving && (
-                  <div className="flex items-center text-xs text-green-600">
-                    <CheckCircleIcon className="h-3 w-3 mr-1" />
-                    Saved {new Date(lastSaved).toLocaleTimeString()}
-                  </div>
-                )}
-                
-                <button
-                  type="submit"
-                  disabled={submitting || saving}
-                  className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {submitting ? 'Saving...' : 'Save Project'}
-                </button>
+                <div className="flex items-center gap-3">
+                  {saving && (
+                    <span className="text-xs text-blue-600 flex items-center gap-1">
+                      <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </span>
+                  )}
+                  
+                  {lastSaved && !saving && (
+                    <span className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircleIcon className="h-3 w-3" />
+                      {new Date(lastSaved).toLocaleTimeString()}
+                    </span>
+                  )}
+                  
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="px-4 py-2 text-sm rounded-lg bg-gray-100 text-black hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting || saving}
+                    className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-lg hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {submitting ? 'Saving...' : 'Update Project'}
+                  </button>
+                </div>
               </div>
             </header>
 
-            {/* Tab Navigation */}
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-              <div className="px-6 py-3">
-                <div className="flex flex-wrap gap-2">
+            {/* Compact Tab Navigation - Sticky */}
+            <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-5 sticky top-32 z-10 -mx-8 px-8">
+              <div className="p-3">
+                <div className="flex gap-2">
                   {TABS.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                      className={`px-4 py-3 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                         activeTab === tab.id
                           ? 'bg-[#7F2487] text-white'
-                          : 'text-gray-600 hover:bg-gray-100'
+                          : 'text-gray-600 hover:bg-gray-50 border border-gray-200'
                       }`}
                     >
                       {tab.label}
@@ -1481,58 +1595,113 @@ function EditProjectForm() {
               </div>
             </div>
 
-            {/* General / Project Details Tab */}
+            {/* Enhanced Project Details Tab */}
             {(activeTab === 'general' || activeTab === 'project_details') && (
-              <div className="space-y-6">
-                <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h2 className="text-sm font-semibold text-black">General Project Information</h2>
+              <div className="space-y-4">
+                <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                  <div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-white border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
+                      <h2 className="text-sm font-bold text-gray-900">General Project Information</h2>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">Basic project details and information</p>
                   </div>
                   <div className="px-6 py-5 space-y-4">
-                    {/* Basic Details (collapsible) */}
-                    <div className="border-t border-gray-200 pt-4">
-                      <button type="button" onClick={() => toggleSection('basic')} className="w-full flex items-center justify-between">
+                    {/* Enhanced Basic Details Section */}
+                    <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                      <button type="button" onClick={() => toggleSection('basic')} className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors">
                         <div className="flex items-center gap-2">
-                          <ArrowLeftIcon className="h-4 w-4 text-[#7F2487] rotate-180" />
-                          <h3 className="text-sm font-semibold text-black">Basic Details</h3>
+                          <ChevronDownIcon className={`h-3.5 w-3.5 text-purple-600 transition-transform ${openSections.basic ? 'rotate-180' : ''}`} />
+                          <h3 className="text-sm font-semibold text-gray-700">Basic Details</h3>
                         </div>
-                        <div className="text-sm text-gray-500">{openSections.basic ? 'Hide' : 'Show'}</div>
+                        <span className="text-xs text-purple-600">{openSections.basic ? '−' : '+'}</span>
                       </button>
+                      
                       {openSections.basic && (
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Project Number</label>
-                            <input type="text" name="project_id" value={form.project_id} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Project Name</label>
-                            <input type="text" name="name" value={form.name} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Company</label>
-                            <select name="company_id" value={form.company_id} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                              <option value="">Select company</option>
-                              {companies.map((c) => (<option key={c.id} value={c.id}>{c.company_name || c.name}</option>))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Project Start Date</label>
-                            <input type="date" name="start_date" value={form.start_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Project End Date</label>
-                            <input type="date" name="end_date" value={form.end_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Project Type</label>
-                            <select name="contract_type" value={form.contract_type} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]">
-                              <option value="">Select Type</option>
-                              {TYPE_OPTIONS.map((type) => (<option key={type} value={type}>{type}</option>))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Estimated Manhours</label>
-                            <input type="number" name="estimated_manhours" value={form.estimated_manhours} onChange={handleChange} step="0.1" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                        <div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-600">Project Number *</label>
+                              <input 
+                                type="text" 
+                                name="project_id" 
+                                value={form.project_id} 
+                                onChange={handleChange} 
+                                placeholder="Enter project number"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-600">Project Name *</label>
+                              <input 
+                                type="text" 
+                                name="name" 
+                                value={form.name} 
+                                onChange={handleChange} 
+                                placeholder="Enter project name"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-600">Company *</label>
+                              <select 
+                                name="company_id" 
+                                value={form.company_id} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+                              >
+                                <option value="">Select company</option>
+                                {companies.map((c) => (
+                                  <option key={c.id} value={c.id}>{c.company_name || c.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-600">Project Start Date</label>
+                              <input 
+                                type="date" 
+                                name="start_date" 
+                                value={form.start_date} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-600">Project End Date</label>
+                              <input 
+                                type="date" 
+                                name="end_date" 
+                                value={form.end_date} 
+                                onChange={handleChange} 
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-gray-600">Project Type</label>
+                              <select 
+                                name="contract_type" 
+                                value={form.contract_type} 
+                                onChange={handleChange} 
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400"
+                              >
+                                <option value="">Select Type</option>
+                                {TYPE_OPTIONS.map((type) => (
+                                  <option key={type} value={type}>{type}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-sm font-semibold text-gray-700">Estimated Manhours</label>
+                              <input 
+                                type="number" 
+                                name="estimated_manhours" 
+                                value={form.estimated_manhours} 
+                                onChange={handleChange} 
+                                step="0.1" 
+                                placeholder="0.0"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400" 
+                              />
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1561,101 +1730,169 @@ function EditProjectForm() {
                       </div>
                     )}
 
-                    {/* Scope (collapsible) */}
-                    <div className="border-t border-gray-200 pt-4">
-                      <button type="button" onClick={() => toggleSection('scope')} className="w-full flex items-center justify-between">
+                    {/* Enhanced Scope Section */}
+                    <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                      <button type="button" onClick={() => toggleSection('scope')} className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors">
                         <div className="flex items-center gap-2">
-                          <ChevronDownIcon className="h-4 w-4 text-[#7F2487]" />
-                          <h3 className="text-sm font-semibold text-black">Scope</h3>
+                          <ChevronDownIcon className={`h-3.5 w-3.5 text-purple-600 transition-transform ${openSections.scope ? 'rotate-180' : ''}`} />
+                          <h3 className="text-sm font-semibold text-gray-700">Project Scope</h3>
                         </div>
-                        <div className="text-sm text-gray-500">{openSections.scope ? 'Hide' : 'Show'}</div>
+                        <span className="text-xs text-purple-600">{openSections.scope ? '−' : '+'}</span>
                       </button>
+                      
                       {openSections.scope && (
-                        <div className="mt-3 space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Description / Scope</label>
-                            <textarea name="description" value={form.description} onChange={handleChange} rows={6} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                        <div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
+                          <div className="space-y-3">
+                            <label className="block text-sm font-semibold text-gray-700">Project Description & Scope</label>
+                            <textarea 
+                              name="description" 
+                              value={form.description} 
+                              onChange={handleChange} 
+                              rows={6} 
+                              placeholder="Describe the project scope, objectives, and key deliverables..."
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400 resize-y min-h-[120px]" 
+                            />
                           </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
-                            <div className="flex gap-2 mb-3">
-                              <input type="text" value={newInputDocument} onChange={(e) => setNewInputDocument(e.target.value)} onKeyPress={handleInputDocumentKeyPress} placeholder="Enter document name" className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                              <button type="button" onClick={addInputDocument} className="px-4 py-2 bg-[#7F2487] text-white text-sm rounded-md">Add</button>
+                          
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-sm font-semibold text-gray-700">Input Documents</label>
+                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{inputDocumentsList.length} documents</span>
                             </div>
-                              {inputDocumentsList.length > 0 && (
-                                <div className="space-y-2">
+                            
+                            <div className="flex gap-3 p-4 bg-white rounded-lg border border-gray-200">
+                              <input 
+                                type="text" 
+                                value={newInputDocument} 
+                                onChange={(e) => setNewInputDocument(e.target.value)} 
+                                onKeyPress={handleInputDocumentKeyPress} 
+                                placeholder="Enter document name or description" 
+                                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all hover:border-gray-400" 
+                              />
+                              <button 
+                                type="button" 
+                                onClick={addInputDocument} 
+                                className="px-6 py-3 bg-[#7F2487] text-white font-semibold rounded-lg hover:bg-[#6a1e73] transition-all focus:ring-2 focus:ring-[#7F2487] focus:ring-offset-2"
+                              >
+                                <PlusIcon className="h-4 w-4 mr-1 inline" />
+                                Add
+                              </button>
+                            </div>
+                            
+                            {/* Suggestions from Document Master */}
+                            {docMaster && docMaster.length > 0 && newInputDocument && (
+                              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <p className="text-xs font-medium text-gray-600 mb-2">Suggested Documents:</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {docMaster
+                                    .filter(d => !newInputDocument || (d.name?.toLowerCase().includes(newInputDocument.toLowerCase()) || d.doc_key?.toLowerCase().includes(newInputDocument.toLowerCase())))
+                                    .slice(0, 6)
+                                    .map((d) => (
+                                      <button
+                                        key={d.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setNewInputDocument(d.name);
+                                          addInputDocument();
+                                        }}
+                                        className="px-3 py-1 text-xs rounded-full bg-purple-50 hover:bg-purple-100 text-[#7F2487] border border-purple-200 transition-colors"
+                                        title={d.description || ''}
+                                      >
+                                        {d.name}
+                                      </button>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {inputDocumentsList.length > 0 && (
+                              <div className="space-y-3">
+                                <h4 className="text-sm font-semibold text-gray-700">Added Documents</h4>
+                                <div className="grid gap-3">
                                   {inputDocumentsList.map((doc) => (
-                                    <div key={doc.id} className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                                      <div className="flex items-center gap-3"><DocumentIcon className="h-4 w-4 text-purple-600" /> <span className="text-sm">{doc.text}</span></div>
-                                      <button type="button" onClick={() => removeInputDocument(doc.id)} className="text-red-500">Remove</button>
+                                    <div key={doc.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:border-purple-300 transition-colors group">
+                                      <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
+                                          <DocumentIcon className="h-4 w-4 text-purple-600" />
+                                        </div>
+                                        <div>
+                                          <p className="font-medium text-gray-900">{doc.text}</p>
+                                          {doc.addedAt && (
+                                            <p className="text-xs text-gray-500 mt-1">
+                                              Added {new Date(doc.addedAt).toLocaleString()}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <button 
+                                        type="button" 
+                                        onClick={() => removeInputDocument(doc.id)} 
+                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Remove document"
+                                      >
+                                        <XMarkIcon className="h-4 w-4" />
+                                      </button>
                                     </div>
                                   ))}
                                 </div>
-                              )}
-
-                            {/* Scope Activity Table moved to Scope tab */}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
                     </div>
 
                     {/* Unit / Qty (collapsible) */}
-                    <div className="border-t border-gray-200 pt-4">
-                      <button type="button" onClick={() => toggleSection('unitQty')} className="w-full flex items-center justify-between">
+                    <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                      <button type="button" onClick={() => toggleSection('unitQty')} className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors">
                         <div className="flex items-center gap-2">
-                          <ChevronRightIcon className="h-4 w-4 text-[#7F2487]" />
-                          <h3 className="text-sm font-semibold text-black">Unit / Qty</h3>
+                          <ChevronDownIcon className={`h-3.5 w-3.5 text-purple-600 transition-transform ${openSections.unitQty ? 'rotate-180' : ''}`} />
+                          <h3 className="text-sm font-semibold text-gray-700">Unit / Qty</h3>
                         </div>
-                        <div className="text-sm text-gray-500">{openSections.unitQty ? 'Hide' : 'Show'}</div>
+                        <span className="text-xs text-purple-600">{openSections.unitQty ? '−' : '+'}</span>
                       </button>
                       {openSections.unitQty && (
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Unit / Qty</label>
-                            <input type="text" name="unit_qty" value={form.unit_qty} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Duration Planned (days)</label>
-                            <input type="number" name="project_duration_planned" value={form.project_duration_planned} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Duration Actual (days)</label>
-                            <input type="number" name="project_duration_actual" value={form.project_duration_actual} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                        <div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">Unit / Qty</label>
+                              <input type="text" name="unit_qty" value={form.unit_qty} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">Duration Planned (days)</label>
+                              <input type="number" name="project_duration_planned" value={form.project_duration_planned} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">Duration Actual (days)</label>
+                              <input type="number" name="project_duration_actual" value={form.project_duration_actual} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" />
+                            </div>
                           </div>
                         </div>
                       )}
                     </div>
 
-                    {/* Deliverables (collapsible) */}
-                    <div className="border-t border-gray-200 pt-4">
-                      <button type="button" onClick={() => toggleSection('deliverables')} className="w-full flex items-center justify-between">
+                    {/* Enhanced Deliverables Section */}
+                    <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                      <button type="button" onClick={() => toggleSection('deliverables')} className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors">
                         <div className="flex items-center gap-2">
-                          <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
-                          <h3 className="text-sm font-semibold text-black">Deliverables</h3>
+                          <ChevronDownIcon className={`h-3.5 w-3.5 text-purple-600 transition-transform ${openSections.deliverables ? 'rotate-180' : ''}`} />
+                          <h3 className="text-sm font-semibold text-gray-700">Project Deliverables</h3>
                         </div>
-                        <div className="text-sm text-gray-500">{openSections.deliverables ? 'Hide' : 'Show'}</div>
+                        <span className="text-xs text-purple-600">{openSections.deliverables ? '−' : '+'}</span>
                       </button>
+                      
                       {openSections.deliverables && (
-                        <div className="mt-3 space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">List of Deliverables</label>
-                            <textarea name="list_of_deliverables" value={form.list_of_deliverables} onChange={handleChange} rows={4} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-black mb-1">Upload Deliverable Files</label>
-                            <input type="file" multiple onChange={(e) => handleFileUpload(e.target.files, 'deliverables')} className="w-full text-sm" />
-                            {deliverables.length > 0 && (
-                              <div className="mt-2 space-y-2">
-                                {deliverables.map((f) => (
-                                  <div key={f.id} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded">
-                                    <div className="text-sm">{f.name} <span className="text-xs text-gray-500">{f.version}</span></div>
-                                    <div className="flex items-center gap-2">
-                                      <button type="button" onClick={() => removeFile(f.id, 'deliverables')} className="text-red-600 text-xs">Remove</button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                        <div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
+                          <div className="space-y-3">
+                            <label className="block text-sm font-semibold text-gray-700">List of Deliverables</label>
+                            <textarea 
+              name="list_of_deliverables" 
+                              value={form.list_of_deliverables} 
+                              onChange={handleChange} 
+                              rows={4} 
+                              placeholder="List the key deliverables for this project..."
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400 resize-y" 
+                            />
                           </div>
                         </div>
                       )}
@@ -1665,104 +1902,710 @@ function EditProjectForm() {
               </div>
             )}
 
-            {/* Meetings Tab: Kickoff + Internal Meetings */}
-            {activeTab === 'minutes_internal_meet' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-sm font-semibold text-black">Meetings</h2>
-                  <p className="text-xs text-gray-600 mt-1">Kickoff meeting and Internal project meetings</p>
+            {/* Enhanced Input Documents Tab */}
+            {activeTab === 'input_documents' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
+                    <h2 className="text-sm font-bold text-gray-900">Input Documents</h2>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Manage project input documents and references</p>
                 </div>
 
-                <div className="px-6 py-5 space-y-6">
-                  {/* Kickoff Meeting (single) */}
-                  <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-black">Kickoff Meeting</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Meeting No</label>
-                        <input type="text" name="kickoff_meeting_no" value={form.kickoff_meeting_no} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                <div className="px-6 py-5 space-y-4">
+                  {/* Compact Add Document Form */}
+                  <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <PlusIcon className="h-4 w-4 text-[#7F2487]" />
+                      Add New Document
+                    </h4>
+                    <div className="space-y-2">
+                      {/* Row 1: Category, Lot/Sublot, Date, Description, Drawing No., Revision */}
+                      <div className="grid grid-cols-8 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                          <select
+                            value={newInputDocument.category}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, category: e.target.value }))}
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                          >
+                            <option value="lot">Lot</option>
+                            <option value="sublot">Sub-lot</option>
+                            <option value="date">Date</option>
+                            <option value="others">Others</option>
+                          </select>
+                        </div>
+                        {newInputDocument.category === 'lot' && (
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Lot Number</label>
+                            <input
+                              type="text"
+                              value={newInputDocument.lotNumber}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, lotNumber: e.target.value }))}
+                              placeholder="LOT-001"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </div>
+                        )}
+                        {newInputDocument.category === 'sublot' && (
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Sub-lot</label>
+                            <input
+                              type="text"
+                              value={newInputDocument.subLot}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, subLot: e.target.value }))}
+                              placeholder="SL-001"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                          <input
+                            type="date"
+                            value={newInputDocument.date_received}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: e.target.value }))}
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Description *</label>
+                          <input
+                            type="text"
+                            value={newInputDocument.description}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, description: e.target.value }))}
+                            onKeyPress={handleInputDocumentKeyPress}
+                            placeholder="Document description"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Drawing No.</label>
+                          <input
+                            type="text"
+                            value={newInputDocument.drawing_number}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, drawing_number: e.target.value }))}
+                            placeholder="DWG-XXX"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Revision</label>
+                          <input
+                            type="text"
+                            value={newInputDocument.revision_number}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, revision_number: e.target.value }))}
+                            placeholder="Rev-A"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Client Name</label>
-                        <input type="text" name="kickoff_client_name" value={form.kickoff_client_name} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
+                      
+                      {/* Row 2: Unit/Qty, Sent by, Remarks, Add Button */}
+                      <div className="grid grid-cols-8 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Unit/Qty</label>
+                          <input
+                            type="text"
+                            value={newInputDocument.unit_qty}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, unit_qty: e.target.value }))}
+                            placeholder="10 pcs"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Document Sent by</label>
+                          <input
+                            type="text"
+                            value={newInputDocument.document_sent_by}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, document_sent_by: e.target.value }))}
+                            placeholder="Sender name"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div className="col-span-4">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
+                          <input
+                            type="text"
+                            value={newInputDocument.remarks}
+                            onChange={(e) => setNewInputDocument(prev => ({ ...prev, remarks: e.target.value }))}
+                            placeholder="Additional notes"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={addInputDocument}
+                            disabled={!newInputDocument.description.trim()}
+                            className="w-full px-3 py-1.5 bg-[#7F2487] text-white text-sm font-semibold rounded hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+                          >
+                            <PlusIcon className="h-3.5 w-3.5" />
+                            Add
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Meeting Organizer</label>
-                        <input type="text" name="kickoff_meeting_organizer" value={form.kickoff_meeting_organizer} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Minutes Drafted</label>
-                        <input type="text" name="kickoff_minutes_drafted" value={form.kickoff_minutes_drafted} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Meeting Location</label>
-                        <input type="text" name="kickoff_meeting_location" value={form.kickoff_meeting_location} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Client Representative</label>
-                        <input type="text" name="kickoff_client_representative" value={form.kickoff_client_representative} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Meeting Title</label>
-                        <input type="text" name="kickoff_meeting_title" value={form.kickoff_meeting_title} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Meeting Date</label>
-                        <input type="date" name="kickoff_meeting_date" value={form.kickoff_meeting_date} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-xs font-medium text-black mb-1">Points Discussed</label>
-                      <textarea name="kickoff_points_discussed" value={form.kickoff_points_discussed} onChange={handleChange} rows={4} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
-                    </div>
-                    <div className="mt-3">
-                      <label className="block text-xs font-medium text-black mb-1">Name of persons involved</label>
-                      <textarea name="kickoff_persons_involved" value={form.kickoff_persons_involved} onChange={handleChange} rows={2} placeholder="Comma-separated names" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" />
                     </div>
                   </div>
 
-                  {/* Internal Meetings (multiple) */}
-                  <div className="border border-gray-200 rounded-lg p-4">
+                  {/* Documents Table */}
+                  {inputDocumentsList.length > 0 ? (
+                    <div className="space-y-6">
+                      {/* Lot Documents */}
+                      {(() => {
+                        const lotDocs = inputDocumentsList.filter(doc => doc.category === 'lot');
+                        if (lotDocs.length === 0) return null;
+                        
+                        // Group by lot number
+                        const groupedByLot = lotDocs.reduce((acc, doc) => {
+                          const key = doc.lotNumber || 'Unspecified';
+                          if (!acc[key]) acc[key] = [];
+                          acc[key].push(doc);
+                          return acc;
+                        }, {});
+                        
+                        return (
+                          <div className="border border-blue-200 rounded-lg overflow-hidden">
+                            <div className="bg-blue-50 px-4 py-2 border-b border-blue-200">
+                              <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                                <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded">LOT</span>
+                                Lot Documents ({lotDocs.length})
+                              </h3>
+                            </div>
+                            <div className="divide-y divide-blue-100">
+                              {Object.entries(groupedByLot).map(([lotNum, docs]) => (
+                                <div key={lotNum} className="bg-white">
+                                  <div className="px-4 py-2 bg-blue-25">
+                                    <p className="text-xs font-semibold text-blue-800">Lot Number: {lotNum}</p>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Date Received</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Description</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Drawing No.</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Revision</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit/Qty</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Sent By</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
+                                          <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {docs.map((doc) => (
+                                          <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-3 py-2 text-gray-900">{doc.sr_no || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.date_received || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-900 font-medium">{doc.description}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.drawing_number || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.revision_number || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.unit_qty || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.document_sent_by || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.remarks || '-'}</td>
+                                            <td className="px-3 py-2 text-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => removeInputDocument(doc.id)}
+                                                className="text-red-500 hover:text-red-700 p-1"
+                                                title="Remove document"
+                                              >
+                                                <XMarkIcon className="h-4 w-4" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Sub-lot Documents */}
+                      {(() => {
+                        const sublotDocs = inputDocumentsList.filter(doc => doc.category === 'sublot');
+                        if (sublotDocs.length === 0) return null;
+                        
+                        // Group by sub-lot
+                        const groupedBySubLot = sublotDocs.reduce((acc, doc) => {
+                          const key = doc.subLot || 'Unspecified';
+                          if (!acc[key]) acc[key] = [];
+                          acc[key].push(doc);
+                          return acc;
+                        }, {});
+                        
+                        return (
+                          <div className="border border-purple-200 rounded-lg overflow-hidden">
+                            <div className="bg-purple-50 px-4 py-2 border-b border-purple-200">
+                              <h3 className="text-sm font-bold text-purple-900 flex items-center gap-2">
+                                <span className="bg-[#7F2487] text-white text-xs px-2 py-0.5 rounded">SUB-LOT</span>
+                                Sub-lot Documents ({sublotDocs.length})
+                              </h3>
+                            </div>
+                            <div className="divide-y divide-purple-100">
+                              {Object.entries(groupedBySubLot).map(([subLotId, docs]) => (
+                                <div key={subLotId} className="bg-white">
+                                  <div className="px-4 py-2 bg-purple-25">
+                                    <p className="text-xs font-semibold text-purple-800">Sub-lot: {subLotId}</p>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Date Received</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Description</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Drawing No.</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Revision</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit/Qty</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Sent By</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
+                                          <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {docs.map((doc) => (
+                                          <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-3 py-2 text-gray-900">{doc.sr_no || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.date_received || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-900 font-medium">{doc.description}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.drawing_number || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.revision_number || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.unit_qty || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.document_sent_by || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.remarks || '-'}</td>
+                                            <td className="px-3 py-2 text-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => removeInputDocument(doc.id)}
+                                                className="text-red-500 hover:text-red-700 p-1"
+                                                title="Remove document"
+                                              >
+                                                <XMarkIcon className="h-4 w-4" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Date Documents */}
+                      {(() => {
+                        const dateDocs = inputDocumentsList.filter(doc => doc.category === 'date');
+                        if (dateDocs.length === 0) return null;
+                        
+                        // Group by date_received
+                        const groupedByDate = dateDocs.reduce((acc, doc) => {
+                          const key = doc.date_received || 'No Date';
+                          if (!acc[key]) acc[key] = [];
+                          acc[key].push(doc);
+                          return acc;
+                        }, {});
+                        
+                        return (
+                          <div className="border border-green-200 rounded-lg overflow-hidden">
+                            <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+                              <h3 className="text-sm font-bold text-green-900 flex items-center gap-2">
+                                <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded">DATE</span>
+                                Date-Grouped Documents ({dateDocs.length})
+                              </h3>
+                            </div>
+                            <div className="divide-y divide-green-100">
+                              {Object.entries(groupedByDate).sort(([a], [b]) => b.localeCompare(a)).map(([date, docs]) => (
+                                <div key={date} className="bg-white">
+                                  <div className="px-4 py-2 bg-green-25">
+                                    <p className="text-xs font-semibold text-green-800">Date: {date}</p>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Description</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Drawing No.</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Revision</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit/Qty</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Sent By</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
+                                          <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {docs.map((doc, index) => (
+                                          <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-3 py-2 text-gray-900">{index + 1}</td>
+                                            <td className="px-3 py-2 text-gray-900 font-medium">{doc.description}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.drawing_number || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.revision_number || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.unit_qty || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.document_sent_by || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{doc.remarks || '-'}</td>
+                                            <td className="px-3 py-2 text-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => removeInputDocument(doc.id)}
+                                                className="text-red-500 hover:text-red-700 p-1"
+                                                title="Remove document"
+                                              >
+                                                <XMarkIcon className="h-4 w-4" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Others Documents */}
+                      {(() => {
+                        const otherDocs = inputDocumentsList.filter(doc => doc.category === 'others');
+                        if (otherDocs.length === 0) return null;
+                        
+                        return (
+                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                <span className="bg-gray-500 text-white text-xs px-2 py-0.5 rounded">OTHERS</span>
+                                Other Documents ({otherDocs.length})
+                              </h3>
+                            </div>
+                            <div className="bg-white overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Date Received</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Description</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Drawing No.</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Revision</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Unit/Qty</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Sent By</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
+                                    <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {otherDocs.map((doc, index) => (
+                                    <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                                      <td className="px-3 py-2 text-gray-900">{index + 1}</td>
+                                      <td className="px-3 py-2 text-gray-600">{doc.date_received || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-900 font-medium">{doc.description}</td>
+                                      <td className="px-3 py-2 text-gray-600">{doc.drawing_number || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-600">{doc.revision_number || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-600">{doc.unit_qty || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-600">{doc.document_sent_by || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-600">{doc.remarks || '-'}</td>
+                                      <td className="px-3 py-2 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => removeInputDocument(doc.id)}
+                                          className="text-red-500 hover:text-red-700 p-1"
+                                          title="Remove document"
+                                        >
+                                          <XMarkIcon className="h-4 w-4" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      <DocumentIcon className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                      <p className="text-sm font-medium">No documents added yet</p>
+                      <p className="text-xs mt-1">Add documents using the form above</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Enhanced Meetings Tab: Kickoff + Internal Meetings */}
+            {activeTab === 'minutes_internal_meet' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-4 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <h2 className="text-sm font-bold text-gray-900">Project Meetings</h2>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Kickoff meeting and Internal project meetings</p>
+                </div>
+
+                <div className="px-6 py-5 space-y-4">
+                  {/* Kickoff Meeting Form */}
+                  <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <PlusIcon className="h-4 w-4 text-[#7F2487]" />
+                      Project Kickoff Meeting
+                    </h4>
+                    <div className="space-y-2">
+                      {/* Row 1: Meeting Number, Client Name, Date, Organizer, Minutes Drafted, Location, Client Rep, Title */}
+                      <div className="grid grid-cols-8 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Meeting No</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_meeting_no" 
+                            value={form.kickoff_meeting_no} 
+                            onChange={handleChange} 
+                            placeholder="KOM-001"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Client Name</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_client_name" 
+                            value={form.kickoff_client_name} 
+                            onChange={handleChange} 
+                            placeholder="Client"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                          <input 
+                            type="date" 
+                            name="kickoff_meeting_date" 
+                            value={form.kickoff_meeting_date} 
+                            onChange={handleChange} 
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Organizer</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_meeting_organizer" 
+                            value={form.kickoff_meeting_organizer} 
+                            onChange={handleChange} 
+                            placeholder="Organizer"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Minutes By</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_minutes_drafted" 
+                            value={form.kickoff_minutes_drafted} 
+                            onChange={handleChange} 
+                            placeholder="Drafter"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_meeting_location" 
+                            value={form.kickoff_meeting_location} 
+                            onChange={handleChange} 
+                            placeholder="Venue"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Client Rep</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_client_representative" 
+                            value={form.kickoff_client_representative} 
+                            onChange={handleChange} 
+                            placeholder="Rep"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                          <input 
+                            type="text" 
+                            name="kickoff_meeting_title" 
+                            value={form.kickoff_meeting_title} 
+                            onChange={handleChange} 
+                            placeholder="Meeting title"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Row 2: Points Discussed, Participants */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Points Discussed</label>
+                          <textarea 
+                            name="kickoff_points_discussed" 
+                            value={form.kickoff_points_discussed} 
+                            onChange={handleChange} 
+                            rows={2} 
+                            placeholder="Agenda and points discussed..."
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] resize-y" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Participants</label>
+                          <textarea 
+                            name="kickoff_persons_involved" 
+                            value={form.kickoff_persons_involved} 
+                            onChange={handleChange} 
+                            rows={2} 
+                            placeholder="Comma-separated list"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] resize-y" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Internal Meetings Section */}
+                  <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-black">Internal Project Meetings</h3>
+                      <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <PlusIcon className="h-4 w-4 text-[#7F2487]" />
+                        Internal Project Meetings
+                      </h4>
                       <div className="flex items-center gap-2">
-                        <input type="text" placeholder="New meeting title" value={newInternalMeetingTitle} onChange={(e) => setNewInternalMeetingTitle(e.target.value)} className="px-3 py-1 text-sm border border-gray-300 rounded-md" />
-                        <button type="button" onClick={addInternalMeeting} className="px-3 py-1 bg-[#7F2487] text-white text-sm rounded-md">Add</button>
+                        <input 
+                          type="text" 
+                          placeholder="Meeting title" 
+                          value={newInternalMeetingTitle} 
+                          onChange={(e) => setNewInternalMeetingTitle(e.target.value)} 
+                          className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                        />
+                        <button 
+                          type="button" 
+                          onClick={addInternalMeeting} 
+                          className="px-3 py-1.5 bg-[#7F2487] text-white text-sm font-semibold rounded hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
+                        >
+                          <PlusIcon className="h-3.5 w-3.5" />
+                          Add
+                        </button>
                       </div>
                     </div>
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs border-collapse">
                         <thead>
-                          <tr className="bg-gray-100 border-b">
-                            <th className="text-left py-2 px-2 font-semibold">Meeting No</th>
-                            <th className="text-left py-2 px-2 font-semibold">Date</th>
-                            <th className="text-left py-2 px-2 font-semibold">Title</th>
-                            <th className="text-left py-2 px-2 font-semibold">Organizer</th>
-                            <th className="text-left py-2 px-2 font-semibold">Client Rep</th>
-                            <th className="text-left py-2 px-2 font-semibold">Location</th>
-                            <th className="text-left py-2 px-2 font-semibold">Points Discussed</th>
-                            <th className="text-left py-2 px-2 font-semibold">Persons Involved</th>
-                            <th className="text-center py-2 px-2 font-semibold">Actions</th>
+                          <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">No</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Date</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Title</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Organizer</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Client Rep</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Location</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Points</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700">Participants</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700">Action</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-gray-100">
                           {internalMeetings.length === 0 ? (
-                            <tr><td colSpan={9} className="text-center py-4 text-gray-500">No internal meetings added</td></tr>
+                            <tr><td colSpan={9} className="text-center py-4 text-gray-500 text-sm">No internal meetings added</td></tr>
                           ) : (
                             internalMeetings.map((m) => (
-                              <tr key={m.id} className="border-b hover:bg-gray-50 align-top">
-                                <td className="py-2 px-2"><input type="text" value={m.meeting_no || ''} onChange={(e) => updateInternalMeeting(m.id, 'meeting_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="date" value={m.meeting_date || ''} onChange={(e) => updateInternalMeeting(m.id, 'meeting_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="text" value={m.meeting_title || ''} onChange={(e) => updateInternalMeeting(m.id, 'meeting_title', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="text" value={m.organizer || ''} onChange={(e) => updateInternalMeeting(m.id, 'organizer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="text" value={m.client_representative || ''} onChange={(e) => updateInternalMeeting(m.id, 'client_representative', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="text" value={m.meeting_location || ''} onChange={(e) => updateInternalMeeting(m.id, 'meeting_location', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="text" value={m.points_discussed || ''} onChange={(e) => updateInternalMeeting(m.id, 'points_discussed', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2"><input type="text" value={m.persons_involved || ''} onChange={(e) => updateInternalMeeting(m.id, 'persons_involved', e.target.value)} placeholder="Comma-separated" className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                                <td className="py-2 px-2 text-center"><button type="button" onClick={() => removeInternalMeeting(m.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                              <tr key={m.id} className="hover:bg-gray-50 transition-colors align-top">
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.meeting_no || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'meeting_no', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="date" 
+                                    value={m.meeting_date || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'meeting_date', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.meeting_title || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'meeting_title', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.organizer || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'organizer', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.client_representative || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'client_representative', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.meeting_location || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'meeting_location', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.points_discussed || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'points_discussed', e.target.value)} 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input 
+                                    type="text" 
+                                    value={m.persons_involved || ''} 
+                                    onChange={(e) => updateInternalMeeting(m.id, 'persons_involved', e.target.value)} 
+                                    placeholder="Comma-separated" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                  />
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <button 
+                                    type="button" 
+                                    onClick={() => removeInternalMeeting(m.id)} 
+                                    className="text-red-500 hover:text-red-700 p-1"
+                                    title="Remove meeting"
+                                  >
+                                    <XMarkIcon className="h-4 w-4" />
+                                  </button>
+                                </td>
                               </tr>
                             ))
                           )}
@@ -1783,69 +2626,101 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newHandoverRow.sr_no} onChange={(e)=>setNewHandoverRow(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Output by Accent *</label>
+                        <input 
+                          ref={newHandoverDescRef}
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addHandoverRow(); } }}
+                          type="text" 
+                          value={newHandoverRow.output_by_accent} 
+                          onChange={(e)=>setNewHandoverRow(prev=>({...prev,output_by_accent:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Requirement Accomplished</label>
+                        <select 
+                          value={newHandoverRow.requirement_accomplished} 
+                          onChange={(e)=>setNewHandoverRow(prev=>({...prev,requirement_accomplished:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                        >
+                          <option value="">Select</option>
+                          <option value="Y">Y</option>
+                          <option value="N">N</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Hand Over</label>
+                        <select 
+                          value={newHandoverRow.hand_over} 
+                          onChange={(e)=>setNewHandoverRow(prev=>({...prev,hand_over:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                        >
+                          <option value="">Select</option>
+                          <option value="Y">Y</option>
+                          <option value="N">N</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="md:col-span-2">
-                      <input ref={newHandoverDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addHandoverRow(); } }} type="text" placeholder="Output by Accent" value={newHandoverRow.output_by_accent} onChange={(e)=>setNewHandoverRow(prev=>({...prev,output_by_accent:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <select value={newHandoverRow.requirement_accomplished} onChange={(e)=>setNewHandoverRow(prev=>({...prev,requirement_accomplished:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded">
-                        <option value="">Requirement Accomplished?</option>
-                        <option value="Y">Y</option>
-                        <option value="N">N</option>
-                      </select>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remark" value={newHandoverRow.remark} onChange={(e)=>setNewHandoverRow(prev=>({...prev,remark:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <select value={newHandoverRow.hand_over} onChange={(e)=>setNewHandoverRow(prev=>({...prev,hand_over:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded">
-                        <option value="">Hand Over</option>
-                        <option value="Y">Y</option>
-                        <option value="N">N</option>
-                      </select>
-                    </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addHandoverRow} disabled={!(newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim())} className={`px-3 py-1 rounded-md text-sm ${newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
-                      Add Handover Row
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Remark</label>
+                      <input 
+                        type="text" 
+                        value={newHandoverRow.remark} 
+                        onChange={(e)=>setNewHandoverRow(prev=>({...prev,remark:e.target.value}))} 
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                      />
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={addHandoverRow} 
+                      disabled={!(newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim() ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" />
+                      Add Handover Item
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Output by Accent</th>
-                          <th className="text-left py-2 px-2 font-semibold">Requirement Accomplished</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remark</th>
-                          <th className="text-left py-2 px-2 font-semibold">Hand Over</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectHandover.length === 0 ? (
-                          <tr><td colSpan={6} className="text-center py-4 text-gray-500">No handover rows recorded</td></tr>
-                        ) : (
-                          projectHandover.map(r => (
-                            <tr key={r.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={r.sr_no || ''} onChange={(e)=>updateHandoverRow(r.id,'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={r.output_by_accent || ''} onChange={(e)=>updateHandoverRow(r.id,'output_by_accent', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><select value={r.requirement_accomplished || ''} onChange={(e)=>updateHandoverRow(r.id,'requirement_accomplished', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
-                              <td className="py-2 px-2"><input type="text" value={r.remark || ''} onChange={(e)=>updateHandoverRow(r.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><select value={r.hand_over || ''} onChange={(e)=>updateHandoverRow(r.id,'hand_over', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={()=>removeHandoverRow(r.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {projectHandover.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Output by Accent</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Requirement Accomplished</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remark</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Hand Over</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {projectHandover.map(r => (
+                            <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3"><input type="text" value={r.output_by_accent || ''} onChange={(e)=>updateHandoverRow(r.id,'output_by_accent', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><select value={r.requirement_accomplished || ''} onChange={(e)=>updateHandoverRow(r.id,'requirement_accomplished', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
+                              <td className="py-2 px-3"><input type="text" value={r.remark || ''} onChange={(e)=>updateHandoverRow(r.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><select value={r.hand_over || ''} onChange={(e)=>updateHandoverRow(r.id,'hand_over', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={()=>removeHandoverRow(r.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove item"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -1859,91 +2734,182 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="S.N." value={newManhourRow.sr_no} onChange={(e)=>setNewManhourRow(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="month" placeholder="Month" value={newManhourRow.month} onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div className="md:col-span-3">
-                      <input ref={newManhourNameRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addManhourRow(); } }} type="text" placeholder="Name of Engineer/Designer" value={newManhourRow.name_of_engineer_designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Engineering" value={newManhourRow.engineering} onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Designer" value={newManhourRow.designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Drafting" value={newManhourRow.drafting} onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Checking" value={newManhourRow.checking} onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Co-ordation" value={newManhourRow.coordination} onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Site Visit" value={newManhourRow.site_visit} onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Others" value={newManhourRow.others} onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remarks" value={newManhourRow.remarks} onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-11 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Month</label>
+                        <input 
+                          type="month" 
+                          value={newManhourRow.month} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Name of Engineer/Designer</label>
+                        <input 
+                          ref={newManhourNameRef} 
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addManhourRow(); } }} 
+                          type="text" 
+                          placeholder="Enter name..." 
+                          value={newManhourRow.name_of_engineer_designer} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Engineering</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.engineering} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Designer</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.designer} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Drafting</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.drafting} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Checking</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.checking} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Co-ordation</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.coordination} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Site Visit</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.site_visit} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Others</label>
+                        <input 
+                          type="number" 
+                          placeholder="Hours" 
+                          value={newManhourRow.others} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div className="md:col-span-11">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
+                        <input 
+                          type="text" 
+                          placeholder="Additional remarks..." 
+                          value={newManhourRow.remarks} 
+                          onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div className="mb-4">
-                    <button type="button" onClick={addManhourRow} disabled={!(newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim())} className={`px-3 py-1 rounded-md text-sm ${newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    <button 
+                      type="button" 
+                      onClick={addManhourRow} 
+                      disabled={!(newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${
+                        newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() 
+                          ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' 
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <PlusIcon className="h-4 w-4" />
                       Add Row
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">S.N.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Month</th>
-                          <th className="text-left py-2 px-2 font-semibold">Name of Engineer/Designer</th>
-                          <th className="text-left py-2 px-2 font-semibold">Engineering</th>
-                          <th className="text-left py-2 px-2 font-semibold">Designer</th>
-                          <th className="text-left py-2 px-2 font-semibold">Drafting</th>
-                          <th className="text-left py-2 px-2 font-semibold">Checking</th>
-                          <th className="text-left py-2 px-2 font-semibold">Co-ordation</th>
-                          <th className="text-left py-2 px-2 font-semibold">Site Visit</th>
-                          <th className="text-left py-2 px-2 font-semibold">Others</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remarks</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectManhours.length === 0 ? (
-                          <tr><td colSpan={12} className="text-center py-4 text-gray-500">No manhours recorded</td></tr>
-                        ) : (
-                          projectManhours.map(r => (
-                            <tr key={r.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={r.sr_no || ''} onChange={(e)=>updateManhourRow(r.id,'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="month" value={r.month || ''} onChange={(e)=>updateManhourRow(r.id,'month', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={r.name_of_engineer_designer || ''} onChange={(e)=>updateManhourRow(r.id,'name_of_engineer_designer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.engineering || ''} onChange={(e)=>updateManhourRow(r.id,'engineering', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.designer || ''} onChange={(e)=>updateManhourRow(r.id,'designer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.drafting || ''} onChange={(e)=>updateManhourRow(r.id,'drafting', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.checking || ''} onChange={(e)=>updateManhourRow(r.id,'checking', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.coordination || ''} onChange={(e)=>updateManhourRow(r.id,'coordination', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.site_visit || ''} onChange={(e)=>updateManhourRow(r.id,'site_visit', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.others || ''} onChange={(e)=>updateManhourRow(r.id,'others', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={r.remarks || ''} onChange={(e)=>updateManhourRow(r.id,'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={()=>removeManhourRow(r.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {projectManhours.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Month</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Name of Engineer/Designer</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Engineering</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Designer</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Drafting</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Checking</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Co-ordation</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Site Visit</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Others</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remarks</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Remove</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {projectManhours.map(r => (
+                            <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3"><input type="month" value={r.month || ''} onChange={(e)=>updateManhourRow(r.id,'month', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="text" value={r.name_of_engineer_designer || ''} onChange={(e)=>updateManhourRow(r.id,'name_of_engineer_designer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.engineering || ''} onChange={(e)=>updateManhourRow(r.id,'engineering', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.designer || ''} onChange={(e)=>updateManhourRow(r.id,'designer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.drafting || ''} onChange={(e)=>updateManhourRow(r.id,'drafting', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.checking || ''} onChange={(e)=>updateManhourRow(r.id,'checking', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.coordination || ''} onChange={(e)=>updateManhourRow(r.id,'coordination', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.site_visit || ''} onChange={(e)=>updateManhourRow(r.id,'site_visit', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="number" value={r.others || ''} onChange={(e)=>updateManhourRow(r.id,'others', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="text" value={r.remarks || ''} onChange={(e)=>updateManhourRow(r.id,'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={()=>removeManhourRow(r.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove row"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {projectManhours.length === 0 && (
+                    <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                      No manhours recorded yet. Use the form above to add manhour entries.
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -1957,81 +2923,135 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newQuery.sr_no} onChange={(e)=>setNewQuery(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+                      <div className="md:col-span-2 lg:col-span-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Query Description *</label>
+                        <input 
+                          ref={newQueryDescRef}
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addQueryRow(); } }}
+                          type="text" 
+                          value={newQuery.query_description} 
+                          onChange={(e)=>setNewQuery(prev=>({...prev,query_description:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Query Issued Date</label>
+                        <input 
+                          type="date" 
+                          value={newQuery.query_issued_date} 
+                          onChange={(e)=>setNewQuery(prev=>({...prev,query_issued_date:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Reply Received Date</label>
+                        <input 
+                          type="date" 
+                          value={newQuery.reply_received_date} 
+                          onChange={(e)=>setNewQuery(prev=>({...prev,reply_received_date:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
-                    <div className="md:col-span-3">
-                      <input ref={newQueryDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addQueryRow(); } }} type="text" placeholder="Query Description" value={newQuery.query_description} onChange={(e)=>setNewQuery(prev=>({...prev,query_description:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="date" placeholder="Query Issued Date" value={newQuery.query_issued_date} onChange={(e)=>setNewQuery(prev=>({...prev,query_issued_date:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Reply from Client" value={newQuery.reply_from_client} onChange={(e)=>setNewQuery(prev=>({...prev,reply_from_client:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="date" placeholder="Reply Received Date" value={newQuery.reply_received_date} onChange={(e)=>setNewQuery(prev=>({...prev,reply_received_date:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Query updated by" value={newQuery.query_updated_by} onChange={(e)=>setNewQuery(prev=>({...prev,query_updated_by:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <select value={newQuery.query_resolved} onChange={(e)=>setNewQuery(prev=>({...prev,query_resolved:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded">
-                        <option value="">Query Resolved?</option>
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
-                        <option value="Pending">Pending</option>
-                      </select>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remark" value={newQuery.remark} onChange={(e)=>setNewQuery(prev=>({...prev,remark:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addQueryRow} disabled={!(newQuery.query_description && newQuery.query_description.trim())} className={`px-3 py-1 rounded-md text-sm ${newQuery.query_description && newQuery.query_description.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Reply from Client</label>
+                        <input 
+                          type="text" 
+                          value={newQuery.reply_from_client} 
+                          onChange={(e)=>setNewQuery(prev=>({...prev,reply_from_client:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Query Updated By</label>
+                        <input 
+                          type="text" 
+                          value={newQuery.query_updated_by} 
+                          onChange={(e)=>setNewQuery(prev=>({...prev,query_updated_by:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Query Resolved</label>
+                        <select 
+                          value={newQuery.query_resolved} 
+                          onChange={(e)=>setNewQuery(prev=>({...prev,query_resolved:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                        >
+                          <option value="">Select</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                          <option value="Pending">Pending</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Remark</label>
+                      <input 
+                        type="text" 
+                        value={newQuery.remark} 
+                        onChange={(e)=>setNewQuery(prev=>({...prev,remark:e.target.value}))} 
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                      />
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={addQueryRow} 
+                      disabled={!(newQuery.query_description && newQuery.query_description.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${newQuery.query_description && newQuery.query_description.trim() ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" />
                       Add Query
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Query Description</th>
-                          <th className="text-left py-2 px-2 font-semibold">Query Issued Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Reply from Client</th>
-                          <th className="text-left py-2 px-2 font-semibold">Reply Received Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Query updated by</th>
-                          <th className="text-left py-2 px-2 font-semibold">Query Resolved</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remark</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {queryLog.length === 0 ? (
-                          <tr><td colSpan={9} className="text-center py-4 text-gray-500">No queries recorded</td></tr>
-                        ) : (
-                          queryLog.map(q => (
-                            <tr key={q.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={q.sr_no || ''} onChange={(e)=>updateQueryRow(q.id,'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={q.query_description || ''} onChange={(e)=>updateQueryRow(q.id,'query_description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={q.query_issued_date || ''} onChange={(e)=>updateQueryRow(q.id,'query_issued_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={q.reply_from_client || ''} onChange={(e)=>updateQueryRow(q.id,'reply_from_client', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={q.reply_received_date || ''} onChange={(e)=>updateQueryRow(q.id,'reply_received_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={q.query_updated_by || ''} onChange={(e)=>updateQueryRow(q.id,'query_updated_by', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><select value={q.query_resolved || ''} onChange={(e)=>updateQueryRow(q.id,'query_resolved', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select></td>
-                              <td className="py-2 px-2"><input type="text" value={q.remark || ''} onChange={(e)=>updateQueryRow(q.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={()=>removeQueryRow(q.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {queryLog.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Query Description</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Issued Date</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Reply from Client</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Reply Received</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Updated By</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Resolved</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remark</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {queryLog.map(q => (
+                            <tr key={q.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3"><input type="text" value={q.query_description || ''} onChange={(e)=>updateQueryRow(q.id,'query_description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="date" value={q.query_issued_date || ''} onChange={(e)=>updateQueryRow(q.id,'query_issued_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={q.reply_from_client || ''} onChange={(e)=>updateQueryRow(q.id,'reply_from_client', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="date" value={q.reply_received_date || ''} onChange={(e)=>updateQueryRow(q.id,'reply_received_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={q.query_updated_by || ''} onChange={(e)=>updateQueryRow(q.id,'query_updated_by', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><select value={q.query_resolved || ''} onChange={(e)=>updateQueryRow(q.id,'query_resolved', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select></td>
+                              <td className="py-2 px-3"><input type="text" value={q.remark || ''} onChange={(e)=>updateQueryRow(q.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={()=>removeQueryRow(q.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove query"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -2045,61 +3065,95 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newAssumption.sr_no} onChange={(e)=>setNewAssumption(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Assumption Description *</label>
+                        <input 
+                          ref={newAssumptionDescRef}
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addAssumptionRow(); } }}
+                          type="text" 
+                          value={newAssumption.assumption_description} 
+                          onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_description:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Assumption Taken By</label>
+                        <input 
+                          type="text" 
+                          value={newAssumption.assumption_taken_by} 
+                          onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_taken_by:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Remark</label>
+                        <input 
+                          type="text" 
+                          value={newAssumption.remark} 
+                          onChange={(e)=>setNewAssumption(prev=>({...prev,remark:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
-                    <div className="md:col-span-3">
-                      <input ref={newAssumptionDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addAssumptionRow(); } }} type="text" placeholder="Assumption Description" value={newAssumption.assumption_description} onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_description:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Reason" value={newAssumption.reason} onChange={(e)=>setNewAssumption(prev=>({...prev,reason:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Assumption Taken By" value={newAssumption.assumption_taken_by} onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_taken_by:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remark" value={newAssumption.remark} onChange={(e)=>setNewAssumption(prev=>({...prev,remark:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addAssumptionRow} disabled={!(newAssumption.assumption_description && newAssumption.assumption_description.trim())} className={`px-3 py-1 rounded-md text-sm ${newAssumption.assumption_description && newAssumption.assumption_description.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Reason</label>
+                      <input 
+                        type="text" 
+                        value={newAssumption.reason} 
+                        onChange={(e)=>setNewAssumption(prev=>({...prev,reason:e.target.value}))} 
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                      />
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={addAssumptionRow} 
+                      disabled={!(newAssumption.assumption_description && newAssumption.assumption_description.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${newAssumption.assumption_description && newAssumption.assumption_description.trim() ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" />
                       Add Assumption
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Assumption Description</th>
-                          <th className="text-left py-2 px-2 font-semibold">Reason</th>
-                          <th className="text-left py-2 px-2 font-semibold">Assumption Taken By</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remark</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {assumptions.length === 0 ? (
-                          <tr><td colSpan={6} className="text-center py-4 text-gray-500">No assumptions recorded</td></tr>
-                        ) : (
-                          assumptions.map(a => (
-                            <tr key={a.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={a.sr_no || ''} onChange={(e)=>updateAssumptionRow(a.id,'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={a.assumption_description || ''} onChange={(e)=>updateAssumptionRow(a.id,'assumption_description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={a.reason || ''} onChange={(e)=>updateAssumptionRow(a.id,'reason', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={a.assumption_taken_by || ''} onChange={(e)=>updateAssumptionRow(a.id,'assumption_taken_by', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={a.remark || ''} onChange={(e)=>updateAssumptionRow(a.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={()=>removeAssumptionRow(a.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {assumptions.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Assumption Description</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Reason</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Assumption Taken By</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remark</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {assumptions.map(a => (
+                            <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3"><input type="text" value={a.assumption_description || ''} onChange={(e)=>updateAssumptionRow(a.id,'assumption_description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={a.reason || ''} onChange={(e)=>updateAssumptionRow(a.id,'reason', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={a.assumption_taken_by || ''} onChange={(e)=>updateAssumptionRow(a.id,'assumption_taken_by', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={a.remark || ''} onChange={(e)=>updateAssumptionRow(a.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={()=>removeAssumptionRow(a.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove assumption"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -2113,66 +3167,106 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newLesson.sr_no} onChange={(e)=>setNewLesson(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">What was new *</label>
+                        <input 
+                          ref={newLessonDescRef}
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addLessonRow(); } }}
+                          type="text" 
+                          value={newLesson.what_was_new} 
+                          onChange={(e)=>setNewLesson(prev=>({...prev,what_was_new:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Difficulty Faced</label>
+                        <input 
+                          type="text" 
+                          value={newLesson.difficulty_faced} 
+                          onChange={(e)=>setNewLesson(prev=>({...prev,difficulty_faced:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">What You Learned</label>
+                        <input 
+                          type="text" 
+                          value={newLesson.what_you_learn} 
+                          onChange={(e)=>setNewLesson(prev=>({...prev,what_you_learn:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Areas of Improvement</label>
+                        <input 
+                          type="text" 
+                          value={newLesson.areas_of_improvement} 
+                          onChange={(e)=>setNewLesson(prev=>({...prev,areas_of_improvement:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
-                    <div className="md:col-span-3">
-                      <input ref={newLessonDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addLessonRow(); } }} type="text" placeholder="What was new" value={newLesson.what_was_new} onChange={(e)=>setNewLesson(prev=>({...prev,what_was_new:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <input type="text" placeholder="What difficulty face" value={newLesson.difficulty_faced} onChange={(e)=>setNewLesson(prev=>({...prev,difficulty_faced:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <input type="text" placeholder="What you learn" value={newLesson.what_you_learn} onChange={(e)=>setNewLesson(prev=>({...prev,what_you_learn:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <input type="text" placeholder="Areas of Improvement" value={newLesson.areas_of_improvement} onChange={(e)=>setNewLesson(prev=>({...prev,areas_of_improvement:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remark" value={newLesson.remark} onChange={(e)=>setNewLesson(prev=>({...prev,remark:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addLessonRow} disabled={!(newLesson.what_was_new && newLesson.what_was_new.trim())} className={`px-3 py-1 rounded-md text-sm ${newLesson.what_was_new && newLesson.what_was_new.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Remark</label>
+                      <input 
+                        type="text" 
+                        value={newLesson.remark} 
+                        onChange={(e)=>setNewLesson(prev=>({...prev,remark:e.target.value}))} 
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                      />
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={addLessonRow} 
+                      disabled={!(newLesson.what_was_new && newLesson.what_was_new.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${newLesson.what_was_new && newLesson.what_was_new.trim() ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" />
                       Add Lesson
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">What was new</th>
-                          <th className="text-left py-2 px-2 font-semibold">What difficulty face</th>
-                          <th className="text-left py-2 px-2 font-semibold">What you learn</th>
-                          <th className="text-left py-2 px-2 font-semibold">Areas of Improvement</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remark</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lessonsLearnt.length === 0 ? (
-                          <tr><td colSpan={7} className="text-center py-4 text-gray-500">No lessons recorded</td></tr>
-                        ) : (
-                          lessonsLearnt.map(l => (
-                            <tr key={l.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={l.sr_no || ''} onChange={(e)=>updateLessonRow(l.id,'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={l.what_was_new || ''} onChange={(e)=>updateLessonRow(l.id,'what_was_new', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={l.difficulty_faced || ''} onChange={(e)=>updateLessonRow(l.id,'difficulty_faced', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={l.what_you_learn || ''} onChange={(e)=>updateLessonRow(l.id,'what_you_learn', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={l.areas_of_improvement || ''} onChange={(e)=>updateLessonRow(l.id,'areas_of_improvement', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={l.remark || ''} onChange={(e)=>updateLessonRow(l.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={()=>removeLessonRow(l.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {lessonsLearnt.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">What was new</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Difficulty Faced</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">What You Learned</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Areas of Improvement</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remark</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {lessonsLearnt.map(l => (
+                            <tr key={l.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3"><input type="text" value={l.what_was_new || ''} onChange={(e)=>updateLessonRow(l.id,'what_was_new', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={l.difficulty_faced || ''} onChange={(e)=>updateLessonRow(l.id,'difficulty_faced', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={l.what_you_learn || ''} onChange={(e)=>updateLessonRow(l.id,'what_you_learn', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={l.areas_of_improvement || ''} onChange={(e)=>updateLessonRow(l.id,'areas_of_improvement', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={l.remark || ''} onChange={(e)=>updateLessonRow(l.id,'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={()=>removeLessonRow(l.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove lesson"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -2186,153 +3280,303 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newIssuedDoc.sr_no} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Document Name *</label>
+                        <input 
+                          ref={newIssuedDescRef}
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addIssuedDocument(); } }}
+                          type="text" 
+                          value={newIssuedDoc.document_name} 
+                          onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_name:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Document No.</label>
+                        <input 
+                          type="text" 
+                          value={newIssuedDoc.document_number} 
+                          onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_number:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Revision No.</label>
+                        <input 
+                          type="text" 
+                          value={newIssuedDoc.revision_number} 
+                          onChange={(e)=>setNewIssuedDoc(prev=>({...prev,revision_number:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Issue Date</label>
+                        <input 
+                          type="date" 
+                          value={newIssuedDoc.issue_date} 
+                          onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issue_date:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
-                    <div className="md:col-span-2">
-                      <input ref={newIssuedDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addIssuedDocument(); } }} type="text" placeholder="Document Name" value={newIssuedDoc.document_name} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_name:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Document Number" value={newIssuedDoc.document_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_number:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Revision. No." value={newIssuedDoc.revision_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,revision_number:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="date" placeholder="Issue Date" value={newIssuedDoc.issue_date} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issue_date:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remarks" value={newIssuedDoc.remarks} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,remarks:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addIssuedDocument} disabled={!(newIssuedDoc.document_name && newIssuedDoc.document_name.trim())} className={`px-3 py-1 rounded-md text-sm ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
-                      Add Document Issued
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
+                      <input 
+                        type="text" 
+                        value={newIssuedDoc.remarks} 
+                        onChange={(e)=>setNewIssuedDoc(prev=>({...prev,remarks:e.target.value}))} 
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                      />
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={addIssuedDocument} 
+                      disabled={!(newIssuedDoc.document_name && newIssuedDoc.document_name.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" />
+                      Add Document
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Document Name</th>
-                          <th className="text-left py-2 px-2 font-semibold">Document Number</th>
-                          <th className="text-left py-2 px-2 font-semibold">Revision. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Issue Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remarks</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {documentsIssued.length === 0 ? (
-                          <tr><td colSpan={7} className="text-center py-4 text-gray-500">No issued documents recorded</td></tr>
-                        ) : (
-                          documentsIssued.map(d => (
-                            <tr key={d.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={d.sr_no || ''} onChange={(e) => updateIssuedDocument(d.id, 'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.document_name || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_name', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.document_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.revision_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'revision_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={d.issue_date || ''} onChange={(e) => updateIssuedDocument(d.id, 'issue_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.remarks || ''} onChange={(e) => updateIssuedDocument(d.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={() => removeIssuedDocument(d.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {documentsIssued.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Document Name</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Document Number</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Revision No.</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Issue Date</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remarks</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {documentsIssued.map(d => (
+                            <tr key={d.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3"><input type="text" value={d.document_name || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_name', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={d.document_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={d.revision_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'revision_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="date" value={d.issue_date || ''} onChange={(e) => updateIssuedDocument(d.id, 'issue_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3"><input type="text" value={d.remarks || ''} onChange={(e) => updateIssuedDocument(d.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={() => removeIssuedDocument(d.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove document"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
 
             {/* Documents Received Tab */}
             {activeTab === 'documents_received' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-sm font-semibold text-black">List of Documents Received</h2>
-                  <p className="text-xs text-gray-600 mt-1">Record documents received with details</p>
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
+                    <h2 className="text-sm font-bold text-gray-900">List of Documents Received</h2>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Record documents received with details</p>
                 </div>
 
-                <div className="px-6 py-5">
-                      <div className="mb-3 grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newReceivedDoc.sr_no} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                <div className="px-6 py-5 space-y-4">
+                  {/* Add Document Form */}
+                  <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                    <h3 className="text-xs font-semibold text-gray-700 mb-3">Add New Document</h3>
+                    
+                    <div className="grid grid-cols-7 gap-2 mb-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                        <input 
+                          type="date" 
+                          value={newReceivedDoc.date_received} 
+                          onChange={(e)=>setNewReceivedDoc(prev=>({...prev,date_received:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Description / Document Name *</label>
+                        <input 
+                          ref={newReceivedDescRef} 
+                          onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addReceivedDocument(); } }} 
+                          type="text" 
+                          value={newReceivedDoc.description} 
+                          onChange={(e)=>setNewReceivedDoc(prev=>({...prev,description:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Drawing No.</label>
+                        <input 
+                          type="text" 
+                          value={newReceivedDoc.drawing_number} 
+                          onChange={(e)=>setNewReceivedDoc(prev=>({...prev,drawing_number:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Revision No.</label>
+                        <input 
+                          type="text" 
+                          value={newReceivedDoc.revision_number} 
+                          onChange={(e)=>setNewReceivedDoc(prev=>({...prev,revision_number:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Unit / Qty</label>
+                        <input 
+                          type="text" 
+                          value={newReceivedDoc.unit_qty} 
+                          onChange={(e)=>setNewReceivedDoc(prev=>({...prev,unit_qty:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Sent By</label>
+                        <input 
+                          type="text" 
+                          value={newReceivedDoc.document_sent_by} 
+                          onChange={(e)=>setNewReceivedDoc(prev=>({...prev,document_sent_by:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <input type="date" placeholder="Date" value={newReceivedDoc.date_received} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,date_received:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <input ref={newReceivedDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addReceivedDocument(); } }} type="text" placeholder="Description / Document Name" value={newReceivedDoc.description} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,description:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Drawing Number" value={newReceivedDoc.drawing_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,drawing_number:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Revision Number" value={newReceivedDoc.revision_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,revision_number:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Unit / Qty" value={newReceivedDoc.unit_qty} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,unit_qty:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Document Sent by" value={newReceivedDoc.document_sent_by} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,document_sent_by:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remarks" value={newReceivedDoc.remarks} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,remarks:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                  </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addReceivedDocument} disabled={!(newReceivedDoc.description && newReceivedDoc.description.trim())} className={`px-3 py-1 rounded-md text-sm ${newReceivedDoc.description && newReceivedDoc.description.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
+                      <input 
+                        type="text" 
+                        value={newReceivedDoc.remarks} 
+                        onChange={(e)=>setNewReceivedDoc(prev=>({...prev,remarks:e.target.value}))} 
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                      />
+                    </div>
+
+                    <button 
+                      type="button" 
+                      onClick={addReceivedDocument} 
+                      disabled={!(newReceivedDoc.description && newReceivedDoc.description.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${newReceivedDoc.description && newReceivedDoc.description.trim() ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" />
                       Add Document
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Output by Accent</th>
-                          <th className="text-left py-2 px-2 font-semibold">Requirement Accomplished (Y/N)</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remark</th>
-                          <th className="text-left py-2 px-2 font-semibold">Hand Over (Y/N)</th>
-                          <th className="text-left py-2 px-2 font-semibold">Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Description / Document Name</th>
-                          <th className="text-left py-2 px-2 font-semibold">Drawing Number</th>
-                          <th className="text-left py-2 px-2 font-semibold">Revision Number</th>
-                          <th className="text-left py-2 px-2 font-semibold">Unit / Qty</th>
-                          <th className="text-left py-2 px-2 font-semibold">Document Sent by</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remarks</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {documentsReceived.length === 0 ? (
-                          <tr><td colSpan={9} className="text-center py-4 text-gray-500">No documents recorded</td></tr>
-                        ) : (
-                          documentsReceived.map(d => (
-                            <tr key={d.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="text" value={d.sr_no || ''} onChange={(e) => updateReceivedDocument(d.id, 'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={d.date_received || ''} onChange={(e) => updateReceivedDocument(d.id, 'date_received', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.description || ''} onChange={(e) => updateReceivedDocument(d.id, 'description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.drawing_number || ''} onChange={(e) => updateReceivedDocument(d.id, 'drawing_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.revision_number || ''} onChange={(e) => updateReceivedDocument(d.id, 'revision_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.unit_qty || ''} onChange={(e) => updateReceivedDocument(d.id, 'unit_qty', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.document_sent_by || ''} onChange={(e) => updateReceivedDocument(d.id, 'document_sent_by', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={d.remarks || ''} onChange={(e) => updateReceivedDocument(d.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={() => removeReceivedDocument(d.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {/* Documents Table */}
+                  {documentsReceived.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Date</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Description / Document Name</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Drawing Number</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Revision Number</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Unit / Qty</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Sent By</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remarks</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {documentsReceived.map(d => (
+                            <tr key={d.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="date" 
+                                  value={d.date_received || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'date_received', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="text" 
+                                  value={d.description || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'description', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="text" 
+                                  value={d.drawing_number || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'drawing_number', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="text" 
+                                  value={d.revision_number || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'revision_number', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="text" 
+                                  value={d.unit_qty || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'unit_qty', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="text" 
+                                  value={d.document_sent_by || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'document_sent_by', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <input 
+                                  type="text" 
+                                  value={d.remarks || ''} 
+                                  onChange={(e) => updateReceivedDocument(d.id, 'remarks', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={() => removeReceivedDocument(d.id)} 
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors"
+                                  title="Remove document"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {documentsReceived.length === 0 && (
+                    <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                      No documents recorded yet. Use the form above to add documents received.
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -2346,183 +3590,502 @@ function EditProjectForm() {
                 </div>
 
                 <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newSchedule.sr_no} onChange={(e)=>setNewSchedule(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div className="md:col-span-2">
-                      <input ref={newScheduleDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addSchedule(); } }} type="text" placeholder="Activity / Task Description" value={newSchedule.activity_description} onChange={(e)=>setNewSchedule(prev=>({...prev,activity_description:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Unit/Qty" value={newSchedule.unit_qty} onChange={(e)=>setNewSchedule(prev=>({...prev,unit_qty:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="date" placeholder="Start Date" value={newSchedule.start_date} onChange={(e)=>setNewSchedule(prev=>({...prev,start_date:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="date" placeholder="Completion Date" value={newSchedule.end_date} onChange={(e)=>setNewSchedule(prev=>({...prev,end_date:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Time/Hours Required" value={newSchedule.time_required} onChange={(e)=>setNewSchedule(prev=>({...prev,time_required:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <select value={newSchedule.status_completed} onChange={(e)=>setNewSchedule(prev=>({...prev,status_completed:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded">
-                        <option value="">Status</option>
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
-                        <option value="Ongoing">Ongoing</option>
-                      </select>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remarks" value={newSchedule.remarks} onChange={(e)=>setNewSchedule(prev=>({...prev,remarks:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Activity / Task Description</label>
+                        <select
+                          ref={newScheduleDescRef} 
+                          value={newSchedule.activity_description} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,activity_description:e.target.value}))}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                        >
+                          <option value="">Select activity from Project Activity tab...</option>
+                          {projectActivities.map(act => (
+                            <option key={`${act.id}-${act.type}`} value={act.name}>
+                              {act.type === 'subactivity' ? `↳ ${act.name}` : act.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-400 mt-1">Select from activities added in Project Activity tab</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Unit/Qty</label>
+                        <input 
+                          type="text" 
+                          placeholder="Unit/Qty" 
+                          value={newSchedule.unit_qty} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,unit_qty:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                        <input 
+                          type="date" 
+                          value={newSchedule.start_date} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,start_date:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Completion Date</label>
+                        <input 
+                          type="date" 
+                          value={newSchedule.end_date} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,end_date:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Time/Hours Required</label>
+                        <input 
+                          type="text" 
+                          placeholder="Hours" 
+                          value={newSchedule.time_required} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,time_required:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                        <select 
+                          value={newSchedule.status_completed} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,status_completed:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                        >
+                          <option value="">Select status</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                          <option value="Ongoing">Ongoing</option>
+                        </select>
+                      </div>
+                      <div className="md:col-span-7">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
+                        <input 
+                          type="text" 
+                          placeholder="Additional remarks..." 
+                          value={newSchedule.remarks} 
+                          onChange={(e)=>setNewSchedule(prev=>({...prev,remarks:e.target.value}))} 
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div className="mb-4">
-                    <button type="button" onClick={addSchedule} disabled={!(newSchedule.activity_description && newSchedule.activity_description.trim())} className={`px-3 py-1 rounded-md text-sm ${newSchedule.activity_description && newSchedule.activity_description.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    <button 
+                      type="button" 
+                      onClick={addSchedule} 
+                      disabled={!(newSchedule.activity_description && newSchedule.activity_description.trim())} 
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${
+                        newSchedule.activity_description && newSchedule.activity_description.trim() 
+                          ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' 
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <PlusIcon className="h-4 w-4" />
                       Add Activity
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Activity / Task Description</th>
-                          <th className="text-left py-2 px-2 font-semibold">Unit/Qty</th>
-                          <th className="text-left py-2 px-2 font-semibold">Activity Start Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Activity Completion Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Time/Hours Required</th>
-                          <th className="text-left py-2 px-2 font-semibold">Status Completed</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remarks</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectSchedule.length === 0 ? (
-                          <tr><td colSpan={9} className="text-center py-4 text-gray-500">No schedule items added</td></tr>
-                        ) : (
-                          projectSchedule.map(s => (
-                            <tr key={s.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="number" value={s.sr_no || ''} onChange={(e) => updateSchedule(s.id, 'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={s.activity_description || ''} onChange={(e) => updateSchedule(s.id, 'activity_description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={s.unit_qty || ''} onChange={(e) => updateSchedule(s.id, 'unit_qty', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={s.start_date || ''} onChange={(e) => updateSchedule(s.id, 'start_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={s.end_date || ''} onChange={(e) => updateSchedule(s.id, 'end_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={s.time_required || ''} onChange={(e) => updateSchedule(s.id, 'time_required', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><select value={s.status_completed || ''} onChange={(e) => updateSchedule(s.id, 'status_completed', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded"><option value="">Status</option><option value="Yes">Yes</option><option value="No">No</option><option value="Ongoing">Ongoing</option></select></td>
-                              <td className="py-2 px-2"><input type="text" value={s.remarks || ''} onChange={(e) => updateSchedule(s.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={() => removeSchedule(s.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
+                  {projectSchedule.length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Activity / Task Description</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Unit/Qty</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Start Date</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Completion Date</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Time/Hours</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Status</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Remarks</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Remove</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {projectSchedule.map(s => (
+                            <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-2 px-3">
+                                <select 
+                                  value={s.activity_description || ''} 
+                                  onChange={(e) => updateSchedule(s.id, 'activity_description', e.target.value)} 
+                                  className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                                >
+                                  <option value="">Select activity...</option>
+                                  {projectActivities.map(act => (
+                                    <option key={`${act.id}-${act.type}`} value={act.name}>
+                                      {act.type === 'subactivity' ? `↳ ${act.name}` : act.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="py-2 px-3"><input type="text" value={s.unit_qty || ''} onChange={(e) => updateSchedule(s.id, 'unit_qty', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="date" value={s.start_date || ''} onChange={(e) => updateSchedule(s.id, 'start_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="date" value={s.end_date || ''} onChange={(e) => updateSchedule(s.id, 'end_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="text" value={s.time_required || ''} onChange={(e) => updateSchedule(s.id, 'time_required', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><select value={s.status_completed || ''} onChange={(e) => updateSchedule(s.id, 'status_completed', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Ongoing">Ongoing</option></select></td>
+                              <td className="py-2 px-3"><input type="text" value={s.remarks || ''} onChange={(e) => updateSchedule(s.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3 text-center">
+                                <button 
+                                  type="button" 
+                                  onClick={() => removeSchedule(s.id)} 
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove item"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </button>
+                              </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {projectSchedule.length === 0 && (
+                    <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                      No schedule items added yet. Use the form above to add activities.
+                    </div>
+                  )}
                 </div>
               </section>
             )}
 
             {/* Project Activity / Daily Activity Tab */}
             {activeTab === 'project_activity' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-sm font-semibold text-black">Project Activity / Daily Activity</h2>
-                  <p className="text-xs text-gray-600 mt-1">Record daily work and time spent</p>
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
+                    <h2 className="text-sm font-bold text-gray-900">Project Activities</h2>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Manage disciplines, activities, sub-activities with planning and tracking</p>
                 </div>
 
-                <div className="px-6 py-5">
-                  <div className="mb-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-                    <div>
-                      <input type="number" min="0" placeholder="Sr. No." value={newActivity.sr_no} onChange={(e)=>setNewActivity(prev=>({...prev,sr_no:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="date" placeholder="Date" value={newActivity.date} onChange={(e)=>setNewActivity(prev=>({...prev,date:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div className="md:col-span-3">
-                      <input ref={newActivityDescRef} onKeyDown={(e)=>{ if(e.key === 'Enter'){ e.preventDefault(); addActivityRow(); } }} type="text" placeholder="Daily Activity / Task Description" value={newActivity.daily_activity} onChange={(e)=>setNewActivity(prev=>({...prev,daily_activity:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                      <p className="text-xs text-gray-400 mt-1">Press Enter to add quickly</p>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Unit/Qty" value={newActivity.unit_qty} onChange={(e)=>setNewActivity(prev=>({...prev,unit_qty:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Planned Hours" value={newActivity.planned_hours} onChange={(e)=>setNewActivity(prev=>({...prev,planned_hours:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="time" placeholder="Start Time" value={newActivity.start_time} onChange={(e)=>setNewActivity(prev=>({...prev,start_time:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="time" placeholder="End Time" value={newActivity.end_time} onChange={(e)=>setNewActivity(prev=>({...prev,end_time:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="number" placeholder="Actual Hours" value={newActivity.actual_hours} onChange={(e)=>setNewActivity(prev=>({...prev,actual_hours:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Activity Done By" value={newActivity.activity_done_by} onChange={(e)=>setNewActivity(prev=>({...prev,activity_done_by:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
-                    </div>
-                    <div>
-                      <select value={newActivity.status_completed} onChange={(e)=>setNewActivity(prev=>({...prev,status_completed:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded">
-                        <option value="">Status</option>
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
-                        <option value="Ongoing">Ongoing</option>
-                      </select>
-                    </div>
-                    <div>
-                      <input type="text" placeholder="Remark" value={newActivity.remark} onChange={(e)=>setNewActivity(prev=>({...prev,remark:e.target.value}))} className="w-full px-2 py-1 text-sm border rounded" />
+                <div className="px-6 py-5 space-y-4">
+                  {/* Add Activity Section */}
+                  <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <PlusIcon className="h-4 w-4 text-[#7F2487]" />
+                      Add New Activity
+                    </h4>
+                    
+                    <div className="space-y-2">
+                      {/* Manual Activity Input */}
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={newScopeActivityName} 
+                          onChange={(e) => setNewScopeActivityName(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addScopeActivity()}
+                          placeholder="Type activity name manually..." 
+                          className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] bg-white" 
+                        />
+                        <button 
+                          type="button" 
+                          onClick={addScopeActivity}
+                          disabled={!newScopeActivityName.trim()}
+                          className="px-3 py-1.5 bg-[#7F2487] text-white rounded text-sm font-semibold hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                        >
+                          <PlusIcon className="h-3.5 w-3.5" />
+                          Add Manual
+                        </button>
+                      </div>
+                      
+                      {/* Activity Master Dropdown */}
+                      {functions.length > 0 && (
+                        <div className="flex gap-2">
+                          <select
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value) {
+                                const [funcId, actId, type] = value.split('|');
+                                const func = functions.find(f => String(f.id) === funcId);
+                                
+                                if (type === 'activity') {
+                                  const activity = func?.activities?.find(a => String(a.id) === actId);
+                                  if (activity) {
+                                    const exists = projectActivities.find(pa => pa.id === activity.id && pa.type === 'activity');
+                                    if (!exists) {
+                                      setProjectActivities(prev => [...prev, {
+                                        id: activity.id,
+                                        type: 'activity',
+                                        source: 'master',
+                                        name: activity.activity_name,
+                                        status: 'NEW',
+                                        deliverables: '',
+                                        manhours: 0,
+                                        unit_qty: '',
+                                        planned_hours: 0,
+                                        start_time: '',
+                                        end_time: '',
+                                        actual_hours: 0,
+                                        activity_done_by: '',
+                                        status_completed: '',
+                                        remark: '',
+                                        assigned_users: [],
+                                        function_id: funcId,
+                                        function_name: func.function_name
+                                      }]);
+                                    }
+                                  }
+                                } else if (type === 'subactivity') {
+                                  const activity = func?.activities?.find(a => a.subActivities?.some(sa => String(sa.id) === actId));
+                                  const subActivity = activity?.subActivities?.find(sa => String(sa.id) === actId);
+                                  if (subActivity) {
+                                    const exists = projectActivities.find(pa => pa.id === subActivity.id && pa.type === 'subactivity');
+                                    if (!exists) {
+                                      setProjectActivities(prev => [...prev, {
+                                        id: subActivity.id,
+                                        type: 'subactivity',
+                                        source: 'master',
+                                        name: subActivity.name,
+                                        status: 'NEW',
+                                        deliverables: '',
+                                        manhours: 0,
+                                        unit_qty: '',
+                                        planned_hours: 0,
+                                        start_time: '',
+                                        end_time: '',
+                                        actual_hours: 0,
+                                        activity_done_by: '',
+                                        status_completed: '',
+                                        remark: '',
+                                        assigned_users: [],
+                                        function_id: funcId,
+                                        function_name: func.function_name,
+                                        activity_id: activity.id,
+                                        activity_name: activity.activity_name
+                                      }]);
+                                    }
+                                  }
+                                }
+                                e.target.value = '';
+                              }
+                            }}
+                            className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] bg-white"
+                          >
+                            <option value="">Or select from Activity Master...</option>
+                            {functions.map(func => (
+                              <optgroup key={func.id} label={`📁 ${func.function_name}`}>
+                                {(func.activities || []).map(activity => (
+                                  <Fragment key={activity.id}>
+                                    <option 
+                                      value={`${func.id}|${activity.id}|activity`}
+                                      disabled={projectActivities.some(pa => pa.id === activity.id && pa.type === 'activity')}
+                                    >
+                                      📄 {activity.activity_name}
+                                    </option>
+                                    {(activity.subActivities || []).map(subActivity => (
+                                      <option 
+                                        key={subActivity.id}
+                                        value={`${func.id}|${subActivity.id}|subactivity`}
+                                        disabled={projectActivities.some(pa => pa.id === subActivity.id && pa.type === 'subactivity')}
+                                      >
+                                        &nbsp;&nbsp;&nbsp;↳ {subActivity.name}
+                                      </option>
+                                    ))}
+                                  </Fragment>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="mb-4">
-                    <button type="button" onClick={addActivityRow} disabled={!(newActivity.daily_activity && newActivity.daily_activity.trim())} className={`px-3 py-1 rounded-md text-sm ${newActivity.daily_activity && newActivity.daily_activity.trim() ? 'bg-[#7F2487] text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
-                      Add Row
-                    </button>
-                  </div>
+                  {/* Hierarchical Activity Table */}
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Activities Hierarchy & Tracking</h4>
+                    
+                    <div className="overflow-x-auto bg-white rounded border border-gray-200">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-gray-100 border-b">
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Activity Name</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Source</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Unit/Qty</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Planned Hours</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Start Time</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">End Time</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Actual Hours</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Done By</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Status</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Assigned Users</th>
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Remark</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 text-xs">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {projectActivities.length === 0 ? (
+                            <tr><td colSpan={12} className="text-center py-6 text-gray-500 text-sm">No activities added. Add manually or select from Activity Master.</td></tr>
+                          ) : (
+                            // Group by discipline
+                            (() => {
+                              const grouped = {};
+                              projectActivities.forEach(act => {
+                                const discipline = act.function_name || 'Manual / Other';
+                                if (!grouped[discipline]) grouped[discipline] = [];
+                                grouped[discipline].push(act);
+                              });
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          <th className="text-left py-2 px-2 font-semibold">Sr. No.</th>
-                          <th className="text-left py-2 px-2 font-semibold">Date</th>
-                          <th className="text-left py-2 px-2 font-semibold">Daily Activity</th>
-                          <th className="text-left py-2 px-2 font-semibold">Unit/Qty</th>
-                          <th className="text-left py-2 px-2 font-semibold">Planned Hours</th>
-                          <th className="text-left py-2 px-2 font-semibold">Start Time</th>
-                          <th className="text-left py-2 px-2 font-semibold">End Time</th>
-                          <th className="text-left py-2 px-2 font-semibold">Actual Hours Consumed</th>
-                          <th className="text-left py-2 px-2 font-semibold">Activity Done By</th>
-                          <th className="text-left py-2 px-2 font-semibold">Status Completed</th>
-                          <th className="text-left py-2 px-2 font-semibold">Remark</th>
-                          <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectActivityRows.length === 0 ? (
-                          <tr><td colSpan={12} className="text-center py-4 text-gray-500">No activity rows added</td></tr>
-                        ) : (
-                          projectActivityRows.map(r => (
-                            <tr key={r.id} className="border-b hover:bg-gray-50">
-                              <td className="py-2 px-2"><input type="number" value={r.sr_no || ''} onChange={(e) => updateActivityRow(r.id, 'sr_no', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="date" value={r.date || ''} onChange={(e) => updateActivityRow(r.id, 'date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={r.daily_activity || ''} onChange={(e) => updateActivityRow(r.id, 'daily_activity', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={r.unit_qty || ''} onChange={(e) => updateActivityRow(r.id, 'unit_qty', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.planned_hours || ''} onChange={(e) => updateActivityRow(r.id, 'planned_hours', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="time" value={r.start_time || ''} onChange={(e) => updateActivityRow(r.id, 'start_time', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="time" value={r.end_time || ''} onChange={(e) => updateActivityRow(r.id, 'end_time', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="number" value={r.actual_hours || ''} onChange={(e) => updateActivityRow(r.id, 'actual_hours', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><input type="text" value={r.activity_done_by || ''} onChange={(e) => updateActivityRow(r.id, 'activity_done_by', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2"><select value={r.status_completed || ''} onChange={(e) => updateActivityRow(r.id, 'status_completed', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded"><option value="">Status</option><option value="Yes">Yes</option><option value="No">No</option><option value="Ongoing">Ongoing</option></select></td>
-                              <td className="py-2 px-2"><input type="text" value={r.remark || ''} onChange={(e) => updateActivityRow(r.id, 'remark', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" /></td>
-                              <td className="py-2 px-2 text-center"><button type="button" onClick={() => removeActivityRow(r.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button></td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                              return Object.entries(grouped).map(([discipline, acts]) => (
+                                <Fragment key={discipline}>
+                                  {/* Discipline Header Row */}
+                                  <tr className="bg-gradient-to-r from-purple-100 to-purple-50 border-b-2 border-purple-300">
+                                    <td colSpan={12} className="py-2 px-3">
+                                      <span className="font-bold text-purple-900 text-sm flex items-center gap-2">
+                                        📁 {discipline}
+                                        <span className="text-xs font-normal text-purple-700">({acts.length} {acts.length === 1 ? 'activity' : 'activities'})</span>
+                                      </span>
+                                    </td>
+                                  </tr>
+                                  
+                                  {/* Activities and Sub-activities */}
+                                  {acts.map((act) => (
+                                    <tr key={`${act.id}-${act.type}`} className="border-b hover:bg-purple-50 transition-colors">
+                                      <td className="py-2 px-2">
+                                        <div className="flex items-center gap-1">
+                                          {act.type === 'subactivity' && <span className="text-purple-400 text-sm">↳</span>}
+                                          <input 
+                                            type="text" 
+                                            value={act.name} 
+                                            onChange={(e) => updateScopeActivity(act.id, 'name', e.target.value)} 
+                                            className="flex-1 text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[150px]" 
+                                          />
+                                        </div>
+                                        {act.type === 'subactivity' && act.activity_name && (
+                                          <div className="text-xs text-gray-500 mt-1 ml-5">↑ {act.activity_name}</div>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
+                                          act.source === 'master' ? 'bg-blue-100 text-blue-700' : 
+                                          act.source === 'manual' ? 'bg-green-100 text-green-700' : 
+                                          'bg-purple-100 text-purple-700'
+                                        }`}>
+                                          {act.source === 'master' ? 'Master' : act.source === 'manual' ? 'Manual' : 'Proposal'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="text" 
+                                          value={act.unit_qty || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'unit_qty', e.target.value)} 
+                                          placeholder="10 pcs"
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[80px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="number" 
+                                          value={act.planned_hours || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'planned_hours', e.target.value)} 
+                                          placeholder="0"
+                                          min="0"
+                                          step="0.5"
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[80px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="time" 
+                                          value={act.start_time || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'start_time', e.target.value)} 
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[100px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="time" 
+                                          value={act.end_time || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'end_time', e.target.value)} 
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[100px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="number" 
+                                          value={act.actual_hours || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'actual_hours', e.target.value)} 
+                                          placeholder="0"
+                                          min="0"
+                                          step="0.5"
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[80px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="text" 
+                                          value={act.activity_done_by || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'activity_done_by', e.target.value)} 
+                                          placeholder="Name"
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[120px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <select 
+                                          value={act.status_completed || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'status_completed', e.target.value)} 
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[100px]"
+                                        >
+                                          <option value="">Select</option>
+                                          <option value="Yes">Yes</option>
+                                          <option value="No">No</option>
+                                          <option value="Ongoing">Ongoing</option>
+                                        </select>
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <select
+                                          multiple
+                                          value={act.assigned_users || []}
+                                          onChange={(e) => {
+                                            const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                            updateScopeActivity(act.id, 'assigned_users', selected);
+                                          }}
+                                          className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[120px]"
+                                          size="2"
+                                        >
+                                          {employees.map(emp => (
+                                            <option key={emp.id} value={emp.id}>
+                                              {emp.name || emp.employee_name || `Employee ${emp.id}`}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        {act.assigned_users && act.assigned_users.length > 0 && (
+                                          <div className="text-xs text-purple-600 mt-0.5">{act.assigned_users.length} selected</div>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input 
+                                          type="text" 
+                                          value={act.remark || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'remark', e.target.value)} 
+                                          placeholder="Notes"
+                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[150px]" 
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2 text-center">
+                                        <button 
+                                          type="button" 
+                                          onClick={() => removeScopeActivity(act.id)} 
+                                          className="text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50 transition-colors font-medium"
+                                        >
+                                          Remove
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </Fragment>
+                              ));
+                            })()
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -2530,116 +4093,21 @@ function EditProjectForm() {
 
             {/* Scope of Work Tab */}
             {activeTab === 'scope' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200">
-                  <h2 className="text-sm font-semibold text-black">Scope of Work</h2>
-                  <p className="text-xs text-gray-600 mt-1">Define project scope and input documentation</p>
-                </div>
-                <div className="px-6 py-5 space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-black mb-1">Description</label>
-                    <textarea 
-                      name="description" 
-                      value={form.description} 
-                      onChange={handleChange} 
-                      rows={8} 
-                      placeholder="Describe the project scope, objectives, and key requirements..." 
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]" 
-                    />
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
+                    <h2 className="text-sm font-bold text-gray-900">Scope of Work</h2>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-black mb-1">Input Documents</label>
-                    
-                    {/* Add new document input */}
-                    <div className="flex gap-2 mb-3">
-                      <input 
-                        type="text"
-                        value={newInputDocument}
-                        onChange={(e) => setNewInputDocument(e.target.value)}
-                        onKeyPress={handleInputDocumentKeyPress}
-                        placeholder="Enter document name (e.g., Specification Rev 2.1)..."
-                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487]"
-                      />
-                      <button
-                        type="button"
-                        onClick={addInputDocument}
-                        className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] transition-colors flex items-center gap-1"
-                      >
-                        <PlusIcon className="h-4 w-4" />
-                        Add
-                      </button>
+                </div>
+                <div className="px-6 py-5">
+                  {/* Scope Description - Fetched from Proposal */}
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Project Scope</label>
+                    <div className="bg-white rounded p-3 border border-gray-200 min-h-[100px]">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{form.scope_of_work || form.description || 'No scope defined yet.'}</p>
                     </div>
-
-                    {/* List of added documents */}
-                    {inputDocumentsList.length > 0 && (
-                      <div className="space-y-2 mb-3">
-                        {inputDocumentsList.map((doc) => (
-                          <div 
-                            key={doc.id} 
-                            className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg group hover:bg-purple-100 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <DocumentIcon className="h-4 w-4 text-purple-600 flex-shrink-0" />
-                              <span className="text-sm text-gray-900">{doc.text}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeInputDocument(doc.id)}
-                              className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Remove document"
-                            >
-                              <XMarkIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Scope Activity Table (moved into Scope tab) */}
-                    <div className="mt-4">
-                      <h4 className="text-xs font-semibold text-black mb-2">Project Activity / Status / Deliverables</h4>
-                      <div className="mb-2 flex gap-2">
-                        <input type="text" value={newScopeActivityName} onChange={(e) => setNewScopeActivityName(e.target.value)} placeholder="Add activity name" className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md" />
-                        <button type="button" onClick={addScopeActivity} className="px-3 py-2 bg-[#7F2487] text-white rounded-md text-sm">Add</button>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-gray-100 border-b">
-                              <th className="text-left py-2 px-2 font-semibold">Activity</th>
-                              <th className="text-left py-2 px-2 font-semibold">Status</th>
-                              <th className="text-left py-2 px-2 font-semibold">Deliverables</th>
-                              <th className="text-center py-2 px-2 font-semibold">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {projectActivities.length === 0 ? (
-                              <tr><td colSpan={4} className="text-center py-4 text-gray-500">No activities added for scope</td></tr>
-                            ) : (
-                              projectActivities.map((act) => (
-                                <tr key={act.id} className="border-b hover:bg-gray-50">
-                                  <td className="py-2 px-2">
-                                    <input type="text" value={act.name} onChange={(e) => updateScopeActivity(act.id, 'name', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded" />
-                                  </td>
-                                  <td className="py-2 px-2">
-                                    <select value={act.status || 'NEW'} onChange={(e) => updateScopeActivity(act.id, 'status', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded">
-                                      {STATUS_OPTIONS.map(s => (<option key={s} value={s}>{s}</option>))}
-                                    </select>
-                                  </td>
-                                  <td className="py-2 px-2">
-                                    <input type="text" value={act.deliverables || ''} onChange={(e) => updateScopeActivity(act.id, 'deliverables', e.target.value)} placeholder="Comma-separated deliverables" className="w-full text-sm px-2 py-1 border border-gray-200 rounded" />
-                                  </td>
-                                  <td className="py-2 px-2 text-center">
-                                    <button type="button" onClick={() => removeScopeActivity(act.id)} className="text-red-600 text-xs px-2 py-1 rounded border border-red-100">Remove</button>
-                                  </td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Scope is fetched from the proposal and can be edited in Project Details.</p>
                   </div>
                 </div>
               </section>
@@ -3333,7 +4801,7 @@ function EditProjectForm() {
                             </tr>
                           </thead>
                           <tbody>
-                            {planningActivities.map((activity, index) => (
+                            {planningActivities.map((activity) => (
                               <tr key={activity.id} className="border-t border-gray-200 hover:bg-gray-50">
                                 <td className="px-3 py-2 text-gray-900">{activity.serialNumber}</td>
                                 <td className="px-3 py-2 text-gray-900 font-medium">{activity.activity}</td>
@@ -3422,7 +4890,13 @@ function EditProjectForm() {
                                 <span className="text-sm text-gray-900">{doc.name || doc.text}</span>
                               )}
                               {doc.thumbUrl && (
-                                <img src={doc.thumbUrl} alt={doc.name || 'thumb'} className="h-8 w-8 rounded object-cover border border-blue-200" />
+                                <div 
+                                  className="h-8 w-8 rounded border border-blue-200 bg-blue-50 flex items-center justify-center"
+                                  style={{ backgroundImage: `url(${doc.thumbUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                                  title={doc.name || 'Document thumbnail'}
+                                >
+                                  {!doc.thumbUrl && <DocumentIcon className="h-4 w-4 text-blue-600" />}
+                                </div>
                               )}
                             </div>
                             <div className="flex items-center gap-2">
@@ -3509,23 +4983,6 @@ function EditProjectForm() {
               </section>
             )}
 
-            {/* Submit Buttons */}
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-6 py-2 text-sm rounded-md bg-gray-100 text-black hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-6 py-2 text-sm rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] disabled:opacity-60 disabled:cursor-not-allowed font-medium"
-              >
-                {submitting ? 'Saving…' : 'Update Project'}
-              </button>
-            </div>
           </form>
         </div>
       </div>

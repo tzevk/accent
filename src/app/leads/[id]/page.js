@@ -117,6 +117,101 @@ export default function LeadDetails({ params }) {
     }
   };
 
+  const handleConvertToProposal = async () => {
+    // Prevent converting if already converted
+    if (lead.enquiry_status === 'Converted to Proposal') {
+      alert('This lead has already been converted to a proposal.');
+      return;
+    }
+
+    if (!window.confirm(`Convert lead for "${lead.company_name}" to a proposal?`)) return;
+
+    try {
+      // Build proposal payload from lead
+      const payload = {
+        title: lead.project_description ? `${lead.company_name} - ${lead.project_description.slice(0, 60)}` : `Proposal for ${lead.company_name}`,
+        client: lead.company_name,
+        contact_name: lead.contact_name || null,
+        contact_email: lead.contact_email || null,
+        phone: lead.phone || null,
+        project_description: lead.project_description || null,
+        city: lead.city || null,
+        priority: lead.priority || 'Medium',
+        value: null,
+        status: 'pending',
+        due_date: null,
+        notes: lead.notes || null
+      };
+
+      const result = await fetchJSON('/api/proposals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, lead_id: lead.id })
+      });
+
+      if (!result.success) {
+        alert('Failed to create proposal: ' + (result.error || 'Unknown'));
+        return;
+      }
+
+      // Update lead status to Converted to Proposal
+      let formattedEnquiryDate = null;
+      if (lead.enquiry_date) {
+        try {
+          const d = new Date(lead.enquiry_date);
+          if (!isNaN(d.getTime())) {
+            formattedEnquiryDate = d.toISOString().split('T')[0];
+          } else if (typeof lead.enquiry_date === 'string' && lead.enquiry_date.includes('T')) {
+            formattedEnquiryDate = lead.enquiry_date.split('T')[0];
+          } else {
+            formattedEnquiryDate = lead.enquiry_date;
+          }
+        } catch {
+          formattedEnquiryDate = null;
+        }
+      }
+
+      const updateBody = {
+        company_name: lead.company_name,
+        contact_name: lead.contact_name || null,
+        contact_email: lead.contact_email || null,
+        phone: lead.phone || null,
+        city: lead.city || null,
+        project_description: lead.project_description || null,
+        enquiry_type: lead.enquiry_type || 'Email',
+        enquiry_status: 'Converted to Proposal',
+        enquiry_date: formattedEnquiryDate,
+        lead_source: lead.lead_source || null,
+        priority: lead.priority || 'Medium',
+        notes: lead.notes || null
+      };
+
+      const updResult = await fetchJSON(`/api/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody)
+      });
+
+      if (!updResult.success) {
+        alert('Proposal created but failed to update lead status: ' + (updResult.error || 'Unknown'));
+      }
+
+      const createdId = result.data && result.data.id;
+      const proposalId = result.data && (result.data.proposal_id || result.data.proposalId || (result.data.proposal && (result.data.proposal.proposal_id || result.data.proposal.proposalId)));
+      
+      if (createdId) {
+        const qp = proposalId ? `?pid=${encodeURIComponent(proposalId)}` : '';
+        router.push(`/proposals/${createdId}/edit${qp}`);
+      } else {
+        alert('Proposal created: ' + (proposalId || ('ID ' + (result.data && result.data.id))));
+        router.push('/leads');
+      }
+    } catch (error) {
+      console.error('Error converting lead:', error);
+      alert('Error converting lead to proposal: ' + error.message);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -172,6 +267,20 @@ export default function LeadDetails({ params }) {
               </div>
             </div>
             <div className="flex space-x-3">
+              {lead.enquiry_status !== 'Converted to Proposal' ? (
+                <button
+                  onClick={handleConvertToProposal}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center space-x-2"
+                >
+                  <DocumentTextIcon className="h-4 w-4" />
+                  <span>Convert to Proposal</span>
+                </button>
+              ) : (
+                <div className="px-4 py-2 rounded-md bg-gray-100 text-gray-500 flex items-center space-x-2" title="Already converted to proposal">
+                  <DocumentTextIcon className="h-4 w-4" />
+                  <span>Already Converted</span>
+                </div>
+              )}
               <button
                 onClick={handleEdit}
                 className="bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90 flex items-center space-x-2"

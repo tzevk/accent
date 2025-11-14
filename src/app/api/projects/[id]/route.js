@@ -161,23 +161,41 @@ export async function GET(request, { params }) {
 }
 
 // PUT - Update project
-export async function PUT(request) {
+export async function PUT(request, context) {
   try {
-  // Extract id from request or context as needed
+    const { id } = await context.params;
     const data = await request.json();
     const db = await dbConnect();
 
-    // Resolve the numeric primary key for the project.
-    // If the route param is a pure numeric string, use it directly.
-    // Otherwise try to resolve the human-friendly `project_id` to the numeric id.
+    // Inspect schema to determine the primary key column
+    let pkCol = null;
+    try {
+      const [pkRows] = await db.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
+      );
+      if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
+        pkCol = pkRows[0].COLUMN_NAME;
+      }
+    } catch (schemaErr) {
+      console.warn('Could not inspect primary key for projects table:', schemaErr.message || schemaErr);
+      // Fallback to common primary key names
+      pkCol = 'project_id';
+    }
+
+    // If no primary key found, default to 'project_id'
+    if (!pkCol) {
+      pkCol = 'project_id';
+    }
+
+    // Resolve the project using the primary key
     let projectId = null;
     if (/^\d+$/.test(id)) {
       projectId = parseInt(id, 10);
     } else {
       try {
-        const [lookup] = await db.execute('SELECT id FROM projects WHERE project_id = ?', [id]);
+        const [lookup] = await db.execute(`SELECT ${pkCol} FROM projects WHERE project_id = ?`, [id]);
         if (lookup && lookup.length > 0) {
-          projectId = lookup[0].id;
+          projectId = lookup[0][pkCol];
         }
       } catch (lookupErr) {
         console.warn('Project lookup by project_id failed:', lookupErr.message || lookupErr);
@@ -277,6 +295,7 @@ export async function PUT(request) {
       // Ensure core columns exist to avoid 'unknown column' errors on UPDATE
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255)');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS company_id INT');
 
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_id VARCHAR(100)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_contact_details TEXT');
@@ -438,7 +457,7 @@ export async function PUT(request) {
     // Always update updated_at
     setParts.push('updated_at = CURRENT_TIMESTAMP');
 
-    const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
     params.push(projectId);
 
     const [result] = await db.execute(sql, params);
@@ -482,7 +501,7 @@ export async function PUT(request) {
              project_activities_list = COALESCE(?, project_activities_list),
              planning_activities_list = COALESCE(?, planning_activities_list),
              documents_list = COALESCE(?, documents_list)
-           WHERE id = ?`,
+           WHERE ${pkCol} = ?`,
           [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, 
            teamMembers, projectActivitiesList, planningActivitiesList, documentsList, projectId]
         );

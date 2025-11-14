@@ -311,6 +311,12 @@ export default function Leads() {
   };
 
   const convertToProposal = async (lead) => {
+    // Prevent converting if already converted
+    if (lead.enquiry_status === 'Converted to Proposal') {
+      alert('This lead has already been converted to a proposal.');
+      return;
+    }
+    
     if (!confirm(`Convert lead for "${lead.company_name}" to a proposal?`)) return;
 
     try {
@@ -772,14 +778,21 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                         >
                           <PencilIcon className="h-4 w-4" />
                         </button>
-                        <button 
-                          onClick={() => convertToProposal(lead)}
-                          className="flex items-center gap-2 px-3 py-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors"
-                          title="Convert to Proposal"
-                        >
-                          <DocumentTextIcon className="h-4 w-4" />
-                          <span className="hidden sm:inline text-sm">Convert</span>
-                        </button>
+                        {lead.enquiry_status !== 'Converted to Proposal' ? (
+                          <button 
+                            onClick={() => convertToProposal(lead)}
+                            className="flex items-center gap-2 px-3 py-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors"
+                            title="Convert to Proposal"
+                          >
+                            <DocumentTextIcon className="h-4 w-4" />
+                            <span className="hidden sm:inline text-sm">Convert</span>
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-2 px-3 py-1 text-gray-400 text-sm" title="Already converted to proposal">
+                            <DocumentTextIcon className="h-4 w-4" />
+                            <span className="hidden sm:inline">Converted</span>
+                          </span>
+                        )}
                         <button 
                           onClick={() => handleDeleteLead(lead.id, lead.company_name)}
                           className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"

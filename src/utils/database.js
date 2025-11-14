@@ -13,7 +13,7 @@ export async function dbConnect() {
   const user = process.env.DB_USER
   const password = process.env.DB_PASSWORD
   const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000) // ms
-  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 10)
+  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5) // Reduced to 5 to prevent exceeding max_user_connections
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 2)
 
   // Initialize pool once
@@ -35,12 +35,22 @@ export async function dbConnect() {
           queueLimit: 0,
           connectTimeout,
           dateStrings: true,
-          maxIdle: 10,
-          idleTimeout: 60000
+          maxIdle: 2, // Keep max 2 idle connections
+          idleTimeout: 30000, // Close idle connections after 30s
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 0
         });
         // Warm a connection to validate database existence
         const test = await pool.getConnection();
         test.release();
+        
+        // Add pool error handler to prevent uncaught errors
+        pool.on('connection', (connection) => {
+          connection.on('error', (err) => {
+            console.error('MySQL connection error:', err);
+          });
+        });
+        
         lastError = undefined;
         break; // success
       } catch (err) {
@@ -77,12 +87,42 @@ export async function dbConnect() {
   }
 
   const conn = await pool.getConnection();
+  
+  // Add connection timeout to auto-release if not released in 30s
+  const releaseTimer = setTimeout(() => {
+    console.warn('Connection held for more than 30s, force releasing');
+    if (conn && typeof conn.release === 'function') {
+      conn.release();
+    }
+  }, 30000);
+  
+  // Wrap release to clear the timeout
+  const originalRelease = conn.release.bind(conn);
+  conn.release = function() {
+    clearTimeout(releaseTimer);
+    return originalRelease();
+  };
+  
   // Alias end() to release() for compatibility with existing code
-  if (typeof conn.end !== 'function') {
-    conn.end = conn.release.bind(conn);
-  } else {
-    // overwrite to ensure end() doesn't close the pool
-    conn.end = conn.release.bind(conn);
-  }
+  conn.end = conn.release.bind(conn);
+  
   return conn;
+}
+
+// Export function to close pool (useful for cleanup)
+export async function closePool() {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
+}
+
+// Export function to get pool stats (for debugging)
+export function getPoolStats() {
+  if (!pool) return null;
+  return {
+    totalConnections: pool.pool?._allConnections?.length || 0,
+    freeConnections: pool.pool?._freeConnections?.length || 0,
+    connectionLimit: pool.pool?.config?.connectionLimit || 0
+  };
 }

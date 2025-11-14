@@ -98,7 +98,7 @@ function ProjectsInner() {
     }
   };
 
-  const handleNewProject = () => router.push('/projects/new');
+
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this project?')) return;
@@ -214,14 +214,6 @@ function ProjectsInner() {
                   <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
                   <p className="text-sm text-gray-600">Manage and track your client projects</p>
                 </div>
-                <div className="hidden sm:flex items-center gap-2">
-                  <button
-                    onClick={handleNewProject}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white px-4 py-2 text-sm shadow-sm hover:bg-[#58105f]"
-                  >
-                    <PlusIcon className="h-4 w-4" /> New Project
-                  </button>
-                </div>
               </div>
               {/* Quick Stats */}
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -333,14 +325,6 @@ function ProjectsInner() {
                         >Clear</button>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleNewProject}
-                        className="inline-flex items-center gap-2 rounded-lg bg-[#64126D] text-white px-4 py-2 text-sm shadow-sm hover:bg-[#58105f] md:hidden"
-                      >
-                        <PlusIcon className="h-4 w-4" /> New
-                      </button>
-                    </div>
                   </div>
 
                   {showFilters && (
@@ -388,7 +372,6 @@ function ProjectsInner() {
                       <div className="p-6 text-center">
                         <FolderIcon className="mx-auto h-10 w-10 text-gray-400" />
                         <h3 className="mt-2 text-sm font-medium text-black">No projects found</h3>
-                        <p className="mt-1 text-xs text-black">Get started by creating a new project.</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
@@ -483,21 +466,21 @@ function ProjectsInner() {
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end space-x-1">
                                     <button
-                                      onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}`)}
+                                      onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
                                       className="p-1.5 text-[#64126D] hover:text-white hover:bg-[#64126D] rounded-full transition-colors"
                                       title="View Details"
                                     >
                                       <EyeIcon className="h-3 w-3" />
                                     </button>
                                     <button
-                                      onClick={() => router.push(`/projects/${project.id ?? project.project_id ?? project.project_code ?? ''}/edit`)}
+                                      onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
                                       className="p-1.5 text-gray-600 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                                       title="Edit Project"
                                     >
                                       <PencilIcon className="h-3 w-3" />
                                     </button>
                                     <button
-                                      onClick={() => handleDelete(project.id ?? project.project_id ?? project.project_code)}
+                                      onClick={() => handleDelete(project.project_id ?? project.id ?? project.project_code)}
                                       className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 rounded-full transition-colors"
                                       title="Delete Project"
                                     >

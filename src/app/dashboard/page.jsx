@@ -788,7 +788,7 @@ useEffect(() => {
                 <div className="text-sm text-gray-600">Not enough data</div>
               ) : (
                 <ul className="space-y-3">
-                  {analytics.topCities.map((c, i) => (
+                  {analytics.topCities.map((c) => (
                     <li key={c.city} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="inline-flex h-2 w-2 rounded-full bg-[#64126D]" />

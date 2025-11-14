@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { randomUUID } from 'crypto';
 
+// Helper to detect primary key column for employees table
+async function detectEmployeePrimaryKey(db) {
+  try {
+    const [pkRows] = await db.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND CONSTRAINT_NAME = 'PRIMARY'`
+    );
+    if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
+      return pkRows[0].COLUMN_NAME;
+    }
+  } catch (err) {
+    console.warn('Could not detect employees primary key:', err.message);
+  }
+  return 'id'; // Default fallback
+}
+
 // Calculate salary breakdown server-side according to authoritative rules.
 function calculateSalaryBreakdown(input) {
   // Accept both camelCase and snake_case keys
@@ -172,6 +188,7 @@ export async function GET(request, { params }) {
     if (!employeeId) return NextResponse.json({ success: false, error: 'Employee id required' }, { status: 400 });
     const db = await dbConnect();
     await ensureTable(db);
+    const pkCol = await detectEmployeePrimaryKey(db);
     const [rows] = await db.execute(
       'SELECT * FROM salary_master WHERE employee_id = ? ORDER BY effective_from DESC LIMIT 1',
       [employeeId]
@@ -181,7 +198,7 @@ export async function GET(request, { params }) {
       console.debug('[salary-api] GET: no persisted rows for employee', employeeId);
       // Try to compute from employee master record if available (gross or salary_structure)
       try {
-        const [empRows] = await db.execute('SELECT gross_salary, salary_structure FROM employees WHERE id = ? LIMIT 1', [employeeId]);
+        const [empRows] = await db.execute(`SELECT gross_salary, salary_structure FROM employees WHERE ${pkCol} = ? LIMIT 1`, [employeeId]);
         if (empRows && empRows.length > 0) {
           const emp = empRows[0];
           let grossFromEmp = null;
@@ -267,6 +284,7 @@ export async function POST(request, { params }) {
     const id = randomUUID();
     const db = await dbConnect();
     await ensureTable(db);
+    const pkCol = await detectEmployeePrimaryKey(db);
     // Ensure employees table has columns we may update here (best-effort, ignore errors)
     try {
       await db.execute('ALTER TABLE employees ADD COLUMN salary_structure TEXT');
@@ -384,7 +402,7 @@ export async function POST(request, { params }) {
       if (empUpdates.length > 0) {
         empParams.push(employeeId);
         console.debug('[salary-api] POST: updating employees table with', empUpdates);
-        const [updateRes] = await db.execute(`UPDATE employees SET ${empUpdates.join(', ')} WHERE id = ?`, empParams);
+        const [updateRes] = await db.execute(`UPDATE employees SET ${empUpdates.join(', ')} WHERE ${pkCol} = ?`, empParams);
         console.debug('[salary-api] POST: employees update result', updateRes && updateRes.affectedRows ? updateRes.affectedRows : updateRes);
         // If update didn't affect any row, rollback and surface an error to help debugging invisible writes
         if (!updateRes || (typeof updateRes.affectedRows === 'number' && updateRes.affectedRows === 0)) {
@@ -398,7 +416,7 @@ export async function POST(request, { params }) {
       await db.commit();
       // Verify persisted salary_structure for visibility on refresh
       try {
-        const [empCheck] = await db.execute('SELECT salary_structure, gross_salary, total_deductions, net_salary FROM employees WHERE id = ? LIMIT 1', [employeeId]);
+        const [empCheck] = await db.execute(`SELECT salary_structure, gross_salary, total_deductions, net_salary FROM employees WHERE ${pkCol} = ? LIMIT 1`, [employeeId]);
         await db.end();
         const persisted = empCheck && empCheck[0] ? empCheck[0] : null;
         console.debug('[salary-api] POST: persisted employee salary snapshot', persisted);
