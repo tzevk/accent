@@ -168,12 +168,25 @@ textarea::placeholder {
 .anim-pop { animation: pop .2s ease-out both; }
 .anim-drop { animation: drop .14s ease-out both; transform-origin: top right; }
 
+/* Gentle bounce for drag-drop feedback */
+@keyframes bounce-gentle {
+  0%, 100% { transform: scale(1) }
+  25% { transform: scale(1.05) }
+  50% { transform: scale(0.98) }
+  75% { transform: scale(1.02) }
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 0.4s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-fade-in,
   .anim-slide-up,
   .anim-scale-in,
   .anim-pop,
-  .anim-drop {
+  .anim-drop,
+  .animate-bounce-gentle {
     animation: none !important;
   }
 }

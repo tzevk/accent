@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 'use client';
 
 import Navbar from '@/components/Navbar';
@@ -23,6 +24,9 @@ import {
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 
+
+// Ensure memoized component has a display name for React/ESLint
+SalaryCalculator.displayName = 'SalaryCalculator';
 
 const Avatar = ({ src, firstName, lastName, size = 40 }) => {
   const initials = `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();

@@ -2,16 +2,18 @@ import { dbConnect } from '@/utils/database';
 
 // GET specific project
 export async function GET(request, { params }) {
-  try {
-    const { id } = await params;
-    // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
-    // Treat that as a missing id and return a 400 early to avoid spurious schema lookups.
-    if (!id || id === 'undefined') {
-      return Response.json({ success: false, error: 'Invalid project id parameter' }, { status: 400 });
-    }
-    const projectIdInt = parseInt(id, 10);
+  const { id } = await params;
+  // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
+  // Treat that as a missing id and return a 400 early to avoid spurious schema lookups.
+  if (!id || id === 'undefined') {
+    return Response.json({ success: false, error: 'Invalid project id parameter' }, { status: 400 });
+  }
 
-    const db = await dbConnect();
+  const projectIdInt = parseInt(id, 10);
+  let db = null;
+
+  try {
+    db = await dbConnect();
 
     // Inspect schema to avoid referencing missing columns (some envs have different project schemas)
     let pkCol = null;
@@ -82,9 +84,8 @@ export async function GET(request, { params }) {
 
     if (!rows || rows.length === 0) {
       console.warn('Project lookup did not find a match', { id, pkCol, candidates });
-      await db.end();
-      return Response.json({ 
-        success: false, 
+      return Response.json({
+        success: false,
         error: 'Project not found',
         details: { id, pkCol, candidates }
       }, { status: 404 });
@@ -120,8 +121,6 @@ export async function GET(request, { params }) {
       projectActivities = [];
     }
 
-    await db.end();
-    
     // Parse JSON fields if they exist
     if (project.planning_activities_list && typeof project.planning_activities_list === 'string') {
       try {
@@ -130,7 +129,7 @@ export async function GET(request, { params }) {
         project.planning_activities_list = [];
       }
     }
-    
+
     if (project.documents_list && typeof project.documents_list === 'string') {
       try {
         project.documents_list = JSON.parse(project.documents_list);
@@ -138,9 +137,9 @@ export async function GET(request, { params }) {
         project.documents_list = [];
       }
     }
-    
-    return Response.json({ 
-      success: true, 
+
+    return Response.json({
+      success: true,
       data: {
         ...project,
         project_activities: projectActivities
@@ -151,12 +150,20 @@ export async function GET(request, { params }) {
     // Include error message/short stack in response for easier local debugging
     const details = error?.message || String(error);
     const stack = error?.stack ? error.stack.split('\n').slice(0,5).join('\n') : undefined;
-    return Response.json({ 
-      success: false, 
+    return Response.json({
+      success: false,
       error: 'Failed to fetch project',
       details,
       stack
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try {
+        await db.end();
+      } catch (e) {
+        console.warn('Error releasing DB connection in GET /api/projects/[id]:', e?.message || e);
+      }
+    }
   }
 }
 
@@ -446,11 +453,11 @@ export async function PUT(request, context) {
     ];
 
     const setParts = [];
-    const params = [];
+    const queryParams = [];
     for (const [col, val] of fieldValues) {
       if (existingCols.has(col)) {
         setParts.push(`${col} = COALESCE(?, ${col})`);
-        params.push(val);
+        queryParams.push(val);
       }
     }
 
@@ -460,7 +467,7 @@ export async function PUT(request, context) {
     const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
     params.push(projectId);
 
-    const [result] = await db.execute(sql, params);
+  const [result] = await db.execute(sql, queryParams);
 
     // Ensure columns exist to store assigned disciplines/activities/assignments and per-discipline descriptions
     try {

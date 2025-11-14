@@ -10,9 +10,12 @@ import {
   EyeIcon,
   PencilIcon,
   TrashIcon,
+  CheckIcon,
   CalendarIcon,
   ArrowLeftIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  ChevronUpDownIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 import {
   format,
@@ -30,6 +33,14 @@ import {
 
 
 const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+const BOARD_COLUMNS = [
+  { id: 'NEW', label: 'New' },
+  { id: 'planning', label: 'Planning' },
+  { id: 'in-progress', label: 'In Progress' },
+  { id: 'on-hold', label: 'On Hold' },
+  { id: 'completed', label: 'Completed' },
+  { id: 'cancelled', label: 'Cancelled' }
+];
 
 /** Suspense wrapper to satisfy Next.js for useSearchParams */
 export default function Projects() {
@@ -55,6 +66,57 @@ function ProjectsInner() {
   const [calendarDate, setCalendarDate] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [docProjectId, setDocProjectId] = useState(null);
+  const [projectDocs, setProjectDocs] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [sortBy, setSortBy] = useState('project_id');
+  const [sortDir, setSortDir] = useState('desc');
+  const projKey = (p) => String(p.id ?? p.project_id ?? p.project_code ?? '');
+  const [boardOrder, setBoardOrder] = useState({});
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const [draggingKey, setDraggingKey] = useState(null);
+  const [dragOverKey, setDragOverKey] = useState(null);
+  const [dragInsertPos, setDragInsertPos] = useState(null); // 'before' | 'after' | null
+  const [justDroppedKey, setJustDroppedKey] = useState(null);
+
+  const toggleSort = (field) => {
+    setSortBy((prev) => {
+      if (prev === field) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        return prev;
+      }
+      setSortDir('asc');
+      return field;
+    });
+  };
+
+  // Initialize/normalize board order when projects change in board view
+  useEffect(() => {
+    if (activeTab !== 'board') return;
+    const next = {};
+    for (const col of BOARD_COLUMNS) next[col.id] = [];
+    for (const p of projects) {
+      const status = String(p.status || 'NEW');
+      const colId = BOARD_COLUMNS.find((c) => c.id.toLowerCase() === status.toLowerCase())?.id || 'NEW';
+      next[colId].push(projKey(p));
+    }
+    setBoardOrder((prev) => {
+      // Keep any existing order when possible, append new items, drop missing
+      const merged = {};
+      for (const col of BOARD_COLUMNS) {
+        const prevArr = Array.isArray(prev[col.id]) ? prev[col.id] : [];
+        const present = new Set(next[col.id]);
+        const kept = prevArr.filter((k) => present.has(k));
+        const appended = next[col.id].filter((k) => !kept.includes(k));
+        merged[col.id] = [...kept, ...appended];
+      }
+      return merged;
+    });
+  }, [projects, activeTab]);
+
+  const findProjectByKey = (key) => projects.find((p) => projKey(p) === key);
+
+  // (removed) onDragEnd handler from external DnD library; replaced with native HTML5 DnD handlers
 
   // Derived quick stats
   const stats = useMemo(() => {
@@ -71,7 +133,33 @@ function ProjectsInner() {
   }, []);
 
   useEffect(() => {
-    setActiveTab(viewParam === 'calendar' ? 'calendar' : 'list');
+    // default the documentation panel to the first project when projects load
+    if (!docProjectId && projects && projects.length > 0) setDocProjectId(projects[0].id ?? projects[0].project_id ?? null);
+  }, [projects, docProjectId]);
+
+  const fetchProjectDocs = async (projectId) => {
+    if (!projectId) return setProjectDocs([]);
+    setDocsLoading(true);
+    try {
+      const res = await fetchJSON(`/api/project-docs?project_id=${projectId}`);
+      if (res?.success) setProjectDocs(res.data || []);
+      else setProjectDocs([]);
+    } catch (e) {
+      console.error('Failed to load project docs', e);
+      setProjectDocs([]);
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (docProjectId) fetchProjectDocs(docProjectId);
+    else setProjectDocs([]);
+  }, [docProjectId]);
+
+  useEffect(() => {
+    // Sync active tab from URL param; default to 'list' when absent
+    setActiveTab(viewParam || 'list');
   }, [viewParam]);
 
   useEffect(() => {
@@ -202,7 +290,7 @@ function ProjectsInner() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gradient-to-b from-white to-purple-50 flex flex-col overflow-hidden">
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
@@ -229,19 +317,55 @@ function ProjectsInner() {
                   <div className="text-xs text-gray-600">Completed</div>
                   <div className="mt-1 text-2xl font-bold text-gray-900">{stats.completed}</div>
                 </div>
-                <div className="rounded-xl border border-purple-200 bg-white p-4">
-                  <div className="text-xs text-gray-600">Total Budget</div>
-                  <div className="mt-1 text-2xl font-bold text-gray-900">{formatCurrency(stats.budgetTotal)}</div>
+                {/* Quick Stats */}
+                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-white/20">
+                      <FolderIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-purple-100">Total Projects</div>
+                      <div className="mt-1 text-2xl font-bold">{stats.total}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-white/20">
+                      <CalendarIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-purple-100">In Progress</div>
+                      <div className="mt-1 text-2xl font-bold">{stats.inProgress}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-white/20">
+                      <CheckIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-purple-100">Completed</div>
+                      <div className="mt-1 text-2xl font-bold">{stats.completed}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-white/20">
+                      <FolderIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-purple-100">Total Budget</div>
+                      <div className="mt-1 text-2xl font-bold">{formatCurrency(stats.budgetTotal)}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Tabs (accessible) */}
-            <div className="border-b border-gray-200 mb-6">
-              <div role="tablist" aria-label="Projects views" className="-mb-px flex space-x-2">
+            <div className="mb-6">
+              <div role="tablist" aria-label="Projects views" className="flex flex-wrap items-center gap-2">
                 {[
                   { id: 'list', label: `Projects List (${projects.length})` },
                   { id: 'calendar', label: 'Calendar View' },
+                  { id: 'board', label: 'Board' },
                   { id: 'planning', label: 'Project Planning', badge: '2 items' },
                   { id: 'documentation', label: 'Documentation', badge: 'Input Docs' },
                   { id: 'meetings', label: 'Meetings & Communications', badge: '2 types' }
@@ -256,9 +380,9 @@ function ProjectsInner() {
                       tabIndex={isActive ? 0 : -1}
                       onClick={() => {
                         setActiveTab(tab.id);
-                        // keep search params in sync
+                        // keep search params in sync: set 'view' to the tab id
                         const url = new URL(window.location.href);
-                        url.searchParams.set('view', tab.id === 'calendar' ? 'calendar' : 'list');
+                        url.searchParams.set('view', tab.id);
                         window.history.replaceState({}, '', url);
                       }}
                       onKeyDown={(e) => {
@@ -266,26 +390,26 @@ function ProjectsInner() {
                           const next = arr[(idx + 1) % arr.length];
                           setActiveTab(next.id);
                           const url = new URL(window.location.href);
-                          url.searchParams.set('view', next.id === 'calendar' ? 'calendar' : 'list');
+                          url.searchParams.set('view', next.id);
                           window.history.replaceState({}, '', url);
                         } else if (e.key === 'ArrowLeft') {
                           const prev = arr[(idx - 1 + arr.length) % arr.length];
                           setActiveTab(prev.id);
                           const url = new URL(window.location.href);
-                          url.searchParams.set('view', prev.id === 'calendar' ? 'calendar' : 'list');
+                          url.searchParams.set('view', prev.id);
                           window.history.replaceState({}, '', url);
                         }
                       }}
-                      className={`py-2 px-3 border-b-2 font-medium text-xs rounded-t-md focus:outline-none ${
+                      className={`py-2 px-3 rounded-full text-xs font-medium focus:outline-none transition ${
                         isActive
-                          ? 'border-accent-primary text-black'
-                          : 'border-transparent text-black hover:text-gray-700 hover:border-gray-300'
+                          ? 'bg-[#64126D] text-white shadow-sm'
+                          : 'bg-white text-black border border-gray-200 hover:bg-gray-50'
                       }`}
                     >
                       <span>{tab.label}</span>
                       {tab.badge && (
                         <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
-                          isActive ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                          isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
                         }`}>
                           {tab.badge}
                         </span>
@@ -316,7 +440,7 @@ function ProjectsInner() {
                         onClick={() => setShowFilters(v => !v)}
                         className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       >
-                        Filters
+                        <FunnelIcon className="h-4 w-4" /> Filters
                       </button>
                       {(statusFilter || priorityFilter || query) && (
                         <button
@@ -328,45 +452,66 @@ function ProjectsInner() {
                   </div>
 
                   {showFilters && (
-                    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 flex flex-wrap items-center gap-2">
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="px-2 py-2 text-sm border border-gray-300 rounded-md"
-                      >
-                        <option value="">All Statuses</option>
-                        <option value="NEW">NEW</option>
-                        <option value="planning">Planning</option>
-                        <option value="in-progress">In Progress</option>
-                        <option value="on-hold">On Hold</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                      <select
-                        value={priorityFilter}
-                        onChange={(e) => setPriorityFilter(e.target.value)}
-                        className="px-2 py-2 text-sm border border-gray-300 rounded-md"
-                      >
-                        <option value="">All Priorities</option>
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
-                      </select>
-                      {statusFilter && (
-                        <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-purple-50 text-[#64126D] border border-purple-200">Status: {formatLabel(statusFilter)}</span>
-                      )}
-                      {priorityFilter && (
-                        <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">Priority: {priorityFilter}</span>
-                      )}
+                    <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-500">Status</label>
+                          <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="mt-1 w-full px-2 py-2 text-sm border border-gray-300 rounded-md"
+                          >
+                            <option value="">All Statuses</option>
+                            <option value="NEW">NEW</option>
+                            <option value="planning">Planning</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="on-hold">On Hold</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Priority</label>
+                          <select
+                            value={priorityFilter}
+                            onChange={(e) => setPriorityFilter(e.target.value)}
+                            className="mt-1 w-full px-2 py-2 text-sm border border-gray-300 rounded-md"
+                          >
+                            <option value="">All Priorities</option>
+                            <option value="High">High</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Low">Low</option>
+                          </select>
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            onClick={() => setShowFilters(false)}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-[#64126D] text-white px-3 py-2 text-sm shadow-sm hover:bg-[#58105f]"
+                          >
+                            Apply Filters
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {statusFilter && (
+                          <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-purple-50 text-[#64126D] border border-purple-200">Status: {formatLabel(statusFilter)}</span>
+                        )}
+                        {priorityFilter && (
+                          <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">Priority: {priorityFilter}</span>
+                        )}
+                      </div>
                     </div>
                   )}
 
                   {/* Projects Table */}
                   <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                     {loading ? (
-                      <div className="p-6 text-center">
-                        <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-accent-primary"></div>
-                        <p className="mt-2 text-sm text-black">Loading projects...</p>
+                      <div className="p-6">
+                        <div className="animate-pulse space-y-3">
+                          {[...Array(5)].map((_, i) => (
+                            <div key={i} className="h-10 bg-gray-200 rounded-md"></div>
+                          ))}
+                        </div>
                       </div>
                     ) : projects.length === 0 ? (
                       <div className="p-6 text-center">
@@ -378,18 +523,43 @@ function ProjectsInner() {
                         <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Project No.</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Project</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Client</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Timeline</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
+                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('project_id')}>
+                                  Project No.
+                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                </button>
+                              </th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
+                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('name')}>
+                                  Project
+                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                </button>
+                              </th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
+                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('company_name')}>
+                                  Client
+                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                </button>
+                              </th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
+                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('start_date')}>
+                                  Timeline
+                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                </button>
+                              </th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Status</th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Estimated Cost</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Budget</th>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
+                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('budget')}>
+                                  Budget
+                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                </button>
+                              </th>
                               <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Progress</th>
                               <th className="px-4 py-2 text-right text-xs font-medium text-black uppercase tracking-wider">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
+                          <tbody className="bg-white divide-y divide-gray-100">
                             {projects
                               .filter((p) => {
                                 if (query && !(`${p.name || ''} ${p.company_name || ''}`.toLowerCase().includes(query.toLowerCase()))) return false;
@@ -398,14 +568,25 @@ function ProjectsInner() {
                                 return true;
                               })
                               .sort((a, b) => {
-                                // Sort by project_id in descending order (newest first)
-                                const idA = String(a.project_id || '');
-                                const idB = String(b.project_id || '');
-                                // Compare strings in reverse order for descending
-                                return idB.localeCompare(idA);
+                                const getVal = (p, field) => {
+                                  switch (field) {
+                                    case 'project_id': return String(p.project_id || p.id || '');
+                                    case 'name': return String(p.name || '');
+                                    case 'company_name': return String(p.company_name || '');
+                                    case 'start_date': return toDateKey(p.start_date) || toDateKey(p.target_date) || '';
+                                    case 'budget': return Number(p.budget) || 0;
+                                    default: return '';
+                                  }
+                                };
+                                const va = getVal(a, sortBy);
+                                const vb = getVal(b, sortBy);
+                                let cmp;
+                                if (typeof va === 'number' || typeof vb === 'number') cmp = (va - vb);
+                                else cmp = String(va).localeCompare(String(vb));
+                                return sortDir === 'asc' ? cmp : -cmp;
                               })
                               .map((project, _idx) => (
-                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} className="hover:bg-purple-50/40">
+                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} className="odd:bg-white even:bg-gray-50 hover:bg-purple-50/50 transition-colors">
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-sm font-mono text-gray-900">
                                     {project.project_id || '-'}
@@ -413,7 +594,12 @@ function ProjectsInner() {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div>
-                                    <div className="text-sm font-semibold text-gray-900">{project.name}</div>
+                                    <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-100 text-[#64126D] text-xs font-bold">
+                                        {(project.name || '?').slice(0,1).toUpperCase()}
+                                      </span>
+                                      {project.name}
+                                    </div>
                                     <div className="text-xs text-gray-600 max-w-xs truncate">{project.description}</div>
                                     <div className={`text-xs font-medium mt-1 ${getPriorityColor(project.priority)}`}>
                                       {formatLabel(project.priority || 'Unassigned')} Priority
@@ -436,7 +622,7 @@ function ProjectsInner() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
-                                  <span className={`px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded-full ${getStatusColor(project.status)}`}>
+                                  <span className={`px-2 py-1 inline-flex text-[11px] leading-4 font-semibold rounded-full shadow-sm ${getStatusColor(project.status)}`}>
                                     {formatLabel(project.status)}
                                   </span>
                                 </td>
@@ -626,10 +812,54 @@ function ProjectsInner() {
                         2 items
                       </span>
                     </div>
-                    <button className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-2">
-                      View Details
-                      <ArrowRightIcon className="h-4 w-4" />
-                    </button>
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs text-gray-500">Project</label>
+                        <select
+                          value={docProjectId ?? ''}
+                          onChange={(e) => setDocProjectId(e.target.value)}
+                          className="px-3 py-1 text-sm border border-gray-200 rounded-md"
+                        >
+                          {projects.map((p) => (
+                            <option key={p.id ?? p.project_id ?? p.project_code} value={p.id ?? p.project_id ?? ''}>
+                              {p.name || p.project_id || `Project ${p.id ?? p.project_id ?? ''}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex-1">
+                        {docsLoading ? (
+                          <div className="text-sm text-gray-500">Loading documents…</div>
+                        ) : projectDocs && projectDocs.length > 0 ? (
+                          <ul className="space-y-2">
+                            {projectDocs.map((d) => (
+                              <li key={d.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-md px-3 py-2">
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{d.name || d.master_name || 'Document'}</div>
+                                  <div className="text-xs text-gray-500">{d.description || d.doc_key || d.file_url}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {d.file_url && (
+                                    <a href={d.file_url} target="_blank" rel="noreferrer" className="text-xs text-purple-600 hover:underline">Open</a>
+                                  )}
+                                  <button onClick={() => router.push(`/projects/${d.project_id || docProjectId}`)} className="text-xs text-gray-600">View Project</button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-sm text-gray-500">No documents for this project.</div>
+                        )}
+                      </div>
+
+                      <div className="md:ml-4">
+                        <button onClick={() => router.push(`/projects/${docProjectId}`)} className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-2">
+                          View Details
+                          <ArrowRightIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -682,6 +912,182 @@ function ProjectsInner() {
                       View Details
                       <ArrowRightIcon className="h-4 w-4" />
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Board (drag-and-drop) */}
+              {activeTab === 'board' && (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-bold text-black">Board View</h3>
+                        <p className="text-sm text-gray-600 mt-1">Drag projects across columns to update status.</p>
+                      </div>
+                      <span className="px-3 py-1 bg-purple-50 text-[#64126D] text-xs font-medium rounded-full">Interactive</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
+                      {BOARD_COLUMNS.map((col) => (
+                        <div
+                          key={col.id}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDragEnter={() => setDragOverCol(col.id)}
+                          onDragLeave={(e) => {
+                            // If leaving the column area, clear highlight
+                            if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol((cur) => (cur === col.id ? null : cur));
+                          }}
+                          onTouchMove={() => {
+                            // Basic mobile: mark current column while moving
+                            setDragOverCol(col.id);
+                          }}
+                          onTouchEnd={() => {
+                            // Drop into column on touch end (append)
+                            const key = draggingKey;
+                            if (!key) return;
+                            const srcCol = BOARD_COLUMNS.find((c) => (boardOrder[c.id] || []).includes(key))?.id;
+                            const dstCol = col.id;
+                            if (!srcCol) return;
+                            setDragOverCol(null);
+                            setDraggingKey(null);
+                            setDragOverKey(null);
+                            setDragInsertPos(null);
+                            setJustDroppedKey(key);
+                            setTimeout(() => setJustDroppedKey(null), 300);
+                            setBoardOrder((prev) => {
+                              const next = { ...prev };
+                              const srcArr = Array.isArray(next[srcCol]) ? next[srcCol].filter((k) => k !== key) : [];
+                              const dstArr = Array.isArray(next[dstCol]) ? [...next[dstCol], key] : [key];
+                              next[srcCol] = srcArr;
+                              next[dstCol] = dstArr;
+                              return next;
+                            });
+                            if (srcCol !== dstCol) {
+                              const p = findProjectByKey(key);
+                              if (p) {
+                                const prevStatus = p.status;
+                                const newStatus = dstCol;
+                                setProjects((prev) => prev.map((it) => it === p ? { ...it, status: newStatus } : it));
+                                fetchJSON(`/api/projects/${p.id ?? p.project_id ?? p.project_code}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: newStatus })
+                                }).catch((err) => {
+                                  console.error('Failed to persist status change', err);
+                                  setProjects((prev) => prev.map((it) => it === p ? { ...it, status: prevStatus } : it));
+                                  alert('Failed to update status on server. Please retry.');
+                                });
+                              }
+                            }
+                          }}
+                          onDrop={(e) => {
+                            const key = e.dataTransfer.getData('text/plain');
+                            if (!key) return;
+                            const srcCol = BOARD_COLUMNS.find((c) => (boardOrder[c.id] || []).includes(key))?.id;
+                            const dstCol = col.id;
+                            if (!srcCol) return;
+                            setDragOverCol(null);
+                            setDraggingKey(null);
+                            const targetKey = dragOverKey;
+                            const insertPos = dragInsertPos;
+                            setDragOverKey(null);
+                            setDragInsertPos(null);
+                            setJustDroppedKey(key);
+                            setTimeout(() => setJustDroppedKey(null), 300);
+                            setBoardOrder((prev) => {
+                              const next = { ...prev };
+                              const srcArr = Array.isArray(next[srcCol]) ? next[srcCol].filter((k) => k !== key) : [];
+                              let dstArr = Array.isArray(next[dstCol]) ? [...next[dstCol]] : [];
+                              if (srcCol === dstCol && targetKey && dstArr.includes(targetKey) && key) {
+                                // move within same column relative to hovered card
+                                const idx = dstArr.indexOf(targetKey);
+                                const insertIndex = Math.max(0, Math.min(dstArr.length, idx + (insertPos === 'after' ? 1 : 0)));
+                                dstArr = dstArr.filter((k) => k !== key);
+                                dstArr.splice(insertIndex, 0, key);
+                              } else if (key) {
+                                // cross-column or no specific target — append
+                                dstArr = dstArr.filter((k) => k !== key);
+                                dstArr.push(key);
+                              }
+                              next[srcCol] = srcArr;
+                              next[dstCol] = dstArr;
+                              return next;
+                            });
+                            if (srcCol !== dstCol) {
+                              const p = findProjectByKey(key);
+                              if (p) {
+                                const prevStatus = p.status;
+                                const newStatus = dstCol;
+                                setProjects((prev) => prev.map((it) => it === p ? { ...it, status: newStatus } : it));
+                                fetchJSON(`/api/projects/${p.id ?? p.project_id ?? p.project_code}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: newStatus })
+                                }).catch((err) => {
+                                  console.error('Failed to persist status change', err);
+                                  setProjects((prev) => prev.map((it) => it === p ? { ...it, status: prevStatus } : it));
+                                  alert('Failed to update status on server. Please retry.');
+                                });
+                              }
+                            }
+                          }}
+                          className={`rounded-lg border p-3 transition-colors ${dragOverCol === col.id ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-black">{col.label}</h4>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-gray-700 border border-gray-200">{(boardOrder[col.id] || []).length}</span>
+                          </div>
+                          <div className="mt-3 space-y-2 min-h-[120px]">
+                            {(boardOrder[col.id] || []).map((key) => {
+                              const project = findProjectByKey(key);
+                              if (!project) return null;
+                              return (
+                                <div
+                                  key={key}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData('text/plain', key);
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    setDraggingKey(key);
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggingKey(null);
+                                    setDragOverKey(null);
+                                    setDragInsertPos(null);
+                                  }}
+                                  onDragOver={(e) => {
+                                    // Allow drop and calculate relative position
+                                    e.preventDefault();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const offsetY = e.clientY - rect.top;
+                                    const before = offsetY < rect.height / 2;
+                                    setDragOverKey(key);
+                                    setDragInsertPos(before ? 'before' : 'after');
+                                  }}
+                                  className={`bg-white rounded-md border px-3 py-2 shadow-sm transition-all duration-200 ease-out cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:shadow-md ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
+                                >
+                                  {dragOverKey === key && dragInsertPos === 'before' && (
+                                    <div className="-mt-2 mb-2 h-1 bg-purple-200 rounded animate-pulse" />
+                                  )}
+                                  <div className="flex items-center justify-between">
+                                    <div className="text-sm font-semibold text-black truncate" title={project.name}>{project.name || project.project_id}</div>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getStatusColor(project.status)}`}>{formatLabel(project.status)}</span>
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-gray-600 truncate" title={project.company_name}>{project.company_name || '—'}</div>
+                                  <div className="mt-1 flex items-center justify-between">
+                                    <span className="text-[11px] text-gray-600">Budget: {formatCurrency(project.budget || 0)}</span>
+                                    <span className="text-[11px] text-gray-600">{project.progress || 0}%</span>
+                                  </div>
+                                  {dragOverKey === key && dragInsertPos === 'after' && (
+                                    <div className="mt-2 -mb-2 h-1 bg-purple-200 rounded animate-pulse" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

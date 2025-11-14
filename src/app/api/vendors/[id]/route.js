@@ -1,12 +1,11 @@
 import { dbConnect } from '@/utils/database';
 
 export async function GET(request, { params }) {
+  let db;
   try {
     const { id } = await params;
-    const db = await dbConnect();
+    db = await dbConnect();
     const [vendors] = await db.query('SELECT * FROM vendors WHERE id = ?', [id]);
-
-    await db.end();
 
     if (vendors.length === 0) {
       return Response.json({
@@ -26,13 +25,18 @@ export async function GET(request, { params }) {
       success: false,
       error: error.message
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
 
 export async function PUT(request, { params }) {
+  let db;
   try {
     const { id } = await params;
-    const db = await dbConnect();
+    db = await dbConnect();
     const data = await request.json();
 
     const {
@@ -75,7 +79,6 @@ export async function PUT(request, { params }) {
 
     // Validate required fields
     if (!vendor_name) {
-      await db.end();
       return Response.json({
         success: false,
         error: 'Vendor name is required'
@@ -134,8 +137,6 @@ export async function PUT(request, { params }) {
       id
     ]);
 
-    await db.end();
-
     return Response.json({
       success: true,
       message: 'Vendor updated successfully'
@@ -147,17 +148,20 @@ export async function PUT(request, { params }) {
       success: false,
       error: error.message
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
 
 export async function DELETE(request, { params }) {
+  let db;
   try {
     const { id } = await params;
-    const db = await dbConnect();
+    db = await dbConnect();
 
     await db.execute('DELETE FROM vendors WHERE id = ?', [id]);
-
-    await db.end();
 
     return Response.json({
       success: true,
@@ -170,5 +174,9 @@ export async function DELETE(request, { params }) {
       success: false,
       error: error.message
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
