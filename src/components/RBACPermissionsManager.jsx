@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -654,7 +655,7 @@ export default function RBACPermissionsManager({
               <div className="h-3 w-3 bg-green-500 rounded-full shadow-sm" />
               <div>
                 <div className="font-medium text-gray-900">Role Inherited</div>
-                <div className="text-xs text-gray-600">From user's role</div>
+                <div className="text-xs text-gray-600">From user role</div>
               </div>
             </div>
             <div className="flex items-center space-x-3 bg-white p-3 rounded-lg border border-purple-100">

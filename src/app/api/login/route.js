@@ -3,11 +3,21 @@ import { NextResponse } from 'next/server'
 
 
 export async function POST(req) {
+  let db = null
   try {
-    const body = await req.json()
+    // Parse JSON body safely
+    let body = null
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json(
+        { success: false, message: 'Invalid request body' },
+        { status: 400 }
+      )
+    }
+
     const identifier = body?.username || body?.email // allow either name
     const password = body?.password
-
 
     if (!identifier || !password) {
       return NextResponse.json(
@@ -16,28 +26,26 @@ export async function POST(req) {
       )
     }
 
-
     // Try DB connection with graceful error mapping
-    let db
     try {
       db = await dbConnect()
     } catch (err) {
       console.error('Login DB connect failed:', err)
-      const isNet = ['ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'DB_CONNECTION_FAILED'].includes(err?.code)
+      const isNet = ['ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'DB_CONNECTION_FAILED', 'PROTOCOL_CONNECTION_LOST'].includes(err?.code)
       return NextResponse.json(
         { success: false, message: isNet ? 'Database temporarily unavailable. Please try again shortly.' : 'Server error' },
         { status: isNet ? 503 : 500 }
       )
     }
 
-
-    // Check by username OR email, using the same password_hash field for now
-    let rows
+    // Check by username OR email, using the same password_hash field for now (plaintext)
+    let rows = []
     try {
-      ;[rows] = await db.execute(
+      const [qRows] = await db.execute(
         'SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ?',
         [identifier, identifier, password]
       )
+      rows = qRows || []
       if (rows.length > 0) {
         const userId = rows[0].id
         try {
@@ -48,16 +56,15 @@ export async function POST(req) {
       }
     } catch (err) {
       console.error('Login query failed:', err)
-      await db.end()
       return NextResponse.json(
         { success: false, message: 'Server error' },
         { status: 500 }
       )
+    } finally {
+      if (db) {
+        try { await db.end() } catch {}
+      }
     }
-
-
-    await db.end()
-
 
     if (rows.length > 0) {
       // Minimal auth: set an httpOnly cookie to mark authenticated session
@@ -83,7 +90,6 @@ export async function POST(req) {
       
       return res
     }
-
 
     return NextResponse.json(
       { success: false, message: 'Invalid credentials' },

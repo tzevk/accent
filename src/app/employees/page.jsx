@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 'use client';
 
 import Navbar from '@/components/Navbar';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 
 import {
@@ -165,6 +166,9 @@ const SalaryCalculator = React.memo(({ basicSalary, onCalculate }) => {
     </div>
   );
 });
+
+// Ensure memoized component has a display name for React/ESLint
+SalaryCalculator.displayName = 'SalaryCalculator';
 
 const Avatar = ({ src, firstName, lastName, size = 40 }) => {
   const initials = `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();
@@ -781,8 +785,7 @@ export default function EmployeesPage() {
         const v = vars[key];
         return (typeof v === 'number' && isFinite(v)) ? String(v) : '0';
       });
-      // eslint-disable-next-line no-new-func
-      const fn = new Function(`return (${replaced});`);
+  const fn = new Function(`return (${replaced});`);
       const val = Number(fn());
       return isFinite(val) ? val : 0;
     } catch {

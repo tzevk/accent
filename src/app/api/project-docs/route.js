@@ -7,6 +7,8 @@ import { dbConnect } from '@/utils/database';
 // Fields: id (uuid), project_id (int fk projects.id), name, doc_master_id (nullable, references documents_master.id), file_url, thumb_url, description, status, metadata (JSON), created_at, updated_at
 
 async function ensureTable(db) {
+  // Create table without foreign key constraints initially to avoid FK creation errors if referenced tables
+  // are not yet present or have incompatible engines. We'll try to add constraints afterwards if possible.
   await db.execute(`
     CREATE TABLE IF NOT EXISTS project_documents (
       id VARCHAR(36) PRIMARY KEY,
@@ -19,11 +21,38 @@ async function ensureTable(db) {
       status VARCHAR(50) DEFAULT 'active',
       metadata JSON,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      CONSTRAINT fk_project_documents_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-      CONSTRAINT fk_project_documents_master FOREIGN KEY (doc_master_id) REFERENCES documents_master(id) ON DELETE SET NULL
-    )
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
   `);
+
+  // Attempt to add foreign key constraints only if referenced tables/columns exist.
+  try {
+    const [[projectsTable]] = await db.execute(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
+    );
+    if (projectsTable && projectsTable.cnt > 0) {
+      try {
+        await db.execute(`ALTER TABLE project_documents ADD CONSTRAINT fk_project_documents_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE`);
+      } catch (e) {
+        // Ignore duplicate-add or incompatible FK errors; log for diagnostics
+        // MySQL error codes: 1022/1005 for duplicate keys/creation errors, 1215/150 for FK problems
+        console.warn('Could not add fk_project_documents_project:', e?.message || e);
+      }
+    }
+
+    const [[dmTable]] = await db.execute(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents_master'`
+    );
+    if (dmTable && dmTable.cnt > 0) {
+      try {
+        await db.execute(`ALTER TABLE project_documents ADD CONSTRAINT fk_project_documents_master FOREIGN KEY (doc_master_id) REFERENCES documents_master(id) ON DELETE SET NULL`);
+      } catch (e) {
+        console.warn('Could not add fk_project_documents_master:', e?.message || e);
+      }
+    }
+  } catch (outerErr) {
+    console.warn('Could not verify referenced tables for project_documents FKs:', outerErr?.message || outerErr);
+  }
 }
 
 export async function GET(request) {
