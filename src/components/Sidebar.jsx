@@ -11,8 +11,7 @@ import {
   UserGroupIcon,
   UsersIcon,
   DocumentTextIcon,
-  BuildingOfficeIcon,
-  
+  BuildingOfficeIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
