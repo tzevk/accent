@@ -465,7 +465,7 @@ export async function PUT(request, context) {
     setParts.push('updated_at = CURRENT_TIMESTAMP');
 
     const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
-    params.push(projectId);
+    queryParams.push(projectId);
 
   const [result] = await db.execute(sql, queryParams);
 
