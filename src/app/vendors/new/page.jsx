@@ -75,7 +75,7 @@ export default function NewVendor() {
       
       if (result.success) {
         alert('Vendor created successfully!');
-        router.push(`/vendors/${result.data.id}`);
+        router.push('/vendors');
       } else {
         alert('Error creating vendor: ' + result.error);
       }

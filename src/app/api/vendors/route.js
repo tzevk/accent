@@ -212,8 +212,12 @@ export async function POST(request) {
       contact_person, contact_designation, phone, email,
       address_street, address_city, address_state, address_country, address_pin, website,
       gst_vat_tax_id, pan_legal_reg_no, msme_ssi_registration, iso_certifications, other_compliance_docs,
-      bank_name, bank_account_no, ifsc_swift_code, currency_preference || 'INR', payment_terms, credit_limit,
-      previous_projects, avg_quality_rating, avg_delivery_rating, avg_reliability_rating,
+      bank_name, bank_account_no, ifsc_swift_code, currency_preference || 'INR', payment_terms, 
+      credit_limit && credit_limit !== '' ? credit_limit : null,
+      previous_projects, 
+      avg_quality_rating && avg_quality_rating !== '' ? avg_quality_rating : null, 
+      avg_delivery_rating && avg_delivery_rating !== '' ? avg_delivery_rating : null, 
+      avg_reliability_rating && avg_reliability_rating !== '' ? avg_reliability_rating : null,
       blacklist_notes, remarks,
       contract_attachments, certificate_attachments, profile_attachments
     ]);
