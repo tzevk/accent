@@ -306,53 +306,46 @@ function ProjectsInner() {
               {/* Quick Stats */}
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="rounded-xl border border-purple-200 bg-white p-4">
-                  <div className="text-xs text-gray-600">Total Projects</div>
-                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-purple-50">
+                      <FolderIcon className="h-5 w-5 text-[#64126D]" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-600">Total Projects</div>
+                      <div className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</div>
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-xl border border-purple-200 bg-white p-4">
-                  <div className="text-xs text-gray-600">In Progress</div>
-                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.inProgress}</div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-blue-50">
+                      <CalendarIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-600">In Progress</div>
+                      <div className="mt-1 text-2xl font-bold text-gray-900">{stats.inProgress}</div>
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-xl border border-purple-200 bg-white p-4">
-                  <div className="text-xs text-gray-600">Completed</div>
-                  <div className="mt-1 text-2xl font-bold text-gray-900">{stats.completed}</div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-green-50">
+                      <CheckIcon className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-600">Completed</div>
+                      <div className="mt-1 text-2xl font-bold text-gray-900">{stats.completed}</div>
+                    </div>
+                  </div>
                 </div>
-                {/* Quick Stats */}
-                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-white/20">
-                      <FolderIcon className="h-6 w-6" />
+                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-md bg-amber-50">
+                      <FolderIcon className="h-5 w-5 text-amber-600" />
                     </div>
                     <div>
-                      <div className="text-xs text-purple-100">Total Projects</div>
-                      <div className="mt-1 text-2xl font-bold">{stats.total}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-white/20">
-                      <CalendarIcon className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-purple-100">In Progress</div>
-                      <div className="mt-1 text-2xl font-bold">{stats.inProgress}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-white/20">
-                      <CheckIcon className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-purple-100">Completed</div>
-                      <div className="mt-1 text-2xl font-bold">{stats.completed}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-white/10 border border-white/20 p-4 flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-white/20">
-                      <FolderIcon className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="text-xs text-purple-100">Total Budget</div>
-                      <div className="mt-1 text-2xl font-bold">{formatCurrency(stats.budgetTotal)}</div>
+                      <div className="text-xs text-gray-600">Total Budget</div>
+                      <div className="mt-1 text-2xl font-bold text-gray-900">{formatCurrency(stats.budgetTotal)}</div>
                     </div>
                   </div>
                 </div>

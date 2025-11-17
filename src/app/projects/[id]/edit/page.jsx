@@ -756,7 +756,7 @@ function EditProjectForm() {
           project_assumption_list: JSON.stringify(assumptions),
             project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
           project_schedule_list: JSON.stringify(projectSchedule),
-          project_activity_list: JSON.stringify(projectActivityRows)
+          project_activity_list: JSON.stringify(projectActivities)
         }),
       });
 
@@ -1253,7 +1253,7 @@ function EditProjectForm() {
   }, [teamMembers]);
 
   const handleCancel = () => {
-    router.push(`/projects/${id}`);
+    router.push('/projects');
   };
 
   const handleSubmit = async (event) => {
@@ -1292,7 +1292,7 @@ function EditProjectForm() {
         	project_assumption_list: JSON.stringify(assumptions),
       	project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
         project_schedule_list: JSON.stringify(projectSchedule),
-        project_activity_list: JSON.stringify(projectActivityRows)
+        project_activity_list: JSON.stringify(projectActivities)
       };
 
       const result = await fetchJSON(`/api/projects/${id}`, {

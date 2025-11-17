@@ -18,10 +18,7 @@
     "db:kill": "node scripts/db-kill-connections.js"
   },
   "dependencies": {
-<<<<<<< HEAD
     "@babel/parser": "^7.28.5",
-=======
->>>>>>> 0062c4f (Refactor settings and signin pages to use Next.js Image component; optimize profile fetching with useCallback; clean up unused imports in vendors and sidebar components.)
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",
