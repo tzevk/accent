@@ -66,7 +66,7 @@ export default function ProposalPage() {
       enquiryDate: ''
     },
     work: [
-      { id: 1, scope: '', qty: '', rate: '', amount: '' }
+      { id: Date.now(), scope: '', qty: '', rate: '', amount: '' }
     ],
     amount: {
       inWords: '',
@@ -184,7 +184,7 @@ export default function ProposalPage() {
   const addWorkItem = () => {
     setQuotationData(prev => ({
       ...prev,
-      work: [...prev.work, { scope: '', qty: '', rate: '', amount: 0 }]
+      work: [...prev.work, { id: Date.now() + Math.floor(Math.random() * 1000), scope: '', qty: '', rate: '', amount: 0 }]
     }));
   };
 
@@ -1571,7 +1571,7 @@ export default function ProposalPage() {
                           </thead>
                           <tbody>
                             {quotationData.work.map((item, index) => (
-                              <tr key={index}>
+                              <tr key={item.id ?? index}>
                                 <td className="border border-gray-300 px-3 py-2">
                                   <textarea
                                     value={item.scope}

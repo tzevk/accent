@@ -1,8 +1,9 @@
 import { dbConnect } from '@/utils/database';
 
 export async function GET() {
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Create vendors table if it doesn't exist
     const createTableQuery = `
@@ -102,8 +103,6 @@ export async function GET() {
     // Fetch all vendors
     const [vendors] = await db.query('SELECT * FROM vendors ORDER BY created_at DESC');
 
-    await db.end();
-
     return Response.json({
       success: true,
       data: vendors
@@ -115,12 +114,17 @@ export async function GET() {
       success: false,
       error: error.message
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
 
 export async function POST(request) {
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
     const data = await request.json();
     const {
       vendor_id,
@@ -162,7 +166,6 @@ export async function POST(request) {
 
     // Validate required fields
     if (!vendor_name) {
-      await db.end();
       return Response.json({
         success: false,
         error: 'Vendor name is required'
@@ -222,8 +225,6 @@ export async function POST(request) {
       contract_attachments, certificate_attachments, profile_attachments
     ]);
 
-    await db.end();
-
     return Response.json({
       success: true,
       data: { id: result.insertId, vendor_id: finalVendorId },
@@ -237,5 +238,9 @@ export async function POST(request) {
       error: error.message,
       details: error.toString()
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }

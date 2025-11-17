@@ -12,7 +12,11 @@ import {
   MagnifyingGlassIcon,
   EyeIcon,
   PencilIcon,
+<<<<<<< HEAD
   TrashIcon,
+=======
+  TrashIcon
+>>>>>>> 0062c4f (Refactor settings and signin pages to use Next.js Image component; optimize profile fetching with useCallback; clean up unused imports in vendors and sidebar components.)
 } from '@heroicons/react/24/outline';
 // FunnelIcon is no longer used and has been removed.
 

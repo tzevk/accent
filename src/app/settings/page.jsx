@@ -1,6 +1,10 @@
 'use client';
 
+<<<<<<< HEAD
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+=======
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+>>>>>>> 0062c4f (Refactor settings and signin pages to use Next.js Image component; optimize profile fetching with useCallback; clean up unused imports in vendors and sidebar components.)
 import Image from 'next/image';
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';

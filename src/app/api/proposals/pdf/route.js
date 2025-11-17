@@ -297,7 +297,7 @@ function createPDFDocument(proposals) {
     <Document>
       {proposalArray.map((proposal, index) => (
         <ProposalPage 
-          key={index} 
+          key={proposal.proposal_id ?? proposal.id ?? index} 
           proposal={proposal} 
           currentDate={currentDate}
           logoBase64={logoBase64}
@@ -482,7 +482,7 @@ function ProposalPage({ proposal, currentDate, logoBase64 }) {
 
             {/* Work Items */}
             {workItems.map((item, index) => (
-              <View key={index} style={styles.workTableRow}>
+              <View key={item.srNo ?? item.id ?? index} style={styles.workTableRow}>
                 <View style={styles.workCellSrNo}>
                   <Text>{item.srNo}</Text>
                 </View>

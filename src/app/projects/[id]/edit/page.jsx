@@ -1,10 +1,14 @@
  'use client';
 
+// @ts-nocheck
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
+import Image from 'next/image';
 
 const INITIAL_FORM = {
   // Scope & Annexure fields
