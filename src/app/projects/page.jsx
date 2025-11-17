@@ -290,62 +290,253 @@ function ProjectsInner() {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-b from-white to-purple-50 flex flex-col overflow-hidden">
+    <div className="relative h-screen flex flex-col overflow-hidden" style={{
+      background: 'linear-gradient(135deg, #fafbfc 0%, #f0f4f8 25%, #e8eef5 50%, #f3e8ff 75%, #faf5ff 100%)'
+    }}>
+      {/* Professional animated background */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 0 }}>
+        {/* Premium gradient orbs */}
+        <div className="absolute -top-40 -right-40 h-[700px] w-[700px] rounded-full"
+             style={{
+               background: 'radial-gradient(circle at 30% 30%, rgba(167,139,250,0.12) 0%, rgba(139,92,246,0.08) 25%, rgba(124,58,237,0.04) 50%, transparent 70%)',
+               filter: 'blur(80px)',
+               animation: 'float-smooth 25s ease-in-out infinite',
+               mixBlendMode: 'multiply'
+             }} />
+        <div className="absolute -bottom-40 -left-40 h-[800px] w-[800px] rounded-full"
+             style={{
+               background: 'radial-gradient(circle at 70% 70%, rgba(236,72,153,0.08) 0%, rgba(219,39,119,0.05) 30%, rgba(190,24,93,0.02) 50%, transparent 70%)',
+               filter: 'blur(90px)',
+               animation: 'float-smooth 30s ease-in-out infinite reverse',
+               animationDelay: '7s',
+               mixBlendMode: 'multiply'
+             }} />
+        <div className="absolute top-1/3 right-1/4 h-[500px] w-[500px] rounded-full"
+             style={{
+               background: 'radial-gradient(circle, rgba(99,102,241,0.06) 0%, rgba(79,70,229,0.03) 40%, transparent 65%)',
+               filter: 'blur(70px)',
+               animation: 'pulse-slow 20s ease-in-out infinite',
+               mixBlendMode: 'multiply'
+             }} />
+        {/* Sophisticated dot pattern */}
+        <div className="absolute inset-0 opacity-[0.015]"
+             style={{
+               backgroundImage: 'radial-gradient(circle, rgba(100,18,109,0.8) 1px, transparent 1px)',
+               backgroundSize: '24px 24px',
+               animation: 'pattern-shift 40s linear infinite'
+             }} />
+        {/* Subtle noise texture for depth */}
+        <div className="absolute inset-0 opacity-[0.015]"
+             style={{
+               backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")',
+               mixBlendMode: 'overlay'
+             }} />
+      </div>
       <Navbar />
+      <style jsx>{`
+        @keyframes float-smooth {
+          0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+          33% { transform: translate(40px, -50px) scale(1.05) rotate(5deg); opacity: 0.9; }
+          66% { transform: translate(-30px, 30px) scale(0.95) rotate(-5deg); opacity: 0.85; }
+        }
+        @keyframes pattern-shift {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(24px, 24px); }
+        }
+        @keyframes pulse-slow {
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.1); opacity: 1; }
+        }
+        @keyframes slideInUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(-30px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        .animate-slide-in-up { animation: slideInUp 0.6s ease-out forwards; }
+        .animate-slide-in-right { animation: slideInRight 0.6s ease-out forwards; }
+        .animate-scale-in { animation: scaleIn 0.5s ease-out forwards; }
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+        .delay-300 { animation-delay: 0.3s; }
+        .delay-400 { animation-delay: 0.4s; }
+      `}</style>
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-8 pt-22 pb-8">
             {/* Header */}
-            <div className="mb-6">
+            <div className="mb-8 animate-slide-in-right" style={{ position: 'relative', zIndex: 1 }}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-                  <p className="text-sm text-gray-600">Manage and track your client projects</p>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="h-1 w-12 rounded-full" style={{
+                      background: 'linear-gradient(90deg, #8b5cf6, #ec4899)',
+                      boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)'
+                    }} />
+                    <h1 className="text-4xl font-black tracking-tight" style={{
+                      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 35%, #d946ef 70%, #ec4899 100%)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text',
+                      letterSpacing: '-0.03em',
+                      textShadow: '0 0 40px rgba(139, 92, 246, 0.1)'
+                    }}>
+                      Projects
+                    </h1>
+                  </div>
+                  <p className="text-sm font-medium ml-15" style={{ color: '#64748b', letterSpacing: '0.01em' }}>Manage and track your client projects with precision</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => router.push('/projects/new')}
+                    className="inline-flex items-center gap-2.5 rounded-2xl text-white px-6 py-3 text-sm font-bold transition-all duration-300 shadow-lg"
+                    style={{
+                      background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                      boxShadow: '0 10px 40px -10px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                      transform: 'translateY(0)',
+                      letterSpacing: '0.02em'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
+                      e.currentTarget.style.boxShadow = '0 20px 50px -10px rgba(139, 92, 246, 0.7), 0 0 0 1px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                      e.currentTarget.style.boxShadow = '0 10px 40px -10px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                    }}
+                  >
+                    <PlusIcon className="h-5 w-5" />
+                    <span>New Project</span>
+                  </button>
                 </div>
               </div>
               {/* Quick Stats */}
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="rounded-xl border border-purple-200 bg-white p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-purple-50">
-                      <FolderIcon className="h-5 w-5 text-[#64126D]" />
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div className="rounded-3xl p-6 transition-all duration-500 cursor-pointer group relative overflow-hidden animate-scale-in"
+                     style={{
+                       background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
+                       backdropFilter: 'blur(24px)',
+                       border: '1px solid rgba(139, 92, 246, 0.15)',
+                       boxShadow: '0 8px 32px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                       opacity: 0
+                     }}
+                     onMouseEnter={(e) => {
+                       e.currentTarget.style.transform = 'translateY(-6px) scale(1.02)';
+                       e.currentTarget.style.boxShadow = '0 24px 48px rgba(139, 92, 246, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9)';
+                       e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                     }}
+                     onMouseLeave={(e) => {
+                       e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)';
+                       e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                     }}>
+                  <div className="absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-5" style={{
+                    background: 'radial-gradient(circle, #8b5cf6 0%, transparent 70%)'
+                  }} />
+                  <div className="flex items-center gap-4 relative">
+                    <div className="p-3.5 rounded-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-3" style={{
+                      background: 'linear-gradient(135deg, #ede9fe 0%, #f3e8ff 100%)',
+                      boxShadow: '0 8px 16px rgba(139, 92, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
+                    }}>
+                      <FolderIcon className="h-7 w-7" style={{ color: '#7c3aed' }} />
                     </div>
                     <div>
-                      <div className="text-xs text-gray-600">Total Projects</div>
-                      <div className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</div>
+                      <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#94a3b8', letterSpacing: '0.1em' }}>Total Projects</div>
+                      <div className="mt-1.5 text-4xl font-black transition-all duration-300" style={{ color: '#0f172a', letterSpacing: '-0.02em' }}>{stats.total}</div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                <div className="rounded-2xl p-5 transition-all duration-300 cursor-pointer group"
+                     style={{
+                       background: 'rgba(255, 255, 255, 0.8)',
+                       backdropFilter: 'blur(20px)',
+                       border: '1px solid rgba(255, 255, 255, 0.6)',
+                       boxShadow: '0 8px 32px rgba(59, 130, 246, 0.1)',
+                     }}
+                     onMouseEnter={(e) => {
+                       e.currentTarget.style.transform = 'translateY(-4px)';
+                       e.currentTarget.style.boxShadow = '0 20px 40px rgba(59, 130, 246, 0.2)';
+                     }}
+                     onMouseLeave={(e) => {
+                       e.currentTarget.style.transform = 'translateY(0)';
+                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(59, 130, 246, 0.1)';
+                     }}>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-blue-50">
-                      <CalendarIcon className="h-5 w-5 text-blue-600" />
+                    <div className="p-3 rounded-xl" style={{
+                      background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)',
+                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)'
+                    }}>
+                      <CalendarIcon className="h-6 w-6" style={{ color: '#2563eb' }} />
                     </div>
                     <div>
-                      <div className="text-xs text-gray-600">In Progress</div>
-                      <div className="mt-1 text-2xl font-bold text-gray-900">{stats.inProgress}</div>
+                      <div className="text-xs font-medium" style={{ color: '#64748b' }}>In Progress</div>
+                      <div className="mt-1 text-3xl font-bold" style={{ color: '#1e293b' }}>{stats.inProgress}</div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                <div className="rounded-2xl p-5 transition-all duration-300 cursor-pointer group"
+                     style={{
+                       background: 'rgba(255, 255, 255, 0.8)',
+                       backdropFilter: 'blur(20px)',
+                       border: '1px solid rgba(255, 255, 255, 0.6)',
+                       boxShadow: '0 8px 32px rgba(34, 197, 94, 0.1)',
+                     }}
+                     onMouseEnter={(e) => {
+                       e.currentTarget.style.transform = 'translateY(-4px)';
+                       e.currentTarget.style.boxShadow = '0 20px 40px rgba(34, 197, 94, 0.2)';
+                     }}
+                     onMouseLeave={(e) => {
+                       e.currentTarget.style.transform = 'translateY(0)';
+                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(34, 197, 94, 0.1)';
+                     }}>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-green-50">
-                      <CheckIcon className="h-5 w-5 text-green-600" />
+                    <div className="p-3 rounded-xl" style={{
+                      background: 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)',
+                      boxShadow: '0 4px 12px rgba(34, 197, 94, 0.15)'
+                    }}>
+                      <CheckIcon className="h-6 w-6" style={{ color: '#16a34a' }} />
                     </div>
                     <div>
-                      <div className="text-xs text-gray-600">Completed</div>
-                      <div className="mt-1 text-2xl font-bold text-gray-900">{stats.completed}</div>
+                      <div className="text-xs font-medium" style={{ color: '#64748b' }}>Completed</div>
+                      <div className="mt-1 text-3xl font-bold" style={{ color: '#1e293b' }}>{stats.completed}</div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-xl border border-purple-200 bg-white p-4">
+                <div className="rounded-2xl p-5 transition-all duration-300 cursor-pointer group"
+                     style={{
+                       background: 'rgba(255, 255, 255, 0.8)',
+                       backdropFilter: 'blur(20px)',
+                       border: '1px solid rgba(255, 255, 255, 0.6)',
+                       boxShadow: '0 8px 32px rgba(245, 158, 11, 0.1)',
+                     }}
+                     onMouseEnter={(e) => {
+                       e.currentTarget.style.transform = 'translateY(-4px)';
+                       e.currentTarget.style.boxShadow = '0 20px 40px rgba(245, 158, 11, 0.2)';
+                     }}
+                     onMouseLeave={(e) => {
+                       e.currentTarget.style.transform = 'translateY(0)';
+                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(245, 158, 11, 0.1)';
+                     }}>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-amber-50">
-                      <FolderIcon className="h-5 w-5 text-amber-600" />
+                    <div className="p-3 rounded-xl" style={{
+                      background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
+                      boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)'
+                    }}>
+                      <FolderIcon className="h-6 w-6" style={{ color: '#d97706' }} />
                     </div>
                     <div>
-                      <div className="text-xs text-gray-600">Total Budget</div>
-                      <div className="mt-1 text-2xl font-bold text-gray-900">{formatCurrency(stats.budgetTotal)}</div>
+                      <div className="text-xs font-medium" style={{ color: '#64748b' }}>Total Budget</div>
+                      <div className="mt-1 text-3xl font-bold" style={{ color: '#1e293b' }}>{formatCurrency(stats.budgetTotal)}</div>
                     </div>
                   </div>
                 </div>
@@ -353,8 +544,13 @@ function ProjectsInner() {
             </div>
 
             {/* Tabs (accessible) */}
-            <div className="mb-6">
-              <div role="tablist" aria-label="Projects views" className="flex flex-wrap items-center gap-2">
+            <div className="mb-6 animate-slide-in-up delay-400">
+              <div role="tablist" aria-label="Projects views" className="flex flex-wrap items-center gap-2 p-1.5 rounded-2xl" style={{
+                background: 'rgba(255, 255, 255, 0.6)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
+              }}>
                 {[
                   { id: 'list', label: `Projects List (${projects.length})` },
                   { id: 'calendar', label: 'Calendar View' },
@@ -373,7 +569,6 @@ function ProjectsInner() {
                       tabIndex={isActive ? 0 : -1}
                       onClick={() => {
                         setActiveTab(tab.id);
-                        // keep search params in sync: set 'view' to the tab id
                         const url = new URL(window.location.href);
                         url.searchParams.set('view', tab.id);
                         window.history.replaceState({}, '', url);
@@ -393,17 +588,39 @@ function ProjectsInner() {
                           window.history.replaceState({}, '', url);
                         }
                       }}
-                      className={`py-2 px-3 rounded-full text-xs font-medium focus:outline-none transition ${
-                        isActive
-                          ? 'bg-[#64126D] text-white shadow-sm'
-                          : 'bg-white text-black border border-gray-200 hover:bg-gray-50'
-                      }`}
+                      className="py-2.5 px-4 rounded-xl text-xs font-semibold focus:outline-none transition-all duration-300 transform hover:scale-105"
+                      style={isActive ? {
+                        background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                        color: '#ffffff',
+                        boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                        transform: 'translateY(-1px)'
+                      } : {
+                        background: 'transparent',
+                        color: '#475569',
+                        border: 'none'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.8)';
+                          e.currentTarget.style.color = '#1e293b';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.color = '#475569';
+                        }
+                      }}
                     >
                       <span>{tab.label}</span>
                       {tab.badge && (
-                        <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
-                          isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className="ml-2 px-2 py-0.5 text-[10px] rounded-full font-medium" style={isActive ? {
+                          background: 'rgba(255, 255, 255, 0.25)',
+                          color: '#ffffff'
+                        } : {
+                          background: 'rgba(100, 116, 139, 0.1)',
+                          color: '#64748b'
+                        }}>
                           {tab.badge}
                         </span>
                       )}
@@ -442,10 +659,18 @@ function ProjectsInner() {
                         >Clear</button>
                       )}
                     </div>
+                    <div className="hidden md:block">
+                      <button
+                        onClick={() => router.push('/projects/new')}
+                        className="inline-flex items-center gap-2 rounded-md bg-[#64126D] text-white px-3 py-2 text-sm font-medium shadow hover:bg-[#58105f]"
+                      >
+                        <PlusIcon className="h-4 w-4" /> New Project
+                      </button>
+                    </div>
                   </div>
 
                   {showFilters && (
-                    <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="mt-3 rounded-xl glass-panel p-4">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                           <label className="text-xs text-gray-500">Status</label>
@@ -497,12 +722,21 @@ function ProjectsInner() {
                   )}
 
                   {/* Projects Table */}
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="rounded-2xl overflow-hidden animate-slide-in-up delay-200" style={{
+                    background: 'rgba(255, 255, 255, 0.85)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.5)',
+                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.08)'
+                  }}>
                     {loading ? (
                       <div className="p-6">
                         <div className="animate-pulse space-y-3">
                           {[...Array(5)].map((_, i) => (
-                            <div key={i} className="h-10 bg-gray-200 rounded-md"></div>
+                            <div key={i} className="h-10 rounded-md" style={{
+                              background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                              backgroundSize: '200% 100%',
+                              animation: 'shimmer 1.5s infinite'
+                            }}></div>
                           ))}
                         </div>
                       </div>
@@ -513,46 +747,53 @@ function ProjectsInner() {
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
+                        <table className="min-w-full divide-y" style={{ borderColor: 'rgba(226, 232, 240, 0.5)' }}>
+                          <thead className="sticky top-0 z-[1]" style={{
+                            background: 'rgba(248, 250, 252, 0.95)',
+                            backdropFilter: 'blur(10px)',
+                            borderBottom: '2px solid rgba(226, 232, 240, 0.6)'
+                          }}>
                             <tr>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
-                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('project_id')}>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('project_id')}>
                                   Project No.
-                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                  <ChevronUpDownIcon className="h-3 w-3" />
                                 </button>
                               </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
-                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('name')}>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('name')}>
                                   Project
-                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                  <ChevronUpDownIcon className="h-3 w-3" />
                                 </button>
                               </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
-                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('company_name')}>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('company_name')}>
                                   Client
-                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                  <ChevronUpDownIcon className="h-3 w-3" />
                                 </button>
                               </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
-                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('start_date')}>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('start_date')}>
                                   Timeline
-                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                  <ChevronUpDownIcon className="h-3 w-3" />
                                 </button>
                               </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Status</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Estimated Cost</th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">
-                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort('budget')}>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Status</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Estimated Cost</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
+                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('budget')}>
                                   Budget
-                                  <ChevronUpDownIcon className="h-3 w-3 text-gray-400" />
+                                  <ChevronUpDownIcon className="h-3 w-3" />
                                 </button>
                               </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-black uppercase tracking-wider">Progress</th>
-                              <th className="px-4 py-2 text-right text-xs font-medium text-black uppercase tracking-wider">Actions</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Progress</th>
+                              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="bg-white divide-y divide-gray-100">
+                          <tbody className="divide-y" style={{ 
+                            background: 'transparent',
+                            borderColor: 'rgba(226, 232, 240, 0.4)'
+                          }}>
                             {projects
                               .filter((p) => {
                                 if (query && !(`${p.name || ''} ${p.company_name || ''}`.toLowerCase().includes(query.toLowerCase()))) return false;
@@ -579,7 +820,21 @@ function ProjectsInner() {
                                 return sortDir === 'asc' ? cmp : -cmp;
                               })
                               .map((project, _idx) => (
-                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} className="odd:bg-white even:bg-gray-50 hover:bg-purple-50/50 transition-colors">
+                              <tr key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`} 
+                                  className="transition-all duration-300"
+                                  style={{
+                                    background: _idx % 2 === 0 ? 'rgba(255, 255, 255, 0.4)' : 'rgba(248, 250, 252, 0.4)'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'linear-gradient(90deg, rgba(243, 232, 255, 0.6) 0%, rgba(243, 232, 255, 0.3) 100%)';
+                                    e.currentTarget.style.transform = 'translateX(4px) scale(1.005)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.15)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = _idx % 2 === 0 ? 'rgba(255, 255, 255, 0.4)' : 'rgba(248, 250, 252, 0.4)';
+                                    e.currentTarget.style.transform = 'translateX(0) scale(1)';
+                                    e.currentTarget.style.boxShadow = 'none';
+                                  }}>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-sm font-mono text-gray-900">
                                     {project.project_id || '-'}
@@ -636,34 +891,76 @@ function ProjectsInner() {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="flex items-center">
-                                    <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
-                                      <div className="bg-accent-primary h-1.5 rounded-full" style={{ width: `${project.progress || 0}%` }}></div>
+                                    <div className="w-20 h-2 rounded-full mr-2 overflow-hidden" style={{
+                                      background: 'rgba(226, 232, 240, 0.5)'
+                                    }}>
+                                      <div className="h-full rounded-full transition-all duration-500" style={{ 
+                                        width: `${project.progress || 0}%`,
+                                        background: 'linear-gradient(90deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%)',
+                                        boxShadow: '0 0 8px rgba(139, 92, 246, 0.4)'
+                                      }} />
                                     </div>
-                                    <span className="text-xs text-gray-700">{project.progress || 0}%</span>
+                                    <span className="text-xs font-semibold" style={{ color: '#64748b' }}>{project.progress || 0}%</span>
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end space-x-1">
                                     <button
                                       onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
-                                      className="p-1.5 text-[#64126D] hover:text-white hover:bg-[#64126D] rounded-full transition-colors"
+                                      className="p-2 rounded-lg transition-all duration-200"
+                                      style={{
+                                        color: '#8b5cf6',
+                                        background: 'rgba(139, 92, 246, 0.1)'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)';
+                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'rgba(139, 92, 246, 0.1)';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                      }}
                                       title="View Details"
                                     >
-                                      <EyeIcon className="h-3 w-3" />
+                                      <EyeIcon className="h-4 w-4" />
                                     </button>
                                     <button
                                       onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
-                                      className="p-1.5 text-gray-600 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
+                                      className="p-2 rounded-lg transition-all duration-200"
+                                      style={{
+                                        color: '#64748b',
+                                        background: 'rgba(100, 116, 139, 0.1)'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'rgba(100, 116, 139, 0.2)';
+                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'rgba(100, 116, 139, 0.1)';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                      }}
                                       title="Edit Project"
                                     >
-                                      <PencilIcon className="h-3 w-3" />
+                                      <PencilIcon className="h-4 w-4" />
                                     </button>
                                     <button
                                       onClick={() => handleDelete(project.project_id ?? project.id ?? project.project_code)}
-                                      className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 rounded-full transition-colors"
+                                      className="p-2 rounded-lg transition-all duration-200"
+                                      style={{
+                                        color: '#ef4444',
+                                        background: 'rgba(239, 68, 68, 0.1)'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                      }}
                                       title="Delete Project"
                                     >
-                                      <TrashIcon className="h-3 w-3" />
+                                      <TrashIcon className="h-4 w-4" />
                                     </button>
                                   </div>
                                 </td>
@@ -679,7 +976,7 @@ function ProjectsInner() {
 
               {activeTab === 'calendar' && (
                 <div className="space-y-4">
-                  <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="glass-panel rounded-lg p-4">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div>
                         <h2 className="text-lg font-semibold text-black">Plan by Calendar</h2>
@@ -718,7 +1015,7 @@ function ProjectsInner() {
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="glass-panel rounded-lg overflow-hidden">
                     <div className="grid grid-cols-7 gap-px bg-gray-200">
                       {weekDays.map((day) => (
                         <div key={`heading-${format(day, 'yyyy-MM-dd')}`} className="bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -790,7 +1087,7 @@ function ProjectsInner() {
               {/* Project Planning Tab */}
               {activeTab === 'planning' && (
                 <div className="space-y-4">
-                  <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                  <div className="glass-panel rounded-lg p-6 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -860,7 +1157,7 @@ function ProjectsInner() {
               {/* Documentation Tab */}
               {activeTab === 'documentation' && (
                 <div className="space-y-4">
-                  <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                  <div className="glass-panel rounded-lg p-6 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
@@ -886,7 +1183,7 @@ function ProjectsInner() {
               {/* Meetings & Communications Tab */}
               {activeTab === 'meetings' && (
                 <div className="space-y-4">
-                  <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                  <div className="glass-panel rounded-lg p-6 hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
@@ -912,7 +1209,7 @@ function ProjectsInner() {
               {/* Board (drag-and-drop) */}
               {activeTab === 'board' && (
                 <div className="space-y-4">
-                  <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow">
+                  <div className="glass-panel rounded-lg p-4 sm:p-6 hover:shadow-lg transition-shadow">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h3 className="font-bold text-black">Board View</h3>
@@ -1024,7 +1321,7 @@ function ProjectsInner() {
                               }
                             }
                           }}
-                          className={`rounded-lg border p-3 transition-colors ${dragOverCol === col.id ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}
+                          className={`rounded-xl p-3 transition-colors glass-soft ${dragOverCol === col.id ? 'ring-1 ring-purple-300 bg-white/70' : ''}`}
                         >
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-semibold text-black">{col.label}</h4>
@@ -1057,7 +1354,7 @@ function ProjectsInner() {
                                     setDragOverKey(key);
                                     setDragInsertPos(before ? 'before' : 'after');
                                   }}
-                                  className={`bg-white rounded-md border px-3 py-2 shadow-sm transition-all duration-200 ease-out cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:shadow-md ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
+                                  className={`bg-white/85 backdrop-blur rounded-md border border-white/70 px-3 py-2 shadow-sm transition-all duration-200 ease-out cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:shadow-md ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
                                 >
                                   {dragOverKey === key && dragInsertPos === 'before' && (
                                     <div className="-mt-2 mb-2 h-1 bg-purple-200 rounded animate-pulse" />
@@ -1089,6 +1386,35 @@ function ProjectsInner() {
           </div>
         </div>
       </div>
+      {/* Floating New Project FAB (mobile-focused) */}
+      <button
+        onClick={() => router.push('/projects/new')}
+        className="fixed bottom-6 right-6 md:hidden inline-flex items-center justify-center h-14 w-14 rounded-full text-white transition-all duration-300"
+        style={{
+          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+          boxShadow: '0 12px 40px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(139, 92, 246, 0.5)',
+          animation: 'pulse-ring 2s infinite'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+        }}
+        aria-label="New Project"
+      >
+        <PlusIcon className="h-6 w-6" />
+      </button>
+      <style jsx>{`
+        @keyframes pulse-ring {
+          0%, 100% {
+            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(139, 92, 246, 0.5);
+          }
+          50% {
+            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.5), 0 0 0 10px rgba(139, 92, 246, 0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
