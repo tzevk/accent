@@ -27,6 +27,7 @@ export default function ActivityMasterPage() {
   const [activities, setActivities] = useState([]);
   const [subActivities, setSubActivities] = useState([]);
   const [activityForm, setActivityForm] = useState({ activity_name: '' });
+  const [error, setError] = useState(null);
   
 
   // Fetch disciplines with nested activities and sub-activities

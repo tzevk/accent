@@ -138,6 +138,52 @@ export async function GET(request, { params }) {
       }
     }
 
+    // Parse project_activities_list and merge with user_activity_assignments
+    if (project.project_activities_list && typeof project.project_activities_list === 'string') {
+      try {
+        project.project_activities_list = JSON.parse(project.project_activities_list);
+      } catch {
+        project.project_activities_list = [];
+      }
+    }
+
+    // Load assignments from user_activity_assignments and merge into activities
+    if (project.project_activities_list && Array.isArray(project.project_activities_list)) {
+      try {
+        const projectKey = project[pkCol] || project.project_id;
+        if (projectKey) {
+          const [assignments] = await db.execute(
+            'SELECT * FROM user_activity_assignments WHERE project_id = ?',
+            [projectKey]
+          );
+
+          if (assignments && assignments.length > 0) {
+            // Create a map of activity name to assignment
+            const assignmentMap = new Map();
+            for (const assignment of assignments) {
+              assignmentMap.set(assignment.activity_name, assignment);
+            }
+
+            // Merge assignments into activities
+            project.project_activities_list = project.project_activities_list.map(activity => {
+              const assignment = assignmentMap.get(activity.name);
+              if (assignment) {
+                return {
+                  ...activity,
+                  assigned_user: assignment.user_id ? String(assignment.user_id) : activity.assigned_user || '',
+                  due_date: assignment.due_date || activity.due_date || '',
+                  priority: assignment.priority || activity.priority || 'MEDIUM'
+                };
+              }
+              return activity;
+            });
+          }
+        }
+      } catch (assignErr) {
+        console.warn('Could not merge activity assignments:', assignErr.message || assignErr);
+      }
+    }
+
     return Response.json({
       success: true,
       data: {
@@ -515,6 +561,50 @@ export async function PUT(request, context) {
       }
     } catch (err) {
       console.error('Failed to persist project discipline/activity/assignment/team data:', err);
+    }
+
+    // Sync activity assignments to user_activity_assignments table
+    if (data.project_activities_list) {
+      try {
+        const activities = typeof data.project_activities_list === 'string' 
+          ? JSON.parse(data.project_activities_list) 
+          : data.project_activities_list;
+
+        if (Array.isArray(activities)) {
+          // First, delete existing assignments for this project
+          await db.execute(
+            'DELETE FROM user_activity_assignments WHERE project_id = ?',
+            [projectId]
+          );
+
+          // Insert new assignments for activities that have assigned_user
+          for (const activity of activities) {
+            if (activity.assigned_user && activity.assigned_user !== '') {
+              const userId = parseInt(activity.assigned_user);
+              if (!isNaN(userId)) {
+                await db.execute(
+                  `INSERT INTO user_activity_assignments 
+                   (user_id, project_id, activity_name, activity_description, due_date, priority, estimated_hours, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                  [
+                    userId,
+                    projectId,
+                    activity.name || '',
+                    activity.deliverables || '',
+                    activity.due_date || null,
+                    activity.priority || 'MEDIUM',
+                    parseFloat(activity.planned_hours) || 0,
+                    activity.status_completed || 'NOT_STARTED'
+                  ]
+                );
+              }
+            }
+          }
+        }
+      } catch (syncErr) {
+        console.error('Failed to sync activity assignments:', syncErr);
+        // Non-fatal - continue with success response
+      }
     }
 
     await db.end();

@@ -8,8 +8,8 @@
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-  "lint": "eslint",
-  "migrate:add-enquiry-no": "node scripts/add-enquiry-no.js",
+    "lint": "eslint",
+    "migrate:add-enquiry-no": "node scripts/add-enquiry-no.js",
     "migrate:add-project-lists": "node scripts/add-project-lists.js",
     "clear-leads": "node scripts/clear-leads.js",
     "setup": "node setup-backend.js",
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@babel/parser": "^7.28.5",
+    "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",

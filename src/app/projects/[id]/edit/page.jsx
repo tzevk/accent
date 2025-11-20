@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import Image from 'next/image';
 
@@ -716,7 +716,8 @@ function EditProjectForm() {
     };
 
     fetchProject();
-  }, [id, projectActivities.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
@@ -733,7 +734,7 @@ function EditProjectForm() {
         clearTimeout(autoSaveTimeout);
       }
     };
-  }, [autoSaveTimeout, projectActivities.length]);
+  }, [autoSaveTimeout]);
 
   const autoSave = async () => {
     try {
@@ -1141,7 +1142,7 @@ function EditProjectForm() {
     const name = (newScopeActivityName || '').trim();
     if (!name) return;
     const row = {
-      id: Date.now(),
+      id: `manual-${Date.now()}`, // Use string ID for manual activities to avoid conflicts
       type: 'manual',
       source: 'manual',
       name,
@@ -1156,6 +1157,9 @@ function EditProjectForm() {
       activity_done_by: '',
       status_completed: '',
       remark: '',
+      assigned_user: '',
+      due_date: '',
+      priority: 'MEDIUM',
       assigned_users: [],
       function_name: 'Manual / Other'
     };
@@ -3646,6 +3650,9 @@ function EditProjectForm() {
                                         status_completed: '',
                                         remark: '',
                                         assigned_users: [],
+                                        assigned_user: '',
+                                        due_date: '',
+                                        priority: 'MEDIUM',
                                         function_id: funcId,
                                         function_name: func.function_name
                                       }]);
@@ -3674,6 +3681,9 @@ function EditProjectForm() {
                                         status_completed: '',
                                         remark: '',
                                         assigned_users: [],
+                                        assigned_user: '',
+                                        due_date: '',
+                                        priority: 'MEDIUM',
                                         function_id: funcId,
                                         function_name: func.function_name,
                                         activity_id: activity.id,
@@ -3722,21 +3732,21 @@ function EditProjectForm() {
                     <h4 className="text-sm font-semibold text-gray-700 mb-3">Activities Hierarchy & Tracking</h4>
                     
                     <div className="overflow-x-auto bg-white rounded border border-gray-200">
-                      <table className="w-full text-sm border-collapse">
+                      <table className="w-full text-xs border-collapse">
                         <thead>
                           <tr className="bg-gray-100 border-b">
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Activity Name</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Source</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Unit/Qty</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Planned Hours</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Start Time</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">End Time</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Actual Hours</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Done By</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Status</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Assigned Users</th>
-                            <th className="text-left py-2 px-2 font-semibold text-gray-700 text-xs">Remark</th>
-                            <th className="text-center py-2 px-2 font-semibold text-gray-700 text-xs">Actions</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-48">Activity Name</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-24">Source</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-40">Assigned To</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-32">Due Date</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Priority</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Planned Hrs</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Start Time</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">End Time</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Actual Hrs</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-32">Status</th>
+                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-40">Remark</th>
+                            <th className="text-center py-2 px-3 font-semibold text-gray-700 w-24">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -3767,22 +3777,22 @@ function EditProjectForm() {
                                   {/* Activities and Sub-activities */}
                                   {acts.map((act) => (
                                     <tr key={`${act.id}-${act.type}`} className="border-b hover:bg-purple-50 transition-colors">
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
                                         <div className="flex items-center gap-1">
-                                          {act.type === 'subactivity' && <span className="text-purple-400 text-sm">↳</span>}
+                                          {act.type === 'subactivity' && <span className="text-purple-400">↳</span>}
                                           <input 
                                             type="text" 
                                             value={act.name} 
                                             onChange={(e) => updateScopeActivity(act.id, 'name', e.target.value)} 
-                                            className="flex-1 text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[150px]" 
+                                            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                           />
                                         </div>
                                         {act.type === 'subactivity' && act.activity_name && (
-                                          <div className="text-xs text-gray-500 mt-1 ml-5">↑ {act.activity_name}</div>
+                                          <div className="text-xs text-gray-500 mt-0.5 ml-4">Parent: {act.activity_name}</div>
                                         )}
                                       </td>
-                                      <td className="py-2 px-2">
-                                        <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
+                                      <td className="py-2 px-3">
+                                        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${
                                           act.source === 'master' ? 'bg-blue-100 text-blue-700' : 
                                           act.source === 'manual' ? 'bg-green-100 text-green-700' : 
                                           'bg-purple-100 text-purple-700'
@@ -3790,16 +3800,41 @@ function EditProjectForm() {
                                           {act.source === 'master' ? 'Master' : act.source === 'manual' ? 'Manual' : 'Proposal'}
                                         </span>
                                       </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
+                                        <select
+                                          value={act.assigned_user || ''}
+                                          onChange={(e) => updateScopeActivity(act.id, 'assigned_user', e.target.value)}
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                        >
+                                          <option value="">Unassigned</option>
+                                          {employees.map(emp => (
+                                            <option key={emp.id} value={emp.id}>
+                                              {emp.first_name} {emp.last_name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </td>
+                                      <td className="py-2 px-3">
                                         <input 
-                                          type="text" 
-                                          value={act.unit_qty || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'unit_qty', e.target.value)} 
-                                          placeholder="10 pcs"
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[80px]" 
+                                          type="date" 
+                                          value={act.due_date || ''} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'due_date', e.target.value)} 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                         />
                                       </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
+                                        <select 
+                                          value={act.priority || 'MEDIUM'} 
+                                          onChange={(e) => updateScopeActivity(act.id, 'priority', e.target.value)} 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                        >
+                                          <option value="LOW">Low</option>
+                                          <option value="MEDIUM">Medium</option>
+                                          <option value="HIGH">High</option>
+                                          <option value="URGENT">Urgent</option>
+                                        </select>
+                                      </td>
+                                      <td className="py-2 px-3">
                                         <input 
                                           type="number" 
                                           value={act.planned_hours || ''} 
@@ -3807,26 +3842,26 @@ function EditProjectForm() {
                                           placeholder="0"
                                           min="0"
                                           step="0.5"
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[80px]" 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                         />
                                       </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
                                         <input 
                                           type="time" 
                                           value={act.start_time || ''} 
                                           onChange={(e) => updateScopeActivity(act.id, 'start_time', e.target.value)} 
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[100px]" 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                         />
                                       </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
                                         <input 
                                           type="time" 
                                           value={act.end_time || ''} 
                                           onChange={(e) => updateScopeActivity(act.id, 'end_time', e.target.value)} 
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[100px]" 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                         />
                                       </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
                                         <input 
                                           type="number" 
                                           value={act.actual_hours || ''} 
@@ -3834,61 +3869,32 @@ function EditProjectForm() {
                                           placeholder="0"
                                           min="0"
                                           step="0.5"
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[80px]" 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                         />
                                       </td>
-                                      <td className="py-2 px-2">
-                                        <input 
-                                          type="text" 
-                                          value={act.activity_done_by || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'activity_done_by', e.target.value)} 
-                                          placeholder="Name"
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[120px]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
                                         <select 
                                           value={act.status_completed || ''} 
                                           onChange={(e) => updateScopeActivity(act.id, 'status_completed', e.target.value)} 
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[100px]"
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                                         >
                                           <option value="">Select</option>
-                                          <option value="Yes">Yes</option>
-                                          <option value="No">No</option>
-                                          <option value="Ongoing">Ongoing</option>
+                                          <option value="NOT_STARTED">Not Started</option>
+                                          <option value="IN_PROGRESS">In Progress</option>
+                                          <option value="COMPLETED">Completed</option>
+                                          <option value="OVERDUE">Overdue</option>
                                         </select>
                                       </td>
-                                      <td className="py-2 px-2">
-                                        <select
-                                          multiple
-                                          value={act.assigned_users || []}
-                                          onChange={(e) => {
-                                            const selected = Array.from(e.target.selectedOptions, option => option.value);
-                                            updateScopeActivity(act.id, 'assigned_users', selected);
-                                          }}
-                                          className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[120px]"
-                                          size="2"
-                                        >
-                                          {employees.map(emp => (
-                                            <option key={emp.id} value={emp.id}>
-                                              {emp.name || emp.employee_name || `Employee ${emp.id}`}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        {act.assigned_users && act.assigned_users.length > 0 && (
-                                          <div className="text-xs text-purple-600 mt-0.5">{act.assigned_users.length} selected</div>
-                                        )}
-                                      </td>
-                                      <td className="py-2 px-2">
+                                      <td className="py-2 px-3">
                                         <input 
                                           type="text" 
                                           value={act.remark || ''} 
                                           onChange={(e) => updateScopeActivity(act.id, 'remark', e.target.value)} 
                                           placeholder="Notes"
-                                          className="w-full text-sm px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] min-w-[150px]" 
+                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                         />
                                       </td>
-                                      <td className="py-2 px-2 text-center">
+                                      <td className="py-2 px-3 text-center">
                                         <button 
                                           type="button" 
                                           onClick={() => removeScopeActivity(act.id)} 
