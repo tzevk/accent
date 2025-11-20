@@ -386,7 +386,12 @@ export default function SoftwareMasterPage() {
       const res = await fetch(`/api/software-versions?id=${id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete version');
+      
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.details || 'Failed to delete version');
+      }
 
       await fetchSoftwareMaster();
     } catch (err) {
