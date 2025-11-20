@@ -17,7 +17,7 @@ import { randomUUID } from 'crypto';
 export async function GET(request, { params }) {
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.READ);
-    if (auth.authorized !== true) return auth;
+    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
     const requestedUserId = parseInt(id);
@@ -106,7 +106,7 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.ASSIGN);
-    if (auth.authorized !== true) return auth;
+    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
     const userId = parseInt(id);
@@ -228,7 +228,7 @@ export async function POST(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.UPDATE);
-    if (auth.authorized !== true) return auth;
+    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
     const userId = parseInt(id);
@@ -366,7 +366,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.DELETE);
-    if (auth.authorized !== true) return auth;
+    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
     const userId = parseInt(id);

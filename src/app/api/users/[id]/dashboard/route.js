@@ -16,8 +16,8 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
  */
 export async function GET(request, { params }) {
   try {
-    const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
-    if (auth.authorized !== true) return auth;
+    const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.READ);
+    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
     const requestedUserId = parseInt(id);
