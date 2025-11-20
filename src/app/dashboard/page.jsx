@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
+
 'use client';
 
 import Navbar from '@/components/Navbar';

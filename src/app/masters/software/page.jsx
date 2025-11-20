@@ -358,7 +358,7 @@ export default function SoftwareMasterPage() {
             notes: versionForm.notes || '',
           };
 
-      const res = await fetch('/api/software/versions', {
+      const res = await fetch('/api/software-versions', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -383,7 +383,7 @@ export default function SoftwareMasterPage() {
     try {
       setLoading(true);
       setError('');
-      const res = await fetch(`/api/software/versions?id=${id}`, {
+      const res = await fetch(`/api/software-versions?id=${id}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete version');
