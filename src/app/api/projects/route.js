@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { logActivity } from '@/utils/activity-logger';
 
 // GET all projects
 export async function GET() {
@@ -283,6 +284,20 @@ export async function POST(request) {
     
     await db.end();
     
+    // Log the activity
+    logActivity({
+      actionType: 'create',
+      resourceType: 'project',
+      resourceId: result.insertId.toString(),
+      description: `Created project: ${name}`,
+      details: {
+        project_id: projectId,
+        project_name: name,
+        client_name: client_name,
+        status: status || 'NEW'
+      }
+    }, request).catch(err => console.error('Failed to log activity:', err));
+    
     return NextResponse.json({ 
       success: true, 
       data: newProject[0],
@@ -465,6 +480,20 @@ export async function PUT(request) {
     
     await db.end();
     
+    // Log the activity
+    logActivity({
+      actionType: 'update',
+      resourceType: 'project',
+      resourceId: id.toString(),
+      description: `Updated project: ${name}`,
+      details: {
+        project_id: updatedProject[0]?.project_id,
+        project_name: name,
+        status: status,
+        updated_fields: Object.keys(data)
+      }
+    }, request).catch(err => console.error('Failed to log activity:', err));
+    
     return NextResponse.json({ 
       success: true, 
       data: updatedProject[0],
@@ -522,7 +551,7 @@ export async function DELETE(request) {
     }
 
     // Check if project exists using resolved key column
-    const query = `SELECT ${keyCol} FROM projects WHERE ${keyCol} = ?`;
+    const query = `SELECT ${keyCol}, name, project_id FROM projects WHERE ${keyCol} = ?`;
     const [existing] = await db.execute(query, [id]);
 
     if (!existing || existing.length === 0) {
@@ -534,6 +563,18 @@ export async function DELETE(request) {
     await db.execute(`DELETE FROM projects WHERE ${keyCol} = ?`, [id]);
 
     await db.end();
+    
+    // Log the activity
+    logActivity({
+      actionType: 'delete',
+      resourceType: 'project',
+      resourceId: id,
+      description: `Deleted project: ${existing[0].name}`,
+      details: {
+        project_id: existing[0].project_id,
+        project_name: existing[0].name
+      }
+    }, request).catch(err => console.error('Failed to log activity:', err));
     
     return NextResponse.json({ 
       success: true, 

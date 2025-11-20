@@ -87,6 +87,7 @@ const TABS = [
   { id: 'project_details', label: 'Project Details' },
   { id: 'input_documents', label: 'Input Documents' },
   { id: 'scope', label: 'Scope' },
+  { id: 'software', label: 'Software' },
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'documents_received', label: 'List of Documents Received' },
   { id: 'project_schedule', label: 'Project Schedule' },
@@ -174,6 +175,13 @@ function EditProjectForm() {
     subLot: '' 
   });
   const [docMaster, setDocMaster] = useState([]);
+  
+  // Software Management
+  const [softwareItems, setSoftwareItems] = useState([]);
+  const [softwareCategories, setSoftwareCategories] = useState([]);
+  const [selectedSoftwareCategory, setSelectedSoftwareCategory] = useState('');
+  const [selectedSoftware, setSelectedSoftware] = useState('');
+  const [selectedSoftwareVersion, setSelectedSoftwareVersion] = useState('');
   
   // Documentation tab - detailed document management
   const [documentsList, setDocumentsList] = useState([]);
@@ -676,6 +684,20 @@ function EditProjectForm() {
               setLessonsLearnt([]);
             }
 
+            // Load software items
+            if (project.software_items) {
+              try {
+                const parsed = typeof project.software_items === 'string'
+                  ? JSON.parse(project.software_items)
+                  : project.software_items;
+                setSoftwareItems(Array.isArray(parsed) ? parsed : []);
+              } catch {
+                setSoftwareItems([]);
+              }
+            } else {
+              setSoftwareItems([]);
+            }
+
                   // Load internal meetings list (new structured array) or fall back to legacy singular internal fields
                   if (project.internal_meetings_list) {
                     try {
@@ -718,6 +740,22 @@ function EditProjectForm() {
     fetchProject();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Fetch Software Master data
+  useEffect(() => {
+    const fetchSoftwareMaster = async () => {
+      try {
+        const res = await fetch('/api/software-master');
+        const json = await res.json();
+        if (json?.success && Array.isArray(json.data)) {
+          setSoftwareCategories(json.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch software master:', error);
+      }
+    };
+    fetchSoftwareMaster();
+  }, []);
 
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
@@ -854,6 +892,68 @@ function EditProjectForm() {
     };
     loadDocMaster();
   }, []);
+
+  // Software Management Functions
+  const addSoftwareItem = () => {
+    if (!selectedSoftwareCategory || !selectedSoftware || !selectedSoftwareVersion) {
+      alert('Please select category, software, and version');
+      return;
+    }
+
+    const category = softwareCategories.find(c => c.id === selectedSoftwareCategory);
+    const software = category?.softwares?.find(s => s.id === selectedSoftware);
+    const version = software?.versions?.find(v => v.id === selectedSoftwareVersion);
+
+    if (!category || !software || !version) return;
+
+    // Check if already added
+    const exists = softwareItems.some(
+      item => item.software_id === selectedSoftware && item.version_id === selectedSoftwareVersion
+    );
+
+    if (exists) {
+      alert('This software version is already added');
+      return;
+    }
+
+    const newItem = {
+      id: Date.now(),
+      category_id: category.id,
+      category_name: category.name,
+      software_id: software.id,
+      software_name: software.name,
+      provider: software.provider || '',
+      version_id: version.id,
+      version_name: version.name,
+      release_date: version.release_date || '',
+      notes: version.notes || ''
+    };
+
+    const updated = [...softwareItems, newItem];
+    setSoftwareItems(updated);
+    setForm(prev => ({ ...prev, software_items: JSON.stringify(updated) }));
+
+    // Reset selections
+    setSelectedSoftwareCategory('');
+    setSelectedSoftware('');
+    setSelectedSoftwareVersion('');
+  };
+
+  const removeSoftwareItem = (id) => {
+    const updated = softwareItems.filter(item => item.id !== id);
+    setSoftwareItems(updated);
+    setForm(prev => ({ ...prev, software_items: JSON.stringify(updated) }));
+  };
+
+  // Get available software for selected category
+  const availableSoftware = selectedSoftwareCategory
+    ? softwareCategories.find(c => c.id === selectedSoftwareCategory)?.softwares || []
+    : [];
+
+  // Get available versions for selected software
+  const availableVersions = selectedSoftware
+    ? availableSoftware.find(s => s.id === selectedSoftware)?.versions || []
+    : [];
 
   // File upload for input documents (images / svg -> via /api/uploads). Other file types can be added later.
   const handleInputDocumentFileUpload = async (event) => {

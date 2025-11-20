@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useSessionRBAC } from '@/utils/client-rbac';
 import {
   ChevronDownIcon,
   ClockIcon,
@@ -11,15 +12,19 @@ import {
   UserGroupIcon,
   UsersIcon,
   DocumentTextIcon,
-  BuildingOfficeIcon
+  BuildingOfficeIcon,
+  ChartBarIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { user } = useSessionRBAC();
   const isSignin = pathname.startsWith('/signin');
   const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const isAdmin = user?.role === 'Admin';
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -97,6 +102,19 @@ export default function Sidebar() {
             {/* Document Master removed from sidebar per request */}
           </div>
         </div>
+
+        {/* ADMIN section - only show for Admin users */}
+        {isAdmin && (
+          <div className="px-3 pt-4 pb-2">
+            <div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
+              <span>ADMIN</span>
+            </div>
+            <div className="space-y-1 mt-1">
+              <NavRow icon={ClipboardDocumentListIcon} label="Activity Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
+              <NavRow icon={ChartBarIcon} label="Productivity Reports" href="/admin/productivity" active={pathname.startsWith('/admin/productivity')} />
+            </div>
+          </div>
+        )}
 
         <div className="mt-auto px-3 pt-4 pb-4">
           {/* SETTINGS header */}

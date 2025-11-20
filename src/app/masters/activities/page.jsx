@@ -20,6 +20,7 @@ export default function ActivityMasterPage() {
   const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [editingActivityId, setEditingActivityId] = useState(null);
+  const [editingSubId, setEditingSubId] = useState(null);
   const [showDisciplineForm, setShowDisciplineForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showSubActivityForm, setShowSubActivityForm] = useState(false);
