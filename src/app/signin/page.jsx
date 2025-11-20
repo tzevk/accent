@@ -21,14 +21,6 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // 🪄 Adaptive gradient style and sizing for different platforms
-  const gradientStyle = {
-    background:
-      'radial-gradient(1000px 700px at 50% 35%, #d3a9ce 0%, #b177c1 35%, #9041a0 65%, #6c1b7a 100%)',
-    filter: 'saturate(1.05) brightness(1.08)',
-    transition: 'background 0.4s ease, filter 0.4s ease',
-  };
   
   const [isWindows, setIsWindows] = useState(false);
   const [platformStyles, setPlatformStyles] = useState({});

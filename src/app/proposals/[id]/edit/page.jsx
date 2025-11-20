@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
@@ -646,8 +645,7 @@ function InputDocumentsForm({ proposalData, setProposalData }) {
       ? String(proposalData.input_document).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
       : [];
     if (JSON.stringify(arr) !== JSON.stringify(docs)) setDocs(arr);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proposalData.input_document]);
+  }, [proposalData.input_document, docs]);
 
   const persist = (nextDocs) => {
     setDocs(nextDocs);
@@ -730,8 +728,7 @@ function DeliverablesForm({ proposalData, setProposalData }) {
       ? String(proposalData.list_of_deliverables).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
       : [];
     if (JSON.stringify(arr) !== JSON.stringify(items)) setItems(arr);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proposalData.list_of_deliverables]);
+  }, [proposalData.list_of_deliverables, items]);
 
   const persist = (next) => {
     setItems(next);

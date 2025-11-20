@@ -95,10 +95,9 @@ export async function GET(request, { params }) {
     const [activeProjects] = await db.execute(`
       SELECT 
         p.project_id,
-        p.project_title,
+        p.name as project_title,
         p.client_name,
         p.status as project_status,
-        p.progress as project_progress,
         p.project_code,
         COUNT(uaa.id) as total_activities,
         SUM(CASE WHEN uaa.status = 'Not Started' THEN 1 ELSE 0 END) as not_started,
@@ -109,8 +108,8 @@ export async function GET(request, { params }) {
       FROM projects p
       INNER JOIN user_activity_assignments uaa ON p.project_id = uaa.project_id
       WHERE uaa.user_id = ?
-      AND p.status IN ('NEW', 'planning', 'in-progress')
-      GROUP BY p.project_id
+      AND p.status IN ('NEW', 'planning', 'in-progress', 'Ongoing')
+      GROUP BY p.project_id, p.name, p.client_name, p.status, p.project_code
       ORDER BY overdue DESC, p.start_date DESC
     `, [requestedUserId]);
 
