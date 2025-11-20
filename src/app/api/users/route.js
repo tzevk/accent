@@ -168,12 +168,12 @@ export async function POST(request) {
         username, 
         password, 
         userEmail, 
-        employee_id, 
-        role_id || null, 
+        employee_id === '' || employee_id === null ? null : employee_id, 
+        role_id === '' || role_id === null ? null : role_id, 
         permissions ? JSON.stringify(permissions) : null,
         roleData ? roleData.department : employee.department,
         fullName,
-        created_by || null
+        created_by === '' || created_by === null ? null : created_by
       ]
     );
 
@@ -236,6 +236,10 @@ export async function PUT(request) {
         if (k === 'permissions') {
           fields.push('permissions = ?');
           vals.push(data[k] ? JSON.stringify(data[k]) : null);
+        } else if (k === 'employee_id' || k === 'role_id') {
+          // Convert empty strings to NULL for integer fields
+          fields.push(`${k} = ?`);
+          vals.push(data[k] === '' || data[k] === null ? null : data[k]);
         } else {
           fields.push(`${k} = ?`);
           vals.push(data[k]);

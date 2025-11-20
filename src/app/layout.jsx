@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import AuthGate from "@/components/AuthGate";
+import ActivityTracker from "@/components/ActivityTracker";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,6 +28,7 @@ export default function RootLayout({ children }) {
       >
         <Sidebar />
         <AuthGate />
+        <ActivityTracker />
         <div className="content-with-sidebar">
           {children}
         </div>
@@ -34,5 +36,3 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
-// Note: SuppressHydrationWarning is used to prevent hydration mismatch warnings
-// due to font loading differences between server and client.

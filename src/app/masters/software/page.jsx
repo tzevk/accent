@@ -808,7 +808,7 @@ export default function SoftwareMasterPage() {
                       </div>
                       <div>
                         <label className="block text-xs text-gray-700 mb-1">
-                          Release Date
+                          Release Date <span className="text-gray-400">(Optional)</span>
                         </label>
                         <input
                           type="date"

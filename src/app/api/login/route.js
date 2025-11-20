@@ -1,5 +1,6 @@
 import { dbConnect } from '@/utils/database'
 import { NextResponse } from 'next/server'
+import { logActivity } from '@/utils/activity-logger'
 
 
 export async function POST(req) {
@@ -50,9 +51,28 @@ export async function POST(req) {
         const userId = rows[0].id
         try {
           await db.execute('UPDATE users SET last_login = NOW(), is_active = TRUE, status = "active" WHERE id = ?', [userId])
+          
+          // Log successful login
+          logActivity({
+            userId,
+            actionType: 'login',
+            description: `User ${rows[0].username} logged in successfully`,
+            request: req,
+            status: 'success'
+          }).catch(console.error);
         } catch (err) {
           console.warn('Failed to update last_login for user', userId, err?.code || err?.message || err)
         }
+      } else {
+        // Log failed login attempt
+        logActivity({
+          userId: 0, // Unknown user
+          actionType: 'login',
+          description: `Failed login attempt for identifier: ${identifier}`,
+          details: { identifier },
+          request: req,
+          status: 'failed'
+        }).catch(console.error);
       }
     } catch (err) {
       console.error('Login query failed:', err)

@@ -20,6 +20,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import ActivityAssignmentsSection from '@/components/ActivityAssignmentsSection';
+const UserDashboard = dynamic(() => import('./user-dashboard'), { ssr: false });
 // const DonutChart = dynamic(() => import('@/components/DonutChart'), { ssr: false });
 const InteractiveDonut = dynamic(() => import('@/components/InteractiveDonut'), {
   ssr: false,
@@ -489,6 +490,11 @@ useEffect(() => {
     const yyyy = dt.getFullYear();
     return `${dd}/${mm}/${yyyy}`;
   };
+
+  // If user role is 'user' (not admin), show simplified user dashboard
+  if (user && !user.is_super_admin && user.role?.code !== 'admin') {
+    return <UserDashboard />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
