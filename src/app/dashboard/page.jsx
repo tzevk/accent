@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
+
 'use client';
 
 import Navbar from '@/components/Navbar';
@@ -18,6 +18,9 @@ import {
   ArrowRightIcon,
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import ActivityAssignmentsSection from '@/components/ActivityAssignmentsSection';
+const UserDashboard = dynamic(() => import('./user-dashboard'), { ssr: false });
 // const DonutChart = dynamic(() => import('@/components/DonutChart'), { ssr: false });
 const InteractiveDonut = dynamic(() => import('@/components/InteractiveDonut'), {
   ssr: false,
@@ -26,6 +29,7 @@ const InteractiveDonut = dynamic(() => import('@/components/InteractiveDonut'), 
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
+  const { user } = useSessionRBAC();
   const [stats, setStats] = useState({
     leads: { total_leads: 0, under_discussion: 0, proposal_sent: 0, closed_won: 0 },
     proposals: { total: 0, pending: 0, approved: 0, draft: 0 },
@@ -487,6 +491,11 @@ useEffect(() => {
     return `${dd}/${mm}/${yyyy}`;
   };
 
+  // If user role is 'user' (not admin), show simplified user dashboard
+  if (user && !user.is_super_admin && user.role?.code !== 'admin') {
+    return <UserDashboard />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
@@ -608,6 +617,9 @@ useEffect(() => {
             });
           })()}
         </div>
+
+        {/* Activity Assignments Section */}
+        {user?.id && <ActivityAssignmentsSection userId={user.id} />}
 
 
         {/* Analytics */}

@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { logActivity } from '@/utils/activity-logger';
 
 // GET all leads with pagination and filtering
 export async function GET(request) {
@@ -330,6 +331,19 @@ export async function POST(request) {
     ]);
     
     await db.end();
+    
+    // Log the activity
+    logActivity({
+      actionType: 'create',
+      resourceType: 'lead',
+      resourceId: result.insertId.toString(),
+      description: `Created lead: ${normalizedCompanyName}`,
+      details: {
+        lead_id: normalizedLeadId,
+        company_name: normalizedCompanyName,
+        status: normalizedEnquiryStatus
+      }
+    }, request).catch(err => console.error('Failed to log activity:', err));
     
     return Response.json({ 
       success: true, 

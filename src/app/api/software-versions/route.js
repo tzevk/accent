@@ -68,17 +68,59 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+    
+    console.log('DELETE version request - ID:', id);
+    
+    if (!id) {
+      console.log('DELETE version failed - no ID provided');
+      return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+    }
 
-    const db = await dbConnect();
-    await db.execute('DELETE FROM software_versions WHERE id = ?', [id]);
+    db = await dbConnect();
+    
+    // Check if version exists before deleting
+    const [existing] = await db.execute('SELECT id, software_id, name FROM software_versions WHERE id = ?', [id]);
+    console.log('DELETE version - existing check:', existing);
+    
+    if (existing.length === 0) {
+      console.log('DELETE version failed - version not found');
+      await db.end();
+      return NextResponse.json({ success: false, error: 'Version not found' }, { status: 404 });
+    }
+    
+    console.log('DELETE version - attempting to delete:', existing[0]);
+    const [result] = await db.execute('DELETE FROM software_versions WHERE id = ?', [id]);
+    console.log('DELETE version - result:', result);
+    
     await db.end();
-    return NextResponse.json({ success: true, message: 'Software version deleted' });
+    
+    if (result.affectedRows === 0) {
+      console.log('DELETE version failed - no rows affected');
+      return NextResponse.json({ success: false, error: 'Failed to delete version - no rows affected' }, { status: 500 });
+    }
+    
+    console.log('DELETE version successful - affected rows:', result.affectedRows);
+    return NextResponse.json({ success: true, message: 'Software version deleted successfully' });
   } catch (error) {
     console.error('Software versions DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete software version', details: error.message }, { status: 500 });
+    console.error('Error stack:', error.stack);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to delete software version', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, { status: 500 });
+  } finally {
+    if (db) {
+      try {
+        await db.end();
+      } catch (e) {
+        console.error('Error closing database connection:', e);
+      }
+    }
   }
 }

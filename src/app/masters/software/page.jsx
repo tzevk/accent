@@ -358,13 +358,20 @@ export default function SoftwareMasterPage() {
             notes: versionForm.notes || '',
           };
 
-      const res = await fetch('/api/software/versions', {
+      console.log('Saving version:', { method, body });
+
+      const res = await fetch('/api/software-versions', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error('Failed to save version');
+      const data = await res.json();
+      console.log('Save version response:', data);
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.details || 'Failed to save version');
+      }
 
       await fetchSoftwareMaster();
       setShowVersionForm(false);
@@ -383,10 +390,15 @@ export default function SoftwareMasterPage() {
     try {
       setLoading(true);
       setError('');
-      const res = await fetch(`/api/software/versions?id=${id}`, {
+      const res = await fetch(`/api/software-versions?id=${id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete version');
+      
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.details || 'Failed to delete version');
+      }
 
       await fetchSoftwareMaster();
     } catch (err) {
@@ -789,14 +801,14 @@ export default function SoftwareMasterPage() {
                               name: e.target.value,
                             })
                           }
-                          placeholder="e.g., v1.0.0"
+                          placeholder="Enter version name (any format)"
                           required
                           className="w-full px-3 py-2 border rounded-md text-sm"
                         />
                       </div>
                       <div>
                         <label className="block text-xs text-gray-700 mb-1">
-                          Release Date
+                          Release Date <span className="text-gray-400">(Optional)</span>
                         </label>
                         <input
                           type="date"

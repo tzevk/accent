@@ -20,6 +20,7 @@ export default function ActivityMasterPage() {
   const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [editingActivityId, setEditingActivityId] = useState(null);
+  const [editingSubId, setEditingSubId] = useState(null);
   const [showDisciplineForm, setShowDisciplineForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [showSubActivityForm, setShowSubActivityForm] = useState(false);
@@ -27,6 +28,7 @@ export default function ActivityMasterPage() {
   const [activities, setActivities] = useState([]);
   const [subActivities, setSubActivities] = useState([]);
   const [activityForm, setActivityForm] = useState({ activity_name: '' });
+  const [error, setError] = useState(null);
   
 
   // Fetch disciplines with nested activities and sub-activities
@@ -423,6 +425,39 @@ export default function ActivityMasterPage() {
                     </button>
                   )}
                 </div>
+
+                {showActivityForm && (
+                  <form onSubmit={handleActivitySubmit} className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <input
+                      type="text"
+                      value={activityForm.activity_name}
+                      onChange={(e) => setActivityForm({ activity_name: e.target.value })}
+                      placeholder="Activity Name"
+                      required
+                      className="w-full px-3 py-2 border rounded-md text-sm"
+                    />
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowActivityForm(false);
+                          setEditingActivityId(null);
+                          setActivityForm({ activity_name: '' });
+                        }}
+                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm text-black"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-[#7F2487] text-white rounded-md text-sm"
+                      >
+                        {editingActivityId ? 'Update Activity' : 'Save Activity'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
                 {!selectedDisciplineId ? (
                   <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
                     Select a discipline to view activities.
@@ -476,38 +511,6 @@ export default function ActivityMasterPage() {
                       </div>
                     </div>
                   ))
-                )}
-
-                {showActivityForm && (
-                  <form onSubmit={handleActivitySubmit} className="space-y-3 border-t pt-4 mt-4">
-                    <input
-                      type="text"
-                      value={activityForm.activity_name}
-                      onChange={(e) => setActivityForm({ activity_name: e.target.value })}
-                      placeholder="Activity Name"
-                      required
-                      className="w-full px-3 py-2 border rounded-md text-sm"
-                    />
-                    <div className="flex justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowActivityForm(false);
-                          setEditingActivityId(null);
-                          setActivityForm({ activity_name: '' });
-                        }}
-                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm text-black"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-5 py-2 bg-[#7F2487] text-white rounded-md text-sm"
-                      >
-                        {editingActivityId ? 'Update Activity' : 'Save Activity'}
-                      </button>
-                    </div>
-                  </form>
                 )}
               </section>
 

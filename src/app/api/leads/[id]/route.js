@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { logActivity } from '@/utils/activity-logger';
 
 // GET individual lead by ID
 export async function GET(request, { params }) {
@@ -92,6 +93,20 @@ export async function PUT(request, { params }) {
       }, { status: 404 });
     }
 
+    // Log the activity
+    logActivity({
+      actionType: 'update',
+      resourceType: 'lead',
+      resourceId: leadId.toString(),
+      description: `Updated lead: ${data.company_name}`,
+      details: {
+        lead_id: data.lead_id,
+        company_name: data.company_name,
+        status: data.enquiry_status,
+        updated_fields: Object.keys(data)
+      }
+    }, request).catch(err => console.error('Failed to log activity:', err));
+
     return Response.json({ 
       success: true, 
       message: 'Lead updated successfully' 
@@ -112,6 +127,12 @@ export async function DELETE(request, { params }) {
     const leadId = parseInt(id);
     const db = await dbConnect();
     
+    // Get lead info before deleting for logging
+    const [leadRows] = await db.execute(
+      'SELECT company_name, lead_id FROM leads WHERE id = ?',
+      [leadId]
+    );
+    
     const [result] = await db.execute(
       'DELETE FROM leads WHERE id = ?',
       [leadId]
@@ -124,6 +145,20 @@ export async function DELETE(request, { params }) {
         success: false, 
         error: 'Lead not found' 
       }, { status: 404 });
+    }
+
+    // Log the activity
+    if (leadRows.length > 0) {
+      logActivity({
+        actionType: 'delete',
+        resourceType: 'lead',
+        resourceId: leadId.toString(),
+        description: `Deleted lead: ${leadRows[0].company_name}`,
+        details: {
+          lead_id: leadRows[0].lead_id,
+          company_name: leadRows[0].company_name
+        }
+      }, request).catch(err => console.error('Failed to log activity:', err));
     }
 
     return Response.json({ 

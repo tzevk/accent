@@ -1,5 +1,4 @@
 'use client';
-/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 
 import Navbar from '@/components/Navbar';
 import { fetchJSON } from '@/utils/http';
