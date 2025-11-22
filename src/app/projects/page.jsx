@@ -291,85 +291,133 @@ function ProjectsInner() {
 
   return (
     <div className="relative h-screen flex flex-col overflow-hidden" style={{
-      background: 'linear-gradient(135deg, #fafbfc 0%, #f0f4f8 25%, #e8eef5 50%, #f3e8ff 75%, #faf5ff 100%)'
+      background: '#ffffff'
     }}>
-      {/* Professional animated background */}
+      {/* God-level animated background */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 0 }}>
-        {/* Premium gradient orbs */}
-        <div className="absolute -top-40 -right-40 h-[700px] w-[700px] rounded-full"
+        {/* Mega gradient orbs with layered depth */}
+        <div className="absolute -top-[20%] -right-[15%] h-[900px] w-[900px] rounded-full"
              style={{
-               background: 'radial-gradient(circle at 30% 30%, rgba(167,139,250,0.12) 0%, rgba(139,92,246,0.08) 25%, rgba(124,58,237,0.04) 50%, transparent 70%)',
-               filter: 'blur(80px)',
-               animation: 'float-smooth 25s ease-in-out infinite',
-               mixBlendMode: 'multiply'
+               background: 'radial-gradient(circle at 35% 35%, rgba(167,139,250,0.18) 0%, rgba(147,107,232,0.12) 20%, rgba(139,92,246,0.08) 35%, rgba(124,58,237,0.04) 55%, transparent 75%)',
+               filter: 'blur(100px)',
+               animation: 'orbit-smooth 35s ease-in-out infinite',
+               mixBlendMode: 'multiply',
+               willChange: 'transform'
              }} />
-        <div className="absolute -bottom-40 -left-40 h-[800px] w-[800px] rounded-full"
+        <div className="absolute -bottom-[20%] -left-[15%] h-[1000px] w-[1000px] rounded-full"
              style={{
-               background: 'radial-gradient(circle at 70% 70%, rgba(236,72,153,0.08) 0%, rgba(219,39,119,0.05) 30%, rgba(190,24,93,0.02) 50%, transparent 70%)',
+               background: 'radial-gradient(circle at 65% 65%, rgba(236,72,153,0.14) 0%, rgba(219,39,119,0.09) 25%, rgba(219,39,119,0.06) 40%, rgba(190,24,93,0.03) 60%, transparent 75%)',
+               filter: 'blur(110px)',
+               animation: 'orbit-smooth 40s ease-in-out infinite reverse',
+               animationDelay: '8s',
+               mixBlendMode: 'multiply',
+               willChange: 'transform'
+             }} />
+        <div className="absolute top-[25%] right-[20%] h-[600px] w-[600px] rounded-full"
+             style={{
+               background: 'radial-gradient(circle, rgba(99,102,241,0.10) 0%, rgba(79,70,229,0.06) 30%, rgba(67,56,202,0.03) 50%, transparent 70%)',
+               filter: 'blur(85px)',
+               animation: 'breathe 22s ease-in-out infinite',
+               mixBlendMode: 'multiply',
+               willChange: 'transform'
+             }} />
+        <div className="absolute bottom-[30%] left-[25%] h-[550px] w-[550px] rounded-full"
+             style={{
+               background: 'radial-gradient(circle, rgba(168,85,247,0.08) 0%, rgba(147,51,234,0.05) 35%, transparent 65%)',
                filter: 'blur(90px)',
-               animation: 'float-smooth 30s ease-in-out infinite reverse',
-               animationDelay: '7s',
-               mixBlendMode: 'multiply'
+               animation: 'breathe 28s ease-in-out infinite',
+               animationDelay: '5s',
+               mixBlendMode: 'multiply',
+               willChange: 'transform'
              }} />
-        <div className="absolute top-1/3 right-1/4 h-[500px] w-[500px] rounded-full"
+        {/* Particle-like dots with parallax */}
+        <div className="absolute inset-0 opacity-[0.025]"
              style={{
-               background: 'radial-gradient(circle, rgba(99,102,241,0.06) 0%, rgba(79,70,229,0.03) 40%, transparent 65%)',
-               filter: 'blur(70px)',
-               animation: 'pulse-slow 20s ease-in-out infinite',
-               mixBlendMode: 'multiply'
+               backgroundImage: 'radial-gradient(circle, rgba(100,18,109,0.9) 0.5px, transparent 0.5px)',
+               backgroundSize: '32px 32px',
+               animation: 'drift 60s linear infinite',
+               willChange: 'transform'
              }} />
-        {/* Sophisticated dot pattern */}
-        <div className="absolute inset-0 opacity-[0.015]"
+        <div className="absolute inset-0 opacity-[0.018]"
              style={{
-               backgroundImage: 'radial-gradient(circle, rgba(100,18,109,0.8) 1px, transparent 1px)',
-               backgroundSize: '24px 24px',
-               animation: 'pattern-shift 40s linear infinite'
+               backgroundImage: 'radial-gradient(circle, rgba(139,92,246,0.8) 1px, transparent 1px)',
+               backgroundSize: '48px 48px',
+               animation: 'drift-reverse 80s linear infinite',
+               willChange: 'transform'
              }} />
-        {/* Subtle noise texture for depth */}
-        <div className="absolute inset-0 opacity-[0.015]"
+        {/* Shimmer overlay */}
+        <div className="absolute inset-0 opacity-[0.02]"
              style={{
-               backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")',
-               mixBlendMode: 'overlay'
+               background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%)',
+               backgroundSize: '200% 100%',
+               animation: 'shimmer-sweep 15s ease-in-out infinite'
+             }} />
+        {/* Enhanced noise texture */}
+        <div className="absolute inset-0 opacity-[0.02]"
+             style={{
+               backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 400 400\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'1.2\' numOctaves=\'5\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")',
+               mixBlendMode: 'soft-light'
              }} />
       </div>
       <Navbar />
       <style jsx>{`
-        @keyframes float-smooth {
+        @keyframes orbit-smooth {
           0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
-          33% { transform: translate(40px, -50px) scale(1.05) rotate(5deg); opacity: 0.9; }
-          66% { transform: translate(-30px, 30px) scale(0.95) rotate(-5deg); opacity: 0.85; }
+          25% { transform: translate(60px, -70px) scale(1.08) rotate(8deg); opacity: 0.92; }
+          50% { transform: translate(90px, -40px) scale(1.12) rotate(12deg); opacity: 0.88; }
+          75% { transform: translate(40px, 50px) scale(0.96) rotate(-6deg); opacity: 0.9; }
         }
-        @keyframes pattern-shift {
+        @keyframes drift {
           0% { transform: translate(0, 0); }
-          100% { transform: translate(24px, 24px); }
+          100% { transform: translate(32px, 32px); }
         }
-        @keyframes pulse-slow {
-          0%, 100% { transform: scale(1); opacity: 0.6; }
-          50% { transform: scale(1.1); opacity: 1; }
+        @keyframes drift-reverse {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(-48px, -48px); }
         }
-        @keyframes slideInUp {
-          from { opacity: 0; transform: translateY(30px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes breathe {
+          0%, 100% { transform: scale(1) translateY(0); opacity: 0.8; }
+          50% { transform: scale(1.15) translateY(-20px); opacity: 1; }
         }
-        @keyframes slideInRight {
-          from { opacity: 0; transform: translateX(-30px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes scaleIn {
-          from { opacity: 0; transform: scale(0.9); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        @keyframes shimmer {
+        @keyframes shimmer-sweep {
           0% { background-position: -200% 0; }
           100% { background-position: 200% 0; }
         }
-        .animate-slide-in-up { animation: slideInUp 0.6s ease-out forwards; }
-        .animate-slide-in-right { animation: slideInRight 0.6s ease-out forwards; }
-        .animate-scale-in { animation: scaleIn 0.5s ease-out forwards; }
+        @keyframes slideInUp {
+          0% { opacity: 0; transform: translateY(40px) scale(0.96); }
+          60% { transform: translateY(-4px) scale(1.01); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes slideInRight {
+          0% { opacity: 0; transform: translateX(-40px) scale(0.95); }
+          60% { transform: translateX(4px) scale(1.02); }
+          100% { opacity: 1; transform: translateX(0) scale(1); }
+        }
+        @keyframes scaleIn {
+          0% { opacity: 0; transform: scale(0.85) rotateY(-10deg); }
+          60% { transform: scale(1.03) rotateY(2deg); }
+          100% { opacity: 1; transform: scale(1) rotateY(0); }
+        }
+        @keyframes fadeInBlur {
+          0% { opacity: 0; filter: blur(10px); transform: translateY(20px); }
+          100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+        }
+        @keyframes glow-pulse {
+          0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.2), 0 0 40px rgba(139, 92, 246, 0.1); }
+          50% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.4), 0 0 60px rgba(139, 92, 246, 0.2); }
+        }
+        .animate-slide-in-up { animation: slideInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-slide-in-right { animation: slideInRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-scale-in { animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-fade-blur { animation: fadeInBlur 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .delay-75 { animation-delay: 0.075s; }
         .delay-100 { animation-delay: 0.1s; }
+        .delay-150 { animation-delay: 0.15s; }
         .delay-200 { animation-delay: 0.2s; }
+        .delay-250 { animation-delay: 0.25s; }
         .delay-300 { animation-delay: 0.3s; }
         .delay-400 { animation-delay: 0.4s; }
+        .delay-500 { animation-delay: 0.5s; }
       `}</style>
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
@@ -422,121 +470,230 @@ function ProjectsInner() {
               </div>
               {/* Quick Stats */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                <div className="rounded-3xl p-6 transition-all duration-500 cursor-pointer group relative overflow-hidden animate-scale-in"
+                <div className="rounded-2xl transition-all duration-400 cursor-pointer group relative overflow-hidden animate-scale-in"
                      style={{
-                       background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
-                       backdropFilter: 'blur(24px)',
-                       border: '1px solid rgba(139, 92, 246, 0.15)',
-                       boxShadow: '0 8px 32px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                       background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                       border: '1.5px solid rgba(139, 92, 246, 0.12)',
+                       boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)',
                        opacity: 0
                      }}
                      onMouseEnter={(e) => {
-                       e.currentTarget.style.transform = 'translateY(-6px) scale(1.02)';
-                       e.currentTarget.style.boxShadow = '0 24px 48px rgba(139, 92, 246, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9)';
+                       e.currentTarget.style.transform = 'translateY(-6px)';
+                       e.currentTarget.style.boxShadow = '0 16px 32px rgba(15, 23, 42, 0.1), 0 8px 16px rgba(139, 92, 246, 0.15)';
                        e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.3)';
                      }}
                      onMouseLeave={(e) => {
-                       e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)';
-                       e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                       e.currentTarget.style.transform = 'translateY(0)';
+                       e.currentTarget.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)';
+                       e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.12)';
                      }}>
-                  <div className="absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-5" style={{
-                    background: 'radial-gradient(circle, #8b5cf6 0%, transparent 70%)'
-                  }} />
-                  <div className="flex items-center gap-4 relative">
-                    <div className="p-3.5 rounded-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-3" style={{
-                      background: 'linear-gradient(135deg, #ede9fe 0%, #f3e8ff 100%)',
-                      boxShadow: '0 8px 16px rgba(139, 92, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
-                    }}>
-                      <FolderIcon className="h-7 w-7" style={{ color: '#7c3aed' }} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#94a3b8', letterSpacing: '0.1em' }}>Total Projects</div>
-                      <div className="mt-1.5 text-4xl font-black transition-all duration-300" style={{ color: '#0f172a', letterSpacing: '-0.02em' }}>{stats.total}</div>
+                  <div className="p-6 relative">
+                    <div className="absolute top-0 left-0 w-1.5 h-16 rounded-r-full transition-all duration-300 group-hover:h-20" style={{
+                      background: 'linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%)',
+                      boxShadow: '0 0 12px rgba(139, 92, 246, 0.3)'
+                    }} />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{
+                      background: 'radial-gradient(circle at top right, rgba(139, 92, 246, 0.03), transparent 70%)'
+                    }} />
+                    <div className="flex items-start justify-between gap-4 relative">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Total Projects</div>
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{
+                            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.08))',
+                            border: '1px solid rgba(139, 92, 246, 0.15)'
+                          }}>
+                            <svg className="w-3 h-3" style={{ color: '#8b5cf6' }} fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span className="text-[10px] font-bold" style={{ color: '#8b5cf6' }}>12%</span>
+                          </div>
+                        </div>
+                        <div className="text-4xl font-bold transition-all duration-300 group-hover:scale-105" style={{ 
+                          color: '#0f172a',
+                          letterSpacing: '-0.02em'
+                        }}>{stats.total}</div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="text-xs font-medium" style={{ color: '#94a3b8' }}>Active portfolio</div>
+                          <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.2), transparent)' }} />
+                        </div>
+                      </div>
+                      <div className="p-3.5 rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-3" style={{
+                        background: 'linear-gradient(135deg, #f8f7ff 0%, #f3f1ff 100%)',
+                        border: '1px solid rgba(139, 92, 246, 0.15)',
+                        boxShadow: '0 4px 12px rgba(139, 92, 246, 0.1)'
+                      }}>
+                        <FolderIcon className="h-6 w-6" style={{ color: '#8b5cf6' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl p-5 transition-all duration-300 cursor-pointer group"
+                <div className="rounded-2xl transition-all duration-400 cursor-pointer group relative overflow-hidden animate-scale-in delay-100"
                      style={{
-                       background: 'rgba(255, 255, 255, 0.8)',
-                       backdropFilter: 'blur(20px)',
-                       border: '1px solid rgba(255, 255, 255, 0.6)',
-                       boxShadow: '0 8px 32px rgba(59, 130, 246, 0.1)',
+                       background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                       border: '1.5px solid rgba(59, 130, 246, 0.12)',
+                       boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)',
+                       opacity: 0
                      }}
                      onMouseEnter={(e) => {
-                       e.currentTarget.style.transform = 'translateY(-4px)';
-                       e.currentTarget.style.boxShadow = '0 20px 40px rgba(59, 130, 246, 0.2)';
+                       e.currentTarget.style.transform = 'translateY(-6px)';
+                       e.currentTarget.style.boxShadow = '0 16px 32px rgba(15, 23, 42, 0.1), 0 8px 16px rgba(59, 130, 246, 0.15)';
+                       e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
                      }}
                      onMouseLeave={(e) => {
                        e.currentTarget.style.transform = 'translateY(0)';
-                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(59, 130, 246, 0.1)';
+                       e.currentTarget.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)';
+                       e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.12)';
                      }}>
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl" style={{
-                      background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)',
-                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)'
-                    }}>
-                      <CalendarIcon className="h-6 w-6" style={{ color: '#2563eb' }} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-medium" style={{ color: '#64748b' }}>In Progress</div>
-                      <div className="mt-1 text-3xl font-bold" style={{ color: '#1e293b' }}>{stats.inProgress}</div>
+                  <div className="p-6 relative">
+                    <div className="absolute top-0 left-0 w-1.5 h-16 rounded-r-full transition-all duration-300 group-hover:h-20" style={{
+                      background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
+                      boxShadow: '0 0 12px rgba(59, 130, 246, 0.3)'
+                    }} />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{
+                      background: 'radial-gradient(circle at top right, rgba(59, 130, 246, 0.03), transparent 70%)'
+                    }} />
+                    <div className="flex items-start justify-between gap-4 relative">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>In Progress</div>
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full animate-pulse" style={{
+                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.08))',
+                            border: '1px solid rgba(59, 130, 246, 0.2)'
+                          }}>
+                            <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#3b82f6' }} />
+                            <span className="text-[10px] font-bold" style={{ color: '#3b82f6' }}>Active</span>
+                          </div>
+                        </div>
+                        <div className="text-4xl font-bold transition-all duration-300 group-hover:scale-105" style={{ 
+                          color: '#0f172a',
+                          letterSpacing: '-0.02em'
+                        }}>{stats.inProgress}</div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="text-xs font-medium" style={{ color: '#94a3b8' }}>Currently active</div>
+                          <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.2), transparent)' }} />
+                        </div>
+                      </div>
+                      <div className="p-3.5 rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-3" style={{
+                        background: 'linear-gradient(135deg, #f0f7ff 0%, #e6f2ff 100%)',
+                        border: '1px solid rgba(59, 130, 246, 0.15)',
+                        boxShadow: '0 4px 12px rgba(59, 130, 246, 0.1)'
+                      }}>
+                        <CalendarIcon className="h-6 w-6" style={{ color: '#3b82f6' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl p-5 transition-all duration-300 cursor-pointer group"
+                <div className="rounded-2xl transition-all duration-400 cursor-pointer group relative overflow-hidden animate-scale-in delay-200"
                      style={{
-                       background: 'rgba(255, 255, 255, 0.8)',
-                       backdropFilter: 'blur(20px)',
-                       border: '1px solid rgba(255, 255, 255, 0.6)',
-                       boxShadow: '0 8px 32px rgba(34, 197, 94, 0.1)',
+                       background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                       border: '1.5px solid rgba(34, 197, 94, 0.12)',
+                       boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)',
+                       opacity: 0
                      }}
                      onMouseEnter={(e) => {
-                       e.currentTarget.style.transform = 'translateY(-4px)';
-                       e.currentTarget.style.boxShadow = '0 20px 40px rgba(34, 197, 94, 0.2)';
+                       e.currentTarget.style.transform = 'translateY(-6px)';
+                       e.currentTarget.style.boxShadow = '0 16px 32px rgba(15, 23, 42, 0.1), 0 8px 16px rgba(34, 197, 94, 0.15)';
+                       e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.3)';
                      }}
                      onMouseLeave={(e) => {
                        e.currentTarget.style.transform = 'translateY(0)';
-                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(34, 197, 94, 0.1)';
+                       e.currentTarget.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)';
+                       e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.12)';
                      }}>
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl" style={{
-                      background: 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)',
-                      boxShadow: '0 4px 12px rgba(34, 197, 94, 0.15)'
-                    }}>
-                      <CheckIcon className="h-6 w-6" style={{ color: '#16a34a' }} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-medium" style={{ color: '#64748b' }}>Completed</div>
-                      <div className="mt-1 text-3xl font-bold" style={{ color: '#1e293b' }}>{stats.completed}</div>
+                  <div className="p-6 relative">
+                    <div className="absolute top-0 left-0 w-1.5 h-16 rounded-r-full transition-all duration-300 group-hover:h-20" style={{
+                      background: 'linear-gradient(180deg, #22c55e 0%, #16a34a 100%)',
+                      boxShadow: '0 0 12px rgba(34, 197, 94, 0.3)'
+                    }} />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{
+                      background: 'radial-gradient(circle at top right, rgba(34, 197, 94, 0.03), transparent 70%)'
+                    }} />
+                    <div className="flex items-start justify-between gap-4 relative">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Completed</div>
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{
+                            background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(22, 163, 74, 0.08))',
+                            border: '1px solid rgba(34, 197, 94, 0.15)'
+                          }}>
+                            <svg className="w-3 h-3" style={{ color: '#22c55e' }} fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span className="text-[10px] font-bold" style={{ color: '#22c55e' }}>100%</span>
+                          </div>
+                        </div>
+                        <div className="text-4xl font-bold transition-all duration-300 group-hover:scale-105" style={{ 
+                          color: '#0f172a',
+                          letterSpacing: '-0.02em'
+                        }}>{stats.completed}</div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="text-xs font-medium" style={{ color: '#94a3b8' }}>Successfully delivered</div>
+                          <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(34, 197, 94, 0.2), transparent)' }} />
+                        </div>
+                      </div>
+                      <div className="p-3.5 rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-3" style={{
+                        background: 'linear-gradient(135deg, #f0fdf6 0%, #e6f9ed 100%)',
+                        border: '1px solid rgba(34, 197, 94, 0.15)',
+                        boxShadow: '0 4px 12px rgba(34, 197, 94, 0.1)'
+                      }}>
+                        <CheckIcon className="h-6 w-6" style={{ color: '#22c55e' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl p-5 transition-all duration-300 cursor-pointer group"
+                <div className="rounded-2xl transition-all duration-400 cursor-pointer group relative overflow-hidden animate-scale-in delay-300"
                      style={{
-                       background: 'rgba(255, 255, 255, 0.8)',
-                       backdropFilter: 'blur(20px)',
-                       border: '1px solid rgba(255, 255, 255, 0.6)',
-                       boxShadow: '0 8px 32px rgba(245, 158, 11, 0.1)',
+                       background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                       border: '1.5px solid rgba(245, 158, 11, 0.12)',
+                       boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)',
+                       opacity: 0
                      }}
                      onMouseEnter={(e) => {
-                       e.currentTarget.style.transform = 'translateY(-4px)';
-                       e.currentTarget.style.boxShadow = '0 20px 40px rgba(245, 158, 11, 0.2)';
+                       e.currentTarget.style.transform = 'translateY(-6px)';
+                       e.currentTarget.style.boxShadow = '0 16px 32px rgba(15, 23, 42, 0.1), 0 8px 16px rgba(245, 158, 11, 0.15)';
+                       e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.3)';
                      }}
                      onMouseLeave={(e) => {
                        e.currentTarget.style.transform = 'translateY(0)';
-                       e.currentTarget.style.boxShadow = '0 8px 32px rgba(245, 158, 11, 0.1)';
+                       e.currentTarget.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.06)';
+                       e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.12)';
                      }}>
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-xl" style={{
-                      background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
-                      boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)'
-                    }}>
-                      <FolderIcon className="h-6 w-6" style={{ color: '#d97706' }} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-medium" style={{ color: '#64748b' }}>Total Budget</div>
-                      <div className="mt-1 text-3xl font-bold" style={{ color: '#1e293b' }}>{formatCurrency(stats.budgetTotal)}</div>
+                  <div className="p-6 relative">
+                    <div className="absolute top-0 left-0 w-1.5 h-16 rounded-r-full transition-all duration-300 group-hover:h-20" style={{
+                      background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                      boxShadow: '0 0 12px rgba(245, 158, 11, 0.3)'
+                    }} />
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{
+                      background: 'radial-gradient(circle at top right, rgba(245, 158, 11, 0.03), transparent 70%)'
+                    }} />
+                    <div className="flex items-start justify-between gap-4 relative">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2.5">
+                          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Total Budget</div>
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{
+                            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.08))',
+                            border: '1px solid rgba(245, 158, 11, 0.15)'
+                          }}>
+                            <span className="text-[10px] font-bold" style={{ color: '#f59e0b' }}>INR</span>
+                          </div>
+                        </div>
+                        <div className="text-2xl font-bold transition-all duration-300 group-hover:scale-105" style={{ 
+                          color: '#0f172a',
+                          letterSpacing: '-0.01em'
+                        }}>{formatCurrency(stats.budgetTotal)}</div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="text-xs font-medium" style={{ color: '#94a3b8' }}>Allocated funds</div>
+                          <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.2), transparent)' }} />
+                        </div>
+                      </div>
+                      <div className="p-3.5 rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-3" style={{
+                        background: 'linear-gradient(135deg, #fffbf0 0%, #fff8e6 100%)',
+                        border: '1px solid rgba(245, 158, 11, 0.15)',
+                        boxShadow: '0 4px 12px rgba(245, 158, 11, 0.1)'
+                      }}>
+                        <FolderIcon className="h-6 w-6" style={{ color: '#f59e0b' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -635,49 +792,97 @@ function ProjectsInner() {
               {activeTab === 'list' && (
                 <div className="space-y-6">
                   {/* Action Bar */}
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="relative w-full max-w-md">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-blur delay-200">
+                    <div className="flex-1 flex items-center gap-3">
+                      <div className="relative w-full max-w-md group">
                         <input
                           value={query}
                           onChange={(e) => setQuery(e.target.value)}
-                          placeholder="Search by project or client"
-                          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent placeholder:text-gray-400"
+                          placeholder="Search by project or client name..."
+                          className="w-full pl-11 pr-4 py-3 text-sm rounded-2xl transition-all duration-300 focus:outline-none"
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.9)',
+                            backdropFilter: 'blur(16px)',
+                            border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                            boxShadow: '0 4px 16px rgba(139, 92, 246, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                            color: '#1e293b'
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+                            e.target.style.boxShadow = '0 8px 24px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9)';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                            e.target.style.boxShadow = '0 4px 16px rgba(139, 92, 246, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)';
+                          }}
                         />
-                        <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l3.386 3.387a1 1 0 01-1.414 1.414l-3.386-3.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
+                        <svg className="absolute left-4 top-3.5 h-5 w-5 transition-colors duration-300" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#8b5cf6' }}><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l3.386 3.387a1 1 0 01-1.414 1.414l-3.386-3.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
                       </div>
                       <button
                         onClick={() => setShowFilters(v => !v)}
-                        className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        className="inline-flex items-center gap-2.5 rounded-2xl px-5 py-3 text-sm font-semibold transition-all duration-300"
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.9)',
+                          backdropFilter: 'blur(16px)',
+                          border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                          boxShadow: '0 4px 16px rgba(139, 92, 246, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                          color: '#475569'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 8px 24px rgba(139, 92, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9)';
+                          e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 4px 16px rgba(139, 92, 246, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8)';
+                          e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                        }}
                       >
-                        <FunnelIcon className="h-4 w-4" /> Filters
+                        <FunnelIcon className="h-5 w-5" style={{ color: '#8b5cf6' }} /> <span>Filters</span>
                       </button>
                       {(statusFilter || priorityFilter || query) && (
                         <button
                           onClick={() => { setQuery(''); setStatusFilter(''); setPriorityFilter(''); }}
-                          className="text-xs text-gray-600 underline"
-                        >Clear</button>
+                          className="text-sm font-semibold px-4 py-2 rounded-xl transition-all duration-300 hover:scale-105"
+                          style={{
+                            color: '#ef4444',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)'
+                          }}
+                        >Clear All</button>
                       )}
-                    </div>
-                    <div className="hidden md:block">
-                      <button
-                        onClick={() => router.push('/projects/new')}
-                        className="inline-flex items-center gap-2 rounded-md bg-[#64126D] text-white px-3 py-2 text-sm font-medium shadow hover:bg-[#58105f]"
-                      >
-                        <PlusIcon className="h-4 w-4" /> New Project
-                      </button>
                     </div>
                   </div>
 
                   {showFilters && (
-                    <div className="mt-3 rounded-xl glass-panel p-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="mt-4 rounded-3xl p-6 animate-slide-in-up" style={{
+                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
+                      backdropFilter: 'blur(24px)',
+                      border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                      boxShadow: '0 8px 32px rgba(139, 92, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
+                    }}>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                         <div>
-                          <label className="text-xs text-gray-500">Status</label>
+                          <label className="text-xs font-bold uppercase tracking-wider mb-2 block" style={{ color: '#94a3b8', letterSpacing: '0.1em' }}>Status</label>
                           <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="mt-1 w-full px-2 py-2 text-sm border border-gray-300 rounded-md"
+                            className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:outline-none"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.8)',
+                              border: '1.5px solid rgba(139, 92, 246, 0.1)',
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                              color: '#1e293b'
+                            }}
+                            onFocus={(e) => {
+                              e.target.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                              e.target.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.1)';
+                            }}
+                            onBlur={(e) => {
+                              e.target.style.borderColor = 'rgba(139, 92, 246, 0.1)';
+                              e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
+                            }}
                           >
                             <option value="">All Statuses</option>
                             <option value="NEW">NEW</option>
@@ -689,11 +894,25 @@ function ProjectsInner() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-xs text-gray-500">Priority</label>
+                          <label className="text-xs font-bold uppercase tracking-wider mb-2 block" style={{ color: '#94a3b8', letterSpacing: '0.1em' }}>Priority</label>
                           <select
                             value={priorityFilter}
                             onChange={(e) => setPriorityFilter(e.target.value)}
-                            className="mt-1 w-full px-2 py-2 text-sm border border-gray-300 rounded-md"
+                            className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:outline-none"
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.8)',
+                              border: '1.5px solid rgba(139, 92, 246, 0.1)',
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                              color: '#1e293b'
+                            }}
+                            onFocus={(e) => {
+                              e.target.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                              e.target.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.1)';
+                            }}
+                            onBlur={(e) => {
+                              e.target.style.borderColor = 'rgba(139, 92, 246, 0.1)';
+                              e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
+                            }}
                           >
                             <option value="">All Priorities</option>
                             <option value="High">High</option>
@@ -704,38 +923,64 @@ function ProjectsInner() {
                         <div className="flex items-end">
                           <button
                             onClick={() => setShowFilters(false)}
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-[#64126D] text-white px-3 py-2 text-sm shadow-sm hover:bg-[#58105f]"
+                            className="w-full inline-flex items-center justify-center gap-2.5 rounded-2xl text-white px-6 py-3 text-sm font-bold transition-all duration-300"
+                            style={{
+                              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                              boxShadow: '0 8px 24px -4px rgba(139, 92, 246, 0.5), 0 0 0 1px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                              letterSpacing: '0.02em'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-2px) scale(1.01)';
+                              e.currentTarget.style.boxShadow = '0 12px 32px -4px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                              e.currentTarget.style.boxShadow = '0 8px 24px -4px rgba(139, 92, 246, 0.5), 0 0 0 1px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                            }}
                           >
+                            <CheckIcon className="h-5 w-5" />
                             Apply Filters
                           </button>
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <div className="mt-5 pt-5 border-t flex flex-wrap items-center gap-3" style={{ borderColor: 'rgba(139, 92, 246, 0.1)' }}>
                         {statusFilter && (
-                          <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-purple-50 text-[#64126D] border border-purple-200">Status: {formatLabel(statusFilter)}</span>
+                          <span className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl" style={{
+                            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.15) 100%)',
+                            color: '#7c3aed',
+                            border: '1px solid rgba(139, 92, 246, 0.2)',
+                            boxShadow: '0 2px 8px rgba(139, 92, 246, 0.1)'
+                          }}>Status: {formatLabel(statusFilter)}</span>
                         )}
                         {priorityFilter && (
-                          <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">Priority: {priorityFilter}</span>
+                          <span className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl" style={{
+                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(79, 70, 229, 0.15) 100%)',
+                            color: '#4f46e5',
+                            border: '1px solid rgba(99, 102, 241, 0.2)',
+                            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.1)'
+                          }}>Priority: {priorityFilter}</span>
                         )}
                       </div>
                     </div>
                   )}
 
                   {/* Projects Table */}
-                  <div className="rounded-2xl overflow-hidden animate-slide-in-up delay-200" style={{
-                    background: 'rgba(255, 255, 255, 0.85)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255, 255, 255, 0.5)',
-                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.08)'
+                  <div className="rounded-3xl overflow-hidden animate-slide-in-up delay-300" style={{
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%)',
+                    backdropFilter: 'blur(24px)',
+                    border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                    boxShadow: '0 20px 60px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8)'
                   }}>
                     {loading ? (
-                      <div className="p-6">
-                        <div className="animate-pulse space-y-3">
-                          {[...Array(5)].map((_, i) => (
-                            <div key={i} className="h-10 rounded-md" style={{
-                              background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                      <div className="p-8">
+                        <div className="space-y-4">
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i} className="h-14 rounded-2xl" style={{
+                              background: 'linear-gradient(90deg, rgba(249, 250, 251, 0.8) 0%, rgba(243, 232, 255, 0.4) 50%, rgba(249, 250, 251, 0.8) 100%)',
                               backgroundSize: '200% 100%',
-                              animation: 'shimmer 1.5s infinite'
+                              animation: 'shimmer-sweep 2s ease-in-out infinite',
+                              border: '1px solid rgba(139, 92, 246, 0.1)',
+                              animationDelay: `${i * 0.1}s`
                             }}></div>
                           ))}
                         </div>
@@ -747,47 +992,48 @@ function ProjectsInner() {
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y" style={{ borderColor: 'rgba(226, 232, 240, 0.5)' }}>
+                        <table className="min-w-full divide-y" style={{ borderColor: 'rgba(139, 92, 246, 0.1)' }}>
                           <thead className="sticky top-0 z-[1]" style={{
-                            background: 'rgba(248, 250, 252, 0.95)',
-                            backdropFilter: 'blur(10px)',
-                            borderBottom: '2px solid rgba(226, 232, 240, 0.6)'
+                            background: 'linear-gradient(135deg, rgba(249, 250, 251, 0.98) 0%, rgba(243, 244, 246, 0.98) 100%)',
+                            backdropFilter: 'blur(16px)',
+                            borderBottom: '2px solid rgba(139, 92, 246, 0.15)',
+                            boxShadow: '0 4px 12px rgba(139, 92, 246, 0.08)'
                           }}>
                             <tr>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
-                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('project_id')}>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>
+                                <button className="inline-flex items-center gap-1.5 hover:text-purple-600 transition-all duration-300 hover:scale-105" onClick={() => toggleSort('project_id')}>
                                   Project No.
-                                  <ChevronUpDownIcon className="h-3 w-3" />
+                                  <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
-                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('name')}>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>
+                                <button className="inline-flex items-center gap-1.5 hover:text-purple-600 transition-all duration-300 hover:scale-105" onClick={() => toggleSort('name')}>
                                   Project
-                                  <ChevronUpDownIcon className="h-3 w-3" />
+                                  <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
-                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('company_name')}>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>
+                                <button className="inline-flex items-center gap-1.5 hover:text-purple-600 transition-all duration-300 hover:scale-105" onClick={() => toggleSort('company_name')}>
                                   Client
-                                  <ChevronUpDownIcon className="h-3 w-3" />
+                                  <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
-                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('start_date')}>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>
+                                <button className="inline-flex items-center gap-1.5 hover:text-purple-600 transition-all duration-300 hover:scale-105" onClick={() => toggleSort('start_date')}>
                                   Timeline
-                                  <ChevronUpDownIcon className="h-3 w-3" />
+                                  <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Status</th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Estimated Cost</th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>
-                                <button className="inline-flex items-center gap-1 hover:text-purple-600 transition-colors" onClick={() => toggleSort('budget')}>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Status</th>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Estimated Cost</th>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>
+                                <button className="inline-flex items-center gap-1.5 hover:text-purple-600 transition-all duration-300 hover:scale-105" onClick={() => toggleSort('budget')}>
                                   Budget
-                                  <ChevronUpDownIcon className="h-3 w-3" />
+                                  <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Progress</th>
-                              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider" style={{ color: '#475569' }}>Actions</th>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Progress</th>
+                              <th className="px-5 py-4 text-right text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y" style={{ 
@@ -840,41 +1086,50 @@ function ProjectsInner() {
                                     {project.project_id || '-'}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
+                                <td className="px-5 py-4 whitespace-nowrap">
                                   <div>
-                                    <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-100 text-[#64126D] text-xs font-bold">
+                                    <div className="text-sm font-bold flex items-center gap-2.5" style={{ color: '#0f172a' }}>
+                                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-black transition-all duration-300" style={{
+                                        background: 'linear-gradient(135deg, #ede9fe 0%, #f3e8ff 100%)',
+                                        color: '#7c3aed',
+                                        boxShadow: '0 2px 8px rgba(139, 92, 246, 0.2)'
+                                      }}>
                                         {(project.name || '?').slice(0,1).toUpperCase()}
                                       </span>
                                       {project.name}
                                     </div>
-                                    <div className="text-xs text-gray-600 max-w-xs truncate">{project.description}</div>
-                                    <div className={`text-xs font-medium mt-1 ${getPriorityColor(project.priority)}`}>
+                                    <div className="text-xs font-medium mt-1.5 max-w-xs truncate" style={{ color: '#64748b' }}>{project.description}</div>
+                                    <div className={`text-[11px] font-bold uppercase mt-2 tracking-wide ${getPriorityColor(project.priority)}`}>
                                       {formatLabel(project.priority || 'Unassigned')} Priority
                                     </div>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
-                                  <div className="text-sm text-gray-900">{project.company_name || '-'}</div>
-                                  <div className="text-xs text-gray-600">PM: {project.project_manager || 'Not assigned'}</div>
+                                <td className="px-5 py-4">
+                                  <div className="text-sm font-semibold" style={{ color: '#1e293b' }}>{project.company_name || '-'}</div>
+                                  <div className="text-xs font-medium mt-1 px-2 py-1 rounded-lg inline-block" style={{
+                                    background: 'rgba(99, 102, 241, 0.1)',
+                                    color: '#4f46e5'
+                                  }}>PM: {project.project_manager || 'Not assigned'}</div>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="text-sm text-gray-900">
-                                    <div className="flex items-center">
-                                      <CalendarIcon className="h-3 w-3 mr-1 text-gray-400" />
+                                <td className="px-5 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-semibold" style={{ color: '#1e293b' }}>
+                                    <div className="flex items-center gap-1.5">
+                                      <CalendarIcon className="h-4 w-4" style={{ color: '#8b5cf6' }} />
                                       {formatDate(project.start_date)}
                                     </div>
                                     {project.end_date && (
-                                      <div className="text-xs text-gray-600 mt-1">to {formatDate(project.end_date)}</div>
+                                      <div className="text-xs font-medium mt-1.5" style={{ color: '#64748b' }}>to {formatDate(project.end_date)}</div>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <span className={`px-2 py-1 inline-flex text-[11px] leading-4 font-semibold rounded-full shadow-sm ${getStatusColor(project.status)}`}>
+                                <td className="px-5 py-4 whitespace-nowrap">
+                                  <span className={`px-3.5 py-1.5 inline-flex text-[11px] leading-4 font-bold rounded-xl shadow-sm uppercase tracking-wide ${getStatusColor(project.status)}`} style={{
+                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
+                                  }}>
                                     {formatLabel(project.status)}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                <td className="px-5 py-4 whitespace-nowrap text-sm font-bold" style={{ color: '#1e293b' }}>
                                   {(() => {
                                     try {
                                       if (project.cost_breakup) {
@@ -886,81 +1141,94 @@ function ProjectsInner() {
                                     return '-';
                                   })()}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                <td className="px-5 py-4 whitespace-nowrap text-sm font-bold" style={{ color: '#1e293b' }}>
                                   {formatCurrency(project.budget)}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <div className="w-20 h-2 rounded-full mr-2 overflow-hidden" style={{
-                                      background: 'rgba(226, 232, 240, 0.5)'
+                                <td className="px-5 py-4 whitespace-nowrap">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-24 h-2.5 rounded-full overflow-hidden" style={{
+                                      background: 'rgba(226, 232, 240, 0.4)',
+                                      boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.05)'
                                     }}>
-                                      <div className="h-full rounded-full transition-all duration-500" style={{ 
+                                      <div className="h-full rounded-full transition-all duration-700 ease-out" style={{ 
                                         width: `${project.progress || 0}%`,
-                                        background: 'linear-gradient(90deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%)',
-                                        boxShadow: '0 0 8px rgba(139, 92, 246, 0.4)'
+                                        background: 'linear-gradient(90deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%)',
+                                        boxShadow: '0 0 10px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
                                       }} />
                                     </div>
-                                    <span className="text-xs font-semibold" style={{ color: '#64748b' }}>{project.progress || 0}%</span>
+                                    <span className="text-xs font-black min-w-[35px]" style={{ color: '#64748b' }}>{project.progress || 0}%</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                                  <div className="flex items-center justify-end space-x-1">
+                                <td className="px-5 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                  <div className="flex items-center justify-end gap-2">
                                     <button
                                       onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
-                                      className="p-2 rounded-lg transition-all duration-200"
+                                      className="p-2.5 rounded-xl transition-all duration-300 group"
                                       style={{
                                         color: '#8b5cf6',
-                                        background: 'rgba(139, 92, 246, 0.1)'
+                                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.15) 100%)',
+                                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                                        boxShadow: '0 2px 4px rgba(139, 92, 246, 0.1)'
                                       }}
                                       onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)';
-                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.25) 100%)';
+                                        e.currentTarget.style.transform = 'translateY(-2px) scale(1.08)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.25)';
                                       }}
                                       onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = 'rgba(139, 92, 246, 0.1)';
-                                        e.currentTarget.style.transform = 'scale(1)';
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.15) 100%)';
+                                        e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(139, 92, 246, 0.1)';
                                       }}
                                       title="View Details"
                                     >
-                                      <EyeIcon className="h-4 w-4" />
+                                      <EyeIcon className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
                                     </button>
                                     <button
                                       onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
-                                      className="p-2 rounded-lg transition-all duration-200"
+                                      className="p-2.5 rounded-xl transition-all duration-300 group"
                                       style={{
-                                        color: '#64748b',
-                                        background: 'rgba(100, 116, 139, 0.1)'
+                                        color: '#3b82f6',
+                                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.15) 100%)',
+                                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                                        boxShadow: '0 2px 4px rgba(59, 130, 246, 0.1)'
                                       }}
                                       onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = 'rgba(100, 116, 139, 0.2)';
-                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.25) 100%)';
+                                        e.currentTarget.style.transform = 'translateY(-2px) scale(1.08) rotate(5deg)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
                                       }}
                                       onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = 'rgba(100, 116, 139, 0.1)';
-                                        e.currentTarget.style.transform = 'scale(1)';
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.15) 100%)';
+                                        e.currentTarget.style.transform = 'translateY(0) scale(1) rotate(0deg)';
+                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.1)';
                                       }}
                                       title="Edit Project"
                                     >
-                                      <PencilIcon className="h-4 w-4" />
+                                      <PencilIcon className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
                                     </button>
                                     <button
                                       onClick={() => handleDelete(project.project_id ?? project.id ?? project.project_code)}
-                                      className="p-2 rounded-lg transition-all duration-200"
+                                      className="p-2.5 rounded-xl transition-all duration-300 group"
                                       style={{
                                         color: '#ef4444',
-                                        background: 'rgba(239, 68, 68, 0.1)'
+                                        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.15) 100%)',
+                                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                                        boxShadow: '0 2px 4px rgba(239, 68, 68, 0.1)'
                                       }}
                                       onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-                                        e.currentTarget.style.transform = 'scale(1.1)';
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(220, 38, 38, 0.25) 100%)';
+                                        e.currentTarget.style.transform = 'translateY(-2px) scale(1.08)';
+                                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.25)';
                                       }}
                                       onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-                                        e.currentTarget.style.transform = 'scale(1)';
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.15) 100%)';
+                                        e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(239, 68, 68, 0.1)';
                                       }}
                                       title="Delete Project"
                                     >
-                                      <TrashIcon className="h-4 w-4" />
+                                      <TrashIcon className="h-4 w-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12" />
                                     </button>
                                   </div>
                                 </td>
