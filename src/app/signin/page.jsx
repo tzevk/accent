@@ -14,6 +14,11 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 //   display: 'swap',
 // });
 
+// Base gradient style for the signin page (moved outside component to avoid recreation on every render)
+const gradientStyle = {
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+};
+
 export default function SignIn() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -24,11 +29,6 @@ export default function SignIn() {
   
   const [isWindows, setIsWindows] = useState(false);
   const [platformStyles, setPlatformStyles] = useState({});
-
-  // Base gradient style for the signin page
-  const gradientStyle = {
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  };
 
   useEffect(() => {
     const platform = navigator.userAgent;
