@@ -29,10 +29,11 @@ const ignores = [
 ];
 
 const eslintConfig = [
+  // Global ignores applied first
+  { ignores },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     files: ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"],
-    ignores,
   },
 ];
 
