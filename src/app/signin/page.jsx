@@ -5,14 +5,14 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
-import { Poppins } from 'next/font/google';
+// import { Poppins } from 'next/font/google';
 
-// Font setup
-const poppins = Poppins({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  display: 'swap',
-});
+// Font setup - Using system fonts as fallback when Google Fonts are not accessible
+// const poppins = Poppins({
+//   subsets: ['latin'],
+//   weight: ['400', '500', '600'],
+//   display: 'swap',
+// });
 
 export default function SignIn() {
   const router = useRouter();
@@ -24,6 +24,11 @@ export default function SignIn() {
   
   const [isWindows, setIsWindows] = useState(false);
   const [platformStyles, setPlatformStyles] = useState({});
+
+  // Base gradient style for the signin page
+  const gradientStyle = {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  };
 
   useEffect(() => {
     const platform = navigator.userAgent;
@@ -71,7 +76,7 @@ export default function SignIn() {
 
   return (
     <div
-      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
+      className="font-sans fixed inset-0 flex items-center justify-center px-4 overflow-hidden"
       style={{ ...gradientStyle, ...platformStyles }}
     >
       {/* Background overlay: lighter glow on Mac, subtle darkening on Windows */}
