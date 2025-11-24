@@ -77,7 +77,11 @@ export default function SignIn() {
   return (
     <div
       className="font-sans fixed inset-0 flex items-center justify-center px-4 overflow-hidden"
-      style={{ ...gradientStyle, ...platformStyles }}
+      style={{ 
+        ...gradientStyle, 
+        ...platformStyles,
+        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}
     >
       {/* Background overlay: lighter glow on Mac, subtle darkening on Windows */}
       {/* Soft glow (original across all platforms) */}

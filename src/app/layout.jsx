@@ -25,6 +25,7 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <body
         className="antialiased font-sans"
+        style={{fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'}}
         suppressHydrationWarning
       >
         <Sidebar />
