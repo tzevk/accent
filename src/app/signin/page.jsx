@@ -71,8 +71,8 @@ export default function SignIn() {
 
   return (
     <div
-      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden bg-[var(--sidebar-bg)]`}
-      style={platformStyles}
+      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
+      style={{ ...gradientStyle, ...platformStyles }}
     >
       {/* Background overlay: lighter glow on Mac, subtle darkening on Windows */}
       {/* Soft glow (original across all platforms) */}
