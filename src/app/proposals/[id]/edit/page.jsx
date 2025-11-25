@@ -645,7 +645,7 @@ function InputDocumentsForm({ proposalData, setProposalData }) {
       ? String(proposalData.input_document).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
       : [];
     if (JSON.stringify(arr) !== JSON.stringify(docs)) setDocs(arr);
-  }, [proposalData, docs]);
+  }, [proposalData.input_document, docs]);
 
   const persist = (nextDocs) => {
     setDocs(nextDocs);
@@ -728,7 +728,7 @@ function DeliverablesForm({ proposalData, setProposalData }) {
       ? String(proposalData.list_of_deliverables).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
       : [];
     if (JSON.stringify(arr) !== JSON.stringify(items)) setItems(arr);
-  }, [proposalData, items]);
+  }, [proposalData.list_of_deliverables, items]);
 
   const persist = (next) => {
     setItems(next);

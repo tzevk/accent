@@ -146,7 +146,7 @@ export function useActivityTracker() {
     } else {
       activeTimeRef.current += IDLE_CHECK_INTERVAL;
     }
-  }, [sendActivityData, IDLE_CHECK_INTERVAL, IDLE_THRESHOLD]);
+  }, [sendActivityData]);
 
   // Set up event listeners
   useEffect(() => {
@@ -255,14 +255,6 @@ export function useActivityTracker() {
 
     // Cleanup on unmount or user change
     return () => {
-      // Capture ref values at cleanup start to avoid stale closure warnings
-      const sessionStart = sessionStartRef.current;
-      const activityCount = activityCountRef.current;
-      const pageStartTime = pageStartTimeRef.current;
-      const currentPage = currentPageRef.current;
-      const activeTime = activeTimeRef.current;
-      const idleTime = idleTimeRef.current;
-      
       window.removeEventListener('mousemove', throttledMouseMove);
       window.removeEventListener('click', handleClick);
       window.removeEventListener('keydown', handleKeyPress);
@@ -280,14 +272,14 @@ export function useActivityTracker() {
       }
 
       // Send final page time
-      const timeOnPage = Date.now() - pageStartTime;
+      const timeOnPage = Date.now() - pageStartTimeRef.current;
       if (timeOnPage > 1000) {
         sendActivityData({
           actionType: 'view_page',
           resourceType: 'page',
-          description: `Left ${currentPage}`,
+          description: `Left ${currentPageRef.current}`,
           details: {
-            page: currentPage,
+            page: currentPageRef.current,
             durationMs: timeOnPage,
             durationMinutes: Math.round(timeOnPage / 60000 * 10) / 10
           }
@@ -295,7 +287,7 @@ export function useActivityTracker() {
       }
 
       // Send session end
-      const totalSessionTime = Date.now() - sessionStart;
+      const totalSessionTime = Date.now() - sessionStartRef.current;
       sendActivityData({
         actionType: 'status_change',
         resourceType: 'session',
@@ -304,9 +296,9 @@ export function useActivityTracker() {
           status: 'ended',
           totalSessionMs: totalSessionTime,
           totalSessionMinutes: Math.round(totalSessionTime / 60000),
-          activeTime: activeTime,
-          idleTime: idleTime,
-          activityCount: activityCount
+          activeTime: activeTimeRef.current,
+          idleTime: idleTimeRef.current,
+          activityCount: activityCountRef.current
         }
       });
 
@@ -314,7 +306,7 @@ export function useActivityTracker() {
       window.history.pushState = originalPushState;
       window.history.replaceState = originalReplaceState;
     };
-  }, [user?.id, recordActivity, trackPageView, sendHeartbeat, sendActivityData, checkIdle, HEARTBEAT_INTERVAL, IDLE_CHECK_INTERVAL]);
+  }, [user?.id, recordActivity, trackPageView, sendHeartbeat, sendActivityData, checkIdle]);
 
   return {
     recordActivity,
