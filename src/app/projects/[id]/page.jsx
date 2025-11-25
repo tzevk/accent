@@ -140,7 +140,7 @@ export default function ProjectViewPage() {
     return (
       pick(['scope_of_work', 'proposal_scope', 'scope', 'description']) || null
     );
-  }, [pick]);
+  }, [pick, project]);
 
   const unitQtyField = useMemo(() => {
     return pick(['unit_qty', 'unit', 'quantity', 'units', 'unit_quantity']) || null;
@@ -149,7 +149,7 @@ export default function ProjectViewPage() {
   const deliverablesField = useMemo(() => {
     // try several common field names and also fall back to list_of_deliverables
     return pick(['deliverables', 'list_of_deliverables', 'proposal_deliverables', 'proposal_items']) || null;
-  }, [project, pick]);
+  }, [pick]);
 
   // Parse JSON fields safely for rendering
   const parsedTeamMembers = useMemo(() => {
