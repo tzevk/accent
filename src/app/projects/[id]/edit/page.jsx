@@ -6,9 +6,11 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ExclamationCircleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import Image from 'next/image';
+import toast, { Toaster } from 'react-hot-toast';
+import { format } from 'date-fns';
 
 const INITIAL_FORM = {
   // Scope & Annexure fields
@@ -145,6 +147,8 @@ function EditProjectForm() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Sub-Activity dropdown UI state (per-activity)
   const [openSubActivityDropdowns, setOpenSubActivityDropdowns] = useState({});
   const [subActivitySearch, setSubActivitySearch] = useState({});
@@ -774,6 +778,19 @@ function EditProjectForm() {
     };
   }, [autoSaveTimeout]);
 
+  // Add beforeunload warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   const autoSave = async () => {
     try {
       setSaving(true);
@@ -801,18 +818,60 @@ function EditProjectForm() {
 
       if (result.success) {
         setLastSaved(new Date());
+        setHasUnsavedChanges(false);
+      } else {
+        toast.error('Auto-save failed: ' + (result.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Auto-save failed:', error);
+      toast.error('Auto-save failed. Your changes are temporarily saved locally.');
     } finally {
       setSaving(false);
     }
+  };
+
+  // Form validation
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!form.name?.trim()) newErrors.name = 'Project name is required';
+    if (!form.company_id) newErrors.company_id = 'Company is required';
+    if (!form.project_id?.trim()) newErrors.project_id = 'Project number is required';
+    
+    // Date validation
+    if (form.start_date && form.end_date) {
+      if (new Date(form.start_date) > new Date(form.end_date)) {
+        newErrors.end_date = 'End date must be after start date';
+      }
+    }
+    
+    // Budget validation
+    if (form.project_value && form.cost_to_company) {
+      const projectValue = parseFloat(form.project_value);
+      const costToCompany = parseFloat(form.cost_to_company);
+      if (!isNaN(projectValue) && !isNaN(costToCompany) && costToCompany > projectValue) {
+        newErrors.cost_to_company = 'Cost cannot exceed project value';
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
     const newForm = { ...form, [name]: value };
     setForm(newForm);
+    setHasUnsavedChanges(true);
+
+    // Clear field-specific error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
 
     // Clear existing timeout
     if (autoSaveTimeout) {
@@ -1357,21 +1416,32 @@ function EditProjectForm() {
   }, [teamMembers]);
 
   const handleCancel = () => {
-    router.push('/projects');
+    if (hasUnsavedChanges) {
+      if (confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        router.push('/projects');
+      }
+    } else {
+      router.push('/projects');
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!form.name.trim()) {
-      alert('Project name is required');
-      return;
-    }
-    if (!form.company_id) {
-      alert('Company is required');
+    
+    // Validate form
+    if (!validateForm()) {
+      toast.error('Please fix the errors before submitting');
+      // Scroll to first error
+      const firstErrorField = document.querySelector('[data-error="true"]');
+      if (firstErrorField) {
+        firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        firstErrorField.focus();
+      }
       return;
     }
 
     setSubmitting(true);
+    const toastId = toast.loading('Updating project...');
     try {
       const payload = {
         ...form,
@@ -1406,15 +1476,17 @@ function EditProjectForm() {
       });
 
       if (result.success) {
-        alert('Project updated successfully!');
+        toast.success('Project updated successfully!', { id: toastId });
+        setHasUnsavedChanges(false);
+        setLastSaved(new Date());
         // Stay on edit page instead of redirecting to view page
         // router.push(`/projects/${id}`);
       } else {
-        alert(result.error || 'Failed to update project');
+        toast.error(result.error || 'Failed to update project', { id: toastId });
       }
     } catch (error) {
       console.error('Project update error', error);
-      alert(error?.message || 'Failed to update project');
+      toast.error(error?.message || 'Failed to update project', { id: toastId });
     } finally {
       setSubmitting(false);
     }
@@ -1440,6 +1512,33 @@ function EditProjectForm() {
 
   return (
     <div className="min-h-screen flex flex-col overflow-hidden" style={{ background: '#ffffff' }}>
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#ffffff',
+            color: '#0f172a',
+            border: '1.5px solid rgba(139, 92, 246, 0.2)',
+            boxShadow: '0 8px 24px rgba(139, 92, 246, 0.15)',
+            borderRadius: '12px',
+            fontSize: '14px',
+            fontWeight: '500'
+          },
+          success: {
+            iconTheme: {
+              primary: '#22c55e',
+              secondary: '#ffffff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#ffffff',
+            },
+          },
+        }}
+      />
       <Navbar />
       
       {/* Animated Background */}
@@ -1711,22 +1810,31 @@ function EditProjectForm() {
                                 value={form.project_id} 
                                 onChange={handleChange} 
                                 placeholder="Enter project number"
+                                data-error={errors.project_id ? "true" : undefined}
                                 className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
                                 style={{
                                   background: 'rgba(255, 255, 255, 0.95)',
-                                  border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                                  border: `1.5px solid ${errors.project_id ? '#ef4444' : 'rgba(139, 92, 246, 0.15)'}`,
                                   color: '#0f172a',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                                 onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
+                                  e.target.style.borderColor = errors.project_id ? '#ef4444' : '#8b5cf6';
+                                  e.target.style.boxShadow = errors.project_id 
+                                    ? '0 0 0 3px rgba(239, 68, 68, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)'
+                                    : '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
                                 }}
                                 onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                                  e.target.style.borderColor = errors.project_id ? '#ef4444' : 'rgba(139, 92, 246, 0.15)';
                                   e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
+                              {errors.project_id && (
+                                <div className="flex items-center gap-1.5 text-xs text-red-600 mt-1">
+                                  <ExclamationCircleIcon className="h-3.5 w-3.5" />
+                                  <span>{errors.project_id}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="space-y-2">
                               <label className="block text-xs font-bold" style={{ color: '#475569', letterSpacing: '0.01em' }}>
@@ -1738,22 +1846,31 @@ function EditProjectForm() {
                                 value={form.name} 
                                 onChange={handleChange} 
                                 placeholder="Enter project name"
+                                data-error={errors.name ? "true" : undefined}
                                 className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
                                 style={{
                                   background: 'rgba(255, 255, 255, 0.95)',
-                                  border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                                  border: `1.5px solid ${errors.name ? '#ef4444' : 'rgba(139, 92, 246, 0.15)'}`,
                                   color: '#0f172a',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                                 onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
+                                  e.target.style.borderColor = errors.name ? '#ef4444' : '#8b5cf6';
+                                  e.target.style.boxShadow = errors.name
+                                    ? '0 0 0 3px rgba(239, 68, 68, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)'
+                                    : '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
                                 }}
                                 onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                                  e.target.style.borderColor = errors.name ? '#ef4444' : 'rgba(139, 92, 246, 0.15)';
                                   e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
+                              {errors.name && (
+                                <div className="flex items-center gap-1.5 text-xs text-red-600 mt-1">
+                                  <ExclamationCircleIcon className="h-3.5 w-3.5" />
+                                  <span>{errors.name}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="space-y-2">
                               <label className="block text-xs font-bold" style={{ color: '#475569', letterSpacing: '0.01em' }}>
