@@ -56,8 +56,10 @@ export default function SignIn() {
         router.push(from && from !== '/signin' ? from : '/dashboard');
       }
       else setError(data?.message || 'Invalid credentials');
-    } catch (e) {
-      setError(e?.message || 'Network error. Please try again.');
+    } catch (err) {
+      console.error('Login error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Network error. Please try again.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
