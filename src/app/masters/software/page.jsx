@@ -2,7 +2,17 @@
 
 import Navbar from '@/components/Navbar';
 import { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { 
+  PlusIcon, 
+  PencilIcon, 
+  TrashIcon, 
+  MagnifyingGlassIcon,
+  FolderIcon,
+  CubeIcon,
+  CodeBracketSquareIcon,
+  CheckCircleIcon,
+  XCircleIcon
+} from '@heroicons/react/24/outline';
 
 const EMPTY_VERSION = { name: '', release_date: '', notes: '' };
 const EMPTY_CATEGORY = { name: '', description: '', status: 'active' };
@@ -412,68 +422,82 @@ export default function SoftwareMasterPage() {
   // -------- Render --------
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-gray-50 via-purple-50/30 to-pink-50/20 flex flex-col overflow-hidden">
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-8 pt-24 pb-8 space-y-6">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
               <div>
-                <h1 className="text-2xl font-bold text-black">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 bg-clip-text text-transparent mb-2">
                   Software Master Catalogue
                 </h1>
-                <p className="text-sm text-gray-600">
-                  Manage software categories, software products and their
-                  versions.
+                <p className="text-gray-600 flex items-center gap-2">
+                  <CodeBracketSquareIcon className="h-5 w-5 text-purple-600" />
+                  Manage software categories, products and their versions
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search categories, software or versions…"
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
-                />
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search categories, software or versions…"
+                    className="pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent shadow-sm w-full sm:w-64 transition-all"
+                  />
+                </div>
                 <button
                   onClick={openCreateCategory}
-                  className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
                 >
-                  <PlusIcon className="h-3 w-3" />
+                  <PlusIcon className="h-5 w-5" />
                   Add Category
                 </button>
               </div>
             </div>
 
             {loading && (
-              <div className="text-xs text-gray-500">Loading…</div>
+              <div className="flex items-center gap-2 text-sm text-purple-600 bg-purple-50 px-4 py-3 rounded-xl border border-purple-200">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-purple-600 border-t-transparent"></div>
+                Loading…
+              </div>
             )}
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
-                {error}
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-start gap-3 shadow-sm">
+                <XCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">{error}</div>
               </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Categories column */}
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-black">
-                    Categories
-                  </h2>
-                  <div />
+              <section className="bg-white/80 backdrop-blur-sm border border-purple-100 rounded-2xl shadow-xl p-6 space-y-4 hover:shadow-2xl transition-shadow duration-300">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg">
+                      <FolderIcon className="h-5 w-5 text-green-600" />
+                    </div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      Categories
+                    </h2>
+                  </div>
+                  <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                    {filteredCategories.length}
+                  </div>
                 </div>
 
                 {showCategoryForm && (
                   <form
                     onSubmit={handleCategorySubmit}
-                    className="space-y-3 border border-gray-200 rounded-md p-3"
+                    className="space-y-4 border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 shadow-md"
                   >
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-4">
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
-                          Name
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Name <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -486,11 +510,11 @@ export default function SoftwareMasterPage() {
                           }
                           placeholder="e.g., Databases"
                           required
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Description
                         </label>
                         <input
@@ -503,11 +527,11 @@ export default function SoftwareMasterPage() {
                             })
                           }
                           placeholder="Optional description"
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Status
                         </label>
                         <select
@@ -518,14 +542,14 @@ export default function SoftwareMasterPage() {
                               status: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
                         >
                           <option value="active">Active</option>
                           <option value="inactive">Inactive</option>
                         </select>
                       </div>
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 pt-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -533,54 +557,67 @@ export default function SoftwareMasterPage() {
                           setCategoryForm(EMPTY_CATEGORY);
                           setEditingCategoryId(null);
                         }}
-                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs text-black"
+                        className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors shadow-sm"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-2 bg-green-600 text-white rounded-md text-xs"
+                        className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-sm font-medium shadow-md hover:shadow-lg transition-all"
                       >
-                        Save
+                        {editingCategoryId ? 'Update' : 'Save'}
                       </button>
                     </div>
                   </form>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                   {filteredCategories.length === 0 && (
-                    <div className="text-xs text-gray-500">
-                      No categories found.
+                    <div className="text-center py-8 text-gray-500">
+                      <FolderIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">No categories found.</p>
                     </div>
                   )}
                   {filteredCategories.map((cat) => (
                     <div
                       key={cat.id}
-                      className={`p-2 rounded border ${
+                      className={`group p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
                         selectedCategoryId === cat.id
-                          ? 'border-green-300 bg-green-50'
-                          : 'border-gray-100 bg-white'
+                          ? 'border-green-400 bg-gradient-to-br from-green-50 to-emerald-50 shadow-md scale-[1.02]'
+                          : 'border-gray-200 bg-white hover:border-green-300 hover:shadow-md hover:scale-[1.01]'
                       }`}
+                      onClick={() => setSelectedCategoryId(cat.id)}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-medium">{cat.name}</div>
-                          <div className="text-xs text-gray-500">
-                            {cat.description}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="text-base font-semibold text-gray-900 truncate">{cat.name}</div>
+                            {cat.status === 'active' ? (
+                              <CheckCircleIcon className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            ) : (
+                              <XCircleIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            )}
                           </div>
-                          <div className="text-[10px] text-gray-400 mt-1">
-                            Status: {cat.status || 'active'}
+                          <div className="text-xs text-gray-600 line-clamp-2 mb-2">
+                            {cat.description || 'No description'}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                              cat.status === 'active' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {cat.status || 'active'}
+                            </span>
+                            <span className="text-[10px] text-gray-500">
+                              {(cat.softwares || []).length} software
+                            </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
-                            onClick={() => setSelectedCategoryId(cat.id)}
-                            className="px-2 py-1 text-[11px] bg-gray-50 rounded border border-gray-200"
-                          >
-                            Select
-                          </button>
-                          <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setCategoryForm({
                                 name: cat.name || '',
                                 description: cat.description || '',
@@ -589,17 +626,20 @@ export default function SoftwareMasterPage() {
                               setEditingCategoryId(cat.id);
                               setShowCategoryForm(true);
                             }}
-                            className="p-1 text-xs bg-yellow-50 rounded border border-yellow-100"
+                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg border border-amber-200 transition-colors"
                             title="Edit category"
                           >
-                            <PencilIcon className="h-3 w-3" />
+                            <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteCategory(cat.id)}
-                            className="p-1 text-xs bg-red-50 text-red-700 rounded border border-red-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCategory(cat.id);
+                            }}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 transition-colors"
                             title="Delete category"
                           >
-                            <TrashIcon className="h-3 w-3" />
+                            <TrashIcon className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
@@ -609,39 +649,44 @@ export default function SoftwareMasterPage() {
               </section>
 
               {/* Software column */}
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-black">Software</h2>
-                  <div>
-                    <button
-                      onClick={() =>
-                        openCreateSoftware(
-                          selectedCategoryId ||
-                            (categories[0] && categories[0].id)
-                        )
-                      }
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-md text-xs"
-                    >
-                      <PlusIcon className="h-3 w-3" /> Add Software
-                    </button>
+              <section className="bg-white/80 backdrop-blur-sm border border-blue-100 rounded-2xl shadow-xl p-6 space-y-4 hover:shadow-2xl transition-shadow duration-300">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                      <CubeIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <h2 className="text-lg font-bold text-gray-900">Software</h2>
                   </div>
+                  <button
+                    onClick={() =>
+                      openCreateSoftware(
+                        selectedCategoryId ||
+                          (categories[0] && categories[0].id)
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-medium shadow-md hover:shadow-lg transition-all"
+                  >
+                    <PlusIcon className="h-4 w-4" /> Add Software
+                  </button>
                 </div>
 
                 {selectedCategory && (
-                  <p className="text-[11px] text-gray-500 mb-1">
-                    Selected category: <span className="font-medium">{selectedCategory.name}</span>
-                  </p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-blue-800">
+                      Category: <span className="font-semibold">{selectedCategory.name}</span>
+                    </p>
+                  </div>
                 )}
 
                 {showSoftwareForm && (
                   <form
                     onSubmit={handleSoftwareSubmit}
-                    className="space-y-3 border border-gray-200 rounded-md p-3"
+                    className="space-y-4 border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 shadow-md"
                   >
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-4">
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
-                          Name
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Name <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -654,11 +699,11 @@ export default function SoftwareMasterPage() {
                           }
                           placeholder="e.g., PostgreSQL"
                           required
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Provider
                         </label>
                         <input
@@ -671,11 +716,11 @@ export default function SoftwareMasterPage() {
                             })
                           }
                           placeholder="e.g., PostgreSQL Global Development Group"
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
                       </div>
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 pt-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -683,54 +728,53 @@ export default function SoftwareMasterPage() {
                           setSoftwareForm(EMPTY_SOFTWARE);
                           setEditingSoftwareId(null);
                         }}
-                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs text-black"
+                        className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors shadow-sm"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-2 bg-green-600 text-white rounded-md text-xs"
+                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-sm font-medium shadow-md hover:shadow-lg transition-all"
                       >
-                        Save
+                        {editingSoftwareId ? 'Update' : 'Save'}
                       </button>
                     </div>
                   </form>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                   {softwares.length === 0 && (
-                    <div className="text-xs text-gray-500">
-                      No software for this category.
+                    <div className="text-center py-8 text-gray-500">
+                      <CubeIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">No software for this category.</p>
                     </div>
                   )}
                   {softwares.map((sw) => (
                     <div
                       key={sw.id}
-                      className={`p-2 rounded border ${
+                      className={`group p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer ${
                         selectedSoftwareId === sw.id
-                          ? 'border-blue-300 bg-blue-50'
-                          : 'border-gray-100 bg-white'
+                          ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-md scale-[1.02]'
+                          : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-md hover:scale-[1.01]'
                       }`}
+                      onClick={() => setSelectedSoftwareId(sw.id)}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-medium">{sw.name}</div>
-                          <div className="text-xs text-gray-500">
-                            {sw.provider}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-base font-semibold text-gray-900 truncate mb-1">
+                            {sw.name}
                           </div>
-                          <div className="text-[10px] text-gray-400 mt-1">
-                            Versions: {(sw.versions || []).length}
+                          <div className="text-xs text-gray-600 truncate mb-2">
+                            {sw.provider || 'No provider specified'}
+                          </div>
+                          <div className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800">
+                            {(sw.versions || []).length} version{(sw.versions || []).length !== 1 ? 's' : ''}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
-                            onClick={() => setSelectedSoftwareId(sw.id)}
-                            className="px-2 py-1 text-[11px] bg-gray-50 rounded border border-gray-200"
-                          >
-                            Select
-                          </button>
-                          <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSoftwareForm({
                                 name: sw.name || '',
                                 provider: sw.provider || '',
@@ -738,17 +782,20 @@ export default function SoftwareMasterPage() {
                               setEditingSoftwareId(sw.id);
                               setShowSoftwareForm(true);
                             }}
-                            className="p-1 text-xs bg-yellow-50 rounded border border-yellow-100"
+                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg border border-amber-200 transition-colors"
                             title="Edit software"
                           >
-                            <PencilIcon className="h-3 w-3" />
+                            <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteSoftware(sw.id)}
-                            className="p-1 text-xs bg-red-50 text-red-700 rounded border border-red-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSoftware(sw.id);
+                            }}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 transition-colors"
                             title="Delete software"
                           >
-                            <TrashIcon className="h-3 w-3" />
+                            <TrashIcon className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
@@ -758,39 +805,43 @@ export default function SoftwareMasterPage() {
               </section>
 
               {/* Versions column */}
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-black">Versions</h2>
-                  <div>
-                    <button
-                      onClick={() =>
-                        openCreateVersion(
-                          selectedSoftwareId || (softwares[0] && softwares[0].id)
-                        )
-                      }
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-md text-xs"
-                    >
-                      <PlusIcon className="h-3 w-3" /> Add Version
-                    </button>
+              <section className="bg-white/80 backdrop-blur-sm border border-purple-100 rounded-2xl shadow-xl p-6 space-y-4 hover:shadow-2xl transition-shadow duration-300">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg">
+                      <CodeBracketSquareIcon className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <h2 className="text-lg font-bold text-gray-900">Versions</h2>
                   </div>
+                  <button
+                    onClick={() =>
+                      openCreateVersion(
+                        selectedSoftwareId || (softwares[0] && softwares[0].id)
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg text-xs font-medium shadow-md hover:shadow-lg transition-all"
+                  >
+                    <PlusIcon className="h-4 w-4" /> Add Version
+                  </button>
                 </div>
 
                 {selectedSoftware && (
-                  <p className="text-[11px] text-gray-500 mb-1">
-                    Selected software:{' '}
-                    <span className="font-medium">{selectedSoftware.name}</span>
-                  </p>
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-purple-800">
+                      Software: <span className="font-semibold">{selectedSoftware.name}</span>
+                    </p>
+                  </div>
                 )}
 
                 {showVersionForm && (
                   <form
                     onSubmit={handleVersionSubmit}
-                    className="space-y-3 border border-gray-200 rounded-md p-3"
+                    className="space-y-4 border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 shadow-md"
                   >
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-4">
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
-                          Version
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Version <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -801,14 +852,14 @@ export default function SoftwareMasterPage() {
                               name: e.target.value,
                             })
                           }
-                          placeholder="Enter version name (any format)"
+                          placeholder="e.g., 14.5 or 2023.1.0"
                           required
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
-                          Release Date <span className="text-gray-400">(Optional)</span>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Release Date <span className="text-gray-400 text-xs">(Optional)</span>
                         </label>
                         <input
                           type="date"
@@ -819,15 +870,15 @@ export default function SoftwareMasterPage() {
                               release_date: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Notes
                         </label>
-                        <input
-                          type="text"
+                        <textarea
+                          rows={2}
                           value={versionForm.notes}
                           onChange={(e) =>
                             setVersionForm({
@@ -835,12 +886,12 @@ export default function SoftwareMasterPage() {
                               notes: e.target.value,
                             })
                           }
-                          placeholder="Optional notes"
-                          className="w-full px-3 py-2 border rounded-md text-sm"
+                          placeholder="Optional release notes or comments"
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
                         />
                       </div>
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 pt-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -848,63 +899,79 @@ export default function SoftwareMasterPage() {
                           setVersionForm(EMPTY_VERSION);
                           setEditingVersionId(null);
                         }}
-                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs text-black"
+                        className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors shadow-sm"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-2 bg-green-600 text-white rounded-md text-xs"
+                        className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg text-sm font-medium shadow-md hover:shadow-lg transition-all"
                       >
-                        Save
+                        {editingVersionId ? 'Update' : 'Save'}
                       </button>
                     </div>
                   </form>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                   {versions.length === 0 && (
-                    <div className="text-xs text-gray-500">
-                      No versions available.
+                    <div className="text-center py-8 text-gray-500">
+                      <CodeBracketSquareIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">No versions available.</p>
                     </div>
                   )}
                   {versions.map((v) => (
                     <div
                       key={v.id}
-                      className="p-2 rounded border border-gray-100 bg-white flex items-start justify-between gap-2"
+                      className="group p-4 rounded-xl border-2 border-gray-200 bg-white hover:border-purple-300 hover:shadow-md transition-all duration-300"
                     >
-                      <div>
-                        <div className="text-sm font-medium">{v.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {v.release_date
-                            ? `Released: ${v.release_date}`
-                            : ''}
-                          {v.notes ? ` • ${v.notes}` : ''}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="px-3 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg text-sm font-semibold">
+                              {v.name}
+                            </span>
+                          </div>
+                          {v.release_date && (
+                            <div className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                              <span className="font-medium">Released:</span>
+                              <span>{new Date(v.release_date).toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric' 
+                              })}</span>
+                            </div>
+                          )}
+                          {v.notes && (
+                            <div className="text-xs text-gray-500 line-clamp-2 mt-1">
+                              {v.notes}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            setVersionForm({
-                              name: v.name || '',
-                              release_date: v.release_date || '',
-                              notes: v.notes || '',
-                            });
-                            setEditingVersionId(v.id);
-                            setShowVersionForm(true);
-                          }}
-                          className="p-1 text-xs bg-yellow-50 rounded border border-yellow-100"
-                          title="Edit version"
-                        >
-                          <PencilIcon className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteVersion(v.id)}
-                          className="p-1 text-xs bg-red-50 text-red-700 rounded border border-red-100"
-                          title="Delete version"
-                        >
-                          <TrashIcon className="h-3 w-3" />
-                        </button>
+                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setVersionForm({
+                                name: v.name || '',
+                                release_date: v.release_date || '',
+                                notes: v.notes || '',
+                              });
+                              setEditingVersionId(v.id);
+                              setShowVersionForm(true);
+                            }}
+                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg border border-amber-200 transition-colors"
+                            title="Edit version"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVersion(v.id)}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200 transition-colors"
+                            title="Delete version"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
