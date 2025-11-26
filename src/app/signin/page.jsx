@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
@@ -26,7 +25,6 @@ const gradientStyle = {
 };
 
 export default function SignIn() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -50,10 +48,15 @@ export default function SignIn() {
       });
 
       if (data?.success) {
+        // Wait a bit to ensure cookies are set before redirecting
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // If redirected here from a protected page, go back there
         const params = new URLSearchParams(window.location.search);
         const from = params.get('from');
-        router.push(from && from !== '/signin' ? from : '/dashboard');
+        
+        // Force a full page reload to ensure cookies are recognized
+        window.location.href = from && from !== '/signin' ? from : '/dashboard';
       }
       else setError(data?.message || 'Invalid credentials');
     } catch (e) {
