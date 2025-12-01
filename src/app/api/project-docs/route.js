@@ -7,51 +7,36 @@ import { dbConnect } from '@/utils/database';
 // Fields: id (uuid), project_id (int fk projects.id), name, doc_master_id (nullable, references documents_master.id), file_url, thumb_url, description, status, metadata (JSON), created_at, updated_at
 
 async function ensureTable(db) {
-  // Create table without foreign key constraints initially to avoid FK creation errors if referenced tables
-  // are not yet present or have incompatible engines. We'll try to add constraints afterwards if possible.
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS project_documents (
-      id VARCHAR(36) PRIMARY KEY,
-      project_id INT NOT NULL,
-      doc_master_id VARCHAR(36) NULL,
-      name VARCHAR(255) NOT NULL,
-      file_url VARCHAR(500),
-      thumb_url VARCHAR(500),
-      description TEXT,
-      status VARCHAR(50) DEFAULT 'active',
-      metadata JSON,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB
-  `);
-
-  // Attempt to add foreign key constraints only if referenced tables/columns exist.
-  try {
-    const [[projectsTable]] = await db.execute(
-      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
-    );
-    if (projectsTable && projectsTable.cnt > 0) {
-      try {
-        await db.execute(`ALTER TABLE project_documents ADD CONSTRAINT fk_project_documents_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE`);
-      } catch (e) {
-        // Ignore duplicate-add or incompatible FK errors; log for diagnostics
-        // MySQL error codes: 1022/1005 for duplicate keys/creation errors, 1215/150 for FK problems
-        console.warn('Could not add fk_project_documents_project:', e?.message || e);
-      }
-    }
-
-    const [[dmTable]] = await db.execute(
-      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents_master'`
-    );
-    if (dmTable && dmTable.cnt > 0) {
-      try {
-        await db.execute(`ALTER TABLE project_documents ADD CONSTRAINT fk_project_documents_master FOREIGN KEY (doc_master_id) REFERENCES documents_master(id) ON DELETE SET NULL`);
-      } catch (e) {
-        console.warn('Could not add fk_project_documents_master:', e?.message || e);
-      }
-    }
-  } catch (outerErr) {
-    console.warn('Could not verify referenced tables for project_documents FKs:', outerErr?.message || outerErr);
+  // project_documents table should already exist with proper foreign keys
+  // created by the fix-project-documents-fk.js script. This function just
+  // ensures it exists with a basic structure if it somehow doesn't.
+  
+  const [tableCheck] = await db.execute(
+    `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_documents'`
+  );
+  
+  if (tableCheck[0].cnt === 0) {
+    console.warn('project_documents table does not exist. Creating basic structure...');
+    // Note: doc_master_id is int(11) to match documents_master.id, not VARCHAR(36)
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS project_documents (
+        id VARCHAR(36) PRIMARY KEY,
+        project_id INT(11) NOT NULL,
+        doc_master_id INT(11) NULL,
+        name VARCHAR(255) NOT NULL,
+        file_url VARCHAR(500),
+        thumb_url VARCHAR(500),
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'active',
+        metadata JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_project_id (project_id),
+        INDEX idx_doc_master_id (doc_master_id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Created project_documents table without foreign keys (add them manually if needed)');
   }
 }
 
