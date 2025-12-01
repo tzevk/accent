@@ -444,29 +444,7 @@ function ProjectsInner() {
                   </div>
                   <p className="text-sm font-medium ml-15" style={{ color: '#64748b', letterSpacing: '0.01em' }}>Manage and track your client projects with precision</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => router.push('/projects/new')}
-                    className="inline-flex items-center gap-2.5 rounded-2xl text-white px-6 py-3 text-sm font-bold transition-all duration-300 shadow-lg"
-                    style={{
-                      background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-                      boxShadow: '0 10px 40px -10px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-                      transform: 'translateY(0)',
-                      letterSpacing: '0.02em'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)';
-                      e.currentTarget.style.boxShadow = '0 20px 50px -10px rgba(139, 92, 246, 0.7), 0 0 0 1px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                      e.currentTarget.style.boxShadow = '0 10px 40px -10px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-                    }}
-                  >
-                    <PlusIcon className="h-5 w-5" />
-                    <span>New Project</span>
-                  </button>
-                </div>
+
               </div>
               {/* Quick Stats */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -1654,35 +1632,7 @@ function ProjectsInner() {
           </div>
         </div>
       </div>
-      {/* Floating New Project FAB (mobile-focused) */}
-      <button
-        onClick={() => router.push('/projects/new')}
-        className="fixed bottom-6 right-6 md:hidden inline-flex items-center justify-center h-14 w-14 rounded-full text-white transition-all duration-300"
-        style={{
-          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-          boxShadow: '0 12px 40px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(139, 92, 246, 0.5)',
-          animation: 'pulse-ring 2s infinite'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-        }}
-        aria-label="New Project"
-      >
-        <PlusIcon className="h-6 w-6" />
-      </button>
-      <style jsx>{`
-        @keyframes pulse-ring {
-          0%, 100% {
-            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(139, 92, 246, 0.5);
-          }
-          50% {
-            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.5), 0 0 0 10px rgba(139, 92, 246, 0);
-          }
-        }
-      `}</style>
+
     </div>
   );
 }
