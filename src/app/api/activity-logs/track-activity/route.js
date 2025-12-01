@@ -9,8 +9,8 @@ import { logActivity } from '@/utils/activity-logger';
 export async function POST(request) {
   try {
     const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
-    if (!auth.authorized) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    if (auth instanceof NextResponse) {
+      return auth;
     }
 
     const data = await request.json();

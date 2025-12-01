@@ -524,27 +524,78 @@ export async function PUT(request, { params }) {
     const pushIf = (colName, val) => {
       if (existing.has(colName)) {
         setParts.push(`${colName} = ?`);
-        values.push(val);
+        // Convert empty strings to null for date/datetime fields
+        // Check if field name suggests it's a date type or if value is empty string
+        const isDateField = colName.includes('date') || colName.includes('_at') || colName.includes('meeting');
+        if (isDateField && val === '') {
+          values.push(null);
+        } else {
+          values.push(val);
+        }
       }
     };
 
     // Map request body keys to possible DB column names and push accordingly
     // title/proposal_title
     pushIf('title', body.title ?? null);
-  pushIf('proposal_id', body.proposal_id ?? null);
+    pushIf('proposal_id', body.proposal_id ?? null);
     pushIf('proposal_title', body.proposal_title ?? body.title ?? null);
     pushIf('client', body.client ?? null);
     pushIf('contact_name', body.contact_name ?? null);
     pushIf('contact_email', body.contact_email ?? null);
     pushIf('phone', body.phone ?? null);
     pushIf('project_description', body.project_description ?? body.description ?? null);
+    pushIf('description', body.description ?? body.project_description ?? null);
     pushIf('value', body.value ?? body.proposal_value ?? null);
+    pushIf('proposal_value', body.proposal_value ?? body.value ?? null);
     pushIf('status', body.status ?? null);
     pushIf('due_date', body.due_date ?? body.target_date ?? null);
+    pushIf('target_date', body.target_date ?? body.due_date ?? null);
     pushIf('notes', body.notes ?? null);
     pushIf('lead_id', body.lead_id ?? null);
-
-    // Ensure enquiry_no mirrors lead_id when lead_id is provided; otherwise accept explicit enquiry_no
+    
+    // Company/Industry/Contract fields
+    pushIf('company_id', body.company_id ?? null);
+    pushIf('industry', body.industry ?? null);
+    pushIf('contract_type', body.contract_type ?? null);
+    pushIf('currency', body.currency ?? null);
+    
+    // Schedule fields
+    pushIf('planned_start_date', body.planned_start_date ?? null);
+    pushIf('planned_end_date', body.planned_end_date ?? null);
+    pushIf('project_duration_planned', body.project_duration_planned ?? body.duration ?? null);
+    
+    // Meeting fields
+    pushIf('kickoff_meeting', body.kickoff_meeting ?? null);
+    pushIf('in_house_meeting', body.in_house_meeting ?? null);
+    pushIf('kickoff_meeting_date', body.kickoff_meeting_date ?? null);
+    pushIf('internal_meeting_date', body.internal_meeting_date ?? null);
+    pushIf('next_internal_meeting', body.next_internal_meeting ?? null);
+    
+    // Financial fields
+    pushIf('budget', body.budget ?? null);
+    pushIf('cost_to_company', body.cost_to_company ?? null);
+    pushIf('profitability_estimate', body.profitability_estimate ?? null);
+    pushIf('major_risks', body.major_risks ?? null);
+    pushIf('mitigation_plans', body.mitigation_plans ?? null);
+    
+    // Hours tracking fields
+    pushIf('planned_hours_total', body.planned_hours_total ?? null);
+    pushIf('actual_hours_total', body.actual_hours_total ?? null);
+    pushIf('hours_variance_total', body.hours_variance_total ?? null);
+    pushIf('hours_variance_percentage', body.hours_variance_percentage ?? null);
+    pushIf('productivity_index', body.productivity_index ?? null);
+    
+    // Location fields
+    pushIf('client_contact_details', body.client_contact_details ?? null);
+    pushIf('project_location_country', body.project_location_country ?? null);
+    pushIf('project_location_city', body.project_location_city ?? null);
+    pushIf('project_location_site', body.project_location_site ?? null);
+    
+    // Priority/Progress fields
+    pushIf('priority', body.priority ?? null);
+    pushIf('progress', body.progress ?? null);
+    pushIf('project_id', body.project_id ?? null);    // Ensure enquiry_no mirrors lead_id when lead_id is provided; otherwise accept explicit enquiry_no
     if (existing.has('enquiry_no')) {
       const enquiryVal = body.lead_id ?? body.enquiry_no ?? null;
       pushIf('enquiry_no', enquiryVal);
@@ -556,9 +607,13 @@ export async function PUT(request, { params }) {
     pushIf('attention_person', body.attention_person ?? null);
     pushIf('attention_designation', body.attention_designation ?? null);
     pushIf('quotation_no', body.quotation_no ?? null);
-    pushIf('date_of_quotation', body.date_of_quotation ?? null);
-    pushIf('enquiry_no', body.enquiry_no ?? null);
-    pushIf('date_of_enquiry', body.date_of_enquiry ?? null);
+    pushIf('quotation_number', body.quotation_number ?? body.quotation_no ?? null);
+    pushIf('quotation_date', body.quotation_date ?? body.date_of_quotation ?? null);
+    pushIf('date_of_quotation', body.date_of_quotation ?? body.quotation_date ?? null);
+    pushIf('enquiry_no', body.enquiry_no ?? body.enquiry_number ?? null);
+    pushIf('enquiry_number', body.enquiry_number ?? body.enquiry_no ?? null);
+    pushIf('enquiry_date', body.enquiry_date ?? body.date_of_enquiry ?? null);
+    pushIf('date_of_enquiry', body.date_of_enquiry ?? body.enquiry_date ?? null);
 
     if (existing.has('scope_items')) {
       pushIf('scope_items', body.scope_items ? JSON.stringify(body.scope_items) : null);
@@ -580,6 +635,7 @@ export async function PUT(request, { params }) {
     pushIf('list_of_deliverables', body.list_of_deliverables ?? null);
     pushIf('project_schedule', body.project_schedule ?? null);
     pushIf('software', body.software ?? null);
+    pushIf('software_items', body.software_items ?? null);
     pushIf('duration', body.duration ?? null);
     pushIf('site_visit', body.site_visit ?? null);
     pushIf('quotation_validity', body.quotation_validity ?? null);
@@ -592,6 +648,18 @@ export async function PUT(request, { params }) {
     pushIf('additional_fields', body.additional_fields ?? null);
     pushIf('general_terms', body.general_terms ?? null);
     pushIf('payment_terms', body.payment_terms ?? body.payment_terms ?? null);
+
+    // JSON fields for various data structures
+    pushIf('commercial_items', body.commercial_items ?? null);
+    pushIf('disciplines', body.disciplines ?? null);
+    pushIf('activities', body.activities ?? null);
+    pushIf('discipline_descriptions', body.discipline_descriptions ?? null);
+    pushIf('planning_activities_list', body.planning_activities_list ?? null);
+    pushIf('documents_list', body.documents_list ?? null);
+    pushIf('planned_hours_by_discipline', body.planned_hours_by_discipline ?? null);
+    pushIf('actual_hours_by_discipline', body.actual_hours_by_discipline ?? null);
+    pushIf('planned_hours_per_activity', body.planned_hours_per_activity ?? null);
+    pushIf('actual_hours_per_activity', body.actual_hours_per_activity ?? null);
 
     // If there are no columns to update, return 400
     if (setParts.length === 0) {
