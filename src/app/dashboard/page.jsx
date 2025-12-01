@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJSON } from '@/utils/http';
 import dynamic from 'next/dynamic';
+import InteractiveDonut from '@/components/InteractiveDonut';
 import { 
   UserGroupIcon,
   DocumentTextIcon,
@@ -22,10 +23,6 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import ActivityAssignmentsSection from '@/components/ActivityAssignmentsSection';
 const UserDashboard = dynamic(() => import('./user-dashboard'), { ssr: false });
 // const DonutChart = dynamic(() => import('@/components/DonutChart'), { ssr: false });
-const InteractiveDonut = dynamic(() => import('@/components/InteractiveDonut'), {
-  ssr: false,
-  loading: () => <div className="w-full h-64 animate-pulse rounded-lg bg-gray-100" />
-});
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
@@ -64,58 +61,56 @@ export default function Dashboard() {
   
   
   useEffect(() => {
-    // Load project analytics: series for counts and breakdown/status. If metric=value has no data, auto-fallback to count.
+    // Load project bar series AND sales (proposals) donut data independently.
     let abort = false;
 
-    const loadMetric = async (metricToUse) => {
-      const projUrl = `/api/analytics/projects?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(metricToUse)}`;
-      const res = await fetch(projUrl);
-      const json = await res.json();
-      if (!abort && json?.success) {
-        // Update bar series with project counts for the period (always based on counts in backend)
-        setProjectSeries(Array.isArray(json.series) ? json.series : []);
-        const breakdown = Array.isArray(json.breakdownByStatus) ? json.breakdownByStatus : [];
-        const hasNonZero = breakdown.some(d => (Number(d.value) || 0) > 0);
-        if (hasNonZero) {
-          const total = breakdown.reduce((a, b) => a + (Number(b.value) || 0), 0);
-          const completed = breakdown.find(d => String(d.name).toLowerCase().includes('completed'));
-          const conversion = total > 0 ? Math.round(((Number(completed?.value) || 0) / total) * 100) : 0;
-          setSalesData(breakdown);
-          setSalesTotals({ total, conversion });
-          return true;
+    const loadProjects = async () => {
+      try {
+        const url = `/api/analytics/projects?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(salesMetric)}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!abort && json?.success) {
+          setProjectSeries(Array.isArray(json.series) ? json.series : []);
         }
+      } catch {
+        if (!abort) setProjectSeries([]);
+      }
+    };
+
+    const loadSales = async (metricToUse) => {
+      try {
+        const url = `/api/analytics/sales?period=${encodeURIComponent(analyticsPeriod)}&metric=${encodeURIComponent(metricToUse)}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!abort && json?.success) {
+          const arr = Array.isArray(json.data) ? json.data : [];
+          const hasNonZero = arr.some(d => (Number(d.value) || 0) > 0);
+          if (hasNonZero) {
+            setSalesData(arr);
+            setSalesTotals({ total: Number(json.total) || 0, conversion: Number(json.conversion) || 0 });
+            return true;
+          }
+        }
+      } catch {
+        // ignore
       }
       return false;
     };
 
     const load = async () => {
-      try {
-        // 1) Try with the current metric
-        const ok = await loadMetric(salesMetric);
-        if (ok || abort) return;
-
-        // 2) If current metric is value and there is no data, auto-fallback to count (no user click required)
-        if (salesMetric === 'value') {
-          const okCount = await loadMetric('count');
-          if (!abort && okCount) {
-            setSalesMetric('count');
-            try { if (typeof window !== 'undefined') localStorage.setItem('salesMetric', 'count'); } catch {}
-            return;
-          }
+      await loadProjects();
+      const ok = await loadSales(salesMetric);
+      if (!ok && salesMetric === 'value') {
+        const okCount = await loadSales('count');
+        if (okCount && !abort) {
+          setSalesMetric('count');
+          try { if (typeof window !== 'undefined') localStorage.setItem('salesMetric', 'count'); } catch {}
+          return;
         }
-
-        // 3) Nothing found — clear visuals
-        if (!abort) {
-          setProjectSeries([]);
-          setSalesData([]);
-          setSalesTotals({ total: 0, conversion: 0 });
-        }
-      } catch {
-        if (!abort) {
-          setProjectSeries([]);
-          setSalesData([]);
-          setSalesTotals({ total: 0, conversion: 0 });
-        }
+      }
+      if (!ok && !abort) {
+        setSalesData([]);
+        setSalesTotals({ total: 0, conversion: 0 });
       }
     };
 

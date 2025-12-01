@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
@@ -14,8 +13,18 @@ const poppins = Poppins({
   display: 'swap',
 });
 
+// Background gradient style (was referenced but undefined)
+// Kept subtle light radial blend to match existing overlay and brand tint.
+const gradientStyle = {
+  // Brand gradient similar to previous version: bright center fading to deeper purple edges
+  background: 'radial-gradient(circle at 50% 40%, #cfa9e6 0%, #a562c9 28%, #7F2487 52%, #5F146D 72%, #4A0F5A 90%)',
+  minHeight: '100vh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
 export default function SignIn() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,11 +33,6 @@ export default function SignIn() {
   
   const [isWindows, setIsWindows] = useState(false);
   const [platformStyles, setPlatformStyles] = useState({});
-
-  // Gradient background style
-  const gradientStyle = {
-    background: 'linear-gradient(135deg, #5F146D 0%, #7A2B91 50%, #5F146D 100%)',
-  };
 
   useEffect(() => {
     const platform = navigator.userAgent;
@@ -61,10 +65,15 @@ export default function SignIn() {
       });
 
       if (data?.success) {
+        // Wait a bit to ensure cookies are set before redirecting
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // If redirected here from a protected page, go back there
         const params = new URLSearchParams(window.location.search);
         const from = params.get('from');
-        router.push(from && from !== '/signin' ? from : '/dashboard');
+        
+        // Force a full page reload to ensure cookies are recognized
+        window.location.href = from && from !== '/signin' ? from : '/dashboard';
       }
       else setError(data?.message || 'Invalid credentials');
     } catch (e) {
@@ -75,47 +84,31 @@ export default function SignIn() {
   };
 
   return (
-    <div
-      className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
-      style={{ ...gradientStyle, ...platformStyles }}
-    >
+    <div className={`${poppins.className} fixed inset-0 px-4 overflow-hidden`} style={gradientStyle}>
       {/* Background overlay: lighter glow on Mac, subtle darkening on Windows */}
       {/* Soft glow (original across all platforms) */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.15)_0%,transparent_70%)]" />
 
       {/* Card */}
       <div 
-        className={`relative bg-white rounded-[28px] text-center shadow-[0_20px_60px_rgba(93,0,132,0.25)] border border-[#f0e6f3] backdrop-blur-sm transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_24px_70px_rgba(93,0,132,0.3)] ${
-          isWindows 
-            ? 'p-8 w-[380px] sm:w-[400px]' 
-            : 'p-10 w-[420px] sm:w-[440px]'
-        }`}
-        style={platformStyles}
+        className="relative bg-white rounded-[28px] text-center shadow-[0_20px_60px_rgba(93,0,132,0.25)] border border-[#f0e6f3] backdrop-blur-sm transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_24px_70px_rgba(93,0,132,0.3)] p-10 w-[420px] sm:w-[440px]"
       >
         {/* Logo */}
-        <div className={`flex justify-center ${isWindows ? 'mb-5' : 'mb-6'}`}>
+        <div className="flex justify-center mb-6">
           <Image
             src="/accent-logo.png"
             alt="Accent Techno Solutions"
             width={120}
             height={120}
-            className={`object-contain ${
-              isWindows 
-                ? 'h-[95px] sm:h-[105px]' 
-                : 'h-[110px] sm:h-[120px]'
-            }`}
+            className="object-contain h-[110px] sm:h-[120px]"
             priority
           />
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className={`text-left ${isWindows ? 'space-y-4' : 'space-y-5'}`}>
+        <form onSubmit={handleSubmit} className="text-left space-y-5">
           {/* Title */}
-          <h2 className={`font-semibold text-[#5F146D] ${
-            isWindows 
-              ? 'text-[20px] mb-3' 
-              : 'text-[22px] mb-4'
-          }`}>
+          <h2 className="font-semibold text-[#5F146D] text-[22px] mb-4">
             Sign In
           </h2>
 
@@ -134,9 +127,7 @@ export default function SignIn() {
               placeholder="username@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className={`w-full rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent transition-all duration-200 shadow-sm ${
-                isWindows ? 'h-[38px]' : 'h-[42px]'
-              }`}
+              className="w-full rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm h-[42px] placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent transition-all duration-200 shadow-sm"
             />
           </div>
 
@@ -156,9 +147,7 @@ export default function SignIn() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={`w-full rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent pr-10 shadow-sm ${
-                  isWindows ? 'h-[38px]' : 'h-[42px]'
-                }`}
+                className="w-full rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm h-[42px] placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent pr-10 shadow-sm"
               />
               <button
                 type="button"
@@ -185,18 +174,14 @@ export default function SignIn() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full bg-[#5F146D] hover:bg-[#4E0F58] text-white rounded-md font-semibold text-sm tracking-wide transition-all duration-200 shadow-[0_3px_6px_rgba(95,20,109,0.3)] hover:shadow-[0_4px_10px_rgba(95,20,109,0.4)] disabled:opacity-60 ${
-              isWindows ? 'h-[40px]' : 'h-[44px]'
-            }`}
+            className="w-full bg-[#5F146D] hover:bg-[#4E0F58] text-white rounded-md font-semibold text-sm tracking-wide transition-all duration-200 shadow-[0_3px_6px_rgba(95,20,109,0.3)] hover:shadow-[0_4px_10px_rgba(95,20,109,0.4)] disabled:opacity-60 h-[44px]"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
         {/* Footer */}
-        <p className={`text-xs text-[#7d6295] text-center ${
-          isWindows ? 'mt-6' : 'mt-8'
-        }`}>
+        <p className="text-xs text-[#7d6295] text-center mt-8">
           © 2025 Accent Techno Solutions. All rights reserved.
         </p>
       </div>
