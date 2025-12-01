@@ -471,7 +471,31 @@ export async function POST(request, { params }) {
 
     await pool.end?.();
 
-  return NextResponse.json({ success: true, data: { project: created[0], proposal: { ...proposal, status: 'CONVERTED', project_id: created[0].project_id } } }, { status: 201 });
+    // If we couldn't fetch the created project row for any reason, fall back to a minimal project object
+    let createdProject = null;
+    try {
+      if (created && created.length > 0) createdProject = created[0];
+    } catch (e) {
+      console.warn('Unexpected created result shape:', e?.message || e, { created });
+    }
+
+    if (!createdProject) {
+      // Build a safe fallback object so the frontend can proceed (contains at least id/project_id/name)
+      createdProject = {
+        id: result && typeof result.insertId === 'number' ? result.insertId : null,
+        project_id: project_id || null,
+        name: projectData.name || null,
+        company_id: projectData.company_id || null,
+        client_name: client_name || null,
+        start_date: projectData.start_date || null,
+        end_date: projectData.end_date || null,
+        budget: projectData.budget || null,
+        status: projectData.status || 'NEW'
+      };
+      console.warn('Created project row not retrievable; returning fallback project object', { fallback: createdProject });
+    }
+
+    return NextResponse.json({ success: true, data: { project: createdProject, proposal: { ...proposal, status: 'CONVERTED', project_id: createdProject.project_id } } }, { status: 201 });
   } catch (err) {
     console.error('Convert proposal to project error:', err);
     return NextResponse.json({ success: false, error: 'Failed to convert proposal', details: err.message }, { status: 500 });

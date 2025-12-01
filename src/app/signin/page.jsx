@@ -25,6 +25,11 @@ export default function SignIn() {
   const [isWindows, setIsWindows] = useState(false);
   const [platformStyles, setPlatformStyles] = useState({});
 
+  // Gradient background style
+  const gradientStyle = {
+    background: 'linear-gradient(135deg, #5F146D 0%, #7A2B91 50%, #5F146D 100%)',
+  };
+
   useEffect(() => {
     const platform = navigator.userAgent;
     const windowsDetected = platform.includes('Windows');

@@ -32,6 +32,7 @@ export async function GET() {
 
     // Add new columns if they don't exist
     try {
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS target_date DATE');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT \'ONGOING\'');
@@ -44,8 +45,9 @@ export async function GET() {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
-  await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list LONGTEXT');
-  await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list LONGTEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list LONGTEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list LONGTEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS software_items LONGTEXT');
       
       await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
 
@@ -151,10 +153,10 @@ export async function POST(request) {
       in_house_meeting
     } = data;
 
-    if (!name || (!company_id && !proposal_id)) {
+    if (!name || (!company_id && !proposal_id && !data.client_name)) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Project name and company (or linked proposal) are required' 
+        error: 'Project name and company (company_id, client_name, or linked proposal) are required' 
       }, { status: 400 });
     }
 
@@ -164,6 +166,15 @@ export async function POST(request) {
   let effectiveCompanyId = company_id || null;
   // use data.client_name (may be present in payload) rather than an undefined variable
   let effectiveClientName = data.client_name || null;
+  
+  // Debug logging
+  console.log('POST /api/projects - received data:', { 
+    company_id, 
+    client_name: data.client_name, 
+    proposal_id,
+    effectiveCompanyId,
+    effectiveClientName 
+  });
 
     if (proposal_id) {
       try {
@@ -181,21 +192,21 @@ export async function POST(request) {
       }
     }
 
-    // Fetch company name from effectiveCompanyId
-    const [companyRows] = await db.execute(
-      'SELECT company_name FROM companies WHERE id = ?',
-      [effectiveCompanyId]
-    );
-
-    if (companyRows.length === 0) {
-      await db.end();
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Selected company not found' 
-      }, { status: 400 });
+    // Fetch company name from effectiveCompanyId if available, otherwise use effectiveClientName
+    let client_name = effectiveClientName;
+    if (effectiveCompanyId) {
+      try {
+        const [companyRows] = await db.execute(
+          'SELECT company_name FROM companies WHERE id = ?',
+          [effectiveCompanyId]
+        );
+        if (companyRows.length > 0) {
+          client_name = client_name || companyRows[0].company_name;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch company name:', e?.message || e);
+      }
     }
-
-    const client_name = effectiveClientName || companyRows[0].company_name;
     
     let projectId;
     
@@ -370,31 +381,28 @@ export async function PUT(request) {
       }
     }
 
-    // Ensure we have a company id (from proposal or provided payload)
-    if (!effectiveCompanyId) {
+    // Ensure we have either a company id OR a client name
+    if (!effectiveCompanyId && !effectiveClientName) {
       await db.end();
       return NextResponse.json({ 
         success: false, 
-        error: 'Company is required (provide company_id or link a proposal with a company)' 
+        error: 'Company is required (provide company_id, client_name, or link a proposal with a company)' 
       }, { status: 400 });
     }
 
-    // Fetch company name from effectiveCompanyId
-    const [companyRows] = await db.execute(
-      'SELECT company_name FROM companies WHERE id = ?',
-      [effectiveCompanyId]
-    );
+    // Fetch company name from effectiveCompanyId if we have it
+    let client_name = effectiveClientName;
+    if (effectiveCompanyId) {
+      const [companyRows] = await db.execute(
+        'SELECT company_name FROM companies WHERE id = ?',
+        [effectiveCompanyId]
+      );
 
-    if (companyRows.length === 0) {
-      await db.end();
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Selected company not found' 
-      }, { status: 400 });
+      if (companyRows.length > 0) {
+        client_name = client_name || companyRows[0].company_name;
+      }
     }
 
-    const client_name = effectiveClientName || companyRows[0].company_name;
-    
     // Check if project exists
     const [existing] = await db.execute(
       'SELECT id FROM projects WHERE id = ?',

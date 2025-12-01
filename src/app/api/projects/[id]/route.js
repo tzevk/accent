@@ -218,6 +218,13 @@ export async function PUT(request, context) {
   try {
     const { id } = await context.params;
     const data = await request.json();
+    
+    console.log('PUT /api/projects/[id] - received data for project:', id, { 
+      company_id: data.company_id, 
+      client_name: data.client_name, 
+      name: data.name 
+    });
+    
     const db = await dbConnect();
 
     // Inspect schema to determine the primary key column
