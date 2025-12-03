@@ -3,6 +3,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 
+// Constants defined outside component to avoid dependency warnings
+const IDLE_THRESHOLD = 2 * 60 * 1000; // 2 minutes of no activity = idle
+const HEARTBEAT_INTERVAL = 30 * 1000; // Send heartbeat every 30 seconds
+const IDLE_CHECK_INTERVAL = 10 * 1000; // Check for idle every 10 seconds
+
 /**
  * Activity Tracker Hook
  * Tracks screen time, mouse movements, clicks, keyboard input, and idle detection
@@ -19,10 +24,6 @@ export function useActivityTracker() {
   const pageStartTimeRef = useRef(Date.now());
   const heartbeatIntervalRef = useRef(null);
   const idleCheckIntervalRef = useRef(null);
-
-  const IDLE_THRESHOLD = 2 * 60 * 1000; // 2 minutes of no activity = idle
-  const HEARTBEAT_INTERVAL = 30 * 1000; // Send heartbeat every 30 seconds
-  const IDLE_CHECK_INTERVAL = 10 * 1000; // Check for idle every 10 seconds
 
   // Send activity data to server
   const sendActivityData = useCallback(async (data) => {

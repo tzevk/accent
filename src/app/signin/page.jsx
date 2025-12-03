@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
@@ -31,7 +31,24 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Removed platform-specific scaling; unified presentation.
+  const [isWindows, setIsWindows] = useState(false);
+  const [platformStyles, setPlatformStyles] = useState({});
+
+  useEffect(() => {
+    const platform = navigator.userAgent;
+    const windowsDetected = platform.includes('Windows');
+    setIsWindows(windowsDetected);
+    
+    if (windowsDetected) {
+      // Keep original gradient on Windows as requested; only apply size scaling
+      
+      // Windows-specific scaling to make form appear smaller and more comfortable
+      setPlatformStyles({
+        transform: 'scale(0.85)',
+        transformOrigin: 'center',
+      });
+    }
+  }, []);
 
   // Handle login
   const handleSubmit = async (e) => {

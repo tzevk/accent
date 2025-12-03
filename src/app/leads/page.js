@@ -881,8 +881,6 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                   value={formData.lead_id}
                   onChange={handleFormChange}
                   placeholder="e.g., 001-10-2025 (auto-generated if empty)"
-                  pattern="\d{3}-\d{2}-\d{4}"
-                  title="Format: 001-10-2025 (serial-month-year)"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-purple focus:border-transparent text-sm font-mono"
                 />
                 <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year. Leave empty to auto-generate.</p>

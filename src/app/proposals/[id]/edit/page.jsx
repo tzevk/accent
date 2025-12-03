@@ -799,13 +799,57 @@ function DeliverablesForm({ proposalData, setProposalData }) {
 function SoftwareForm({ proposalData, setProposalData }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
 
-  const itemsInitial = Array.isArray(proposalData.software_items) ? proposalData.software_items : [];
+  // Clean and validate items on initial load
+  const cleanItems = (rawItems) => {
+    if (!Array.isArray(rawItems)) return [];
+    return rawItems
+      .filter(it => it && typeof it === 'object') // Remove null/undefined/non-objects
+      .map(it => {
+        // Parse versions if it's a stringified array
+        let versions = it.versions;
+        if (typeof versions === 'string') {
+          try {
+            const parsed = JSON.parse(versions);
+            if (Array.isArray(parsed)) {
+              // Extract names if array contains objects
+              versions = parsed.map(v => 
+                typeof v === 'object' && v.name ? v.name : String(v)
+              ).filter(Boolean);
+            } else {
+              versions = [];
+            }
+          } catch {
+            // If parsing fails, treat as comma-separated string
+            versions = versions.split(',').map(s => s.trim()).filter(Boolean);
+          }
+        } else if (Array.isArray(versions)) {
+          // Convert array of objects to array of names
+          versions = versions.map(v => 
+            typeof v === 'object' && v.name ? v.name : String(v)
+          ).filter(Boolean);
+        } else {
+          versions = [];
+        }
+        
+        return {
+          id: Number(it.id) || 0,
+          name: String(it.name || '').trim(),
+          versions: versions,
+          current_version: String(it.current_version || '').trim(),
+          provider: String(it.provider || '').trim()
+        };
+      })
+      .filter(it => it.id > 0 || it.name); // Keep only items with valid id or name
+  };
+
+  const itemsInitial = cleanItems(proposalData.software_items);
   const [items, setItems] = useState(itemsInitial);
   const [masterSoftwares, setMasterSoftwares] = useState([]);
   const [selectedMasterId, setSelectedMasterId] = useState('');
 
   useEffect(() => {
-    setItems(Array.isArray(proposalData.software_items) ? proposalData.software_items : []);
+    const cleaned = cleanItems(proposalData.software_items);
+    setItems(cleaned);
   }, [proposalData.software_items]);
 
   // Load software master and flatten into a simple list for selection
@@ -821,7 +865,17 @@ function SoftwareForm({ proposalData, setProposalData }) {
           const flat = [];
           json.data.forEach(cat => {
             (cat.softwares || []).forEach(sw => {
-              flat.push({ id: sw.id, name: sw.name, provider: sw.provider || '', versions: sw.versions || [] });
+              // Extract version names from version objects
+              const versionNames = (sw.versions || []).map(v => 
+                typeof v === 'object' && v.name ? v.name : String(v)
+              ).filter(Boolean);
+              
+              flat.push({ 
+                id: sw.id, 
+                name: sw.name, 
+                provider: sw.provider || '', 
+                versions: versionNames 
+              });
             });
           });
           // sort by numeric id
@@ -836,8 +890,9 @@ function SoftwareForm({ proposalData, setProposalData }) {
   }, []);
 
   const syncToParent = (next) => {
-    // sort numerically by id before persisting
-    const sorted = [...next].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    // Clean and sort before persisting
+    const cleaned = cleanItems(next);
+    const sorted = [...cleaned].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
     setItems(sorted);
     set('software_items', sorted);
   };
@@ -883,82 +938,110 @@ function SoftwareForm({ proposalData, setProposalData }) {
     <div className="space-y-6">
       <Section title="Software" subtitle="Software inventory and versions" />
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <select value={selectedMasterId} onChange={e => setSelectedMasterId(e.target.value)} className="px-2 py-1 border rounded text-sm">
-            <option value="">Select from Software master…</option>
+          <select 
+            value={selectedMasterId} 
+            onChange={e => setSelectedMasterId(e.target.value)} 
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+          >
+            <option value="">Select from Software Master…</option>
             {masterSoftwares.map(sw => (
-              <option key={sw.id} value={sw.id}>{`${sw.id} — ${sw.name}${sw.provider ? ` (${sw.provider})` : ''}`}</option>
+              <option key={sw.id} value={sw.id}>
+                {sw.name}{sw.provider ? ` (${sw.provider})` : ''}
+              </option>
             ))}
           </select>
-          <button type="button" onClick={addItem} className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700">+ Add Selected / New</button>
+          <button 
+            type="button" 
+            onClick={addItem} 
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+          >
+            + Add Software
+          </button>
         </div>
+        {items.length > 0 && (
+          <span className="text-sm text-gray-500">{items.length} software item{items.length !== 1 ? 's' : ''}</span>
+        )}
       </div>
 
-      <div className="overflow-x-auto border border-gray-200 rounded-lg">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-100 border-b">
-              <th className="py-2 px-3 text-left">Software id</th>
-              <th className="py-2 px-3 text-left">Software name</th>
-              <th className="py-2 px-3 text-left">Software versions</th>
-              <th className="py-2 px-3 text-left">Current version</th>
-              <th className="py-2 px-3 text-left">Company provider</th>
-              <th className="py-2 px-3 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => (
-              <tr key={idx} className="border-b">
-                <td className="py-2 px-3 w-32">
-                  <input
-                    type="number"
-                    value={it.id}
-                    onChange={e => updateItem(idx, 'id', Number(e.target.value || 0))}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
-                  />
-                </td>
-                <td className="py-2 px-3">
-                  <input
-                    type="text"
-                    value={it.name || ''}
-                    onChange={e => updateItem(idx, 'name', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
-                  />
-                </td>
-                <td className="py-2 px-3">
-                  <input
-                    type="text"
-                    value={(Array.isArray(it.versions) ? it.versions.join(', ') : String(it.versions || ''))}
-                    onChange={e => updateItem(idx, 'versions', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                    placeholder="v1.0, v1.1, v2.0"
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
-                  />
-                </td>
-                <td className="py-2 px-3 w-40">
-                  <input
-                    type="text"
-                    value={it.current_version || ''}
-                    onChange={e => updateItem(idx, 'current_version', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
-                  />
-                </td>
-                <td className="py-2 px-3 w-48">
-                  <input
-                    type="text"
-                    value={it.provider || ''}
-                    onChange={e => updateItem(idx, 'provider', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
-                  />
-                </td>
-                <td className="py-2 px-3 text-center">
-                  <button type="button" onClick={() => removeItem(idx)} className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded">Remove</button>
-                </td>
+      {items.length > 0 ? (
+        <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">ID</th>
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">Software Name</th>
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">Available Versions</th>
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">Current Version</th>
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">Provider</th>
+                <th className="py-3 px-4 text-center font-semibold text-gray-700">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {items.map((it, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                  <td className="py-3 px-4">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                      {it.id || 'N/A'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <input
+                      type="text"
+                      value={it.name || ''}
+                      onChange={e => updateItem(idx, 'name', e.target.value)}
+                      placeholder="Enter software name"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <input
+                      type="text"
+                      value={(Array.isArray(it.versions) ? it.versions.join(', ') : String(it.versions || ''))}
+                      onChange={e => updateItem(idx, 'versions', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                      placeholder="v1.0, v1.1, v2.0"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 text-xs"
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <input
+                      type="text"
+                      value={it.current_version || ''}
+                      onChange={e => updateItem(idx, 'current_version', e.target.value)}
+                      placeholder="e.g. v2.0"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </td>
+                  <td className="py-3 px-4">
+                    <input
+                      type="text"
+                      value={it.provider || ''}
+                      onChange={e => updateItem(idx, 'provider', e.target.value)}
+                      placeholder="Provider name"
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <button 
+                      type="button" 
+                      onClick={() => removeItem(idx)} 
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+          <p className="text-gray-500 text-sm mb-4">No software items added yet</p>
+          <p className="text-gray-400 text-xs">Select from the software master above or add a new item</p>
+        </div>
+      )}
 
       
     </div>
@@ -1798,7 +1881,7 @@ function Section({ title, subtitle }) {
   );
 }
 
-function Text({ label, value, onChange, placeholder = '', required = false, readOnly = false }) {
+function Text({ label, value, onChange = () => {}, placeholder = '', required = false, readOnly = false }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
@@ -1910,7 +1993,7 @@ function ProposalIdField({ label, value, onChange }) {
   );
 }
 
-function Number({ label, value, onChange, min, max, step, placeholder = '' }) {
+function Number({ label, value, onChange = () => {}, min, max, step, placeholder = '' }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
@@ -1928,7 +2011,7 @@ function Number({ label, value, onChange, min, max, step, placeholder = '' }) {
   );
 }
 
-function Textarea({ label, value, onChange, rows = 3, placeholder = '' }) {
+function Textarea({ label, value, onChange = () => {}, rows = 3, placeholder = '' }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
@@ -1943,7 +2026,7 @@ function Textarea({ label, value, onChange, rows = 3, placeholder = '' }) {
   );
 }
 
-function Select({ label, value, onChange, options }) {
+function Select({ label, value, onChange = () => {}, options }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>

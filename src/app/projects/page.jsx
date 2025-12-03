@@ -302,15 +302,7 @@ function ProjectsInner() {
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
                   <p className="text-sm text-gray-600">Manage and track your client projects</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => router.push('/projects/new')}
-                    className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    <PlusIcon className="h-5 w-5" />
-                    <span>New Project</span>
-                  </button>
-                </div>
+
               </div>
               {/* Quick Stats */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -1121,35 +1113,8 @@ function ProjectsInner() {
             </div>
           </div>
         </div>
-        {/* Floating New Project FAB (mobile-focused) */}
-        <button
-          onClick={() => router.push('/projects/new')}
-          className="fixed bottom-6 right-6 md:hidden inline-flex items-center justify-center h-14 w-14 rounded-full text-white transition-all duration-300"
-        style={{
-          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-          boxShadow: '0 12px 40px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(139, 92, 246, 0.5)',
-          animation: 'pulse-ring 2s infinite'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-        }}
-        aria-label="New Project"
-      >
-        <PlusIcon className="h-6 w-6" />
-      </button>
-      <style jsx>{`
-        @keyframes pulse-ring {
-          0%, 100% {
-            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.4), 0 0 0 0 rgba(139, 92, 246, 0.5);
-          }
-          50% {
-            box-shadow: 0 12px 40px rgba(139, 92, 246, 0.5), 0 0 0 10px rgba(139, 92, 246, 0);
-          }
-        }
-      `}</style>
+      </div>
+
     </div>
   );
 }

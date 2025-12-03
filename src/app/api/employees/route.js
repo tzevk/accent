@@ -379,6 +379,11 @@ export async function PUT(request) {
     // RBAC: update employees
     const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.UPDATE);
     if (auth instanceof Response) return auth;
+    
+    // Get ID from query params or body
+    const { searchParams } = new URL(request.url);
+    const idFromQuery = searchParams.get('id');
+    
     const raw = await request.json();
     // Trim and sanitize
     const data = {};
@@ -393,9 +398,12 @@ export async function PUT(request) {
       }
     }
     
-    if (!data.id) {
+    // Use ID from query params if available, otherwise from body
+    const employeeId = idFromQuery || data.id;
+    
+    if (!employeeId) {
       return NextResponse.json(
-        { error: 'Employee ID is required' },
+        { success: false, error: 'Employee ID is required' },
         { status: 400 }
       );
     }
@@ -408,11 +416,11 @@ export async function PUT(request) {
     // Check if employee exists
     const [existing] = await connection.execute(
       `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
-      [data.id]
+      [employeeId]
     );    if (existing.length === 0) {
       await connection.end();
       return NextResponse.json(
-        { error: 'Employee not found' },
+        { success: false, error: 'Employee not found' },
         { status: 404 }
       );
     }
@@ -421,13 +429,13 @@ export async function PUT(request) {
     if (data.employee_id || data.email) {
       const [duplicates] = await connection.execute(
         `SELECT ${pkCol} FROM employees WHERE (employee_id = ? OR email = ?) AND ${pkCol} != ?`,
-        [data.employee_id, data.email, data.id]
+        [data.employee_id, data.email, employeeId]
       );
 
       if (duplicates.length > 0) {
         await connection.end();
         return NextResponse.json(
-          { error: 'Employee ID or email already exists' },
+          { success: false, error: 'Employee ID or email already exists' },
           { status: 409 }
         );
       }
@@ -463,12 +471,12 @@ export async function PUT(request) {
     if (updateFields.length === 0) {
       await connection.end();
       return NextResponse.json(
-        { error: 'No valid fields to update' },
+        { success: false, error: 'No valid fields to update' },
         { status: 400 }
       );
     }
 
-    values.push(data.id);
+    values.push(employeeId);
 
     await connection.execute(
       `UPDATE employees SET ${updateFields.join(', ')} WHERE ${pkCol} = ?`,
@@ -486,7 +494,7 @@ export async function PUT(request) {
         if (roleRows && roleRows.length > 0) {
           await connection.execute(
             'UPDATE users SET role_id = ? WHERE employee_id = ?',
-            [roleRows[0].id, data.id]
+            [roleRows[0].id, employeeId]
           );
         }
       }
@@ -496,7 +504,7 @@ export async function PUT(request) {
         if (['active','inactive','terminated'].includes(statusVal)) {
           await connection.execute(
             'UPDATE users SET is_active = ? , status = ? WHERE employee_id = ?',
-            [statusVal === 'active', statusVal === 'inactive' ? 'inactive' : 'active', data.id]
+            [statusVal === 'active', statusVal === 'inactive' ? 'inactive' : 'active', employeeId]
           );
         }
       }
@@ -508,13 +516,14 @@ export async function PUT(request) {
     await connection.end();
 
     return NextResponse.json({
+      success: true,
       message: 'Employee updated successfully'
     });
 
   } catch (error) {
     console.error('Error updating employee:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to update employee' },
+      { success: false, error: error?.message || 'Failed to update employee' },
       { status: 500 }
     );
   }
