@@ -349,7 +349,6 @@ function ProjectsInner() {
                         <FolderIcon className="h-6 w-6 text-amber-600" />
                       </div>
                     </div>
-                  </div>
                 </div>
               </div>
             </div>
