@@ -14,7 +14,8 @@ import {
   DocumentTextIcon,
   BuildingOfficeIcon,
   ChartBarIcon,
-  ClipboardDocumentListIcon
+  ClipboardDocumentListIcon,
+  BriefcaseIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -84,6 +85,7 @@ export default function Sidebar() {
           </div>
           <div className="space-y-1 mt-1">
             <NavRow icon={ClockIcon} label="Dashboard" href="/dashboard" active={pathname === '/dashboard'} />
+            <NavRow icon={BriefcaseIcon} label="Work Logs" href="/work-logs" active={pathname.startsWith('/work-logs')} />
           </div>
         </div>
 
@@ -110,6 +112,7 @@ export default function Sidebar() {
               <span>ADMIN</span>
             </div>
             <div className="space-y-1 mt-1">
+              <NavRow icon={UserGroupIcon} label="Live Monitoring" href="/admin/live-monitoring" active={pathname.startsWith('/admin/live-monitoring')} />
               <NavRow icon={ClipboardDocumentListIcon} label="Activity Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
               <NavRow icon={ChartBarIcon} label="Productivity Reports" href="/admin/productivity" active={pathname.startsWith('/admin/productivity')} />
             </div>

@@ -73,24 +73,54 @@ export function useActivityTracker() {
     }
   }, [sendActivityData]);
 
-  // Track page navigation
+  // Track page navigation with enhanced context
   const trackPageView = useCallback((pathname) => {
     const now = Date.now();
     const timeOnPreviousPage = now - pageStartTimeRef.current;
 
     // Send time spent on previous page
     if (currentPageRef.current && timeOnPreviousPage > 1000) {
+      // Extract more context from pathname
+      const pathSegments = currentPageRef.current.split('/').filter(Boolean);
+      const section = pathSegments[0] || 'home';
+      const subsection = pathSegments[1] || null;
+      const resourceId = pathSegments[2] || null;
+
       sendActivityData({
         actionType: 'view_page',
         resourceType: 'page',
         description: `Viewed ${currentPageRef.current}`,
         details: {
           page: currentPageRef.current,
+          section: section,
+          subsection: subsection,
+          resourceId: resourceId,
           durationMs: timeOnPreviousPage,
-          durationMinutes: Math.round(timeOnPreviousPage / 60000 * 10) / 10
+          durationMinutes: Math.round(timeOnPreviousPage / 60000 * 10) / 10,
+          referrer: document.referrer,
+          scrollDepth: window.scrollY,
+          viewportHeight: window.innerHeight
         }
       });
     }
+
+    // Send new page view event
+    const newPathSegments = pathname.split('/').filter(Boolean);
+    const newSection = newPathSegments[0] || 'home';
+    const newSubsection = newPathSegments[1] || null;
+
+    sendActivityData({
+      actionType: 'view_page',
+      resourceType: 'page',
+      description: `Navigated to ${pathname}`,
+      details: {
+        page: pathname,
+        section: newSection,
+        subsection: newSubsection,
+        navigationType: 'navigation',
+        timestamp: new Date().toISOString()
+      }
+    });
 
     // Update current page
     currentPageRef.current = pathname;
@@ -146,6 +176,7 @@ export function useActivityTracker() {
     } else {
       activeTimeRef.current += IDLE_CHECK_INTERVAL;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendActivityData]);
 
   // Set up event listeners
@@ -231,9 +262,53 @@ export function useActivityTracker() {
         status: 'active',
         userAgent: navigator.userAgent,
         screenResolution: `${window.screen.width}x${window.screen.height}`,
-        viewportSize: `${window.innerWidth}x${window.innerHeight}`
+        viewportSize: `${window.innerWidth}x${window.innerHeight}`,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
       }
     });
+
+    // Handle browser close/tab close (beforeunload)
+    const handleBeforeUnload = () => {
+      const totalSessionTime = Date.now() - sessionStartRef.current;
+      const timeOnPage = Date.now() - pageStartTimeRef.current;
+
+      // Send page exit data
+      if (timeOnPage > 1000) {
+        navigator.sendBeacon('/api/activity-logs/track-activity', JSON.stringify({
+          userId: user.id,
+          actionType: 'view_page',
+          resourceType: 'page',
+          description: `Closed page ${currentPageRef.current}`,
+          details: {
+            page: currentPageRef.current,
+            durationMs: timeOnPage,
+            durationMinutes: Math.round(timeOnPage / 60000 * 10) / 10,
+            exitType: 'browser_close'
+          },
+          timestamp: new Date().toISOString()
+        }));
+      }
+
+      // Send session end
+      navigator.sendBeacon('/api/activity-logs/track-activity', JSON.stringify({
+        userId: user.id,
+        actionType: 'status_change',
+        resourceType: 'session',
+        description: 'Browser/tab closed',
+        details: {
+          status: 'ended',
+          exitType: 'browser_close',
+          totalSessionMs: totalSessionTime,
+          totalSessionMinutes: Math.round(totalSessionTime / 60000),
+          activeTime: activeTimeRef.current,
+          idleTime: idleTimeRef.current,
+          activityCount: activityCountRef.current
+        },
+        timestamp: new Date().toISOString()
+      }));
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Track navigation
     const originalPushState = window.history.pushState;
@@ -261,6 +336,7 @@ export function useActivityTracker() {
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       if (heartbeatIntervalRef.current) {
@@ -270,43 +346,9 @@ export function useActivityTracker() {
       if (idleCheckIntervalRef.current) {
         clearInterval(idleCheckIntervalRef.current);
       }
-
-      // Send final page time
-      const timeOnPage = Date.now() - pageStartTimeRef.current;
-      if (timeOnPage > 1000) {
-        sendActivityData({
-          actionType: 'view_page',
-          resourceType: 'page',
-          description: `Left ${currentPageRef.current}`,
-          details: {
-            page: currentPageRef.current,
-            durationMs: timeOnPage,
-            durationMinutes: Math.round(timeOnPage / 60000 * 10) / 10
-          }
-        });
-      }
-
-      // Send session end
-      const totalSessionTime = Date.now() - sessionStartRef.current;
-      sendActivityData({
-        actionType: 'status_change',
-        resourceType: 'session',
-        description: 'Session ended',
-        details: {
-          status: 'ended',
-          totalSessionMs: totalSessionTime,
-          totalSessionMinutes: Math.round(totalSessionTime / 60000),
-          activeTime: activeTimeRef.current,
-          idleTime: idleTimeRef.current,
-          activityCount: activityCountRef.current
-        }
-      });
-
-      // Restore original history methods
-      window.history.pushState = originalPushState;
-      window.history.replaceState = originalReplaceState;
     };
-  }, [user?.id, recordActivity, trackPageView, sendHeartbeat, sendActivityData, checkIdle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user && user.id, recordActivity, trackPageView, sendHeartbeat, sendActivityData, checkIdle]);
 
   return {
     recordActivity,
