@@ -1,20 +1,51 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const router = useRouter();
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // Redirect to sign-in page when the app loads
-    router.push('/signin');
+    const checkAuthAndRedirect = async () => {
+      try {
+        // Check if user is already authenticated
+        const res = await fetch('/api/session', { 
+          credentials: 'include',
+          cache: 'no-store'
+        });
+        const data = await res.json();
+        
+        if (data.authenticated && data.user) {
+          // User is logged in, redirect to dashboard
+          router.push('/dashboard');
+        } else {
+          // User is not logged in, redirect to signin
+          router.push('/signin');
+        }
+      } catch {
+        // On error, redirect to signin
+        router.push('/signin');
+      } finally {
+        setChecking(false);
+      }
+    };
+
+    checkAuthAndRedirect();
   }, [router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <p className="text-lg text-gray-600">Redirecting to sign in...</p>
+        {checking ? (
+          <>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-4"></div>
+            <p className="text-lg text-gray-600">Loading...</p>
+          </>
+        ) : (
+          <p className="text-lg text-gray-600">Redirecting...</p>
+        )}
       </div>
     </div>
   );

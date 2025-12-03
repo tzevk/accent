@@ -14,6 +14,9 @@ export default function AuthGate() {
 
   useEffect(() => {
     let alive = true;
+    let retryCount = 0;
+    const maxRetries = 2;
+    
     async function check() {
       // Allow public paths without check
       if (PUBLIC_PATHS.has(pathname)) {
@@ -22,8 +25,24 @@ export default function AuthGate() {
       }
 
       try {
-        const res = await fetch('/api/session', { credentials: 'include' });
+        const res = await fetch('/api/session', { 
+          credentials: 'include',
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }
+        });
+        
         if (!res.ok) {
+          // Retry once after a short delay if it's a transient error
+          if (retryCount < maxRetries && (res.status === 500 || res.status === 503)) {
+            retryCount++;
+            console.log(`AuthGate: Session check failed (${res.status}), retrying (${retryCount}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, 300));
+            if (alive) check();
+            return;
+          }
+          
           console.log('AuthGate: Session check failed with status:', res.status);
           const from = encodeURIComponent(pathname || '/');
           router.replace(`/signin?from=${from}`);
@@ -40,7 +59,16 @@ export default function AuthGate() {
         
         console.log('AuthGate: Authentication successful for user:', data.user?.username);
       } catch (error) {
-        console.log('AuthGate: Session check error:', error);
+        // Retry once on network errors
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(`AuthGate: Session check error, retrying (${retryCount}/${maxRetries}):`, error.message);
+          await new Promise(resolve => setTimeout(resolve, 300));
+          if (alive) check();
+          return;
+        }
+        
+        console.log('AuthGate: Session check error after retries:', error);
         const from = encodeURIComponent(pathname || '/');
         router.replace(`/signin?from=${from}`);
         return;

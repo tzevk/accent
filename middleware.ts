@@ -28,7 +28,9 @@ export function middleware(req: NextRequest) {
     // If user is already authenticated and tries to access /signin, redirect to dashboard
     if (pathname === '/signin') {
       const authToken = req.cookies.get('auth')?.value
-      if (authToken) {
+      const userId = req.cookies.get('user_id')?.value
+      // Only redirect if BOTH cookies are present (full session)
+      if (authToken && userId) {
         const url = req.nextUrl.clone()
         url.pathname = '/dashboard'
         return NextResponse.redirect(url)
@@ -39,7 +41,10 @@ export function middleware(req: NextRequest) {
 
   // All other routes require auth
   const authToken = req.cookies.get('auth')?.value
-  if (!authToken) {
+  const userId = req.cookies.get('user_id')?.value
+  
+  // Both cookies must be present for valid session
+  if (!authToken || !userId) {
     // If it's an API request, return 401 JSON instead of redirect
     if (pathname.startsWith('/api')) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
@@ -50,7 +55,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  return NextResponse.next()
+  // Add cache control headers to prevent caching of protected pages
+  const response = NextResponse.next()
+  response.headers.set('Cache-Control', 'no-store, must-revalidate')
+  response.headers.set('Pragma', 'no-cache')
+  return response
 }
 
 // Configure which paths the middleware runs on

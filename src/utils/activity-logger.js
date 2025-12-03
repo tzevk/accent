@@ -232,3 +232,138 @@ export async function getUserActivityLogs({
     if (db) await db.end();
   }
 }
+
+/**
+ * Get current status for a single user
+ * @param {number} userId - User ID
+ * @returns {Object} - { status, lastActivity, currentPage, sessionDuration }
+ */
+export async function getUserCurrentStatus(userId) {
+  let db;
+  try {
+    db = await dbConnect();
+
+    // Get user's last activity and current page
+    const [result] = await db.execute(
+      `SELECT 
+        u.id,
+        u.username,
+        u.full_name,
+        (SELECT MAX(created_at) FROM user_activity_logs WHERE user_id = u.id) as last_activity,
+        (SELECT description FROM user_activity_logs 
+         WHERE user_id = u.id AND action_type = 'view_page' 
+         ORDER BY created_at DESC LIMIT 1) as current_page,
+        (SELECT session_start FROM user_work_sessions 
+         WHERE user_id = u.id AND status = 'active' 
+         ORDER BY session_start DESC LIMIT 1) as session_start
+      FROM users u
+      WHERE u.id = ?`,
+      [userId]
+    );
+
+    if (!result || result.length === 0) {
+      return { status: 'offline', lastActivity: null, currentPage: null, sessionDuration: null };
+    }
+
+    const user = result[0];
+    const status = getStatusFromActivity(user.last_activity);
+    
+    let sessionDuration = null;
+    if (user.session_start && status === 'online') {
+      sessionDuration = Math.floor((Date.now() - new Date(user.session_start).getTime()) / 1000);
+    }
+
+    return {
+      status,
+      lastActivity: user.last_activity,
+      currentPage: user.current_page,
+      sessionDuration,
+      username: user.username,
+      fullName: user.full_name
+    };
+
+  } catch (error) {
+    console.error('Error getting user status:', error);
+    return { status: 'offline', lastActivity: null, currentPage: null, sessionDuration: null };
+  } finally {
+    if (db) await db.end();
+  }
+}
+
+/**
+ * Get current status for all users or multiple users
+ * @param {Array<number>} userIds - Optional array of user IDs (if null, gets all users)
+ * @returns {Array} - Array of user status objects
+ */
+export async function getAllUsersStatus(userIds = null) {
+  let db;
+  try {
+    db = await dbConnect();
+
+    let query = `
+      SELECT 
+        u.id as user_id,
+        u.username,
+        u.full_name,
+        u.email,
+        r.role_name,
+        (SELECT MAX(created_at) FROM user_activity_logs WHERE user_id = u.id) as last_activity,
+        (SELECT description FROM user_activity_logs 
+         WHERE user_id = u.id AND action_type = 'view_page' 
+         ORDER BY created_at DESC LIMIT 1) as current_page,
+        (SELECT session_start FROM user_work_sessions 
+         WHERE user_id = u.id AND status = 'active' 
+         ORDER BY session_start DESC LIMIT 1) as session_start
+      FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
+    `;
+
+    let params = [];
+    if (userIds && userIds.length > 0) {
+      const placeholders = userIds.map(() => '?').join(',');
+      query += ` WHERE u.id IN (${placeholders})`;
+      params = userIds;
+    }
+
+    query += ` ORDER BY u.full_name`;
+
+    const [users] = await db.execute(query, params);
+
+    // Add status to each user
+    const usersWithStatus = users.map(user => {
+      const status = getStatusFromActivity(user.last_activity);
+      
+      let sessionDuration = null;
+      if (user.session_start && status === 'online') {
+        sessionDuration = Math.floor((Date.now() - new Date(user.session_start).getTime()) / 1000);
+      }
+
+      return {
+        ...user,
+        status,
+        session_duration: sessionDuration
+      };
+    });
+
+    return usersWithStatus;
+
+  } catch (error) {
+    console.error('Error getting all users status:', error);
+    return [];
+  } finally {
+    if (db) await db.end();
+  }
+}
+
+/**
+ * Helper: Determine status from last activity timestamp
+ */
+function getStatusFromActivity(lastActivity) {
+  if (!lastActivity) return 'offline';
+  
+  const seconds = Math.floor((Date.now() - new Date(lastActivity).getTime()) / 1000);
+  
+  if (seconds < 120) return 'online';  // Active (< 2 min)
+  if (seconds < 600) return 'idle';    // Idle (< 10 min)
+  return 'offline';                     // Away (> 10 min)
+}

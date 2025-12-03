@@ -65,8 +65,24 @@ export default function SignIn() {
       });
 
       if (data?.success) {
-        // Wait a bit to ensure cookies are set before redirecting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait longer to ensure cookies are fully set and propagated
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Verify session is actually established before redirecting
+        try {
+          const sessionCheck = await fetch('/api/session', { 
+            credentials: 'include',
+            cache: 'no-store'
+          });
+          const sessionData = await sessionCheck.json();
+          
+          if (!sessionData.authenticated) {
+            // Session not established yet, wait a bit more
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } catch (err) {
+          console.warn('Session check failed, proceeding with redirect:', err);
+        }
         
         // If redirected here from a protected page, go back there
         const params = new URLSearchParams(window.location.search);
