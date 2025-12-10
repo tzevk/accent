@@ -48,6 +48,7 @@ export async function GET() {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list LONGTEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list LONGTEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS software_items LONGTEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_team TEXT');
       
       await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
 
@@ -150,7 +151,8 @@ export async function POST(request) {
       input_document,
       list_of_deliverables,
       kickoff_meeting,
-      in_house_meeting
+      in_house_meeting,
+      project_team
     } = data;
 
     if (!name || (!company_id && !proposal_id && !data.client_name)) {
@@ -274,8 +276,8 @@ export async function POST(request) {
         start_date, end_date, target_date, budget, assigned_to, status, type, priority, progress, proposal_id, notes,
         activities, disciplines, discipline_descriptions, assignments,
         project_schedule, input_document, list_of_deliverables, kickoff_meeting, in_house_meeting,
-        project_assumption_list, project_lessons_learnt_list
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        project_assumption_list, project_lessons_learnt_list, project_team
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
   projectId, name, description, effectiveCompanyId || null, client_name, project_manager || null,
         start_date || null, end_date || null, target_date || null, budget || null, assigned_to || null,
@@ -283,7 +285,8 @@ export async function POST(request) {
         JSON.stringify(data.activities || []), JSON.stringify(data.disciplines || []), JSON.stringify(data.discipline_descriptions || {}), JSON.stringify(data.assignments || []),
         project_schedule || null, input_document || null, list_of_deliverables || null, kickoff_meeting || null, in_house_meeting || null,
         data.project_assumption_list ? (typeof data.project_assumption_list === 'string' ? data.project_assumption_list : JSON.stringify(data.project_assumption_list)) : null,
-        data.project_lessons_learnt_list ? (typeof data.project_lessons_learnt_list === 'string' ? data.project_lessons_learnt_list : JSON.stringify(data.project_lessons_learnt_list)) : null
+        data.project_lessons_learnt_list ? (typeof data.project_lessons_learnt_list === 'string' ? data.project_lessons_learnt_list : JSON.stringify(data.project_lessons_learnt_list)) : null,
+        project_team || null
       ]
     );
     

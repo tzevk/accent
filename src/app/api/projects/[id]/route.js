@@ -333,7 +333,8 @@ export async function PUT(request, context) {
       kickoff_meeting_date,
       kickoff_followup_date,
       internal_meeting_date,
-      next_internal_meeting
+      next_internal_meeting,
+      project_team
     } = data;
 
     
@@ -414,6 +415,7 @@ export async function PUT(request, context) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_followup_date DATE');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS internal_meeting_date DATE');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_internal_meeting DATE');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_team TEXT');
     } catch (err) {
       console.warn('Some ALTER TABLE statements failed, columns might already exist:', err.message);
     }
@@ -502,7 +504,8 @@ export async function PUT(request, context) {
       ['kickoff_meeting_date', normalizeDate(kickoff_meeting_date)],
       ['kickoff_followup_date', normalizeDate(kickoff_followup_date)],
       ['internal_meeting_date', normalizeDate(internal_meeting_date)],
-      ['next_internal_meeting', normalizeDate(next_internal_meeting)]
+      ['next_internal_meeting', normalizeDate(next_internal_meeting)],
+      ['project_team', project_team === undefined ? null : project_team]
     ];
 
     const setParts = [];

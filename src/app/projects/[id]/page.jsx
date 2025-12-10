@@ -134,7 +134,7 @@ export default function ProjectViewPage() {
       { label: 'Estimated Manhours', value: pick(['estimated_manhours', 'manhours', 'estimated_hours']) },
       { label: 'Project Type', value: pick(['type', 'project_type']) }
     ];
-  }, [pick]);
+  }, [pick, project]);
 
   const scopeField = useMemo(() => {
     return (
@@ -149,7 +149,7 @@ export default function ProjectViewPage() {
   const deliverablesField = useMemo(() => {
     // try several common field names and also fall back to list_of_deliverables
     return pick(['deliverables', 'list_of_deliverables', 'proposal_deliverables', 'proposal_items']) || null;
-  }, [project, pick]);
+  }, [pick]);
 
   // Parse JSON fields safely for rendering
   const parsedTeamMembers = useMemo(() => {

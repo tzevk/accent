@@ -57,7 +57,8 @@ const INITIAL_FORM = {
   ,
   // additional fields surfaced in Project Details
   estimated_manhours: '',
-  unit_qty: ''
+  unit_qty: '',
+  project_team: ''
   ,
   // Minutes - Internal Meeting fields
   internal_meeting_no: '',
@@ -86,6 +87,7 @@ const INITIAL_FORM = {
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
   { id: 'project_details', label: 'Project Details' },
+  { id: 'project_team_tab', label: 'Project Team' },
   { id: 'input_documents', label: 'Input Documents' },
   { id: 'scope', label: 'Scope' },
   { id: 'software', label: 'Software' },
@@ -135,6 +137,8 @@ function EditProjectForm() {
   const [activeTab, setActiveTab] = useState('general');
   const [companies, setCompanies] = useState([]);
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
+  const [activities, setActivities] = useState([]); // Standalone activities list
+  const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
   const [employees, setEmployees] = useState([]);
   const [form, setForm] = useState(INITIAL_FORM);
   const [projectActivities, setProjectActivities] = useState([]);
@@ -155,7 +159,9 @@ function EditProjectForm() {
     basic: true,
     scope: true,
     unitQty: false,
-    deliverables: true
+    deliverables: true,
+    teamMemberAdd: true,
+    currentTeam: true
   });
 
   const toggleSection = (key) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
@@ -176,6 +182,12 @@ function EditProjectForm() {
     subLot: '' 
   });
   const [docMaster, setDocMaster] = useState([]);
+  
+  // Project Team Management
+  const [projectTeamMembers, setProjectTeamMembers] = useState([]);
+  const [allEmployees, setAllEmployees] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [teamMemberSearch, setTeamMemberSearch] = useState('');
   
   // Software Management
   const [softwareItems, setSoftwareItems] = useState([]);
@@ -437,6 +449,7 @@ function EditProjectForm() {
             actual_profit_loss: project.actual_profit_loss || '',
             estimated_manhours: project.estimated_manhours || project.estimated_hours || '',
             unit_qty: project.unit_qty || project.unit || '',
+            project_team: project.project_team || '',
             // internal minutes fields
             internal_meeting_no: project.internal_meeting_no || '',
             internal_meeting_client_name: project.internal_meeting_client_name || '',
@@ -761,6 +774,41 @@ function EditProjectForm() {
     fetchSoftwareMaster();
   }, []);
 
+  // Fetch all employees for team selection
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      setEmployeesLoading(true);
+      try {
+        const res = await fetch('/api/employees?limit=1000&status=active');
+        const json = await res.json();
+        if (json?.employees && Array.isArray(json.employees)) {
+          setAllEmployees(json.employees);
+        }
+      } catch (error) {
+        console.error('Failed to fetch employees:', error);
+      } finally {
+        setEmployeesLoading(false);
+      }
+    };
+    fetchEmployees();
+  }, []);
+
+  // Load project team members from project data
+  useEffect(() => {
+    if (form.project_team) {
+      try {
+        const teamData = typeof form.project_team === 'string' 
+          ? JSON.parse(form.project_team) 
+          : form.project_team;
+        if (Array.isArray(teamData)) {
+          setProjectTeamMembers(teamData);
+        }
+      } catch (error) {
+        console.error('Failed to parse project_team:', error);
+      }
+    }
+  }, [form.project_team]);
+
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
 
@@ -785,6 +833,7 @@ function EditProjectForm() {
       // Prepare payload - remove empty company_id if client_name is present
       const payload = {
         ...form,
+        project_team: JSON.stringify(projectTeamMembers),
         team_members: JSON.stringify(teamMembers),
         project_activities_list: JSON.stringify(projectActivities),
         planning_activities_list: JSON.stringify(planningActivities),
@@ -953,14 +1002,109 @@ function EditProjectForm() {
       notes: version.notes || ''
     };
 
-    const updated = [...softwareItems, newItem];
-    setSoftwareItems(updated);
-    setForm(prev => ({ ...prev, software_items: JSON.stringify(updated) }));
-
+    setSoftwareItems(prev => [...prev, newItem]);
+    
     // Reset selections
     setSelectedSoftwareCategory('');
     setSelectedSoftware('');
     setSelectedSoftwareVersion('');
+    
+    // Trigger autosave
+    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+    const timeout = setTimeout(autoSave, 1000);
+    setAutoSaveTimeout(timeout);
+  };
+
+  // Project Team Management Functions
+  const addTeamMember = (employee) => {
+    // Check if already added
+    const exists = projectTeamMembers.some(member => member.id === employee.id);
+    if (exists) {
+      alert('This employee is already in the team');
+      return;
+    }
+
+    const teamMember = {
+      id: employee.id,
+      employee_id: employee.employee_id,
+      name: `${employee.first_name} ${employee.last_name}`,
+      email: employee.email,
+      department: employee.department,
+      position: employee.position,
+      role: 'Team Member' // Default role, can be changed
+    };
+
+    setProjectTeamMembers(prev => [...prev, teamMember]);
+    
+    // Update form data
+    setForm(prev => ({
+      ...prev,
+      project_team: JSON.stringify([...projectTeamMembers, teamMember])
+    }));
+    
+    // Trigger autosave
+    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+    const timeout = setTimeout(autoSave, 1000);
+    setAutoSaveTimeout(timeout);
+  };
+
+  const removeTeamMember = (memberId) => {
+    const updated = projectTeamMembers.filter(member => member.id !== memberId);
+    setProjectTeamMembers(updated);
+    
+    // Update form data
+    setForm(prev => ({
+      ...prev,
+      project_team: JSON.stringify(updated)
+    }));
+    
+    // Trigger autosave
+    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+    const timeout = setTimeout(autoSave, 1000);
+    setAutoSaveTimeout(timeout);
+  };
+
+  const updateTeamMemberRole = (memberId, newRole) => {
+    const updated = projectTeamMembers.map(member => 
+      member.id === memberId ? { ...member, role: newRole } : member
+    );
+    setProjectTeamMembers(updated);
+    
+    // Update form data
+    setForm(prev => ({
+      ...prev,
+      project_team: JSON.stringify(updated)
+    }));
+    
+    // Trigger autosave
+    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+    const timeout = setTimeout(autoSave, 1000);
+    setAutoSaveTimeout(timeout);
+  };
+
+  // Get filtered employees for team selection (only show those not already in team)
+  const availableEmployees = allEmployees.filter(emp => 
+    !projectTeamMembers.some(member => member.id === emp.id) &&
+    (teamMemberSearch === '' || 
+     `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
+     emp.employee_id?.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
+     emp.department?.toLowerCase().includes(teamMemberSearch.toLowerCase()))
+  );
+
+  // Get project team members for use in other tabs (replaces full employee list)
+  // This ensures only assigned team members appear in dropdowns throughout the project
+  const getProjectTeamForDropdown = () => {
+    return projectTeamMembers.map(member => ({
+      id: member.id,
+      employee_id: member.employee_id,
+      name: member.name,
+      first_name: member.name.split(' ')[0],
+      last_name: member.name.split(' ').slice(1).join(' '),
+      email: member.email,
+      department: member.department,
+      position: member.position,
+      project_role: member.role
+    }));
   };
 
   const removeSoftwareItem = (id) => {
@@ -1326,8 +1470,8 @@ function EditProjectForm() {
     setInternalMeetings(prev => prev.filter(m => m.id !== id));
   };
 
-  // Team Member Management
-  const addTeamMember = () => {
+  // Team Member Management (for activities/manhours tracking)
+  const addActivityTeamMember = () => {
     setTeamMembers([...teamMembers, {
       id: Date.now(),
       employee_id: '',
@@ -1344,11 +1488,11 @@ function EditProjectForm() {
     }]);
   };
 
-  const removeTeamMember = (id) => {
+  const removeActivityTeamMember = (id) => {
     setTeamMembers(teamMembers.filter(member => member.id !== id));
   };
 
-  const updateTeamMember = (id, field, value) => {
+  const updateActivityTeamMember = (id, field, value) => {
     setTeamMembers(teamMembers.map(member => {
       if (member.id === id) {
         const updated = { ...member, [field]: value };
@@ -1884,6 +2028,33 @@ function EditProjectForm() {
                                 step="0.1" 
                                 placeholder="0.0"
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400" 
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-bold" style={{ color: '#475569', letterSpacing: '0.01em' }}>
+                                Project Team
+                              </label>
+                              <textarea 
+                                name="project_team" 
+                                value={form.project_team} 
+                                onChange={handleChange} 
+                                rows={3}
+                                placeholder="Enter team members (e.g., John Doe - Lead, Jane Smith - Developer)"
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
+                                style={{
+                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  border: '1.5px solid rgba(139, 92, 246, 0.15)',
+                                  color: '#0f172a',
+                                  boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
+                                }}
+                                onFocus={(e) => {
+                                  e.target.style.borderColor = '#8b5cf6';
+                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
+                                }}
+                                onBlur={(e) => {
+                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
+                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
+                                }}
                               />
                             </div>
                           </div>
@@ -2663,6 +2834,203 @@ function EditProjectForm() {
                       </svg>
                       <p className="text-sm font-medium">No software added yet</p>
                       <p className="text-xs mt-1">Select category, software, and version to add to the project</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Project Team Tab */}
+            {activeTab === 'project_team_tab' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center gap-2">
+                    <UserIcon className="h-4 w-4 text-[#7F2487]" />
+                    <h2 className="text-sm font-bold text-gray-900">Project Team</h2>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Select team members from employee master for this project</p>
+                </div>
+
+                <div className="px-6 py-5 space-y-4">
+                  {/* Add Team Member Section - Collapsible */}
+                  <div className="border border-purple-100 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleSection('teamMemberAdd')}
+                      className="w-full bg-gradient-to-br from-purple-25 via-white to-purple-25 px-4 py-3 flex items-center justify-between hover:bg-purple-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <PlusIcon className="h-4 w-4 text-[#7F2487]" />
+                        <h4 className="text-sm font-semibold text-gray-700">Add Team Member</h4>
+                      </div>
+                      <ChevronDownIcon 
+                        className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.teamMemberAdd ? 'transform rotate-180' : ''}`} 
+                      />
+                    </button>
+                    
+                    {openSections.teamMemberAdd && (
+                      <div className="p-4 border-t border-purple-100">
+                        {/* Search Box */}
+                        <div className="mb-3">
+                          <input
+                            type="text"
+                            value={teamMemberSearch}
+                            onChange={(e) => setTeamMemberSearch(e.target.value)}
+                            placeholder="Search employees by name, employee ID, or department..."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent text-sm"
+                          />
+                        </div>
+
+                        {/* Available Employees List */}
+                        {employeesLoading ? (
+                          <div className="text-center py-8 text-gray-500">
+                            <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                            <p className="text-sm">Loading employees...</p>
+                          </div>
+                        ) : availableEmployees.length > 0 ? (
+                          <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Employee ID</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Name</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Department</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Position</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {availableEmployees.map((emp) => (
+                                  <tr key={emp.id} className="hover:bg-purple-50 transition-colors">
+                                    <td className="px-3 py-2 text-gray-900 font-mono text-xs">{emp.employee_id || '-'}</td>
+                                    <td className="px-3 py-2 text-gray-900 font-medium">{emp.first_name} {emp.last_name}</td>
+                                    <td className="px-3 py-2 text-gray-600">{emp.department || '-'}</td>
+                                    <td className="px-3 py-2 text-gray-600">{emp.position || '-'}</td>
+                                    <td className="px-3 py-2 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => addTeamMember(emp)}
+                                        className="px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs font-medium hover:bg-[#6a1e73] transition-colors"
+                                      >
+                                        Add
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-gray-500">
+                            <UserIcon className="h-10 w-10 mx-auto text-gray-300 mb-2" />
+                            <p className="text-sm">
+                              {teamMemberSearch ? 'No employees found matching your search' : 'All employees have been added to the team'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Current Team Members - Collapsible */}
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleSection('currentTeam')}
+                      className="w-full bg-gray-50 px-4 py-3 flex items-center justify-between hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <UserIcon className="h-4 w-4 text-[#7F2487]" />
+                        <h4 className="text-sm font-semibold text-gray-700">
+                          Current Team Members ({projectTeamMembers.length})
+                        </h4>
+                      </div>
+                      <ChevronDownIcon 
+                        className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.currentTeam ? 'transform rotate-180' : ''}`} 
+                      />
+                    </button>
+                    
+                    {openSections.currentTeam && (
+                      <div>
+                        {projectTeamMembers.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Employee ID</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Name</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Email</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Department</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Position</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Project Role</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-gray-700">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {projectTeamMembers.map((member, index) => (
+                                  <tr key={member.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-3 py-2 text-gray-600">{index + 1}</td>
+                                    <td className="px-3 py-2 text-gray-900 font-mono text-xs">{member.employee_id}</td>
+                                    <td className="px-3 py-2 text-gray-900 font-medium">{member.name}</td>
+                                    <td className="px-3 py-2 text-gray-600 text-xs">{member.email}</td>
+                                    <td className="px-3 py-2 text-gray-600">{member.department || '-'}</td>
+                                    <td className="px-3 py-2 text-gray-600">{member.position || '-'}</td>
+                                    <td className="px-3 py-2">
+                                      <select
+                                        value={member.role}
+                                        onChange={(e) => updateTeamMemberRole(member.id, e.target.value)}
+                                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+                                      >
+                                        <option value="Team Member">Team Member</option>
+                                        <option value="Project Lead">Project Lead</option>
+                                        <option value="Designer">Designer</option>
+                                        <option value="Engineer">Engineer</option>
+                                        <option value="Drafter">Drafter</option>
+                                        <option value="Coordinator">Coordinator</option>
+                                        <option value="QA/QC">QA/QC</option>
+                                        <option value="Site Supervisor">Site Supervisor</option>
+                                      </select>
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => removeTeamMember(member.id)}
+                                        className="text-red-500 hover:text-red-700 p-1"
+                                        title="Remove from team"
+                                      >
+                                        <TrashIcon className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-12 text-gray-500">
+                            <UserIcon className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                            <p className="text-sm font-medium">No team members added yet</p>
+                            <p className="text-xs mt-1">Add team members from the employee list above</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Team Summary */}
+                  {projectTeamMembers.length > 0 && (
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-100">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-700">Team Summary</h4>
+                          <p className="text-xs text-gray-600 mt-0.5">Total members assigned to this project</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold text-[#7F2487]">{projectTeamMembers.length}</div>
+                          <div className="text-xs text-gray-600">Team Members</div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3925,14 +4293,25 @@ function EditProjectForm() {
                           onChange={(e)=>setNewSchedule(prev=>({...prev,activity_description:e.target.value}))}
                           className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
                         >
-                          <option value="">Select activity from Project Activity tab...</option>
-                          {projectActivities.map(act => (
-                            <option key={`${act.id}-${act.type}`} value={act.name}>
-                              {act.type === 'subactivity' ? `↳ ${act.name}` : act.name}
-                            </option>
+                          <option value="">Select activity from Activity Master...</option>
+                          {functions.map(func => (
+                            <optgroup key={func.id} label={`📁 ${func.function_name}`}>
+                              {func.activities && func.activities.map(act => (
+                                <Fragment key={act.id}>
+                                  <option value={act.activity_name}>
+                                    📄 {act.activity_name}
+                                  </option>
+                                  {act.subActivities && act.subActivities.map(sub => (
+                                    <option key={sub.id} value={sub.name}>
+                                      ↳ {sub.name}
+                                    </option>
+                                  ))}
+                                </Fragment>
+                              ))}
+                            </optgroup>
                           ))}
                         </select>
-                        <p className="text-xs text-gray-400 mt-1">Select from activities added in Project Activity tab</p>
+                        <p className="text-xs text-gray-400 mt-1">Select from Activity Master hierarchy</p>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Unit/Qty</label>
@@ -4039,10 +4418,21 @@ function EditProjectForm() {
                                   className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
                                 >
                                   <option value="">Select activity...</option>
-                                  {projectActivities.map(act => (
-                                    <option key={`${act.id}-${act.type}`} value={act.name}>
-                                      {act.type === 'subactivity' ? `↳ ${act.name}` : act.name}
-                                    </option>
+                                  {functions.map(func => (
+                                    <optgroup key={func.id} label={`📁 ${func.function_name}`}>
+                                      {func.activities && func.activities.map(act => (
+                                        <Fragment key={act.id}>
+                                          <option value={act.activity_name}>
+                                            📄 {act.activity_name}
+                                          </option>
+                                          {act.subActivities && act.subActivities.map(sub => (
+                                            <option key={sub.id} value={sub.name}>
+                                              ↳ {sub.name}
+                                            </option>
+                                          ))}
+                                        </Fragment>
+                                      ))}
+                                    </optgroup>
                                   ))}
                                 </select>
                               </td>
@@ -4705,7 +5095,7 @@ function EditProjectForm() {
                   </div>
                   <button
                     type="button"
-                    onClick={addTeamMember}
+                    onClick={addActivityTeamMember}
                     className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all duration-300"
                     style={{
                       background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
@@ -4800,7 +5190,7 @@ function EditProjectForm() {
                                 <td className="py-3 px-4">
                                   <select
                                     value={member.employee_id}
-                                    onChange={(e) => updateTeamMember(member.id, 'employee_id', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'employee_id', e.target.value)}
                                     className="w-full px-3 py-2 text-xs font-medium rounded-lg transition-all duration-300"
                                     style={{
                                       background: 'rgba(255, 255, 255, 0.95)',
@@ -4817,10 +5207,10 @@ function EditProjectForm() {
                                       e.target.style.boxShadow = '0 1px 2px rgba(15, 23, 42, 0.02)';
                                     }}
                                   >
-                                    <option value="">Select Employee</option>
-                                    {employees.map((emp) => (
+                                    <option value="">Select Team Member</option>
+                                    {getProjectTeamForDropdown().map((emp) => (
                                       <option key={emp.id} value={emp.id}>
-                                        {emp.first_name} {emp.last_name}
+                                        {emp.name} {emp.project_role && `(${emp.project_role})`}
                                       </option>
                                     ))}
                                   </select>
@@ -4828,7 +5218,7 @@ function EditProjectForm() {
                                     <td className="py-2 px-3">
                                       <select
                                         value={member.discipline || ''}
-                                        onChange={(e) => updateTeamMember(member.id, 'discipline', e.target.value)}
+                                        onChange={(e) => updateActivityTeamMember(member.id, 'discipline', e.target.value)}
                                         className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                       >
                                         <option value="">Select Discipline</option>
@@ -4840,7 +5230,7 @@ function EditProjectForm() {
                                     <td className="py-2 px-3">
                                       <select
                                         value={member.activity_id}
-                                        onChange={(e) => updateTeamMember(member.id, 'activity_id', e.target.value)}
+                                        onChange={(e) => updateActivityTeamMember(member.id, 'activity_id', e.target.value)}
                                         className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                       >
                                         <option value="">Select Activity</option>
@@ -4856,7 +5246,7 @@ function EditProjectForm() {
                                 <td className="py-2 px-3">
                                   <select
                                     value={member.sub_activity || ''}
-                                    onChange={(e) => updateTeamMember(member.id, 'sub_activity', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'sub_activity', e.target.value)}
                                     className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                   >
                                     <option value="">Select Sub-Activity</option>
@@ -4873,7 +5263,7 @@ function EditProjectForm() {
                                   <input
                                     type="number"
                                     value={member.required_hours}
-                                    onChange={(e) => updateTeamMember(member.id, 'required_hours', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'required_hours', e.target.value)}
                                     min="0"
                                     step="0.1"
                                     className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -4883,7 +5273,7 @@ function EditProjectForm() {
                                   <input
                                     type="number"
                                     value={member.actual_hours}
-                                    onChange={(e) => updateTeamMember(member.id, 'actual_hours', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'actual_hours', e.target.value)}
                                     min="0"
                                     step="0.1"
                                     className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -4893,7 +5283,7 @@ function EditProjectForm() {
                                   <input
                                     type="date"
                                     value={member.planned_start_date || ''}
-                                    onChange={(e) => updateTeamMember(member.id, 'planned_start_date', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'planned_start_date', e.target.value)}
                                     className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                   />
                                 </td>
@@ -4901,7 +5291,7 @@ function EditProjectForm() {
                                   <input
                                     type="date"
                                     value={member.planned_end_date}
-                                    onChange={(e) => updateTeamMember(member.id, 'planned_end_date', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'planned_end_date', e.target.value)}
                                     className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                   />
                                 </td>
@@ -4909,7 +5299,7 @@ function EditProjectForm() {
                                   <input
                                     type="date"
                                     value={member.actual_completion_date}
-                                    onChange={(e) => updateTeamMember(member.id, 'actual_completion_date', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'actual_completion_date', e.target.value)}
                                     className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                   />
                                 </td>
@@ -4925,7 +5315,7 @@ function EditProjectForm() {
                                   <input
                                     type="number"
                                     value={member.cost}
-                                    onChange={(e) => updateTeamMember(member.id, 'cost', e.target.value)}
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'cost', e.target.value)}
                                     min="0"
                                     step="0.01"
                                     className="w-24 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -4934,7 +5324,7 @@ function EditProjectForm() {
                                 <td className="py-3 px-4 text-center">
                                   <button
                                     type="button"
-                                    onClick={() => removeTeamMember(member.id)}
+                                    onClick={() => removeActivityTeamMember(member.id)}
                                     className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold rounded-lg transition-all duration-300"
                                     style={{
                                       background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.08) 100%)',

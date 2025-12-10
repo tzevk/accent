@@ -1002,6 +1002,7 @@ function ProjectsInner() {
                                   <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
+                              <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Project Team</th>
                               <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Status</th>
                               <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>Estimated Cost</th>
                               <th className="px-5 py-4 text-left text-xs font-black uppercase tracking-wider" style={{ color: '#64748b', letterSpacing: '0.08em' }}>
@@ -1097,6 +1098,18 @@ function ProjectsInner() {
                                     </div>
                                     {project.end_date && (
                                       <div className="text-xs font-medium mt-1.5" style={{ color: '#64748b' }}>to {formatDate(project.end_date)}</div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <div className="text-sm font-medium" style={{ color: '#1e293b' }}>
+                                    {project.project_team ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <UserIcon className="h-4 w-4" style={{ color: '#8b5cf6' }} />
+                                        <span className="max-w-xs truncate">{project.project_team}</span>
+                                      </div>
+                                    ) : (
+                                      <span style={{ color: '#94a3b8' }}>No team assigned</span>
                                     )}
                                   </div>
                                 </td>
