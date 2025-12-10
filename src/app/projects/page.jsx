@@ -15,8 +15,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ChevronUpDownIcon,
-  FunnelIcon,
-  UserIcon
+  FunnelIcon
 } from '@heroicons/react/24/outline';
 import {
   format,
@@ -561,7 +560,6 @@ function ProjectsInner() {
                                   <ChevronUpDownIcon className="h-4 w-4" />
                                 </button>
                               </th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Project Team</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Estimated Cost</th>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
@@ -638,19 +636,7 @@ function ProjectsInner() {
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-5 py-4">
-                                  <div className="text-sm font-medium" style={{ color: '#1e293b' }}>
-                                    {project.project_team ? (
-                                      <div className="flex items-center gap-1.5">
-                                        <UserIcon className="h-4 w-4" style={{ color: '#8b5cf6' }} />
-                                        <span className="max-w-xs truncate">{project.project_team}</span>
-                                      </div>
-                                    ) : (
-                                      <span style={{ color: '#94a3b8' }}>No team assigned</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-5 py-4 whitespace-nowrap">
+                                <td className="px-4 py-3 whitespace-nowrap">
                                   <span className={`px-3.5 py-1.5 inline-flex text-[11px] leading-4 font-bold rounded-xl shadow-sm uppercase tracking-wide ${getStatusColor(project.status)}`} style={{
                                     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
                                   }}>
