@@ -1,0 +1,51 @@
+
+> accent@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.3
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+Failed to compile.
+
+./src/app/masters/users/page.jsx
+Error:   [31mx[0m Expected '</', got ')'
+     ,-[[36;1;4m/Users/dipen/Desktop/accent/src/app/masters/users/page.jsx[0m:531:1]
+ [2m528[0m |                     </div>
+ [2m529[0m |                   </td>
+ [2m530[0m |                 </tr>
+ [2m531[0m |               );
+     : [35;1m              ^[0m
+ [2m532[0m |               })}
+ [2m533[0m |             </tbody>
+ [2m534[0m |           </table>
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/masters/users/page.jsx
+
+./src/hooks/useActivityTracker.js
+Error:   [31mx[0m Expected ';', got ')'
+     ,-[[36;1;4m/Users/dipen/Desktop/accent/src/hooks/useActivityTracker.js[0m:414:1]
+ [2m411[0m |       window.history.pushState = originalPushState;
+ [2m412[0m |       window.history.replaceState = originalReplaceState;
+ [2m413[0m |     };
+ [2m414[0m |   }, [user?.id, recordActivity, trackPageView, sendHeartbeat, sendActivityData, checkIdle]);
+     : [35;1m                                                                                          ^[0m
+ [2m415[0m | 
+ [2m416[0m |   return {
+ [2m417[0m |     recordActivity,
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/hooks/useActivityTracker.js
+./src/components/ActivityTracker.jsx
+
+
+> Build failed because of webpack errors

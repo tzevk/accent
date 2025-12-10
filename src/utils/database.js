@@ -13,7 +13,7 @@ export async function dbConnect() {
   const user = process.env.DB_USER
   const password = process.env.DB_PASSWORD
   const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000) // ms
-  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5) // Reduced to 5 to prevent exceeding max_user_connections
+  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 3) // Reduced to 3 to prevent exceeding max_user_connections
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 2)
 
   // Initialize pool once
@@ -35,8 +35,8 @@ export async function dbConnect() {
           queueLimit: 0,
           connectTimeout,
           dateStrings: true,
-          maxIdle: 2, // Keep max 2 idle connections
-          idleTimeout: 30000, // Close idle connections after 30s
+          maxIdle: 1, // Keep max 1 idle connection (reduced from 2)
+          idleTimeout: 15000, // Close idle connections after 15s (reduced from 30s)
           enableKeepAlive: true,
           keepAliveInitialDelay: 0
         });
@@ -44,12 +44,34 @@ export async function dbConnect() {
         const test = await pool.getConnection();
         test.release();
         
-        // Add pool error handler to prevent uncaught errors
+        // Add pool error handlers and monitoring
         pool.on('connection', (connection) => {
           connection.on('error', (err) => {
             console.error('MySQL connection error:', err);
           });
         });
+        
+        pool.on('acquire', (connection) => {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📥 Connection %d acquired', connection.threadId);
+          }
+        });
+        
+        pool.on('release', (connection) => {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📤 Connection %d released', connection.threadId);
+          }
+        });
+        
+        // Log pool stats every 30 seconds in development
+        if (process.env.NODE_ENV === 'development') {
+          setInterval(() => {
+            const stats = getPoolStats();
+            if (stats && stats.totalConnections > 0) {
+              console.log('🔌 Pool stats:', stats);
+            }
+          }, 30000);
+        }
         
         lastError = undefined;
         break; // success
@@ -88,17 +110,34 @@ export async function dbConnect() {
 
   const conn = await pool.getConnection();
   
-  // Add connection timeout to auto-release if not released in 30s
+  // Add connection timeout to auto-release if not released in 15s (reduced from 30s)
   const releaseTimer = setTimeout(() => {
-    console.warn('Connection held for more than 30s, force releasing');
+    console.warn('⚠️  Connection held for more than 15s, force releasing:', {
+      threadId: conn.threadId,
+      stack: new Error().stack
+    });
     if (conn && typeof conn.release === 'function') {
-      conn.release();
+      try {
+        conn.release();
+      } catch (err) {
+        console.error('Error force-releasing connection:', err);
+      }
     }
-  }, 30000);
+  }, 15000);
+  
+  // Track connection creation for debugging
+  conn._acquiredAt = Date.now();
+  conn._acquiredStack = new Error().stack;
   
   // Wrap release to clear the timeout
   const originalRelease = conn.release.bind(conn);
+  let released = false;
   conn.release = function() {
+    if (released) {
+      console.warn('⚠️  Attempting to release connection twice:', conn.threadId);
+      return;
+    }
+    released = true;
     clearTimeout(releaseTimer);
     return originalRelease();
   };

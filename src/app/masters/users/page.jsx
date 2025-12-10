@@ -13,8 +13,10 @@ import {
   BriefcaseIcon, 
   ShieldCheckIcon,
   EyeIcon,
-  EyeSlashIcon 
+  EyeSlashIcon,
+  ChartBarIcon 
 } from '@heroicons/react/24/outline';
+import { StatusBadgeWithBg } from '@/components/StatusBadge';
 
 export default function EnhancedUsersMaster() {
   const { loading: rbacLoading, user: sessionUser, can } = useSessionRBAC();
@@ -33,6 +35,9 @@ export default function EnhancedUsersMaster() {
   const [editingUser, setEditingUser] = useState(null);
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Activity tracking state
+  const [userActivityData, setUserActivityData] = useState({});
 
   // RBAC manager state
   const [rbacTargetType, setRbacTargetType] = useState('role'); // 'role' | 'user'
@@ -59,11 +64,28 @@ export default function EnhancedUsersMaster() {
     status: 'active'
   });
 
+  // Derived list (no filtering, just return all users)
+  const filteredUsers = React.useMemo(() => {
+    return Array.isArray(users) ? users : [];
+  }, [users]);
+
   // Fetch all data
   useEffect(() => {
     fetchUsers();
     fetchEmployees();
     fetchRoles();
+    fetchUserActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-refresh activity data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchUserActivity();
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Extract unique departments when roles are loaded
@@ -90,13 +112,36 @@ export default function EnhancedUsersMaster() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch('/api/employees/available-for-users');
+      const res = await fetch('/api/employee-master');
       const data = await res.json();
       if (data.success) {
         setEmployees(data.data || []);
       }
     } catch (error) {
       console.error('Error fetching employees:', error);
+    }
+  };
+
+  
+
+  const fetchUserActivity = async () => {
+    if (!sessionUser || !(sessionUser.is_super_admin || sessionUser.role?.name === 'Admin')) return; // Only admins can see activity
+    
+    setActivityLoading(true);
+    try {
+      const res = await fetch('/api/user-status');
+      const data = await res.json();
+      if (data.success) {
+        const activityMap = {};
+        data.data.forEach(user => {
+          activityMap[user.user_id] = user;
+        });
+        setUserActivityData(activityMap);
+      }
+    } catch (error) {
+      console.error('Error fetching user activity:', error);
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -294,58 +339,52 @@ export default function EnhancedUsersMaster() {
     );
   };
 
-  const getHierarchyBadge = (hierarchy) => {
-    if (hierarchy >= 80) {
-      return <span className="text-purple-600 font-bold">Executive</span>;
-    } else if (hierarchy >= 60) {
-      return <span className="text-blue-600 font-semibold">Management</span>;
-    } else if (hierarchy >= 40) {
-      return <span className="text-green-600">Senior</span>;
-    } else {
-      return <span className="text-gray-600">Associate</span>;
-    }
-  };
-
   // Render Stats Cards
   const renderStatsCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <div className="flex items-center">
-          <UserIcon className="h-8 w-8 text-blue-500" />
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-500">Total Users</p>
-            <p className="text-2xl font-bold text-gray-900">{users.length}</p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-500">Total Users</p>
+            <p className="text-2xl font-semibold text-gray-900 mt-1">{users.length}</p>
+          </div>
+          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+            <UserIcon className="h-6 w-6 text-blue-600" />
           </div>
         </div>
       </div>
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <div className="flex items-center">
-          <BriefcaseIcon className="h-8 w-8 text-green-500" />
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-500">Available Employees</p>
-            <p className="text-2xl font-bold text-gray-900">
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-500">Available Employees</p>
+            <p className="text-2xl font-semibold text-gray-900 mt-1">
               {employees.filter(emp => !emp.user_id).length}
             </p>
           </div>
-        </div>
-      </div>
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <div className="flex items-center">
-          <ShieldCheckIcon className="h-8 w-8 text-purple-500" />
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-500">Active Roles</p>
-            <p className="text-2xl font-bold text-gray-900">{roles.length}</p>
+          <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+            <BriefcaseIcon className="h-6 w-6 text-green-600" />
           </div>
         </div>
       </div>
-      <div className="bg-white rounded-lg p-4 border border-gray-200">
-        <div className="flex items-center">
-          <div className="h-8 w-8 bg-orange-500 rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-sm">D</span>
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-500">Active Roles</p>
+            <p className="text-2xl font-semibold text-gray-900 mt-1">{roles.length}</p>
           </div>
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-500">Departments</p>
-            <p className="text-2xl font-bold text-gray-900">{departments.length}</p>
+          <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+            <ShieldCheckIcon className="h-6 w-6 text-purple-600" />
+          </div>
+        </div>
+      </div>
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-500">Departments</p>
+            <p className="text-2xl font-semibold text-gray-900 mt-1">{departments.length}</p>
+          </div>
+          <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+            <ChartBarIcon className="h-6 w-6 text-orange-600" />
           </div>
         </div>
       </div>
@@ -354,7 +393,7 @@ export default function EnhancedUsersMaster() {
 
   // Render Users List
   const renderUsersList = () => (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       {!rbacLoading && !canUsersRead && (
         <div className="p-8 text-center text-sm text-yellow-900 bg-yellow-50 border-b border-yellow-200">
           You don’t have permission to view users. Please contact an administrator.
@@ -365,7 +404,7 @@ export default function EnhancedUsersMaster() {
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           <p className="mt-2 text-gray-600">Loading users...</p>
         </div>
-      ) : users.length === 0 ? (
+      ) : filteredUsers.length === 0 ? (
         <div className="p-8 text-center">
           <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
@@ -374,7 +413,7 @@ export default function EnhancedUsersMaster() {
             {canUsersCreate && (
               <button
                 onClick={openCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
               >
                 <PlusIcon className="h-5 w-5" />
                 Create New User
@@ -390,6 +429,11 @@ export default function EnhancedUsersMaster() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   User Details
                 </th>
+                {sessionUser && (sessionUser.is_super_admin || sessionUser.role?.name === 'Admin') && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Online Status
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Employee
                 </th>
@@ -397,7 +441,7 @@ export default function EnhancedUsersMaster() {
                   Role & Department
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
+                  Account Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -405,72 +449,105 @@ export default function EnhancedUsersMaster() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 bg-gray-900 text-white rounded-full flex items-center justify-center">
-                        <span className="font-medium">
-                          {user.full_name ? user.full_name.split(' ').map(n => n[0]).join('') : user.username[0].toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                        <div className="text-sm text-gray-500">{user.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">
-                      {user.employee_name || 'Not linked'}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {user.employee_code || 'No employee code'}
-                    </div>
-                    {user.employee_position && (
-                      <div className="text-xs text-gray-400">{user.employee_position}</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center space-x-2">
-                      {user.role_name ? (
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{user.role_name}</div>
-                          <div className="text-sm text-gray-500">{user.role_department}</div>
-                          <div className="text-xs">{getHierarchyBadge(user.role_hierarchy)}</div>
+              {filteredUsers.map((user) => {
+                const activityInfo = userActivityData[user.id];
+                return (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    {/* User Details */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center">
+                        <div className="h-10 w-10 bg-gray-900 text-white rounded-full flex items-center justify-center relative">
+                          <span className="font-medium">
+                            {user.full_name ? user.full_name.split(' ').map(n => n[0]).join('') : user.username[0].toUpperCase()}
+                          </span>
+                          {activityInfo && activityInfo.status === 'online' && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full animate-pulse"></span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-sm text-gray-500">No role assigned</span>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                          <div className="text-sm text-gray-500">{user.email}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Online Status (Admin Only) */}
+                    {sessionUser && (sessionUser.is_super_admin || sessionUser.role?.name === 'Admin') && (
+                      <td className="px-6 py-4">
+                        {activityInfo ? (
+                          <div className="space-y-1">
+                            <StatusBadgeWithBg status={activityInfo.status} lastActivity={activityInfo.last_activity} />
+                            {activityInfo.current_page && activityInfo.status === 'online' && (
+                              <p className="text-xs text-gray-500 truncate max-w-xs">📍 {activityInfo.current_page.replace(/^\//, '')}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <StatusBadgeWithBg status="offline" />
+                        )}
+                      </td>
+                    )}
+
+                    {/* Employee */}
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900">{user.employee_name || 'Not linked'}</div>
+                      <div className="text-sm text-gray-500">{user.employee_code || 'No employee code'}</div>
+                      {user.employee_position && (
+                        <div className="text-xs text-gray-400">{user.employee_position}</div>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {getStatusBadge(user.status)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center space-x-2">
-                      {canUsersUpdate && (
-                        <button
-                          onClick={() => openEdit(user)}
-                          className="text-blue-600 hover:text-blue-800 p-1 rounded"
-                          title="Edit User"
-                        >
-                          <PencilIcon className="h-4 w-4" />
-                        </button>
-                      )}
-                      {canUsersDelete && (
-                        <button
-                          onClick={() => handleDelete(user.id)}
-                          className="text-red-600 hover:text-red-800 p-1 rounded"
-                          title="Delete User"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+
+                    {/* Role & Department */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center space-x-2">
+                        {user.role_name ? (
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{user.role_name}</div>
+                            <div className="text-sm text-gray-500">{user.role_department}</div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">No role assigned</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Account Status */}
+                    <td className="px-6 py-4">{getStatusBadge(user.status)}</td>
+
+                    {/* Actions */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center space-x-2">
+                        {sessionUser && (sessionUser.is_super_admin || sessionUser.role?.name === 'Admin') && (
+                          <button
+                            onClick={() => window.location.href = `/admin/activity-logs?user_id=${user.id}`}
+                            className="text-purple-600 hover:text-purple-800 p-1 rounded"
+                            title="View Activity Logs"
+                          >
+                            <ChartBarIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canUsersUpdate && (
+                          <button
+                            onClick={() => openEdit(user)}
+                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
+                            title="Edit User"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canUsersDelete && (
+                          <button
+                            onClick={() => handleDelete(user.id)}
+                            className="text-red-600 hover:text-red-800 p-1 rounded"
+                            title="Delete User"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -481,9 +558,8 @@ export default function EnhancedUsersMaster() {
   // Render Add User Form
   const renderAddUserForm = () => (
     <div>
-      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2 text-black">
-        <PlusIcon className="h-6 w-6 text-black" />
-        <span>Create New User</span>
+      <h2 className="text-lg font-semibold mb-6 text-gray-900">
+        Create New User
       </h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -623,18 +699,18 @@ export default function EnhancedUsersMaster() {
         </div>
 
         {/* Form Actions */}
-        <div className="flex justify-end space-x-3 pt-6 border-t">
+        <div className="flex justify-end gap-3 pt-6 border-t">
           <button
             type="button"
             onClick={() => setActiveTab('users')}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-900 transition-colors disabled:opacity-50 font-medium shadow-sm"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
           >
             {submitting ? 'Creating...' : 'Create User'}
           </button>
@@ -646,9 +722,8 @@ export default function EnhancedUsersMaster() {
   // Render Edit User Form
   const renderEditUserForm = () => (
     <div>
-      <h2 className="text-xl font-bold mb-6 flex items-center space-x-2 text-black">
-        <PencilIcon className="h-6 w-6 text-black" />
-        <span>Edit User: {editingUser.username}</span>
+      <h2 className="text-lg font-semibold mb-6 text-gray-900">
+        Edit User: {editingUser.username}
       </h2>
 
       {/* User Info Display */}
@@ -790,7 +865,7 @@ export default function EnhancedUsersMaster() {
         </div>
 
         {/* Form Actions */}
-        <div className="flex justify-end space-x-3 pt-6 border-t">
+        <div className="flex justify-end gap-3 pt-6 border-t">
           <button
             type="button"
             onClick={() => {
@@ -798,14 +873,14 @@ export default function EnhancedUsersMaster() {
               setEditing(null);
               setEditingUser(null);
             }}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-900 transition-colors disabled:opacity-50 font-medium shadow-sm"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
           >
             {submitting ? 'Updating...' : 'Update User'}
           </button>
@@ -923,76 +998,63 @@ export default function EnhancedUsersMaster() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
-          <div className="px-8 pt-24 pb-8">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-black mb-2">User Management</h1>
-                <p className="text-gray-600">Create and manage user accounts with role-based permissions</p>
-              </div>
-              <button
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 transition-colors shadow-sm"
-              >
-                <PlusIcon className="h-5 w-5" />
-                Create New User
-              </button>
+      <div className="pt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-2xl font-semibold text-gray-900">User Management</h1>
+              <p className="mt-1 text-sm text-gray-500">Create and manage user accounts with role-based permissions</p>
             </div>
 
-            {/* Tab Navigation - Fixed */}
-            <div className="flex border-b border-gray-200 bg-white rounded-t-lg px-6 pt-4 mb-6">
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
-                  activeTab === 'users'
-                    ? 'border-black text-black bg-gray-50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <UserIcon className="h-5 w-5 inline mr-2" />
-                All Users ({users.length || 0})
-              </button>
-              <button
-                onClick={() => setActiveTab('add-user')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
-                  activeTab === 'add-user'
-                    ? 'border-black text-black bg-gray-50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <PlusIcon className="h-5 w-5 inline mr-2" />
-                Create New User
-              </button>
-              {editingUser && (
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 mb-6">
+              <nav className="flex space-x-8" aria-label="Tabs">
                 <button
-                  onClick={() => setActiveTab('edit-user')}
-                  className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
-                    activeTab === 'edit-user'
-                      ? 'border-black text-black bg-gray-50'
+                  onClick={() => setActiveTab('users')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'users'
+                      ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <PencilIcon className="h-5 w-5 inline mr-2" />
-                  Edit: {editingUser.username}
+                  All Users ({users.length || 0})
                 </button>
-              )}
-              {/* Only show Permissions tab for admins */}
-              {!rbacLoading && sessionUser?.is_super_admin === true && (
                 <button
-                  onClick={() => setActiveTab('permissions')}
-                  className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
-                    activeTab === 'permissions'
-                      ? 'border-black text-black bg-gray-50'
+                  onClick={() => setActiveTab('add-user')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'add-user'
+                      ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <ShieldCheckIcon className="h-5 w-5 inline mr-2" />
-                  Permissions
+                  Create New User
                 </button>
-              )}
+                {editingUser && (
+                  <button
+                    onClick={() => setActiveTab('edit-user')}
+                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === 'edit-user'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Edit: {editingUser.username}
+                  </button>
+                )}
+                {!rbacLoading && sessionUser?.is_super_admin === true && (
+                  <button
+                    onClick={() => setActiveTab('permissions')}
+                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === 'permissions'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Permissions
+                  </button>
+                )}
+              </nav>
             </div>
 
             {/* Tab Content */}
@@ -1004,23 +1066,22 @@ export default function EnhancedUsersMaster() {
             )}
 
             {activeTab === 'add-user' && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 {renderAddUserForm()}
               </div>
             )}
 
             {activeTab === 'edit-user' && editingUser && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 {renderEditUserForm()}
               </div>
             )}
 
             {activeTab === 'permissions' && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 {renderPermissionsTab()}
               </div>
             )}
-          </div>
         </div>
       </div>
     </div>

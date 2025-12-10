@@ -48,7 +48,7 @@ export async function GET(request) {
       if (!idxRows.length) {
         await db.execute(`CREATE INDEX idx_proposals_created_status ON proposals (created_at, status)`);
       }
-    } catch (e) {
+    } catch {
       // Silent fail; index creation is opportunistic
     }
 
