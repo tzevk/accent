@@ -215,17 +215,23 @@ export async function GET(request, { params }) {
 
 // PUT - Update project
 export async function PUT(request, context) {
+  let db = null;
   try {
     const { id } = await context.params;
     const data = await request.json();
     
-    console.log('PUT /api/projects/[id] - received data for project:', id, { 
+    console.log('PUT /api/projects/[id] - Start update for project:', id);
+    console.log('PUT /api/projects/[id] - Data fields:', { 
       company_id: data.company_id, 
       client_name: data.client_name, 
-      name: data.name 
+      name: data.name,
+      hasTeamMembers: !!data.team_members,
+      hasProjectActivities: !!data.project_activities_list
     });
     
-    const db = await dbConnect();
+    console.log('PUT /api/projects/[id] - Attempting database connection...');
+    db = await dbConnect();
+    console.log('PUT /api/projects/[id] - Database connected successfully');
 
     // Inspect schema to determine the primary key column
     let pkCol = null;
@@ -270,7 +276,7 @@ export async function PUT(request, context) {
     
     const {
       name,
-      project_id,
+      // project_id is intentionally excluded - it's the primary key and should not be updated
       client_name,
       client_contact_details,
       project_location_country,
@@ -448,7 +454,7 @@ export async function PUT(request, context) {
 
     const fieldValues = [
       ['name', name === undefined ? null : name],
-      ['project_id', project_id === undefined ? null : project_id],
+      // SKIP project_id - it's the primary key and should not be updated
       ['client_name', clientNameParam],
       ['client_contact_details', client_contact_details === undefined ? null : client_contact_details],
       ['project_location_country', project_location_country === undefined ? null : project_location_country],
@@ -523,7 +529,9 @@ export async function PUT(request, context) {
     const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
     queryParams.push(projectId);
 
-  const [result] = await db.execute(sql, queryParams);
+    console.log('PUT /api/projects/[id] - Executing UPDATE with', setParts.length, 'fields');
+    const [result] = await db.execute(sql, queryParams);
+    console.log('PUT /api/projects/[id] - UPDATE executed, affected rows:', result.affectedRows);
 
     // Ensure columns exist to store assigned disciplines/activities/assignments and per-discipline descriptions
     try {
@@ -618,23 +626,49 @@ export async function PUT(request, context) {
     }
 
     await db.end();
+    console.log('PUT /api/projects/[id] - Database connection closed');
 
     if (result.affectedRows === 0) {
+      console.warn('PUT /api/projects/[id] - No rows affected, project not found');
       return Response.json({ 
         success: false, 
         error: 'Project not found' 
       }, { status: 404 });
     }
 
+    console.log('PUT /api/projects/[id] - SUCCESS - Project updated');
     return Response.json({ 
       success: true, 
       message: 'Project updated successfully' 
     });
   } catch (error) {
-    console.error('Database error:', error);
+    console.error('PUT /api/projects/[id] - CAUGHT ERROR');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      code: error.code,
+      errno: error.errno,
+      sqlMessage: error.sqlMessage,
+      sqlState: error.sqlState,
+      sql: error.sql
+    });
+    
+    // Ensure DB connection is closed
+    if (db) {
+      try {
+        await db.end();
+        console.log('PUT /api/projects/[id] - Database connection closed after error');
+      } catch (closeErr) {
+        console.error('PUT /api/projects/[id] - Failed to close DB connection:', closeErr.message);
+      }
+    }
+    
     return Response.json({ 
       success: false, 
-      error: 'Failed to update project' 
+      error: 'Failed to update project',
+      details: error.message || 'Unknown error',
+      sqlMessage: error.sqlMessage || null
     }, { status: 500 });
   }
 }

@@ -845,8 +845,10 @@ function EditProjectForm() {
       setSaving(true);
       
       // Prepare payload - remove empty company_id if client_name is present
+      // Also exclude project_id as it's the primary key and should not be updated
+      const { project_id, ...formWithoutPk } = form;
       const payload = {
-        ...form,
+        ...formWithoutPk,
         project_team: JSON.stringify(projectTeamMembers),
         team_members: JSON.stringify(teamMembers),
         project_activities_list: JSON.stringify(projectActivities),
@@ -882,11 +884,17 @@ function EditProjectForm() {
         setLastSaved(new Date());
         console.log('AutoSave successful');
       } else {
-        console.error('Auto-save failed:', result.error || result.message);
+        console.error('Auto-save failed:', result.error || result.message, result.details);
         // Don't show error for autosave failures to avoid interrupting user
       }
     } catch (error) {
       console.error('Auto-save error:', error?.message || error);
+      // Check if it's a 401 authentication error
+      if (error?.message?.includes('Unauthorized') || error?.message?.includes('401')) {
+        console.warn('Session expired - please sign in again');
+        // Optionally redirect to signin after a delay
+        // setTimeout(() => router.push('/signin'), 3000);
+      }
       // Silently fail autosave to avoid interrupting user experience
     } finally {
       setSaving(false);
@@ -1548,8 +1556,10 @@ function EditProjectForm() {
 
     setSubmitting(true);
     try {
+      // Exclude project_id from payload as it's the primary key
+      const { project_id, ...formWithoutPk } = form;
       const payload = {
-        ...form,
+        ...formWithoutPk,
         project_duration_planned: form.project_duration_planned ? Number(form.project_duration_planned) : null,
         project_duration_actual: form.project_duration_actual ? Number(form.project_duration_actual) : null,
         project_value: form.project_value ? Number(form.project_value) : null,
