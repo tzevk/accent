@@ -110,10 +110,6 @@ function NewProjectForm() {
       alert('Project name is required');
       return;
     }
-    if (!form.company_id) {
-      alert('Company is required');
-      return;
-    }
 
     setSubmitting(true);
     try {

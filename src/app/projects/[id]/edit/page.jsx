@@ -452,7 +452,7 @@ function EditProjectForm() {
             project_team: project.project_team || '',
             // Scope & Deliverables fields
             scope_of_work: project.scope_of_work || '',
-            input_documents: typeof project.input_documents === 'object' ? JSON.stringify(project.input_documents) : (project.input_documents || ''),
+            input_documents: typeof project.input_documents === 'object' && project.input_documents !== null ? JSON.stringify(project.input_documents) : (project.input_documents || ''),
             deliverables: project.deliverables || '',
             list_of_deliverables: project.list_of_deliverables || '',
             software_included: project.software_included || '',
@@ -507,7 +507,7 @@ function EditProjectForm() {
                   // Scope & Deliverables
                   scope_of_work: proposal.scope_of_work || prev.scope_of_work,
                   deliverables: proposal.deliverables || prev.deliverables,
-                  input_documents: typeof proposal.input_documents === 'object' ? JSON.stringify(proposal.input_documents) : (proposal.input_documents || prev.input_documents),
+                  input_documents: typeof proposal.input_documents === 'object' && proposal.input_documents !== null ? JSON.stringify(proposal.input_documents) : (proposal.input_documents || prev.input_documents),
                   list_of_deliverables: proposal.list_of_deliverables || prev.list_of_deliverables,
                   
                   // Project specifications
@@ -1546,10 +1546,6 @@ function EditProjectForm() {
     event.preventDefault();
     if (!form.name.trim()) {
       alert('Project name is required');
-      return;
-    }
-    if (!form.company_id) {
-      alert('Company is required');
       return;
     }
 

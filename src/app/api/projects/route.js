@@ -155,10 +155,10 @@ export async function POST(request) {
       project_team
     } = data;
 
-    if (!name || (!company_id && !proposal_id && !data.client_name)) {
+    if (!name) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Project name and company (company_id, client_name, or linked proposal) are required' 
+        error: 'Project name is required' 
       }, { status: 400 });
     }
 
@@ -382,15 +382,6 @@ export async function PUT(request) {
       } catch (e) {
         console.warn('Failed to lookup proposal for company override:', e?.message || e);
       }
-    }
-
-    // Ensure we have either a company id OR a client name
-    if (!effectiveCompanyId && !effectiveClientName) {
-      await db.end();
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Company is required (provide company_id, client_name, or link a proposal with a company)' 
-      }, { status: 400 });
     }
 
     // Fetch company name from effectiveCompanyId if we have it
