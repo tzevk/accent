@@ -450,6 +450,20 @@ function EditProjectForm() {
             estimated_manhours: project.estimated_manhours || project.estimated_hours || '',
             unit_qty: project.unit_qty || project.unit || '',
             project_team: project.project_team || '',
+            // Scope & Deliverables fields
+            scope_of_work: project.scope_of_work || '',
+            input_documents: typeof project.input_documents === 'object' ? JSON.stringify(project.input_documents) : (project.input_documents || ''),
+            deliverables: project.deliverables || '',
+            list_of_deliverables: project.list_of_deliverables || '',
+            software_included: project.software_included || '',
+            duration: project.duration || '',
+            mode_of_delivery: project.mode_of_delivery || '',
+            revision: project.revision || '',
+            site_visit: project.site_visit || '',
+            quotation_validity: project.quotation_validity || '',
+            exclusion: project.exclusion || '',
+            billing_and_payment_terms: project.billing_and_payment_terms || '',
+            other_terms_and_conditions: project.other_terms_and_conditions || '',
             // internal minutes fields
             internal_meeting_no: project.internal_meeting_no || '',
             internal_meeting_client_name: project.internal_meeting_client_name || '',
@@ -493,7 +507,7 @@ function EditProjectForm() {
                   // Scope & Deliverables
                   scope_of_work: proposal.scope_of_work || prev.scope_of_work,
                   deliverables: proposal.deliverables || prev.deliverables,
-                  input_documents: proposal.input_documents || prev.input_documents,
+                  input_documents: typeof proposal.input_documents === 'object' ? JSON.stringify(proposal.input_documents) : (proposal.input_documents || prev.input_documents),
                   list_of_deliverables: proposal.list_of_deliverables || prev.list_of_deliverables,
                   
                   // Project specifications
@@ -2028,33 +2042,6 @@ function EditProjectForm() {
                                 step="0.1" 
                                 placeholder="0.0"
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400" 
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="block text-xs font-bold" style={{ color: '#475569', letterSpacing: '0.01em' }}>
-                                Project Team
-                              </label>
-                              <textarea 
-                                name="project_team" 
-                                value={form.project_team} 
-                                onChange={handleChange} 
-                                rows={3}
-                                placeholder="Enter team members (e.g., John Doe - Lead, Jane Smith - Developer)"
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
-                                style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
-                                  border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
-                                  boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
-                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
-                                }}
                               />
                             </div>
                           </div>
