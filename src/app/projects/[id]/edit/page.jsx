@@ -870,11 +870,7 @@ function EditProjectForm() {
         delete payload.company_id;
       }
       
-      console.log('AutoSave - Sending to /api/projects/' + id, {
-        client_name: payload.client_name,
-        company_id: payload.company_id,
-        name: payload.name
-      });
+      console.log('AutoSave - Sending to /api/projects/' + id);
       
       const result = await fetchJSON(`/api/projects/${id}`, {
         method: 'PUT',
@@ -884,13 +880,14 @@ function EditProjectForm() {
 
       if (result.success) {
         setLastSaved(new Date());
+        console.log('AutoSave successful');
       } else {
         console.error('Auto-save failed:', result.error || result.message);
-        setError(result.error || result.message || 'Failed to save project');
+        // Don't show error for autosave failures to avoid interrupting user
       }
     } catch (error) {
-      console.error('Auto-save failed:', error);
-      setError(error?.message || 'Failed to save project');
+      console.error('Auto-save error:', error?.message || error);
+      // Silently fail autosave to avoid interrupting user experience
     } finally {
       setSaving(false);
     }
@@ -1584,14 +1581,16 @@ function EditProjectForm() {
       });
 
       if (result.success) {
+        console.log('Project updated successfully');
         alert('Project updated successfully!');
         // Stay on edit page instead of redirecting to view page
         // router.push(`/projects/${id}`);
       } else {
-        alert(result.error || 'Failed to update project');
+        console.error('Update failed:', result.error || result.message);
+        alert(result.error || result.message || 'Failed to update project');
       }
     } catch (error) {
-      console.error('Project update error', error);
+      console.error('Project update error:', error);
       alert(error?.message || 'Failed to update project');
     } finally {
       setSubmitting(false);
