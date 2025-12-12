@@ -216,22 +216,38 @@ export async function GET(request, { params }) {
 // PUT - Update project
 export async function PUT(request, context) {
   let db = null;
-  try {
-    const { id } = await context.params;
-    const data = await request.json();
-    
-    console.log('PUT /api/projects/[id] - Start update for project:', id);
-    console.log('PUT /api/projects/[id] - Data fields:', { 
-      company_id: data.company_id, 
-      client_name: data.client_name, 
-      name: data.name,
-      hasTeamMembers: !!data.team_members,
-      hasProjectActivities: !!data.project_activities_list
-    });
-    
-    console.log('PUT /api/projects/[id] - Attempting database connection...');
-    db = await dbConnect();
-    console.log('PUT /api/projects/[id] - Database connected successfully');
+  let retries = 0;
+  const maxRetries = 2;
+  
+  // Parse request data once outside the loop
+  const { id } = await context.params;
+  const data = await request.json();
+  
+  while (retries <= maxRetries) {
+    try {
+      console.log('PUT /api/projects/[id] - Start update for project:', id, 'Attempt:', retries + 1);
+      console.log('PUT /api/projects/[id] - Data fields:', { 
+        company_id: data.company_id, 
+        client_name: data.client_name, 
+        name: data.name,
+        hasTeamMembers: !!data.team_members,
+        hasProjectActivities: !!data.project_activities_list
+      });
+      
+      console.log('PUT /api/projects/[id] - Attempting database connection...');
+      
+      // Get fresh connection for retry attempts
+      if (db) {
+        try {
+          await db.end();
+        } catch (e) {
+          console.warn('Error releasing old connection:', e.message);
+        }
+        db = null;
+      }
+      
+      db = await dbConnect();
+      console.log('PUT /api/projects/[id] - Database connected successfully');
 
     // Inspect schema to determine the primary key column
     let pkCol = null;
@@ -641,20 +657,25 @@ export async function PUT(request, context) {
       success: true, 
       message: 'Project updated successfully' 
     });
+    
   } catch (error) {
-    console.error('PUT /api/projects/[id] - CAUGHT ERROR');
+    console.error('PUT /api/projects/[id] - CAUGHT ERROR on attempt', retries + 1);
     console.error('Error name:', error.name);
     console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
     console.error('Error details:', {
       code: error.code,
       errno: error.errno,
       sqlMessage: error.sqlMessage,
-      sqlState: error.sqlState,
-      sql: error.sql
+      sqlState: error.sqlState
     });
     
-    // Ensure DB connection is closed
+    // Check if it's a retryable error (connection issues)
+    const isRetryable = error.code === 'ETIMEDOUT' || 
+                       error.code === 'ECONNRESET' || 
+                       error.code === 'PROTOCOL_CONNECTION_LOST' ||
+                       error.message?.includes('connection is in closed state');
+    
+    // Ensure DB connection is closed before retry
     if (db) {
       try {
         await db.end();
@@ -662,8 +683,18 @@ export async function PUT(request, context) {
       } catch (closeErr) {
         console.error('PUT /api/projects/[id] - Failed to close DB connection:', closeErr.message);
       }
+      db = null;
     }
     
+    // Retry for connection errors
+    if (isRetryable && retries < maxRetries) {
+      console.log('PUT /api/projects/[id] - Retrying due to connection error...');
+      retries++;
+      await new Promise(resolve => setTimeout(resolve, 500 * retries)); // Exponential backoff
+      continue; // Retry the while loop
+    }
+    
+    // Non-retryable error or max retries reached
     return Response.json({ 
       success: false, 
       error: 'Failed to update project',
@@ -671,6 +702,13 @@ export async function PUT(request, context) {
       sqlMessage: error.sqlMessage || null
     }, { status: 500 });
   }
+  } // End of while loop
+  
+  // Should never reach here, but just in case
+  return Response.json({ 
+    success: false, 
+    error: 'Failed to update project after retries'
+  }, { status: 500 });
 }
 
 // DELETE project

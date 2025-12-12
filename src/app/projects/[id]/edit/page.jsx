@@ -884,11 +884,22 @@ function EditProjectForm() {
         setLastSaved(new Date());
         console.log('AutoSave successful');
       } else {
-        console.error('Auto-save failed:', result.error || result.message, result.details);
+        console.error('Auto-save failed - Full error details:', {
+          error: result.error,
+          message: result.message,
+          details: result.details,
+          sqlMessage: result.sqlMessage,
+          fullResult: result
+        });
         // Don't show error for autosave failures to avoid interrupting user
       }
     } catch (error) {
-      console.error('Auto-save error:', error?.message || error);
+      console.error('Auto-save error - Exception caught:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        fullError: error
+      });
       // Check if it's a 401 authentication error
       if (error?.message?.includes('Unauthorized') || error?.message?.includes('401')) {
         console.warn('Session expired - please sign in again');

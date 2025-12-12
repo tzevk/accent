@@ -13,7 +13,7 @@ export async function dbConnect() {
   const user = process.env.DB_USER
   const password = process.env.DB_PASSWORD
   const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000) // ms
-  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 3) // Reduced to 3 to prevent exceeding max_user_connections
+  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 10) // Increased for better concurrency
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 2)
 
   // Initialize pool once
@@ -35,10 +35,10 @@ export async function dbConnect() {
           queueLimit: 0,
           connectTimeout,
           dateStrings: true,
-          maxIdle: 1, // Keep max 1 idle connection (reduced from 2)
-          idleTimeout: 15000, // Close idle connections after 15s (reduced from 30s)
+          maxIdle: 5, // Keep more idle connections ready
+          idleTimeout: 60000, // Keep connections alive longer (60s)
           enableKeepAlive: true,
-          keepAliveInitialDelay: 0
+          keepAliveInitialDelay: 10000 // Send keepalive after 10s
         });
         // Warm a connection to validate database existence
         const test = await pool.getConnection();
@@ -110,9 +110,9 @@ export async function dbConnect() {
 
   const conn = await pool.getConnection();
   
-  // Add connection timeout to auto-release if not released in 15s (reduced from 30s)
+  // Add connection timeout to auto-release if not released in 30s (increased from 15s for longer operations)
   const releaseTimer = setTimeout(() => {
-    console.warn('⚠️  Connection held for more than 15s, force releasing:', {
+    console.warn('⚠️  Connection held for more than 30s, force releasing:', {
       threadId: conn.threadId,
       stack: new Error().stack
     });
@@ -123,7 +123,7 @@ export async function dbConnect() {
         console.error('Error force-releasing connection:', err);
       }
     }
-  }, 15000);
+  }, 30000);
   
   // Track connection creation for debugging
   conn._acquiredAt = Date.now();
