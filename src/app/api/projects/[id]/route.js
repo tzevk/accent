@@ -559,6 +559,14 @@ export async function PUT(request, context) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_activities_list JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_activities_list JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_list JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_received_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_issued_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_handover_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_manhours_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_query_log_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule_list TEXT');
     } catch (err) {
       // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
       console.warn('Could not ensure project assignment columns exist:', err.message || err);
@@ -574,10 +582,21 @@ export async function PUT(request, context) {
       const projectActivitiesList = data.project_activities_list || null;
       const planningActivitiesList = data.planning_activities_list || null;
       const documentsList = data.documents_list || null;
+      const documentsReceivedList = data.documents_received_list || null;
+      const documentsIssuedList = data.documents_issued_list || null;
+      const projectHandoverList = data.project_handover_list || null;
+      const projectManhoursList = data.project_manhours_list || null;
+      const projectQueryLogList = data.project_query_log_list || null;
+      const projectAssumptionList = data.project_assumption_list || null;
+      const projectLessonsLearntList = data.project_lessons_learnt_list || null;
+      const projectScheduleList = data.project_schedule_list || null;
 
       if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || 
           assignments !== null || teamMembers !== null || projectActivitiesList !== null || 
-          planningActivitiesList !== null || documentsList !== null) {
+          planningActivitiesList !== null || documentsList !== null || documentsReceivedList !== null ||
+          documentsIssuedList !== null || projectHandoverList !== null || projectManhoursList !== null ||
+          projectQueryLogList !== null || projectAssumptionList !== null || projectLessonsLearntList !== null ||
+          projectScheduleList !== null) {
         await db.execute(
           `UPDATE projects SET 
              assigned_disciplines = COALESCE(?, assigned_disciplines),
@@ -587,10 +606,20 @@ export async function PUT(request, context) {
              team_members = COALESCE(?, team_members),
              project_activities_list = COALESCE(?, project_activities_list),
              planning_activities_list = COALESCE(?, planning_activities_list),
-             documents_list = COALESCE(?, documents_list)
+             documents_list = COALESCE(?, documents_list),
+             documents_received_list = COALESCE(?, documents_received_list),
+             documents_issued_list = COALESCE(?, documents_issued_list),
+             project_handover_list = COALESCE(?, project_handover_list),
+             project_manhours_list = COALESCE(?, project_manhours_list),
+             project_query_log_list = COALESCE(?, project_query_log_list),
+             project_assumption_list = COALESCE(?, project_assumption_list),
+             project_lessons_learnt_list = COALESCE(?, project_lessons_learnt_list),
+             project_schedule_list = COALESCE(?, project_schedule_list)
            WHERE ${pkCol} = ?`,
           [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, 
-           teamMembers, projectActivitiesList, planningActivitiesList, documentsList, projectId]
+           teamMembers, projectActivitiesList, planningActivitiesList, documentsList,
+           documentsReceivedList, documentsIssuedList, projectHandoverList, projectManhoursList,
+           projectQueryLogList, projectAssumptionList, projectLessonsLearntList, projectScheduleList, projectId]
         );
       }
     } catch (err) {
