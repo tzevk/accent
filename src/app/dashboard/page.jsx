@@ -536,7 +536,7 @@ useEffect(() => {
                 series: analytics.series.leads
               },
               {
-                title: 'PROPOSALS',
+                title: 'PROPOSAL COUNT',
                 value: stats.proposals.total,
                 hint: 'View Proposals',
                 href: '/proposals',

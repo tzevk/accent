@@ -4303,9 +4303,9 @@ function EditProjectForm() {
                                           className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                                         >
                                           <option value="">Unassigned</option>
-                                          {employees.map(emp => (
-                                            <option key={emp.id} value={emp.id}>
-                                              {emp.first_name} {emp.last_name}
+                                          {projectTeamMembers.map(member => (
+                                            <option key={member.employee_id} value={member.employee_id}>
+                                              {member.employee_name}
                                             </option>
                                           ))}
                                         </select>

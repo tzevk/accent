@@ -124,7 +124,8 @@ export async function getCurrentUser(request) {
       merged_permissions: mergedPermissions,
       employee
     };
-  } catch {
+  } catch (error) {
+    console.error('[getCurrentUser] Error:', error);
     return null;
   }
 }
