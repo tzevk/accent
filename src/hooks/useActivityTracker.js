@@ -27,20 +27,38 @@ export function useActivityTracker() {
 
   // Send activity data to server
   const sendActivityData = useCallback(async (data) => {
-    if (!user?.id) return;
+    // Don't send if user is not authenticated
+    if (!user?.id) {
+      return;
+    }
 
     try {
-      await fetch('/api/activity-logs/track-activity', {
+      const response = await fetch('/api/activity-logs/track-activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           ...data,
           userId: user.id,
           timestamp: new Date().toISOString()
         })
       });
+
+      // Silently fail on 401 (unauthenticated) - user is being redirected to login
+      if (response.status === 401) {
+        return;
+      }
+
+      // Log other errors but don't throw
+      if (!response.ok) {
+        console.warn('Activity tracking failed:', response.status);
+      }
     } catch (error) {
-      console.error('Failed to send activity data:', error);
+      // Silently fail on network errors during activity tracking
+      // This prevents console spam when user is logged out
+      if (error.name !== 'TypeError' || error.message !== 'Failed to fetch') {
+        console.error('Failed to send activity data:', error);
+      }
     }
   }, [user?.id]);
 
