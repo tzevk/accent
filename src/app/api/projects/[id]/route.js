@@ -138,6 +138,103 @@ export async function GET(request, { params }) {
       }
     }
 
+    if (project.input_documents_list && typeof project.input_documents_list === 'string') {
+      try {
+        project.input_documents_list = JSON.parse(project.input_documents_list);
+      } catch {
+        project.input_documents_list = [];
+      }
+    }
+
+    // Parse all the table list fields
+    if (project.documents_received_list && typeof project.documents_received_list === 'string') {
+      try {
+        project.documents_received_list = JSON.parse(project.documents_received_list);
+      } catch {
+        project.documents_received_list = [];
+      }
+    }
+
+    if (project.documents_issued_list && typeof project.documents_issued_list === 'string') {
+      try {
+        project.documents_issued_list = JSON.parse(project.documents_issued_list);
+      } catch {
+        project.documents_issued_list = [];
+      }
+    }
+
+    if (project.project_handover_list && typeof project.project_handover_list === 'string') {
+      try {
+        project.project_handover_list = JSON.parse(project.project_handover_list);
+      } catch {
+        project.project_handover_list = [];
+      }
+    }
+
+    if (project.project_manhours_list && typeof project.project_manhours_list === 'string') {
+      try {
+        project.project_manhours_list = JSON.parse(project.project_manhours_list);
+      } catch {
+        project.project_manhours_list = [];
+      }
+    }
+
+    if (project.project_query_log_list && typeof project.project_query_log_list === 'string') {
+      try {
+        project.project_query_log_list = JSON.parse(project.project_query_log_list);
+      } catch {
+        project.project_query_log_list = [];
+      }
+    }
+
+    if (project.project_assumption_list && typeof project.project_assumption_list === 'string') {
+      try {
+        project.project_assumption_list = JSON.parse(project.project_assumption_list);
+      } catch {
+        project.project_assumption_list = [];
+      }
+    }
+
+    if (project.project_lessons_learnt_list && typeof project.project_lessons_learnt_list === 'string') {
+      try {
+        project.project_lessons_learnt_list = JSON.parse(project.project_lessons_learnt_list);
+      } catch {
+        project.project_lessons_learnt_list = [];
+      }
+    }
+
+    if (project.project_schedule_list && typeof project.project_schedule_list === 'string') {
+      try {
+        project.project_schedule_list = JSON.parse(project.project_schedule_list);
+      } catch {
+        project.project_schedule_list = [];
+      }
+    }
+
+    if (project.kickoff_meetings_list && typeof project.kickoff_meetings_list === 'string') {
+      try {
+        project.kickoff_meetings_list = JSON.parse(project.kickoff_meetings_list);
+      } catch {
+        project.kickoff_meetings_list = [];
+      }
+    }
+
+    if (project.internal_meetings_list && typeof project.internal_meetings_list === 'string') {
+      try {
+        project.internal_meetings_list = JSON.parse(project.internal_meetings_list);
+      } catch {
+        project.internal_meetings_list = [];
+      }
+    }
+
+    if (project.software_items && typeof project.software_items === 'string') {
+      try {
+        project.software_items = JSON.parse(project.software_items);
+      } catch {
+        project.software_items = [];
+      }
+    }
+
     // Parse project_activities_list and merge with user_activity_assignments
     if (project.project_activities_list && typeof project.project_activities_list === 'string') {
       try {
@@ -222,6 +319,33 @@ export async function PUT(request, context) {
   // Parse request data once outside the loop
   const { id } = await context.params;
   const data = await request.json();
+  
+  // Write debug info to file
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('fs');
+  const debugInfo = {
+    timestamp: new Date().toISOString(),
+    projectId: id,
+    dataKeys: Object.keys(data),
+    documents_issued_list_type: typeof data.documents_issued_list,
+    documents_issued_list_value: data.documents_issued_list,
+    documents_issued_list_length: data.documents_issued_list?.length,
+    project_handover_list_type: typeof data.project_handover_list,
+    project_handover_list_value: data.project_handover_list,
+    project_handover_list_length: data.project_handover_list?.length,
+    input_documents_list_type: typeof data.input_documents_list,
+    input_documents_list_value: data.input_documents_list,
+    input_documents_list_length: data.input_documents_list?.length
+  };
+  fs.writeFileSync('/tmp/project-update-debug.json', JSON.stringify(debugInfo, null, 2));
+  
+  console.log('[PUT] ===== REQUEST DATA RECEIVED =====');
+  console.log('[PUT] Project ID:', id);
+  console.log('[PUT] Data keys:', Object.keys(data));
+  console.log('[PUT] documents_issued_list type:', typeof data.documents_issued_list);
+  console.log('[PUT] documents_issued_list value:', data.documents_issued_list);
+  console.log('[PUT] documents_issued_list length:', data.documents_issued_list?.length);
+  console.log('[PUT] =====================================');
   
   while (retries <= maxRetries) {
     try {
@@ -556,9 +680,13 @@ export async function PUT(request, context) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS discipline_descriptions TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_members JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS software_items JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_activities_list JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_activities_list JSON');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_list JSON');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_documents_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meetings_list TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS internal_meetings_list TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_received_list TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_issued_list TEXT');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_handover_list TEXT');
@@ -579,9 +707,13 @@ export async function PUT(request, context) {
       const disciplineDescriptions = data.discipline_descriptions ? JSON.stringify(data.discipline_descriptions) : null;
       const assignments = data.assignments ? JSON.stringify(data.assignments) : null;
       const teamMembers = data.team_members || null;
+      const softwareItems = data.software_items || null;
       const projectActivitiesList = data.project_activities_list || null;
       const planningActivitiesList = data.planning_activities_list || null;
       const documentsList = data.documents_list || null;
+      const inputDocumentsList = data.input_documents_list || null;
+      const kickoffMeetingsList = data.kickoff_meetings_list || null;
+      const internalMeetingsList = data.internal_meetings_list || null;
       const documentsReceivedList = data.documents_received_list || null;
       const documentsIssuedList = data.documents_issued_list || null;
       const projectHandoverList = data.project_handover_list || null;
@@ -591,22 +723,40 @@ export async function PUT(request, context) {
       const projectLessonsLearntList = data.project_lessons_learnt_list || null;
       const projectScheduleList = data.project_schedule_list || null;
 
+      console.log('[PUT] List fields received:', {
+        documentsReceivedList: documentsReceivedList ? `${documentsReceivedList.substring(0, 50)}...` : 'null',
+        documentsIssuedList: documentsIssuedList ? `${documentsIssuedList.substring(0, 50)}...` : 'null',
+        projectHandoverList: projectHandoverList ? `${projectHandoverList.substring(0, 50)}...` : 'null',
+        projectManhoursList: projectManhoursList ? `${projectManhoursList.substring(0, 50)}...` : 'null'
+      });
+
       if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || 
-          assignments !== null || teamMembers !== null || projectActivitiesList !== null || 
-          planningActivitiesList !== null || documentsList !== null || documentsReceivedList !== null ||
-          documentsIssuedList !== null || projectHandoverList !== null || projectManhoursList !== null ||
-          projectQueryLogList !== null || projectAssumptionList !== null || projectLessonsLearntList !== null ||
-          projectScheduleList !== null) {
-        await db.execute(
+          assignments !== null || teamMembers !== null || softwareItems !== null ||
+          projectActivitiesList !== null || planningActivitiesList !== null || documentsList !== null ||
+          inputDocumentsList !== null || kickoffMeetingsList !== null || internalMeetingsList !== null ||
+          documentsReceivedList !== null || documentsIssuedList !== null || projectHandoverList !== null ||
+          projectManhoursList !== null || projectQueryLogList !== null || projectAssumptionList !== null ||
+          projectLessonsLearntList !== null || projectScheduleList !== null) {
+        console.log('[PUT] Updating list fields in database...');
+        console.log('[PUT] About to UPDATE with values:', {
+          projectHandoverList: projectHandoverList?.substring(0, 100),
+          projectManhoursList: projectManhoursList?.substring(0, 100),
+          documentsIssuedList: documentsIssuedList?.substring(0, 100)
+        });
+        const updateResult = await db.execute(
           `UPDATE projects SET 
              assigned_disciplines = COALESCE(?, assigned_disciplines),
              assigned_activities = COALESCE(?, assigned_activities),
              discipline_descriptions = COALESCE(?, discipline_descriptions),
              assignments = COALESCE(?, assignments),
              team_members = COALESCE(?, team_members),
+             software_items = COALESCE(?, software_items),
              project_activities_list = COALESCE(?, project_activities_list),
              planning_activities_list = COALESCE(?, planning_activities_list),
              documents_list = COALESCE(?, documents_list),
+             input_documents_list = COALESCE(?, input_documents_list),
+             kickoff_meetings_list = COALESCE(?, kickoff_meetings_list),
+             internal_meetings_list = COALESCE(?, internal_meetings_list),
              documents_received_list = COALESCE(?, documents_received_list),
              documents_issued_list = COALESCE(?, documents_issued_list),
              project_handover_list = COALESCE(?, project_handover_list),
@@ -617,10 +767,13 @@ export async function PUT(request, context) {
              project_schedule_list = COALESCE(?, project_schedule_list)
            WHERE ${pkCol} = ?`,
           [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, 
-           teamMembers, projectActivitiesList, planningActivitiesList, documentsList,
-           documentsReceivedList, documentsIssuedList, projectHandoverList, projectManhoursList,
+           teamMembers, softwareItems, projectActivitiesList, planningActivitiesList, documentsList, inputDocumentsList,
+           kickoffMeetingsList, internalMeetingsList, documentsReceivedList, documentsIssuedList, projectHandoverList, projectManhoursList,
            projectQueryLogList, projectAssumptionList, projectLessonsLearntList, projectScheduleList, projectId]
         );
+        console.log('[PUT] List fields update result:', updateResult[0].affectedRows, 'rows affected');
+      } else {
+        console.log('[PUT] No list fields to update (all null)');
       }
     } catch (err) {
       console.error('Failed to persist project discipline/activity/assignment/team data:', err);

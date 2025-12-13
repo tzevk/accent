@@ -399,10 +399,15 @@ function EditProjectForm() {
 
     const fetchProject = async () => {
       try {
+        console.log('[fetchProject] Fetching project data for ID:', id);
         const result = await fetchJSON(`/api/projects/${id}`);
+        console.log('[fetchProject] API response success:', result.success);
         
         if (result.success && result.data) {
           const project = result.data;
+          console.log('[fetchProject] Project data keys:', Object.keys(project));
+          console.log('[fetchProject] Project name:', project.name);
+          console.log('[fetchProject] Project client:', project.client_name);
           setForm({
             project_id: project.project_id || '',
             name: project.name || '',
@@ -620,8 +625,19 @@ function EditProjectForm() {
             }
           }
 
-          // Load input documents list (supports legacy comma-separated or new JSON array format)
-          if (project.input_document) {
+          // Load input documents list - prioritize new structured field over legacy
+          if (project.input_documents_list) {
+            try {
+              const parsed = typeof project.input_documents_list === 'string'
+                ? JSON.parse(project.input_documents_list)
+                : project.input_documents_list;
+              console.log('[fetchProject] input_documents_list loaded:', parsed?.length, 'items');
+              setInputDocumentsList(Array.isArray(parsed) ? parsed : []);
+            } catch (err) {
+              console.error('[fetchProject] Error parsing input_documents_list:', err);
+              setInputDocumentsList([]);
+            }
+          } else if (project.input_document) {
             let parsedDocs = [];
             try {
               const maybeJson = project.input_document.trim();
@@ -668,11 +684,14 @@ function EditProjectForm() {
                 const parsed = typeof project.documents_received_list === 'string'
                   ? JSON.parse(project.documents_received_list)
                   : project.documents_received_list;
+                console.log('[fetchProject] documents_received_list loaded:', parsed?.length, 'items');
                 setDocumentsReceived(Array.isArray(parsed) ? parsed : []);
-              } catch {
+              } catch (err) {
+                console.error('[fetchProject] Error parsing documents_received_list:', err);
                 setDocumentsReceived([]);
               }
             } else {
+              console.log('[fetchProject] No documents_received_list found');
               setDocumentsReceived([]);
             }
 
@@ -914,109 +933,10 @@ function EditProjectForm() {
   // Note: projectActivities is loaded from database or manually selected by user
   // It's not auto-populated from Activity Master to allow users to select specific activities
 
-  // Auto-save with debouncing
-  const [autoSaveTimeout, setAutoSaveTimeout] = useState(null);
-  const [lastSaved, setLastSaved] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimeout) {
-        clearTimeout(autoSaveTimeout);
-      }
-    };
-  }, [autoSaveTimeout]);
-
-  const autoSave = async () => {
-    try {
-      setSaving(true);
-      
-      // Prepare payload - remove empty company_id if client_name is present
-      // Also exclude project_id as it's the primary key and should not be updated
-      const { project_id, ...formWithoutPk } = form;
-      const payload = {
-        ...formWithoutPk,
-        project_team: JSON.stringify(projectTeamMembers),
-        team_members: JSON.stringify(teamMembers),
-        project_activities_list: JSON.stringify(projectActivities),
-        planning_activities_list: JSON.stringify(planningActivities),
-        documents_list: JSON.stringify(documentsList),
-        kickoff_meetings_list: JSON.stringify(kickoffMeetings),
-        internal_meetings_list: JSON.stringify(internalMeetings),
-        documents_received_list: JSON.stringify(documentsReceived),
-        documents_issued_list: JSON.stringify(documentsIssued),
-        project_handover_list: JSON.stringify(projectHandover),
-        project_manhours_list: JSON.stringify(projectManhours),
-        project_query_log_list: JSON.stringify(queryLog),
-        project_assumption_list: JSON.stringify(assumptions),
-        project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
-        project_schedule_list: JSON.stringify(projectSchedule),
-        project_activity_list: JSON.stringify(projectActivities),
-        software_items: JSON.stringify(softwareItems)
-      };
-      
-      // If company_id is empty, remove it from payload to avoid validation errors
-      if (!payload.company_id || payload.company_id === '') {
-        delete payload.company_id;
-      }
-      
-      console.log('AutoSave - Sending to /api/projects/' + id);
-      
-      const result = await fetchJSON(`/api/projects/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (result.success) {
-        setLastSaved(new Date());
-        console.log('AutoSave successful');
-      } else {
-        console.error('Auto-save failed - Full error details:', {
-          error: result.error,
-          message: result.message,
-          details: result.details,
-          sqlMessage: result.sqlMessage,
-          fullResult: result
-        });
-        // Don't show error for autosave failures to avoid interrupting user
-      }
-    } catch (error) {
-      console.error('Auto-save error - Exception caught:', {
-        message: error?.message,
-        name: error?.name,
-        stack: error?.stack,
-        fullError: error
-      });
-      // Check if it's a 401 authentication error
-      if (error?.message?.includes('Unauthorized') || error?.message?.includes('401')) {
-        console.warn('Session expired - please sign in again');
-        // Optionally redirect to signin after a delay
-        // setTimeout(() => router.push('/signin'), 3000);
-      }
-      // Silently fail autosave to avoid interrupting user experience
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleChange = (event) => {
     const { name, value } = event.target;
-    const newForm = { ...form, [name]: value };
-    setForm(newForm);
-
-    // Clear existing timeout
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-
-    // Set new timeout for auto-save (2 seconds after user stops typing)
-    const timeout = setTimeout(() => {
-      autoSave(newForm);
-    }, 2000);
-    
-    setAutoSaveTimeout(timeout);
+    console.log('[handleChange]', name, '=', value);
+    setForm({ ...form, [name]: value });
   };
 
   // Input Document List Management with Categories and Full Details
@@ -1129,11 +1049,6 @@ function EditProjectForm() {
     setSelectedSoftwareCategory('');
     setSelectedSoftware('');
     setSelectedSoftwareVersion('');
-    
-    // Trigger autosave
-    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
-    const timeout = setTimeout(autoSave, 1000);
-    setAutoSaveTimeout(timeout);
   };
 
   // Project Team Management Functions
@@ -1162,11 +1077,6 @@ function EditProjectForm() {
       ...prev,
       project_team: JSON.stringify([...projectTeamMembers, teamMember])
     }));
-    
-    // Trigger autosave
-    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
-    const timeout = setTimeout(autoSave, 1000);
-    setAutoSaveTimeout(timeout);
   };
 
   const removeTeamMember = (memberId) => {
@@ -1178,11 +1088,6 @@ function EditProjectForm() {
       ...prev,
       project_team: JSON.stringify(updated)
     }));
-    
-    // Trigger autosave
-    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
-    const timeout = setTimeout(autoSave, 1000);
-    setAutoSaveTimeout(timeout);
   };
 
   const updateTeamMemberRole = (memberId, newRole) => {
@@ -1196,11 +1101,6 @@ function EditProjectForm() {
       ...prev,
       project_team: JSON.stringify(updated)
     }));
-    
-    // Trigger autosave
-    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
-    const timeout = setTimeout(autoSave, 1000);
-    setAutoSaveTimeout(timeout);
   };
 
   // Get filtered employees for team selection (only show those not already in team)
@@ -1289,6 +1189,7 @@ function EditProjectForm() {
 
   // Documents Received helpers
   const addReceivedDocument = () => {
+    console.log('[addReceivedDocument] Called with:', newReceivedDoc);
     // Basic validation: require description
     if (!newReceivedDoc.description || !newReceivedDoc.description.trim()) return;
 
@@ -1299,7 +1200,12 @@ function EditProjectForm() {
       id: Date.now(),
       date_received: newReceivedDoc.date_received || today
     };
-    setDocumentsReceived(prev => [...prev, doc]);
+    console.log('[addReceivedDocument] Adding document:', doc);
+    setDocumentsReceived(prev => {
+      const updated = [...prev, doc];
+      console.log('[addReceivedDocument] New documentsReceived array:', updated);
+      return updated;
+    });
     setNewReceivedDoc({ date_received: '', description: '', drawing_number: '', revision_number: '', unit_qty: '', document_sent_by: '', remarks: '' });
 
     // Focus description input for fast entry
@@ -1336,9 +1242,19 @@ function EditProjectForm() {
 
   // Project Handover helpers
   const addHandoverRow = () => {
-    if (!newHandoverRow.output_by_accent || !newHandoverRow.output_by_accent.trim()) return;
+    console.log('[addHandoverRow] Called with:', newHandoverRow);
+    if (!newHandoverRow.output_by_accent || !newHandoverRow.output_by_accent.trim()) {
+      console.log('[addHandoverRow] Validation failed - output_by_accent is required');
+      return;
+    }
     const row = { ...newHandoverRow, id: Date.now() };
-    setProjectHandover(prev => [...prev, row]);
+    console.log('[addHandoverRow] Adding row:', row);
+    setProjectHandover(prev => {
+      const updated = [...prev, row];
+      console.log('[addHandoverRow] New projectHandover array length:', updated.length);
+      console.log('[addHandoverRow] New projectHandover array:', updated);
+      return updated;
+    });
     setNewHandoverRow({ output_by_accent: '', requirement_accomplished: '', remark: '', hand_over: '' });
     setTimeout(() => newHandoverDescRef.current?.focus(), 10);
   };
@@ -1436,11 +1352,6 @@ function EditProjectForm() {
 
   const updateSchedule = (id, field, value) => {
     setProjectSchedule(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-    
-    // Trigger autosave
-    if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
-    const timeout = setTimeout(autoSave, 1000);
-    setAutoSaveTimeout(timeout);
   };
 
   const removeSchedule = (id) => {
@@ -1684,12 +1595,16 @@ function EditProjectForm() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    console.log('[SUBMIT] Form submit triggered');
+    
     if (!form.name.trim()) {
       alert('Project name is required');
       return;
     }
 
     setSubmitting(true);
+    console.log('[SUBMIT] Starting submission...');
+    
     try {
       // Exclude project_id from payload as it's the primary key
       const { project_id, ...formWithoutPk } = form;
@@ -1704,40 +1619,58 @@ function EditProjectForm() {
         actual_profit_loss: form.actual_profit_loss ? Number(form.actual_profit_loss) : null,
         progress: Number(form.progress) || 0,
         team_members: JSON.stringify(teamMembers),
+        software_items: JSON.stringify(softwareItems),
         project_activities_list: JSON.stringify(projectActivities),
         planning_activities_list: JSON.stringify(planningActivities),
         documents_list: JSON.stringify(documentsList),
+        input_documents_list: JSON.stringify(inputDocumentsList),
         kickoff_meetings_list: JSON.stringify(kickoffMeetings),
         internal_meetings_list: JSON.stringify(internalMeetings),
         documents_received_list: JSON.stringify(documentsReceived),
         documents_issued_list: JSON.stringify(documentsIssued),
         project_handover_list: JSON.stringify(projectHandover),
         project_manhours_list: JSON.stringify(projectManhours),
-        	project_query_log_list: JSON.stringify(queryLog),
-        	project_assumption_list: JSON.stringify(assumptions),
-      	project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
+        project_query_log_list: JSON.stringify(queryLog),
+        project_assumption_list: JSON.stringify(assumptions),
+        project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
         project_schedule_list: JSON.stringify(projectSchedule),
         project_activity_list: JSON.stringify(projectActivities)
       };
 
+      console.log('[SUBMIT] Sending update for project:', id);
+      console.log('[SUBMIT] Payload size:', JSON.stringify(payload).length, 'bytes');
+      console.log('[SUBMIT] List field counts:', {
+        inputDocumentsList: inputDocumentsList.length,
+        documentsReceived: documentsReceived.length,
+        documentsIssued: documentsIssued.length,
+        projectHandover: projectHandover.length,
+        projectManhours: projectManhours.length,
+        queryLog: queryLog.length,
+        assumptions: assumptions.length,
+        lessonsLearnt: lessonsLearnt.length,
+        projectSchedule: projectSchedule.length
+      });
+      console.log('[SUBMIT] Sample data - documentsIssued:', JSON.stringify(documentsIssued).substring(0, 200));
+
+      console.log('[SUBMIT] Making API call to /api/projects/' + id);
       const result = await fetchJSON(`/api/projects/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
+      console.log('[SUBMIT] API Response:', result);
+
       if (result.success) {
-        console.log('Project updated successfully');
+        console.log('[SUBMIT] Project updated successfully');
         alert('Project updated successfully!');
-        // Stay on edit page instead of redirecting to view page
-        // router.push(`/projects/${id}`);
       } else {
-        console.error('Update failed:', result.error || result.message);
-        alert(result.error || result.message || 'Failed to update project');
+        console.error('[SUBMIT] Update failed:', result);
+        alert(`Failed to update project: ${result.error || result.message || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Project update error:', error);
-      alert(error?.message || 'Failed to update project');
+      console.error('[SUBMIT] Project update error:', error);
+      alert(`Failed to update project: ${error?.message || 'Unknown error'}`);
     } finally {
       setSubmitting(false);
     }
@@ -1831,31 +1764,6 @@ function EditProjectForm() {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  {saving && (
-                    <span className="text-xs font-semibold flex items-center gap-2 px-3 py-2 rounded-lg" style={{
-                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.08) 100%)',
-                      color: '#3b82f6',
-                      border: '1px solid rgba(59, 130, 246, 0.2)'
-                    }}>
-                      <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Saving...
-                    </span>
-                  )}
-                  
-                  {lastSaved && !saving && (
-                    <span className="text-xs font-semibold flex items-center gap-2 px-3 py-2 rounded-lg" style={{
-                      background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.08) 100%)',
-                      color: '#22c55e',
-                      border: '1px solid rgba(34, 197, 94, 0.2)'
-                    }}>
-                      <CheckCircleIcon className="h-3.5 w-3.5" />
-                      {new Date(lastSaved).toLocaleTimeString()}
-                    </span>
-                  )}
-                  
                   <button
                     type="button"
                     onClick={handleCancel}
@@ -1879,7 +1787,11 @@ function EditProjectForm() {
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting || saving}
+                    disabled={submitting}
+                    onClick={(e) => {
+                      console.log('[BUTTON] Update Project button clicked');
+                      console.log('[BUTTON] Submitting state:', submitting);
+                    }}
                     className="px-6 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     style={{
                       background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
@@ -1887,11 +1799,11 @@ function EditProjectForm() {
                       boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
                       letterSpacing: '0.01em'
                     }}
-                    onMouseEnter={(e) => !submitting && !saving && (() => {
+                    onMouseEnter={(e) => !submitting && (() => {
                       e.currentTarget.style.transform = 'translateY(-2px)';
                       e.currentTarget.style.boxShadow = '0 8px 20px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
                     })()}
-                    onMouseLeave={(e) => !submitting && !saving && (() => {
+                    onMouseLeave={(e) => !submitting && (() => {
                       e.currentTarget.style.transform = 'translateY(0)';
                       e.currentTarget.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
                     })()}
@@ -2227,118 +2139,6 @@ function EditProjectForm() {
                           ))}
                       </div>
                     )}
-
-                    {/* Enhanced Scope Section */}
-                    <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
-                      <button type="button" onClick={() => toggleSection('scope')} className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors">
-                        <div className="flex items-center gap-2">
-                          <ChevronDownIcon className={`h-3.5 w-3.5 text-purple-600 transition-transform ${openSections.scope ? 'rotate-180' : ''}`} />
-                          <h3 className="text-sm font-semibold text-gray-700">Project Scope</h3>
-                        </div>
-                        <span className="text-xs text-purple-600">{openSections.scope ? '−' : '+'}</span>
-                      </button>
-                      
-                      {openSections.scope && (
-                        <div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
-                          <div className="space-y-3">
-                            <label className="block text-sm font-semibold text-gray-700">Project Description & Scope</label>
-                            <textarea 
-                              name="description" 
-                              value={form.description} 
-                              onChange={handleChange} 
-                              rows={6} 
-                              placeholder="Describe the project scope, objectives, and key deliverables..."
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400 resize-y min-h-[120px]" 
-                            />
-                          </div>
-                          
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <label className="block text-sm font-semibold text-gray-700">Input Documents</label>
-                              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{inputDocumentsList.length} documents</span>
-                            </div>
-                            
-                            <div className="flex gap-3 p-4 bg-white rounded-lg border border-gray-200">
-                              <input 
-                                type="text" 
-                                value={newInputDocument} 
-                                onChange={(e) => setNewInputDocument(e.target.value)} 
-                                onKeyPress={handleInputDocumentKeyPress} 
-                                placeholder="Enter document name or description" 
-                                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all hover:border-gray-400" 
-                              />
-                              <button 
-                                type="button" 
-                                onClick={addInputDocument} 
-                                className="px-6 py-3 bg-[#7F2487] text-white font-semibold rounded-lg hover:bg-[#6a1e73] transition-all focus:ring-2 focus:ring-[#7F2487] focus:ring-offset-2"
-                              >
-                                <PlusIcon className="h-4 w-4 mr-1 inline" />
-                                Add
-                              </button>
-                            </div>
-                            
-                            {/* Suggestions from Document Master */}
-                            {docMaster && docMaster.length > 0 && newInputDocument && (
-                              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                <p className="text-xs font-medium text-gray-600 mb-2">Suggested Documents:</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {docMaster
-                                    .filter(d => !newInputDocument || (d.name?.toLowerCase().includes(newInputDocument.toLowerCase()) || d.doc_key?.toLowerCase().includes(newInputDocument.toLowerCase())))
-                                    .slice(0, 6)
-                                    .map((d) => (
-                                      <button
-                                        key={d.id}
-                                        type="button"
-                                        onClick={() => {
-                                          setNewInputDocument(d.name);
-                                          addInputDocument();
-                                        }}
-                                        className="px-3 py-1 text-xs rounded-full bg-purple-50 hover:bg-purple-100 text-[#7F2487] border border-purple-200 transition-colors"
-                                        title={d.description || ''}
-                                      >
-                                        {d.name}
-                                      </button>
-                                    ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {inputDocumentsList.length > 0 && (
-                              <div className="space-y-3">
-                                <h4 className="text-sm font-semibold text-gray-700">Added Documents</h4>
-                                <div className="grid gap-3">
-                                  {inputDocumentsList.map((doc) => (
-                                    <div key={doc.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:border-purple-300 transition-colors group">
-                                      <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
-                                          <DocumentIcon className="h-4 w-4 text-purple-600" />
-                                        </div>
-                                        <div>
-                                          <p className="font-medium text-gray-900">{doc.text}</p>
-                                          {doc.addedAt && (
-                                            <p className="text-xs text-gray-500 mt-1">
-                                              Added {new Date(doc.addedAt).toLocaleString()}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <button 
-                                        type="button" 
-                                        onClick={() => removeInputDocument(doc.id)} 
-                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Remove document"
-                                      >
-                                        <XMarkIcon className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
 
                     {/* Unit / Qty (collapsible) */}
                     <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">

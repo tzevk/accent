@@ -241,27 +241,56 @@ useEffect(() => {
     try {
       setLoading(true);
       
-      // Fetch leads stats
-  const leadsData = await fetchJSON('/api/leads?limit=1');
+      // Fetch all stats with individual error handling
+      let leadsData = { success: false, data: null };
+      let proposalsData = { success: false, data: [] };
+      let companiesData = { success: false, data: [] };
+      let projectsData = { success: false, data: [] };
       
-      // Fetch proposals stats
-  const proposalsData = await fetchJSON('/api/proposals');
+      try {
+        leadsData = await fetchJSON('/api/leads?limit=1');
+      } catch (e) {
+        console.error('Error fetching leads:', e.message);
+      }
       
-      // Fetch companies stats
-  const companiesData = await fetchJSON('/api/companies');
+      try {
+        proposalsData = await fetchJSON('/api/proposals');
+      } catch (e) {
+        console.error('Error fetching proposals:', e.message);
+      }
       
-      // Fetch projects stats
-  const projectsData = await fetchJSON('/api/projects');
+      try {
+        companiesData = await fetchJSON('/api/companies');
+      } catch (e) {
+        console.error('Error fetching companies:', e.message);
+      }
       
-  if (leadsData.success && proposalsData.success && companiesData.success && projectsData.success) {
+      try {
+        projectsData = await fetchJSON('/api/projects');
+      } catch (e) {
+        console.error('Error fetching projects:', e.message);
+      }
+      
+      console.log('Dashboard stats fetched:', {
+        leads: leadsData.success,
+        proposals: proposalsData.success,
+        companies: companiesData.success,
+        projects: projectsData.success
+      });
+
+      // Process data even if some fetches failed
+      {
         // Calculate proposal stats
-        const proposals = proposalsData.data || [];
+        const proposals = proposalsData.proposals || proposalsData.data || [];
+        console.log('Proposals array:', proposals, 'Length:', proposals.length);
         const proposalStats = {
           total: proposals.length,
           pending: proposals.filter(p => p.status === 'pending').length,
           approved: proposals.filter(p => p.status === 'approved').length,
           draft: proposals.filter(p => p.status === 'draft').length
         };
+        
+        console.log('Proposal stats calculated:', proposalStats);
         
         // Calculate project stats
         const projects = projectsData.data || [];
@@ -397,7 +426,7 @@ useEffect(() => {
         } catch {}
 
         setAnalytics({ funnel, topCities, series, activity });
-      }
+      }  // End of data processing block
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
