@@ -488,6 +488,7 @@ export default function EmployeesPage() {
 
       const grossInput = toNum(prev.gross_salary);
       const otherAllowance = toNum(prev.other_allowance);
+      const callAllowance = toNum(prev.call_allowance);
       const totalWorkingDays = toNum(prev.total_working_days) || 26;
       const leaveDays = toNum(prev.absent_days);
       const totalWorkingHours = toNum(prev.total_working_hours) || 208;
@@ -543,11 +544,11 @@ export default function EmployeesPage() {
       const mlwfEmployer = 13;
       const mediclaim = 500;
 
-      // In-Hand = adjustedGross - (employee PF + professional tax + mlwf employee)
-      const inHand = Math.round(Math.max(0, adjustedGross - (employeePf + professionalTax + mlwfEmployee)));
+      // In-Hand = adjustedGross + callAllowance - (employee PF + professional tax + mlwf employee)
+      const inHand = Math.round(Math.max(0, adjustedGross + callAllowance - (employeePf + professionalTax + mlwfEmployee)));
 
-      // CTC = adjustedGross + (employer PF + bonus + mlwf employer + mediclaim + otherAllowance)
-      const ctc = Math.round(adjustedGross + (employerPf + bonus + mlwfEmployer + mediclaim + otherAllowance));
+      // CTC = adjustedGross + callAllowance + (employer PF + bonus + mlwf employer + mediclaim + otherAllowance)
+      const ctc = Math.round(adjustedGross + callAllowance + (employerPf + bonus + mlwfEmployer + mediclaim + otherAllowance));
 
   // Prepare new state but only overwrite fields that are computed (do not unset manual overrides)
       const next = { ...prev };
@@ -588,6 +589,7 @@ export default function EmployeesPage() {
   }, [
     salaryData.gross_salary,
     salaryData.other_allowance,
+    salaryData.call_allowance,
   salaryData.absent_days,
     salaryData.pl_used,
     salaryData.annual_leaves,
@@ -606,16 +608,40 @@ export default function EmployeesPage() {
     setSalaryLoading(true);
     setSalaryError('');
     try {
-      // Parse salary_structure from selectedEmployee
+      // Fetch salary data from API
+      const response = await fetch(`/api/employees/${empId}/salary`);
+      const result = await response.json();
+      
       let salaryStructure = {};
-      if (selectedEmployee.salary_structure) {
-        try {
-          salaryStructure = typeof selectedEmployee.salary_structure === 'string'
-            ? JSON.parse(selectedEmployee.salary_structure)
-            : selectedEmployee.salary_structure;
-        } catch (e) {
-          console.error('[salary] failed to parse salary_structure', e);
-          salaryStructure = {};
+      let manualOverrides = {};
+      
+      if (response.ok && result.success && result.data) {
+        // If we have a salary record from the database
+        if (result.data.record) {
+          salaryStructure = result.data.record;
+          // Parse manual_overrides if it's a string
+          if (salaryStructure.manual_overrides) {
+            try {
+              manualOverrides = typeof salaryStructure.manual_overrides === 'string' 
+                ? JSON.parse(salaryStructure.manual_overrides) 
+                : salaryStructure.manual_overrides;
+            } catch (e) {
+              console.error('[salary] failed to parse manual_overrides', e);
+              manualOverrides = {};
+            }
+          }
+        }
+      } else {
+        // Fallback to employee's salary_structure if no salary record exists
+        if (selectedEmployee.salary_structure) {
+          try {
+            salaryStructure = typeof selectedEmployee.salary_structure === 'string'
+              ? JSON.parse(selectedEmployee.salary_structure)
+              : selectedEmployee.salary_structure;
+          } catch (e) {
+            console.error('[salary] failed to parse salary_structure', e);
+            salaryStructure = {};
+          }
         }
       }
 
@@ -648,20 +674,43 @@ export default function EmployeesPage() {
         pl_balance: '',
       });
 
-      // Set salaryData for display
+      // Set salaryData for display with manual_overrides
       setSalaryData({
-        gross_salary: selectedEmployee.gross_salary || 0,
+        gross_salary: salaryStructure.gross_salary || selectedEmployee.gross_salary || 0,
+        basic_da: salaryStructure.basic_da || salaryStructure.da || 0,
+        hra: salaryStructure.hra || 0,
+        conveyance_allowance: salaryStructure.conveyance_allowance || salaryStructure.conveyance || 0,
+        other_allowance: salaryStructure.other_allowance || 0,
         total_deductions: selectedEmployee.total_deductions || 0,
-        net_salary: selectedEmployee.net_salary || 0,
+        net_salary: salaryStructure.in_hand_salary || selectedEmployee.net_salary || 0,
+        in_hand_salary: salaryStructure.in_hand_salary || 0,
+        employee_ctc: salaryStructure.ctc || salaryStructure.employee_ctc || 0,
+        adjusted_gross: salaryStructure.adjusted_gross || 0,
+        leave_deduction: salaryStructure.leave_deduction || 0,
+        ot_pay: salaryStructure.ot_pay || 0,
+        employee_pf: salaryStructure.employee_pf || 0,
+        employer_pf: salaryStructure.employer_pf || 0,
+        bonus: salaryStructure.bonus || 0,
+        employee_pt: salaryStructure.pt || salaryStructure.professional_tax || 0,
+        week_offs: salaryStructure.week_offs || 0,
+        working_days: salaryStructure.working_days || 0,
+        paid_days: salaryStructure.paid_days || 0,
+        absent_days: salaryStructure.absent_days || 0,
+        pl_used: salaryStructure.pl_used || 0,
+        pl_balance: salaryStructure.pl_balance || 0,
+        ot_hours: salaryStructure.ot_hours || 0,
+        ot_rate: salaryStructure.ot_rate || 0,
+        manual_overrides: manualOverrides,
       });
 
       // Set salaryRows to a single row for display
       setSalaryRows([{
-        id: 1,
+        id: salaryStructure.id || 1,
         ...salaryStructure,
-        gross_salary: selectedEmployee.gross_salary,
+        gross_salary: salaryStructure.gross_salary || selectedEmployee.gross_salary,
         total_deductions: selectedEmployee.total_deductions,
         net_salary: selectedEmployee.net_salary,
+        manual_overrides: manualOverrides,
       }]);
 
     } catch (err) {
@@ -882,6 +931,7 @@ export default function EmployeesPage() {
         in_hand_salary: Number(salaryData.in_hand_salary || 0),
         employee_ctc: Number(salaryData.employee_ctc || 0),
         annual_leaves: Number(salaryData.annual_leaves || 21),
+        manual_overrides: JSON.stringify(salaryData.manual_overrides || {}),
       };
 
       // Determine whether to create or update a salary row

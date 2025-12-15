@@ -33,7 +33,7 @@ export default function Leads() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
-  const [sortBy, setSortBy] = useState('enquiry_date');
+  const [sortBy, setSortBy] = useState('lead_id');
   const [sortOrder, setSortOrder] = useState('desc');
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
@@ -663,10 +663,10 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
               <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/75">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Lead ID
+                    Sr
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Sr
+                    Lead ID
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Company & Contact
@@ -689,13 +689,13 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                 {leads.map((lead, index) => (
                   <tr key={lead.id} className="hover:bg-gray-50 odd:bg-white even:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-mono font-medium text-gray-900">
-                        {lead.lead_id || '-'}
+                      <div className="text-sm font-medium text-gray-900">
+                        {(currentPage - 1) * 20 + index + 1}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {(currentPage - 1) * 20 + index + 1}
+                      <div className="text-sm font-mono font-medium text-gray-900">
+                        {lead.lead_id || '-'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap max-w-sm">

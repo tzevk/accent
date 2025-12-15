@@ -95,10 +95,17 @@ export async function GET(request) {
     const validSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     
     // Get paginated results
+    // Special handling for lead_id sorting to extract numeric value
+    let orderByClause = `ORDER BY ${validSortBy} ${validSortOrder}`;
+    if (validSortBy === 'lead_id') {
+      // Extract numeric portion from lead_id for proper sorting (e.g., L001 -> 1, L010 -> 10)
+      orderByClause = `ORDER BY CAST(REGEXP_REPLACE(lead_id, '[^0-9]', '') AS UNSIGNED) ${validSortOrder}, lead_id ${validSortOrder}`;
+    }
+    
     const [rows] = await db.execute(`
       SELECT * FROM leads 
       ${whereClause}
-      ORDER BY ${validSortBy} ${validSortOrder}
+      ${orderByClause}
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
     

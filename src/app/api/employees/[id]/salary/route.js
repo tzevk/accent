@@ -85,10 +85,11 @@ function calculateSalaryBreakdown(input) {
   const mlwfEmployee = 5;
   const mlwfEmployer = 13;
   const mediclaim = 500;
+  const callAllowance = Number(map('callAllowance', 'call_allowance')) || 0;
 
   // Final derived fields
-  const employeeInHand = Math.round(Math.max(0, netGross - (employeePF + professionalTax + mlwfEmployee)));
-  const employeeCTC = Math.round(netGross + employerPF + bonus + mlwfEmployer + mediclaim + Math.round(otherAllowance_in || 0));
+  const employeeInHand = Math.round(Math.max(0, netGross + callAllowance - (employeePF + professionalTax + mlwfEmployee)));
+  const employeeCTC = Math.round(netGross + callAllowance + employerPF + bonus + mlwfEmployer + mediclaim + Math.round(otherAllowance_in || 0));
 
   // Attendance derived (simple heuristics)
   const weekOffs = Math.floor((totalWorkingDays || 26) / 7);
@@ -180,6 +181,7 @@ async function ensureTable(db) {
   await db.execute(`ALTER TABLE salary_master ADD COLUMN IF NOT EXISTS week_offs INT DEFAULT 0`);
   await db.execute(`ALTER TABLE salary_master ADD COLUMN IF NOT EXISTS working_days INT DEFAULT 0`);
   await db.execute(`ALTER TABLE salary_master ADD COLUMN IF NOT EXISTS paid_days INT DEFAULT 0`);
+  await db.execute(`ALTER TABLE salary_master ADD COLUMN IF NOT EXISTS manual_overrides TEXT`);
 }
 
 export async function GET(request, { params }) {
@@ -356,6 +358,7 @@ export async function POST(request, { params }) {
       week_offs: computed.breakdown.week_offs,
       working_days: computed.breakdown.working_days,
       paid_days: computed.breakdown.paid_days,
+      manual_overrides: body.manual_overrides || null,
     };
 
     // Perform insert + optional employees update inside a transaction so both succeed or both fail
@@ -367,13 +370,13 @@ export async function POST(request, { params }) {
           id, employee_id, effective_from, salary_type, basic_salary, attendance_days, total_working_days, loan_active, loan_emi, advance_payment,
           additional_earnings, additional_deductions, pf, pt, mlwf, da, hra, conveyance, call_allowance, other_allowance,
           gross_salary, leave_deduction, ot_pay, adjusted_gross, employee_pf, employer_pf, bonus, in_hand_salary, ctc, pl_used, pl_balance,
-          ot_hours, ot_rate, week_offs, working_days, paid_days
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+          ot_hours, ot_rate, week_offs, working_days, paid_days, manual_overrides
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
         [
           ins.id, ins.employee_id, ins.effective_from, ins.salary_type, ins.basic_salary, ins.attendance_days, ins.total_working_days, ins.loan_active, ins.loan_emi, ins.advance_payment,
           ins.additional_earnings, ins.additional_deductions, ins.pf, ins.pt, ins.mlwf, ins.da, ins.hra, ins.conveyance, ins.call_allowance, ins.other_allowance,
           ins.gross_salary, ins.leave_deduction, ins.ot_pay, ins.adjusted_gross, ins.employee_pf, ins.employer_pf, ins.bonus, ins.in_hand_salary, ins.ctc, ins.pl_used, ins.pl_balance,
-          ins.ot_hours, ins.ot_rate, ins.week_offs, ins.working_days, ins.paid_days
+          ins.ot_hours, ins.ot_rate, ins.week_offs, ins.working_days, ins.paid_days, ins.manual_overrides
         ]
       );
 
@@ -504,6 +507,7 @@ export async function PUT(request, { params }) {
     setField('week_offs', computed.breakdown.week_offs);
     setField('working_days', computed.breakdown.working_days);
     setField('paid_days', computed.breakdown.paid_days);
+    if (body.manual_overrides !== undefined) setField('manual_overrides', body.manual_overrides);
 
     if (updates.length === 0) {
       await db.end();
