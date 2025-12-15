@@ -1504,6 +1504,24 @@ function EditProjectForm() {
     setKickoffMeetings(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
+  const formatAsBulletPoints = (text) => {
+    if (!text) return '';
+    const lines = text.split('\n').filter(line => line.trim());
+    return lines.map(line => {
+      const trimmed = line.trim();
+      // If line doesn't start with bullet, add one
+      if (!trimmed.startsWith('•') && !trimmed.startsWith('-') && !trimmed.startsWith('*')) {
+        return '• ' + trimmed;
+      }
+      return trimmed;
+    }).join('\n');
+  };
+
+  const handlePointsBlur = (id, value, updateFunction, fieldName = 'points_discussed') => {
+    const formatted = formatAsBulletPoints(value);
+    updateFunction(id, fieldName, formatted);
+  };
+
   const removeKickoffMeeting = (id) => {
     setKickoffMeetings(prev => prev.filter(m => m.id !== id));
   };
@@ -2231,6 +2249,121 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody>
+                        {/* Inline input row at top with purple background */}
+                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
+                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-2 px-2">
+                            <select
+                              value={newInputDocument.category}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, category: e.target.value }))}
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            >
+                              <option value="lot">Lot</option>
+                              <option value="sublot">Sub-lot</option>
+                              <option value="date">Date</option>
+                              <option value="others">Others</option>
+                            </select>
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.category === 'lot' ? (newInputDocument.lotNumber || '') : newInputDocument.category === 'sublot' ? (newInputDocument.subLot || '') : ''}
+                              onChange={(e) => {
+                                if (newInputDocument.category === 'lot') {
+                                  setNewInputDocument(prev => ({ ...prev, lotNumber: e.target.value }));
+                                } else if (newInputDocument.category === 'sublot') {
+                                  setNewInputDocument(prev => ({ ...prev, subLot: e.target.value }));
+                                }
+                              }}
+                              disabled={newInputDocument.category !== 'lot' && newInputDocument.category !== 'sublot'}
+                              placeholder={newInputDocument.category === 'lot' ? 'LOT-001' : newInputDocument.category === 'sublot' ? 'SL-001' : 'N/A'}
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] disabled:bg-gray-50 disabled:text-gray-400"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="date"
+                              value={newInputDocument.date_received}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: e.target.value }))}
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.description}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, description: e.target.value }))}
+                              onKeyPress={handleInputDocumentKeyPress}
+                              placeholder="Description*"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.drawing_number}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, drawing_number: e.target.value }))}
+                              placeholder="DWG-XXX"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.sheet_number}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, sheet_number: e.target.value }))}
+                              placeholder="SH-001"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.revision_number}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, revision_number: e.target.value }))}
+                              placeholder="Rev-A"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.unit_qty}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, unit_qty: e.target.value }))}
+                              placeholder="10 pcs"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.document_sent_by}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, document_sent_by: e.target.value }))}
+                              placeholder="Sender"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="text"
+                              value={newInputDocument.remarks}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, remarks: e.target.value }))}
+                              placeholder="Notes"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                            />
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={addInputDocument}
+                              disabled={!(newInputDocument.description && newInputDocument.description.trim())}
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newInputDocument.description && newInputDocument.description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add document"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {inputDocumentsList.map((doc, index) => (
                           <tr key={doc.id} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="py-2 px-2 text-center text-gray-600 font-semibold">{index + 1}</td>
@@ -2396,121 +2529,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        {/* Inline input row at bottom with purple background */}
-                        <tr className="bg-purple-25/30 border-t-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2">
-                            <select
-                              value={newInputDocument.category}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, category: e.target.value }))}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            >
-                              <option value="lot">Lot</option>
-                              <option value="sublot">Sub-lot</option>
-                              <option value="date">Date</option>
-                              <option value="others">Others</option>
-                            </select>
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.category === 'lot' ? (newInputDocument.lotNumber || '') : newInputDocument.category === 'sublot' ? (newInputDocument.subLot || '') : ''}
-                              onChange={(e) => {
-                                if (newInputDocument.category === 'lot') {
-                                  setNewInputDocument(prev => ({ ...prev, lotNumber: e.target.value }));
-                                } else if (newInputDocument.category === 'sublot') {
-                                  setNewInputDocument(prev => ({ ...prev, subLot: e.target.value }));
-                                }
-                              }}
-                              disabled={newInputDocument.category !== 'lot' && newInputDocument.category !== 'sublot'}
-                              placeholder={newInputDocument.category === 'lot' ? 'LOT-001' : newInputDocument.category === 'sublot' ? 'SL-001' : 'N/A'}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] disabled:bg-gray-50 disabled:text-gray-400"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="date"
-                              value={newInputDocument.date_received}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: e.target.value }))}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.description}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, description: e.target.value }))}
-                              onKeyPress={handleInputDocumentKeyPress}
-                              placeholder="Description*"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.drawing_number}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, drawing_number: e.target.value }))}
-                              placeholder="DWG-XXX"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.sheet_number}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, sheet_number: e.target.value }))}
-                              placeholder="SH-001"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.revision_number}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, revision_number: e.target.value }))}
-                              placeholder="Rev-A"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.unit_qty}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, unit_qty: e.target.value }))}
-                              placeholder="10 pcs"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.document_sent_by}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, document_sent_by: e.target.value }))}
-                              placeholder="Sender"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2">
-                            <input
-                              type="text"
-                              value={newInputDocument.remarks}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, remarks: e.target.value }))}
-                              placeholder="Notes"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
-                            />
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            <button
-                              type="button"
-                              onClick={addInputDocument}
-                              disabled={!(newInputDocument.description && newInputDocument.description.trim())}
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newInputDocument.description && newInputDocument.description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add document"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -2968,20 +2986,23 @@ function EditProjectForm() {
                                   />
                                 </td>
                                 <td className="py-2 px-2">
-                                  <input 
-                                    type="text" 
+                                  <textarea 
                                     value={m.points_discussed || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'points_discussed', e.target.value)} 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateKickoffMeeting)}
+                                    rows={3}
+                                    placeholder="Enter points (press Enter for new bullet)&#10;Project timeline&#10;Budget discussion&#10;Next steps"
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
-                                  <input 
-                                    type="text" 
+                                  <textarea 
                                     value={m.persons_involved || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'persons_involved', e.target.value)} 
-                                    placeholder="Comma-separated" 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateKickoffMeeting, 'persons_involved')}
+                                    rows={3}
+                                    placeholder="Enter participants (press Enter for new bullet)&#10;John Doe&#10;Jane Smith&#10;Bob Johnson"
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
                                   />
                                 </td>
                                 <td className="py-2 px-2 text-center">
@@ -3098,20 +3119,23 @@ function EditProjectForm() {
                                   />
                                 </td>
                                 <td className="py-2 px-2">
-                                  <input 
-                                    type="text" 
+                                  <textarea 
                                     value={m.points_discussed || ''} 
                                     onChange={(e) => updateInternalMeeting(m.id, 'points_discussed', e.target.value)} 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateInternalMeeting)}
+                                    rows={3}
+                                    placeholder="Enter points (press Enter for new bullet)&#10;Project timeline&#10;Budget discussion&#10;Next steps"
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
-                                  <input 
-                                    type="text" 
+                                  <textarea 
                                     value={m.persons_involved || ''} 
                                     onChange={(e) => updateInternalMeeting(m.id, 'persons_involved', e.target.value)} 
-                                    placeholder="Comma-separated" 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateInternalMeeting, 'persons_involved')}
+                                    rows={3}
+                                    placeholder="Enter participants (press Enter for new bullet)&#10;John Doe&#10;Jane Smith&#10;Bob Johnson"
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
                                   />
                                 </td>
                                 <td className="py-2 px-2 text-center">
@@ -3162,6 +3186,24 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody>
+                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
+                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-2 px-2"><input ref={newHandoverDescRef} type="text" value={newHandoverRow.output_by_accent} onChange={(e)=>setNewHandoverRow(prev=>({...prev,output_by_accent:e.target.value}))} placeholder="Output by Accent" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><select value={newHandoverRow.requirement_accomplished} onChange={(e)=>setNewHandoverRow(prev=>({...prev,requirement_accomplished:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
+                          <td className="py-2 px-2"><input type="text" value={newHandoverRow.remark} onChange={(e)=>setNewHandoverRow(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><select value={newHandoverRow.hand_over} onChange={(e)=>setNewHandoverRow(prev=>({...prev,hand_over:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addHandoverRow} 
+                              disabled={!(newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add handover item"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {projectHandover.map((r, index) => (
                           <tr key={r.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3181,24 +3223,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30 border-t-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input ref={newHandoverDescRef} type="text" value={newHandoverRow.output_by_accent} onChange={(e)=>setNewHandoverRow(prev=>({...prev,output_by_accent:e.target.value}))} placeholder="Output by Accent" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><select value={newHandoverRow.requirement_accomplished} onChange={(e)=>setNewHandoverRow(prev=>({...prev,requirement_accomplished:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
-                          <td className="py-2 px-2"><input type="text" value={newHandoverRow.remark} onChange={(e)=>setNewHandoverRow(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><select value={newHandoverRow.hand_over} onChange={(e)=>setNewHandoverRow(prev=>({...prev,hand_over:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Y">Y</option><option value="N">N</option></select></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addHandoverRow} 
-                              disabled={!(newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add handover item"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -3239,6 +3263,30 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody>
+                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
+                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-2 px-2"><input type="month" value={newManhourRow.month} onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} placeholder="Month" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input ref={newManhourNameRef} type="text" value={newManhourRow.name_of_engineer_designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} placeholder="Engineer/Designer Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.engineering} onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.drafting} onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.checking} onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.coordination} onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.site_visit} onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="number" value={newManhourRow.others} onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newManhourRow.remarks} onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addManhourRow} 
+                              disabled={!(newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add manhour row"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {projectManhours.map((r, index) => (
                           <tr key={r.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3271,30 +3319,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30 border-t-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input type="month" value={newManhourRow.month} onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} placeholder="Month" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input ref={newManhourNameRef} type="text" value={newManhourRow.name_of_engineer_designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} placeholder="Engineer/Designer Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.engineering} onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.drafting} onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.checking} onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.coordination} onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.site_visit} onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.others} onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newManhourRow.remarks} onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addManhourRow} 
-                              disabled={!(newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add manhour row"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -3332,6 +3356,27 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody>
+                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
+                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-2 px-2"><input ref={newQueryDescRef} type="text" value={newQuery.query_description} onChange={(e)=>setNewQuery(prev=>({...prev,query_description:e.target.value}))} placeholder="Query Description" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="date" value={newQuery.query_issued_date} onChange={(e)=>setNewQuery(prev=>({...prev,query_issued_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newQuery.reply_from_client} onChange={(e)=>setNewQuery(prev=>({...prev,reply_from_client:e.target.value}))} placeholder="Reply from Client" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="date" value={newQuery.reply_received_date} onChange={(e)=>setNewQuery(prev=>({...prev,reply_received_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newQuery.query_updated_by} onChange={(e)=>setNewQuery(prev=>({...prev,query_updated_by:e.target.value}))} placeholder="Updated By" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><select value={newQuery.query_resolved} onChange={(e)=>setNewQuery(prev=>({...prev,query_resolved:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select></td>
+                          <td className="py-2 px-2"><input type="text" value={newQuery.remark} onChange={(e)=>setNewQuery(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addQueryRow} 
+                              disabled={!(newQuery.query_description && newQuery.query_description.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newQuery.query_description && newQuery.query_description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add query"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {queryLog.map((q, index) => (
                           <tr key={q.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3354,27 +3399,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30 border-t-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input ref={newQueryDescRef} type="text" value={newQuery.query_description} onChange={(e)=>setNewQuery(prev=>({...prev,query_description:e.target.value}))} placeholder="Query Description" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="date" value={newQuery.query_issued_date} onChange={(e)=>setNewQuery(prev=>({...prev,query_issued_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newQuery.reply_from_client} onChange={(e)=>setNewQuery(prev=>({...prev,reply_from_client:e.target.value}))} placeholder="Reply from Client" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="date" value={newQuery.reply_received_date} onChange={(e)=>setNewQuery(prev=>({...prev,reply_received_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newQuery.query_updated_by} onChange={(e)=>setNewQuery(prev=>({...prev,query_updated_by:e.target.value}))} placeholder="Updated By" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><select value={newQuery.query_resolved} onChange={(e)=>setNewQuery(prev=>({...prev,query_resolved:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select></td>
-                          <td className="py-2 px-2"><input type="text" value={newQuery.remark} onChange={(e)=>setNewQuery(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addQueryRow} 
-                              disabled={!(newQuery.query_description && newQuery.query_description.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newQuery.query_description && newQuery.query_description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add query"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -3409,6 +3433,24 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
+                        <tr className="bg-purple-25/30">
+                          <td className="py-2 px-2 text-center text-gray-400">+</td>
+                          <td className="py-2 px-2"><input ref={newAssumptionDescRef} type="text" value={newAssumption.assumption_description} onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_description:e.target.value}))} placeholder="Assumption Description" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newAssumption.reason} onChange={(e)=>setNewAssumption(prev=>({...prev,reason:e.target.value}))} placeholder="Reason" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newAssumption.assumption_taken_by} onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_taken_by:e.target.value}))} placeholder="Taken By" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newAssumption.remark} onChange={(e)=>setNewAssumption(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addAssumptionRow} 
+                              disabled={!(newAssumption.assumption_description && newAssumption.assumption_description.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newAssumption.assumption_description && newAssumption.assumption_description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add assumption"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {assumptions.map((a, index) => (
                           <tr key={a.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3428,24 +3470,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30">
-                          <td className="py-2 px-2 text-center text-gray-400">+</td>
-                          <td className="py-2 px-2"><input ref={newAssumptionDescRef} type="text" value={newAssumption.assumption_description} onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_description:e.target.value}))} placeholder="Assumption Description" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newAssumption.reason} onChange={(e)=>setNewAssumption(prev=>({...prev,reason:e.target.value}))} placeholder="Reason" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newAssumption.assumption_taken_by} onChange={(e)=>setNewAssumption(prev=>({...prev,assumption_taken_by:e.target.value}))} placeholder="Taken By" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newAssumption.remark} onChange={(e)=>setNewAssumption(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addAssumptionRow} 
-                              disabled={!(newAssumption.assumption_description && newAssumption.assumption_description.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newAssumption.assumption_description && newAssumption.assumption_description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add assumption"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -3481,6 +3505,25 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
+                        <tr className="bg-purple-25/30">
+                          <td className="py-2 px-2 text-center text-gray-400">+</td>
+                          <td className="py-2 px-2"><input ref={newLessonDescRef} type="text" value={newLesson.what_was_new} onChange={(e)=>setNewLesson(prev=>({...prev,what_was_new:e.target.value}))} placeholder="What was new" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newLesson.difficulty_faced} onChange={(e)=>setNewLesson(prev=>({...prev,difficulty_faced:e.target.value}))} placeholder="Difficulty Faced" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newLesson.what_you_learn} onChange={(e)=>setNewLesson(prev=>({...prev,what_you_learn:e.target.value}))} placeholder="What You Learned" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newLesson.areas_of_improvement} onChange={(e)=>setNewLesson(prev=>({...prev,areas_of_improvement:e.target.value}))} placeholder="Areas of Improvement" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newLesson.remark} onChange={(e)=>setNewLesson(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addLessonRow} 
+                              disabled={!(newLesson.what_was_new && newLesson.what_was_new.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newLesson.what_was_new && newLesson.what_was_new.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add lesson"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {lessonsLearnt.map((l, index) => (
                           <tr key={l.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3501,25 +3544,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30">
-                          <td className="py-2 px-2 text-center text-gray-400">+</td>
-                          <td className="py-2 px-2"><input ref={newLessonDescRef} type="text" value={newLesson.what_was_new} onChange={(e)=>setNewLesson(prev=>({...prev,what_was_new:e.target.value}))} placeholder="What was new" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newLesson.difficulty_faced} onChange={(e)=>setNewLesson(prev=>({...prev,difficulty_faced:e.target.value}))} placeholder="Difficulty Faced" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newLesson.what_you_learn} onChange={(e)=>setNewLesson(prev=>({...prev,what_you_learn:e.target.value}))} placeholder="What You Learned" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newLesson.areas_of_improvement} onChange={(e)=>setNewLesson(prev=>({...prev,areas_of_improvement:e.target.value}))} placeholder="Areas of Improvement" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newLesson.remark} onChange={(e)=>setNewLesson(prev=>({...prev,remark:e.target.value}))} placeholder="Remark" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addLessonRow} 
-                              disabled={!(newLesson.what_was_new && newLesson.what_was_new.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newLesson.what_was_new && newLesson.what_was_new.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add lesson"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -3555,6 +3579,25 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody>
+                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
+                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-2 px-2"><input ref={newIssuedDescRef} type="text" value={newIssuedDoc.document_name} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_name:e.target.value}))} placeholder="Document Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.document_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_number:e.target.value}))} placeholder="Document No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.revision_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Revision" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="date" value={newIssuedDoc.issue_date} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issue_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.remarks} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addIssuedDocument} 
+                              disabled={!(newIssuedDoc.document_name && newIssuedDoc.document_name.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add document"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {documentsIssued.map((d, index) => (
                           <tr key={d.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3575,25 +3618,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30 border-t-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input ref={newIssuedDescRef} type="text" value={newIssuedDoc.document_name} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_name:e.target.value}))} placeholder="Document Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.document_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_number:e.target.value}))} placeholder="Document No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.revision_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Revision" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="date" value={newIssuedDoc.issue_date} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issue_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.remarks} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addIssuedDocument} 
-                              disabled={!(newIssuedDoc.document_name && newIssuedDoc.document_name.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add document"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -3629,6 +3653,27 @@ function EditProjectForm() {
                         </tr>
                       </thead>
                       <tbody>
+                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
+                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-2 px-2"><input type="date" value={newReceivedDoc.date_received} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,date_received:e.target.value}))} placeholder="Date" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input ref={newReceivedDescRef} type="text" value={newReceivedDoc.description} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,description:e.target.value}))} placeholder="Document Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.drawing_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,drawing_number:e.target.value}))} placeholder="Drawing No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.revision_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Rev. No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.unit_qty} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,unit_qty:e.target.value}))} placeholder="Unit/Qty" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.document_sent_by} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,document_sent_by:e.target.value}))} placeholder="Sent By" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.remarks} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2 text-center">
+                            <button 
+                              type="button" 
+                              onClick={addReceivedDocument} 
+                              disabled={!(newReceivedDoc.description && newReceivedDoc.description.trim())} 
+                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newReceivedDoc.description && newReceivedDoc.description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                              title="Add document"
+                            >
+                              Add
+                            </button>
+                          </td>
+                        </tr>
                         {documentsReceived.map((d, index) => (
                           <tr key={d.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
@@ -3651,27 +3696,6 @@ function EditProjectForm() {
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-purple-25/30 border-t-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input type="date" value={newReceivedDoc.date_received} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,date_received:e.target.value}))} placeholder="Date" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input ref={newReceivedDescRef} type="text" value={newReceivedDoc.description} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,description:e.target.value}))} placeholder="Document Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.drawing_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,drawing_number:e.target.value}))} placeholder="Drawing No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.revision_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Rev. No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.unit_qty} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,unit_qty:e.target.value}))} placeholder="Unit/Qty" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.document_sent_by} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,document_sent_by:e.target.value}))} placeholder="Sent By" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newReceivedDoc.remarks} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addReceivedDocument} 
-                              disabled={!(newReceivedDoc.description && newReceivedDoc.description.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newReceivedDoc.description && newReceivedDoc.description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add document"
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
                       </tbody>
                     </table>
                   </div>
