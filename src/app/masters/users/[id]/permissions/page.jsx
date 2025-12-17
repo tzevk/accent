@@ -621,6 +621,10 @@ export default function UserPermissionsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Store old values for audit log
+      const oldModulePermissions = { ...originalPermissions.modulePermissions };
+      const oldFieldPermissions = { ...originalPermissions.fieldPermissions };
+      
       // Convert module permissions back to array format
       const permissionsArray = [];
       Object.keys(modulePermissions).forEach(module => {
@@ -631,6 +635,18 @@ export default function UserPermissionsPage() {
         if (perms.delete) permissionsArray.push(`${module}:delete`);
         if (perms.export) permissionsArray.push(`${module}:export`);
         if (perms.import) permissionsArray.push(`${module}:import`);
+      });
+      
+      // Convert old module permissions to array for comparison
+      const oldPermissionsArray = [];
+      Object.keys(oldModulePermissions).forEach(module => {
+        const perms = oldModulePermissions[module] || {};
+        if (perms.read) oldPermissionsArray.push(`${module}:read`);
+        if (perms.create) oldPermissionsArray.push(`${module}:create`);
+        if (perms.update) oldPermissionsArray.push(`${module}:update`);
+        if (perms.delete) oldPermissionsArray.push(`${module}:delete`);
+        if (perms.export) oldPermissionsArray.push(`${module}:export`);
+        if (perms.import) oldPermissionsArray.push(`${module}:import`);
       });
 
       const res = await fetch('/api/users', {
@@ -645,6 +661,29 @@ export default function UserPermissionsPage() {
 
       const data = await res.json();
       if (data.success) {
+        // Log the permission change to audit logs
+        try {
+          await fetch('/api/audit-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'update_permissions',
+              resource: 'user_permissions',
+              resource_id: user.id,
+              old_value: {
+                permissions: oldPermissionsArray,
+                field_permissions: oldFieldPermissions
+              },
+              new_value: {
+                permissions: permissionsArray,
+                field_permissions: fieldPermissions
+              }
+            })
+          });
+        } catch (auditError) {
+          console.error('Failed to log audit:', auditError);
+        }
+        
         setOriginalPermissions({ fieldPermissions, modulePermissions });
         setHasChanges(false);
         // Show success notification

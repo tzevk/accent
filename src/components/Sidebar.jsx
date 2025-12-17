@@ -139,6 +139,7 @@ export default function Sidebar() {
             <div className="space-y-1 mt-1">
               <NavRow icon={UserGroupIcon} label="Live Monitoring" href="/admin/live-monitoring" active={pathname.startsWith('/admin/live-monitoring')} />
               <NavRow icon={ClipboardDocumentListIcon} label="Activity Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
+              <NavRow icon={ShieldCheckIcon} label="Audit Logs" href="/admin/audit-logs" active={pathname.startsWith('/admin/audit-logs')} />
               <NavRow icon={ChartBarIcon} label="Productivity Reports" href="/admin/productivity" active={pathname.startsWith('/admin/productivity')} />
             </div>
           </div>
