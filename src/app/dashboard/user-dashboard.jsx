@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import TodoList from '@/components/TodoList';
 import { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -90,8 +91,13 @@ export default function UserDashboard() {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
         <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading...</div>
+        <div className="flex flex-1 pt-16">
+          <div className="todo-panel">
+            <TodoList />
+          </div>
+          <div className="flex-1 flex items-center justify-center ml-72">
+            <div className="text-gray-500">Loading...</div>
+          </div>
         </div>
       </div>
     );
@@ -110,15 +116,23 @@ export default function UserDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
-        {/* Welcome Section */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.full_name || 'User'}!</h1>
-          <p className="text-gray-600 mt-1">Here&apos;s your activity dashboard</p>
+      <div className="flex pt-16">
+        {/* Todo List Panel - sticks to sidebar */}
+        <div className="todo-panel">
+          <TodoList />
         </div>
+        
+        {/* Main Content */}
+        <div className="flex-1 ml-72">
+          <div className="px-4 sm:px-6 lg:px-8 py-8">
+            {/* Welcome Section */}
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.full_name || 'User'}!</h1>
+              <p className="text-gray-600 mt-1">Here&apos;s your activity dashboard</p>
+            </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {/* Total Activities */}
           <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <div className="flex items-center justify-between">
@@ -170,16 +184,16 @@ export default function UserDashboard() {
               </div>
             </div>
           </div>
-        </div>
+            </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Left Column - Charts and Time Log */}
-          <div className="space-y-6">
+              {/* Left Column - Charts and Time Log */}
+              <div className="space-y-6">
             
-            {/* Current Project Card */}
-            {currentProject && (
+                {/* Current Project Card */}
+                {currentProject && (
               <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Project</h3>
                 <div className="space-y-3">
@@ -397,6 +411,8 @@ export default function UserDashboard() {
                   )}
                 </table>
               </div>
+            </div>
+          </div>
             </div>
           </div>
         </div>

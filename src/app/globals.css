@@ -199,6 +199,26 @@ textarea::placeholder {
 .group\/sidebar[data-pinned="true"] .sidebar-open\:inline-flex { display: inline-flex; }
 .group\/sidebar[data-pinned="true"] .sidebar-open\:flex { display: flex; }
 
+/* Todo panel positioning - sticks to sidebar */
+.todo-panel {
+  position: fixed;
+  top: 64px; /* navbar height */
+  bottom: 0;
+  left: 64px; /* collapsed sidebar width */
+  z-index: 30;
+  transition: left 0.2s ease-out;
+}
+
+/* When sidebar is hovered, move todo panel */
+.group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
+  left: 260px;
+}
+
+/* When sidebar is pinned, keep todo panel at expanded position */
+.group\/sidebar[data-pinned="true"] ~ .content-with-sidebar .todo-panel {
+  left: 260px;
+}
+
 /* High-contrast text for Employees screen: override washed-out grays */
 .employees-screen .text-gray-500,
 .employees-screen .text-gray-600,

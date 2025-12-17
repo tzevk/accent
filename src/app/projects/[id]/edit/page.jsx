@@ -199,6 +199,9 @@ function EditProjectForm() {
   const [selectedSoftware, setSelectedSoftware] = useState('');
   const [selectedSoftwareVersion, setSelectedSoftwareVersion] = useState('');
   
+  // User Master (for Assigned To dropdowns)
+  const [userMaster, setUserMaster] = useState([]);
+  
   // Documentation tab - detailed document management
   const [documentsList, setDocumentsList] = useState([]);
 
@@ -381,6 +384,17 @@ function EditProjectForm() {
           }
         } catch (err) {
           console.warn('Failed to fetch employees', err);
+        }
+        
+        // Fetch users from User Master (for Assigned To dropdowns)
+        try {
+          const usersData = await fetchJSON('/api/users?limit=10000');
+          if (usersData && usersData.success && Array.isArray(usersData.data)) {
+            console.log('Users loaded from User Master:', usersData.data);
+            setUserMaster(usersData.data || []);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch users from User Master', err);
         }
       } catch (error) {
         console.error('Failed to fetch data', error);
@@ -4127,9 +4141,9 @@ function EditProjectForm() {
                                           className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                                         >
                                           <option value="">Unassigned</option>
-                                          {projectTeamMembers.map(member => (
-                                            <option key={member.employee_id} value={member.employee_id}>
-                                              {member.employee_name}
+                                          {userMaster.map(user => (
+                                            <option key={user.id} value={user.id}>
+                                              {user.full_name || user.employee_name || user.username}
                                             </option>
                                           ))}
                                         </select>

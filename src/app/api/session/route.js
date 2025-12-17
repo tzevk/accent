@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 
+// Disable caching for session endpoint
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req) {
   try {
     const hasSession = !!req?.cookies?.get?.('auth')?.value;
