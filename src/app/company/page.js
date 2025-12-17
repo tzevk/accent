@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import AccessGuard from '@/components/AccessGuard';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
@@ -320,6 +321,7 @@ export default function Company() {
   };
 
   return (
+    <AccessGuard resource="companies" permission="read" showNavbar={false}>
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
@@ -921,5 +923,6 @@ export default function Company() {
         </div>
       </div>
     </div>
+    </AccessGuard>
   );
 }

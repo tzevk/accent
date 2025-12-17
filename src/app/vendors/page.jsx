@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import AccessGuard from '@/components/AccessGuard';
 import { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
@@ -14,7 +15,6 @@ import {
   PencilIcon,
   TrashIcon
 } from '@heroicons/react/24/outline';
-// FunnelIcon is no longer used and has been removed.
 
 export default function Vendors() {
   const router = useRouter();
@@ -88,6 +88,7 @@ export default function Vendors() {
   });
 
   return (
+    <AccessGuard resource="vendors" permission="read" showNavbar={false}>
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
       
@@ -318,5 +319,6 @@ export default function Vendors() {
         </div>
       </div>
     </div>
+    </AccessGuard>
   );
 }

@@ -10,22 +10,34 @@ import {
   Cog6ToothIcon,
   MapPinIcon,
   UserGroupIcon,
-  UsersIcon,
   DocumentTextIcon,
   BuildingOfficeIcon,
   ChartBarIcon,
   ClipboardDocumentListIcon,
-  BriefcaseIcon
+  BriefcaseIcon,
+  ShieldCheckIcon,
+  ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user } = useSessionRBAC();
+  const { user, can, RESOURCES, PERMISSIONS, loading: rbacLoading } = useSessionRBAC();
   const isSignin = pathname.startsWith('/signin');
   const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const isAdmin = user?.role === 'Admin';
+  const isAdmin = user?.is_super_admin || user?.role?.code === 'admin';
+
+  // Permission checks for each module
+  const canViewDashboard = !rbacLoading && (user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ));
+  const canViewEmployees = !rbacLoading && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ));
+  const canViewUsers = !rbacLoading && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ));
+  const canViewActivities = !rbacLoading && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ));
+  const canViewCompanies = !rbacLoading && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ));
+  const canViewVendors = !rbacLoading && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ));
+  const canViewLeads = !rbacLoading && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ));
+  const canViewProjects = !rbacLoading && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ));
+  const canViewProposals = !rbacLoading && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ));
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -84,7 +96,9 @@ export default function Sidebar() {
             <span>PAGES</span>
           </div>
           <div className="space-y-1 mt-1">
+            {/* Dashboard - always visible (users see their own dashboard) */}
             <NavRow icon={ClockIcon} label="Dashboard" href="/dashboard" active={pathname === '/dashboard'} />
+            {/* Work Logs - always visible (users log their own work) */}
             <NavRow icon={BriefcaseIcon} label="Work Logs" href="/work-logs" active={pathname.startsWith('/work-logs')} />
           </div>
         </div>
@@ -95,13 +109,24 @@ export default function Sidebar() {
             <span>MASTERS</span>
           </div>
           <div className="space-y-1 mt-1">
-            <NavRow icon={UserGroupIcon} label="Employee Master" href="/employees" active={pathname.startsWith('/employees')} />
-            <NavRow icon={UsersIcon} label="User Master" href="/masters/users" active={pathname.startsWith('/masters/users')} />
-            <NavRow icon={DocumentTextIcon} label="Activity Master" href="/masters/activities" active={pathname.startsWith('/masters/activities')} />
-            <NavRow icon={DocumentTextIcon} label="Software Master" href="/masters/software" active={pathname.startsWith('/masters/software')} />
-            <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />
-            <NavRow icon={BuildingOfficeIcon} label="Vendor Master" href="/vendors" active={pathname.startsWith('/vendors')} />
-            {/* Document Master removed from sidebar per request */}
+            {canViewEmployees && (
+              <NavRow icon={UserGroupIcon} label="Employee Master" href="/employees" active={pathname.startsWith('/employees')} />
+            )}
+            {canViewUsers && (
+              <NavRow icon={ShieldCheckIcon} label="User Master" href="/masters/users" active={pathname.startsWith('/masters/users')} />
+            )}
+            {canViewActivities && (
+              <NavRow icon={DocumentTextIcon} label="Activity Master" href="/masters/activities" active={pathname.startsWith('/masters/activities')} />
+            )}
+            {canViewActivities && (
+              <NavRow icon={DocumentTextIcon} label="Software Master" href="/masters/software" active={pathname.startsWith('/masters/software')} />
+            )}
+            {canViewCompanies && (
+              <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />
+            )}
+            {canViewVendors && (
+              <NavRow icon={BuildingOfficeIcon} label="Vendor Master" href="/vendors" active={pathname.startsWith('/vendors')} />
+            )}
           </div>
         </div>
 
@@ -151,8 +176,7 @@ export default function Sidebar() {
               className="group/nav-row w-full flex items-center h-11 rounded-xl px-3 text-sm font-medium text-[#64126D] hover:bg-purple-50"
               title="Sign out"
             >
-              {/* Reuse an icon for now */}
-              <Cog6ToothIcon className="h-5 w-5 text-[#64126D]" />
+              <ArrowRightOnRectangleIcon className="h-5 w-5 text-[#64126D]" />
               <span className="ml-3 hidden sidebar-open:inline text-gray-900">Sign out</span>
             </button>
           </div>

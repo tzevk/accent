@@ -1,1088 +1,599 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
-import RBACPermissionsManager from '@/components/RBACPermissionsManager';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
-import React, { useState, useEffect } from 'react';
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  TrashIcon, 
-  UserIcon, 
-  BriefcaseIcon, 
-  ShieldCheckIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  ChartBarIcon 
+import {
+  UsersIcon,
+  ClockIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  LockClosedIcon,
+  XMarkIcon,
+  ChevronRightIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
-import { StatusBadgeWithBg } from '@/components/StatusBadge';
 
-export default function EnhancedUsersMaster() {
-  const { loading: rbacLoading, user: sessionUser, can } = useSessionRBAC();
+// Tab configuration
+const TABS = [
+  { id: 'users', label: 'Users', icon: UsersIcon, description: 'Manage user accounts and their permissions' },
+  { id: 'audit', label: 'Audit Log', icon: ClockIcon, description: 'View permission change history' }
+];
+
+export default function UserMasterPage() {
+  const { loading: rbacLoading, can } = useSessionRBAC();
   const canUsersRead = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.READ);
-  const canUsersCreate = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.CREATE);
-  const canUsersUpdate = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.UPDATE);
-  const canUsersDelete = !rbacLoading && can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.DELETE);
-  const [users, setUsers] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState('users');
-  const [editing, setEditing] = useState(null);
-  const [editingUser, setEditingUser] = useState(null);
-  const [selectedDepartment, setSelectedDepartment] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-
-  // Activity tracking state
-  const [userActivityData, setUserActivityData] = useState({});
-
-  // RBAC manager state
-  const [rbacTargetType, setRbacTargetType] = useState('role'); // 'role' | 'user'
-  const [rbacRoleId, setRbacRoleId] = useState('');
-  const [rbacUserId, setRbacUserId] = useState('');
   
-  const [form, setForm] = useState({
-    employee_id: '',
-    username: '',
-    password: '',
-    email: '',
-    role_id: '',
-    permissions: [],
-    status: 'active'
-  });
+  const [activeTab, setActiveTab] = useState('users');
+  const [loading, setLoading] = useState(true);
 
-  const [editForm, setEditForm] = useState({
-    employee_id: '',
-    username: '',
-    password: '',
-    email: '',
-    role_id: '',
-    permissions: [],
-    status: 'active'
-  });
-
-  // Derived list (no filtering, just return all users)
-  const filteredUsers = React.useMemo(() => {
-    return Array.isArray(users) ? users : [];
-  }, [users]);
-
-  // Fetch all data
   useEffect(() => {
-    fetchUsers();
-    fetchEmployees();
-    fetchRoles();
-    fetchUserActivity();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
   }, []);
 
-  // Auto-refresh activity data every 30 seconds
+  if (rbacLoading || loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Navbar />
+        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
+          <div className="flex items-center justify-center h-[calc(100vh-120px)]">
+            <div className="flex flex-col items-center gap-3">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#64126D]" />
+              <span className="text-gray-500">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canUsersRead) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Navbar />
+        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
+          <div className="flex items-center justify-center h-[calc(100vh-120px)]">
+            <div className="text-center">
+              <LockClosedIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-700">Access Denied</h2>
+              <p className="text-gray-500 mt-2">You don&apos;t have permission to view this page.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Navbar />
+      
+      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
+        {/* Header */}
+        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+              <ol className="inline-flex items-center gap-2">
+                <li>Home</li>
+                <li className="text-gray-300">/</li>
+                <li>Masters</li>
+                <li className="text-gray-300">/</li>
+                <li className="text-gray-700">User Management</li>
+              </ol>
+            </nav>
+            <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px" aria-label="Tabs">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`
+                      group relative flex-1 py-4 px-6 text-center border-b-2 font-medium text-sm transition-all
+                      ${isActive 
+                        ? 'border-[#64126D] text-[#64126D] bg-purple-50/50' 
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <Icon className={`h-5 w-5 ${isActive ? 'text-[#64126D]' : 'text-gray-400 group-hover:text-gray-500'}`} />
+                      <span>{tab.label}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Tab Description */}
+          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+            <p className="text-sm text-gray-600">
+              {TABS.find(t => t.id === activeTab)?.description}
+            </p>
+          </div>
+
+          {/* Tab Content Area */}
+          <div className="p-6 min-h-[500px]">
+            {activeTab === 'users' && <UsersTabContent />}
+            {activeTab === 'audit' && <AuditTabContent />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Users Tab - Shows employees and their linked user accounts
+function UsersTabContent() {
+  const router = useRouter();
+  const [employees, setEmployees] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchUserActivity();
-    }, 30000); // 30 seconds
-    
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchData();
   }, []);
 
-  // Extract unique departments when roles are loaded
-  useEffect(() => {
-    if (roles.length > 0) {
-      const uniqueDepts = [...new Set(roles.map(role => role.department).filter(Boolean))];
-      setDepartments(uniqueDepts);
-    }
-  }, [roles]);
-
-  const fetchUsers = async () => {
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/users');
-      const data = await res.json();
-      if (data.success) {
-        setUsers(data.data || []);
-      }
+      const [empRes, usersRes] = await Promise.all([
+        fetch('/api/employees?limit=1000'),
+        fetch('/api/users?limit=1000')
+      ]);
+      
+      const empData = await empRes.json();
+      const usersData = await usersRes.json();
+
+      setEmployees(empData.employees || empData.data || []);
+      setUsers(usersData.data || []);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchEmployees = async () => {
-    try {
-      const res = await fetch('/api/employee-master');
-      const data = await res.json();
-      if (data.success) {
-        setEmployees(data.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching employees:', error);
-    }
+  const getUserForEmployee = (employeeId) => {
+    return users.find(u => u.employee_id === employeeId);
   };
 
-  
-
-  const fetchUserActivity = async () => {
-    if (!sessionUser || !(sessionUser.is_super_admin || sessionUser.role?.name === 'Admin')) return; // Only admins can see activity
+  const filteredEmployees = employees.filter(emp => {
+    const user = getUserForEmployee(emp.id);
+    const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+    const matchesSearch = !searchQuery || 
+      fullName.includes(searchQuery.toLowerCase()) ||
+      emp.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emp.employee_id?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    setActivityLoading(true);
+    const matchesFilter = filterStatus === 'all' ||
+      (filterStatus === 'with-account' && user) ||
+      (filterStatus === 'without-account' && !user);
+
+    return matchesSearch && matchesFilter;
+  });
+
+  const totalEmployees = employees.length;
+  const withAccount = employees.filter(emp => getUserForEmployee(emp.id)).length;
+  const withoutAccount = totalEmployees - withAccount;
+
+  // Count permissions for a user
+  const getPermissionCount = (user) => {
+    if (!user?.permissions) return 0;
     try {
-      const res = await fetch('/api/user-status');
-      const data = await res.json();
-      if (data.success) {
-        const activityMap = {};
-        data.data.forEach(user => {
-          activityMap[user.user_id] = user;
-        });
-        setUserActivityData(activityMap);
-      }
-    } catch (error) {
-      console.error('Error fetching user activity:', error);
-    } finally {
-      setActivityLoading(false);
+      const perms = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+      return Array.isArray(perms) ? perms.length : 0;
+    } catch {
+      return 0;
     }
   };
 
-  const fetchRoles = async () => {
-    try {
-      const res = await fetch('/api/roles-master');
-      const data = await res.json();
-      if (data.success) {
-        setRoles(data.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching roles:', error);
-    }
+  // Navigate to permissions page
+  const goToPermissions = (userId) => {
+    router.push(`/masters/users/${userId}/permissions`);
   };
 
-  const openCreate = () => {
-    if (!canUsersCreate) {
-      alert('You do not have permission to create users.');
-      return;
-    }
-    setForm({
-      employee_id: '',
-      username: '',
-      password: '',
-      email: '',
-      role_id: '',
-      permissions: [],
-      status: 'active'
-    });
-    setEditing(null);
-    setEditingUser(null);
-    setActiveTab('add-user');
-  };
-
-  const openEdit = (user) => {
-    if (!canUsersUpdate) {
-      alert('You do not have permission to update users.');
-      return;
-    }
-    setEditForm({
-      employee_id: user.employee_id || '',
-      username: user.username,
-      password: '',
-      email: user.email || '',
-      role_id: user.role_id || '',
-      permissions: user.permissions ? JSON.parse(user.permissions) : [],
-      status: user.status || 'active'
-    });
-    setEditing(user.id);
-    setEditingUser(user);
-    setActiveTab('edit-user');
-  };
-
-  const handleEmployeeChange = (employeeId) => {
-    const employee = employees.find(emp => emp.id === parseInt(employeeId));
-    if (employee) {
-      setForm(prev => ({
-        ...prev,
-        employee_id: employeeId,
-        email: employee.email || '',
-        username: `${employee.first_name.toLowerCase()}.${employee.last_name.toLowerCase()}`.replace(/\s+/g, '')
-      }));
-    } else {
-      setForm(prev => ({
-        ...prev,
-        employee_id: employeeId,
-        email: '',
-        username: ''
-      }));
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!canUsersCreate) {
-      alert('You do not have permission to create users.');
-      return;
-    }
-    setSubmitting(true);
-
-    try {
-      const res = await fetch('/api/users', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(form) 
-      });
-
-      const j = await res.json();
-
-      if (j.success) {
-        setActiveTab('users');
-        setForm({
-          employee_id: '',
-          username: '',
-          password: '',
-          email: '',
-          role_id: '',
-          permissions: [],
-          status: 'active'
-        });
-        fetchUsers();
-        fetchEmployees(); // Refresh to update available employees
-      } else {
-        alert('Error: ' + (j.error || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to create user');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
-    if (!canUsersUpdate) {
-      alert('You do not have permission to update users.');
-      return;
-    }
-    setSubmitting(true);
-
-    try {
-      const payload = { ...editForm, id: editing };
-      const res = await fetch('/api/users', { 
-        method: 'PUT', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
-      });
-
-      const j = await res.json();
-
-      if (j.success) {
-        setActiveTab('users');
-        setEditing(null);
-        setEditingUser(null);
-        setEditForm({
-          employee_id: '',
-          username: '',
-          password: '',
-          email: '',
-          role_id: '',
-          permissions: [],
-          status: 'active'
-        });
-        fetchUsers();
-        fetchEmployees(); // Refresh to update available employees
-      } else {
-        alert('Error: ' + (j.error || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to update user');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!canUsersDelete) {
-      alert('You do not have permission to delete users.');
-      return;
-    }
-    if (!confirm('Are you sure you want to delete this user?')) return;
-    try {
-      const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
-      const j = await res.json();
-      if (j.success) {
-        fetchUsers();
-        fetchEmployees(); // Refresh available employees
-      } else {
-        alert('Error: ' + (j.error || 'Unknown error'));
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Failed to delete user');
-    }
-  };
-
-  const filteredRoles = selectedDepartment 
-    ? roles.filter(role => role.department === selectedDepartment)
-    : roles;
-
-  const getStatusBadge = (status) => {
-    if (status === 'active') {
-      return (
-        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-          Active
-        </span>
-      );
-    }
+  if (loading) {
     return (
-      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-        Inactive
-      </span>
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]" />
+      </div>
     );
-  };
+  }
 
-  // Render Stats Cards
-  const renderStatsCards = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-500">Total Users</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">{users.length}</p>
-          </div>
-          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-            <UserIcon className="h-6 w-6 text-blue-600" />
-          </div>
+  return (
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-4">
+          <div className="text-sm text-gray-600">Total Employees</div>
+          <div className="text-2xl font-bold text-gray-900">{totalEmployees}</div>
+        </div>
+        <div className="bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 p-4">
+          <div className="text-sm text-gray-600">With User Account</div>
+          <div className="text-2xl font-bold text-green-600">{withAccount}</div>
+        </div>
+        <div className="bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-100 p-4">
+          <div className="text-sm text-gray-600">Without User Account</div>
+          <div className="text-2xl font-bold text-orange-600">{withoutAccount}</div>
         </div>
       </div>
-      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-500">Available Employees</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">
-              {employees.filter(emp => !emp.user_id).length}
-            </p>
-          </div>
-          <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-            <BriefcaseIcon className="h-6 w-6 text-green-600" />
-          </div>
-        </div>
-      </div>
-      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-500">Active Roles</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">{roles.length}</p>
-          </div>
-          <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-            <ShieldCheckIcon className="h-6 w-6 text-purple-600" />
-          </div>
-        </div>
-      </div>
-      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-500">Departments</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">{departments.length}</p>
-          </div>
-          <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-            <ChartBarIcon className="h-6 w-6 text-orange-600" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
-  // Render Users List
-  const renderUsersList = () => (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      {!rbacLoading && !canUsersRead && (
-        <div className="p-8 text-center text-sm text-yellow-900 bg-yellow-50 border-b border-yellow-200">
-          You don’t have permission to view users. Please contact an administrator.
-        </div>
-      )}
-      {loading ? (
-        <div className="p-8 text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading users...</p>
-        </div>
-      ) : filteredUsers.length === 0 ? (
-        <div className="p-8 text-center">
-          <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating your first user.</p>
-          <div className="mt-4">
-            {canUsersCreate && (
-              <button
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <PlusIcon className="h-5 w-5" />
-                Create New User
-              </button>
-            )}
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by name, email, or employee ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+            />
           </div>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+          >
+            <option value="all">All Employees</option>
+            <option value="with-account">With User Account</option>
+            <option value="without-account">Without User Account</option>
+          </select>
         </div>
-      ) : (
+      </div>
+
+      {/* Employees Table */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User Details
-                </th>
-                {sessionUser && (sessionUser.is_super_admin || sessionUser.role?.name === 'Admin') && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Online Status
-                  </th>
-                )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Employee
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role & Department
+                  Department
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Account Status
+                  User Account
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Permissions
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((user) => {
-                const activityInfo = userActivityData[user.id];
-                return (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    {/* User Details */}
-                    <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        <div className="h-10 w-10 bg-gray-900 text-white rounded-full flex items-center justify-center relative">
-                          <span className="font-medium">
-                            {user.full_name ? user.full_name.split(' ').map(n => n[0]).join('') : user.username[0].toUpperCase()}
-                          </span>
-                          {activityInfo && activityInfo.status === 'online' && (
-                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full animate-pulse"></span>
-                          )}
+              {filteredEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    No employees found
+                  </td>
+                </tr>
+              ) : (
+                filteredEmployees.map((emp) => {
+                  const user = getUserForEmployee(emp.id);
+                  const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+                  const permCount = getPermissionCount(user);
+                  
+                  return (
+                    <tr key={emp.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="h-10 w-10 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium">
+                            {fullName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{fullName}</div>
+                            <div className="text-sm text-gray-500">{emp.email}</div>
+                          </div>
                         </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                          <div className="text-sm text-gray-500">{user.email}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Online Status (Admin Only) */}
-                    {sessionUser && (sessionUser.is_super_admin || sessionUser.role?.name === 'Admin') && (
-                      <td className="px-6 py-4">
-                        {activityInfo ? (
-                          <div className="space-y-1">
-                            <StatusBadgeWithBg status={activityInfo.status} lastActivity={activityInfo.last_activity} />
-                            {activityInfo.current_page && activityInfo.status === 'online' && (
-                              <p className="text-xs text-gray-500 truncate max-w-xs">📍 {activityInfo.current_page.replace(/^\//, '')}</p>
-                            )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{emp.department || '-'}</div>
+                        <div className="text-sm text-gray-500">{emp.position || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {user ? (
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                            <div className="text-xs text-gray-500">
+                              Last login: {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                            </div>
                           </div>
                         ) : (
-                          <StatusBadgeWithBg status="offline" />
+                          <span className="text-sm text-gray-400 italic">No account</span>
                         )}
                       </td>
-                    )}
-
-                    {/* Employee */}
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{user.employee_name || 'Not linked'}</div>
-                      <div className="text-sm text-gray-500">{user.employee_code || 'No employee code'}</div>
-                      {user.employee_position && (
-                        <div className="text-xs text-gray-400">{user.employee_position}</div>
-                      )}
-                    </td>
-
-                    {/* Role & Department */}
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        {user.role_name ? (
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{user.role_name}</div>
-                            <div className="text-sm text-gray-500">{user.role_department}</div>
-                          </div>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {user ? (
+                          <button
+                            onClick={() => goToPermissions(user.id)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors"
+                          >
+                            <span>{permCount} permissions</span>
+                            <ChevronRightIcon className="h-3 w-3" />
+                          </button>
                         ) : (
-                          <span className="text-sm text-gray-500">No role assigned</span>
+                          <span className="text-sm text-gray-400">-</span>
                         )}
-                      </div>
-                    </td>
-
-                    {/* Account Status */}
-                    <td className="px-6 py-4">{getStatusBadge(user.status)}</td>
-
-                    {/* Actions */}
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        {sessionUser && (sessionUser.is_super_admin || sessionUser.role?.name === 'Admin') && (
-                          <button
-                            onClick={() => window.location.href = `/admin/activity-logs?user_id=${user.id}`}
-                            className="text-purple-600 hover:text-purple-800 p-1 rounded"
-                            title="View Activity Logs"
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {user ? (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            user.status === 'active' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {user.status || 'Active'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            No Account
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        {user ? (
+                          <button 
+                            onClick={() => goToPermissions(user.id)}
+                            className="text-[#64126D] hover:text-[#4a0d52] font-medium inline-flex items-center gap-1"
                           >
-                            <ChartBarIcon className="h-4 w-4" />
+                            Manage Permissions
+                            <ChevronRightIcon className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSelectedEmployee(emp);
+                              setShowCreateModal(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#64126D] text-white text-xs rounded-lg hover:bg-[#4a0d52] transition-colors"
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                            Create Account
                           </button>
                         )}
-                        {canUsersUpdate && (
-                          <button
-                            onClick={() => openEdit(user)}
-                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
-                            title="Edit User"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                        )}
-                        {canUsersDelete && (
-                          <button
-                            onClick={() => handleDelete(user.id)}
-                            className="text-red-600 hover:text-red-800 p-1 rounded"
-                            title="Delete User"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Create User Modal */}
+      {showCreateModal && selectedEmployee && (
+        <CreateUserModal
+          employee={selectedEmployee}
+          onClose={() => {
+            setShowCreateModal(false);
+            setSelectedEmployee(null);
+          }}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            setSelectedEmployee(null);
+            fetchData();
+          }}
+        />
       )}
     </div>
   );
+}
 
-  // Render Add User Form
-  const renderAddUserForm = () => (
-    <div>
-      <h2 className="text-lg font-semibold mb-6 text-gray-900">
-        Create New User
-      </h2>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Employee Selection */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Employee *
-          </label>
-          <select
-            required
-            value={form.employee_id}
-            onChange={(e) => handleEmployeeChange(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="">Choose an employee...</option>
-            {employees.filter(emp => !emp.user_id).map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.first_name} {emp.last_name} ({emp.employee_id}) - {emp.department}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">
-            Only employees without existing user accounts are shown
-          </p>
-        </div>
+// Create User Modal Component
+function CreateUserModal({ employee, onClose, onSuccess }) {
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    username: employee.email?.split('@')[0] || '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-        {/* Username */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Username *
-          </label>
-          <input
-            required
-            type="text"
-            value={form.username}
-            onChange={(e) => setForm({...form, username: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-            placeholder="Enter username"
-          />
-        </div>
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
 
-        {/* Password */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Password *
-          </label>
-          <div className="relative">
-            <input
-              required
-              type={showPassword ? 'text' : 'password'}
-              value={form.password}
-              onChange={(e) => setForm({...form, password: e.target.value})}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:ring-2 focus:ring-black focus:border-transparent"
-              placeholder="Enter password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-            >
-              {showPassword ? (
-                <EyeSlashIcon className="h-4 w-4 text-gray-400" />
-              ) : (
-                <EyeIcon className="h-4 w-4 text-gray-400" />
-              )}
-            </button>
-          </div>
-        </div>
+    if (!formData.username || !formData.password) {
+      setError('Username and password are required');
+      return;
+    }
 
-        {/* Email */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Email
-          </label>
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({...form, email: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-            placeholder="Enter email address"
-          />
-        </div>
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
 
-        {/* Department Filter */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by Department
-          </label>
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="">All Departments</option>
-            {departments.map((dept) => (
-              <option key={dept} value={dept}>{dept}</option>
-            ))}
-          </select>
-        </div>
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
 
-        {/* Role Selection */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Assign Role
-          </label>
-          <select
-            value={form.role_id}
-            onChange={(e) => setForm({...form, role_id: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="">No role assigned</option>
-            {filteredRoles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.role_name} ({role.role_code}) - {role.department}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">
-            {filteredRoles.length} roles available
-            {selectedDepartment && ` in ${selectedDepartment}`}
-          </p>
-        </div>
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password,
+          email: employee.email,
+          employee_id: employee.id,
+          permissions: []
+        })
+      });
 
-        {/* Status */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Status
-          </label>
-          <select
-            value={form.status}
-            onChange={(e) => setForm({...form, status: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-
-        {/* Form Actions */}
-        <div className="flex justify-end gap-3 pt-6 border-t">
-          <button
-            type="button"
-            onClick={() => setActiveTab('users')}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
-          >
-            {submitting ? 'Creating...' : 'Create User'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-
-  // Render Edit User Form
-  const renderEditUserForm = () => (
-    <div>
-      <h2 className="text-lg font-semibold mb-6 text-gray-900">
-        Edit User: {editingUser.username}
-      </h2>
-
-      {/* User Info Display */}
-      <div className="bg-gray-50 rounded-lg p-4 mb-6">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Current User Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <span className="text-xs text-gray-500">Employee</span>
-            <p className="text-sm font-medium text-black">{editingUser.employee_name || 'Not linked'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-gray-500">Current Role</span>
-            <p className="text-sm font-medium text-black">{editingUser.role_name || 'No role assigned'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-gray-500">Department</span>
-            <p className="text-sm font-medium text-black">{editingUser.role_department || 'N/A'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-gray-500">Status</span>
-            <p className="text-sm font-medium text-black">{editingUser.status || 'Active'}</p>
-          </div>
-        </div>
-      </div>
-      
-      <form onSubmit={handleEditSubmit} className="space-y-6">
-        {/* Username */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Username *
-          </label>
-          <input
-            required
-            type="text"
-            value={editForm.username}
-            onChange={(e) => setEditForm({...editForm, username: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-            placeholder="Enter username"
-          />
-        </div>
-
-        {/* Password */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            New Password
-          </label>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={editForm.password}
-              onChange={(e) => setEditForm({...editForm, password: e.target.value})}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:ring-2 focus:ring-black focus:border-transparent"
-              placeholder="Leave blank to keep current password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-            >
-              {showPassword ? (
-                <EyeSlashIcon className="h-4 w-4 text-gray-400" />
-              ) : (
-                <EyeIcon className="h-4 w-4 text-gray-400" />
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Leave blank to keep the current password
-          </p>
-        </div>
-
-        {/* Email */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Email
-          </label>
-          <input
-            type="email"
-            value={editForm.email}
-            onChange={(e) => setEditForm({...editForm, email: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-            placeholder="Enter email address"
-          />
-        </div>
-
-        {/* Department Filter */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by Department
-          </label>
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="">All Departments</option>
-            {departments.map((dept) => (
-              <option key={dept} value={dept}>{dept}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Role Selection */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Assign Role
-          </label>
-          <select
-            value={editForm.role_id}
-            onChange={(e) => setEditForm({...editForm, role_id: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="">No role assigned</option>
-            {filteredRoles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.role_name} ({role.role_code}) - {role.department}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">
-            {filteredRoles.length} roles available
-            {selectedDepartment && ` in ${selectedDepartment}`}
-          </p>
-        </div>
-
-        {/* Status */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Status
-          </label>
-          <select
-            value={editForm.status}
-            onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-black focus:border-transparent"
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-
-        {/* Form Actions */}
-        <div className="flex justify-end gap-3 pt-6 border-t">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('users');
-              setEditing(null);
-              setEditingUser(null);
-            }}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
-          >
-            {submitting ? 'Updating...' : 'Update User'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-
-  // Render Permissions Tab
-  const renderPermissionsTab = () => {
-    // Only admins (is_super_admin) can access permissions management
-    const isAdmin = sessionUser?.is_super_admin === true;
-    
-    return (
-      <div>
-        {/* RBAC Manager (Admins only) */}
-        {rbacLoading ? (
-          <div className="p-4 text-gray-600">Loading access…</div>
-        ) : isAdmin ? (
-          <div className="mb-6 bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-xl font-bold text-black">Manage Permissions</h2>
-                <p className="text-sm text-gray-600">Grant or revoke permissions for roles or specific users. Only administrators can manage permissions.</p>
-              </div>
-              <div className="flex items-center space-x-2 px-3 py-1 bg-red-50 border border-red-200 rounded-md">
-                <ShieldCheckIcon className="h-5 w-5 text-red-600" />
-                <span className="text-sm font-semibold text-red-700">Admin Access</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">Target</label>
-                <select
-                  value={rbacTargetType}
-                  onChange={(e) => setRbacTargetType(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                >
-                  <option value="role">Role</option>
-                  <option value="user">User</option>
-                </select>
-              </div>
-              {rbacTargetType === 'role' ? (
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-gray-600 mb-1">Select Role</label>
-                  <select
-                    value={rbacRoleId}
-                    onChange={(e) => setRbacRoleId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Choose a role…</option>
-                    {roles.map((r) => (
-                      <option key={r.id} value={r.id}>{r.role_name} ({r.role_code})</option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-gray-600 mb-1">Select User</label>
-                  <select
-                    value={rbacUserId}
-                    onChange={(e) => setRbacUserId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Choose a user…</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>{u.username} {u.role_name ? `• ${u.role_name}` : ''}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {(rbacTargetType === 'role' && rbacRoleId) && (
-              <RBACPermissionsManager
-                type="role"
-                targetId={rbacRoleId}
-                targetName={(roles.find(r => String(r.id) === String(rbacRoleId))?.role_name) || 'Role'}
-                onPermissionsUpdated={() => {
-                  // Refresh users list to reflect permission changes
-                  fetchUsers();
-                }}
-              />
-            )}
-            {(rbacTargetType === 'user' && rbacUserId) && (
-              <RBACPermissionsManager
-                type="user"
-                targetId={rbacUserId}
-                targetName={(users.find(u => String(u.id) === String(rbacUserId))?.username) || 'User'}
-                onPermissionsUpdated={() => {
-                  // Refresh users list to reflect permission changes
-                  fetchUsers();
-                }}
-              />
-            )}
-          </div>
-        ) : (
-          <div className="p-6 bg-red-50 border border-red-200 rounded-md">
-            <div className="flex items-start space-x-3">
-              <ShieldCheckIcon className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-lg font-semibold text-red-900 mb-2">Access Denied</h3>
-                <p className="text-sm text-red-800 mb-2">
-                  You don&apos;t have permission to manage permissions. Only administrators can access this section.
-                </p>
-                <p className="text-xs text-red-700">
-                  If you believe you should have access, please contact your system administrator.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
+      const data = await res.json();
+      if (data.success) {
+        // Navigate to permissions page for the new user
+        if (data.data?.id) {
+          router.push(`/masters/users/${data.data.id}/permissions`);
+        } else {
+          onSuccess();
+        }
+      } else {
+        setError(data.error || 'Failed to create user');
+      }
+    } catch {
+      setError('Failed to create user');
+    } finally {
+      setSaving(false);
+    }
   };
 
+  const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="pt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="mb-6">
-              <h1 className="text-2xl font-semibold text-gray-900">User Management</h1>
-              <p className="mt-1 text-sm text-gray-500">Create and manage user accounts with role-based permissions</p>
-            </div>
-
-            {/* Tab Navigation */}
-            <div className="border-b border-gray-200 mb-6">
-              <nav className="flex space-x-8" aria-label="Tabs">
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'users'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  All Users ({users.length || 0})
-                </button>
-                <button
-                  onClick={() => setActiveTab('add-user')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'add-user'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Create New User
-                </button>
-                {editingUser && (
-                  <button
-                    onClick={() => setActiveTab('edit-user')}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'edit-user'
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    Edit: {editingUser.username}
-                  </button>
-                )}
-                {!rbacLoading && sessionUser?.is_super_admin === true && (
-                  <button
-                    onClick={() => setActiveTab('permissions')}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'permissions'
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    Permissions
-                  </button>
-                )}
-              </nav>
-            </div>
-
-            {/* Tab Content */}
-            {activeTab === 'users' && (
-              <>
-                {renderStatsCards()}
-                {renderUsersList()}
-              </>
-            )}
-
-            {activeTab === 'add-user' && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                {renderAddUserForm()}
-              </div>
-            )}
-
-            {activeTab === 'edit-user' && editingUser && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                {renderEditUserForm()}
-              </div>
-            )}
-
-            {activeTab === 'permissions' && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                {renderPermissionsTab()}
-              </div>
-            )}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Create User Account</h3>
+            <p className="text-sm text-gray-500 mt-0.5">for {fullName}</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+            <XMarkIcon className="h-5 w-5 text-gray-500" />
+          </button>
         </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Employee Info */}
+          <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium text-lg">
+                {fullName.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="font-medium text-gray-900">{fullName}</div>
+                <div className="text-sm text-gray-500">{employee.email}</div>
+                <div className="text-xs text-gray-400">{employee.department} • {employee.position}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Username */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Username <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+              placeholder="Enter username"
+            />
+          </div>
+
+          {/* Password */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Password <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+              placeholder="Enter password"
+            />
+          </div>
+
+          {/* Confirm Password */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Confirm Password <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="password"
+              value={formData.confirmPassword}
+              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+              placeholder="Confirm password"
+            />
+          </div>
+
+          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+            <div className="flex gap-2">
+              <InformationCircleIcon className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-700">
+                After creating the account, you&apos;ll be redirected to assign permissions.
+              </p>
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#4a0d52] transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  Creating...
+                </>
+              ) : (
+                'Create & Set Permissions'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AuditTabContent() {
+  return (
+    <div className="space-y-4">
+      <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
+        <ClockIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Audit Log</h3>
+        <p className="text-gray-500">Permission change history will be displayed here.</p>
       </div>
     </div>
   );

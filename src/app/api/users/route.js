@@ -13,6 +13,7 @@ async function ensureUsersTable(db) {
       employee_id INT DEFAULT NULL,
       role_id INT DEFAULT NULL,
       permissions JSON DEFAULT NULL,
+      field_permissions JSON DEFAULT NULL,
       department VARCHAR(100) DEFAULT NULL,
       full_name VARCHAR(100) DEFAULT NULL,
       status ENUM('active', 'inactive') DEFAULT 'active',
@@ -29,24 +30,25 @@ async function ensureUsersTable(db) {
       INDEX idx_role_id (role_id)
     )
   `);
-  // In case table already existed without this column, attempt to add it
+  // In case table already existed without these columns, attempt to add them
   try {
     await db.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN DEFAULT FALSE');
   } catch {
     // ignore if not supported or already present
   }
+  try {
+    await db.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS field_permissions JSON DEFAULT NULL');
+  } catch {
+    // ignore if not supported or already present
+  }
   
-  // Ensure roles_master table exists
+  // Ensure roles table exists
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS roles_master (
+    CREATE TABLE IF NOT EXISTS roles (
       id INT PRIMARY KEY AUTO_INCREMENT,
-      role_code VARCHAR(50) UNIQUE NOT NULL,
-      role_name VARCHAR(255) NOT NULL,
-      role_hierarchy INT DEFAULT 0,
-      department VARCHAR(100),
+      role_key VARCHAR(100) UNIQUE NOT NULL,
+      display_name VARCHAR(255),
       permissions JSON,
-      description TEXT,
-      status ENUM('active', 'inactive') DEFAULT 'active',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
@@ -73,16 +75,14 @@ export async function GET(request) {
               e.employee_id as employee_code,
               e.department as employee_department,
               e.position as employee_position,
-              r.role_name,
-              r.role_code,
-              r.department as role_department,
-              r.role_hierarchy,
+              r.display_name as role_name,
+              r.role_key,
               r.permissions as role_permissions
        FROM users u
        LEFT JOIN employees e ON u.employee_id = e.id
-       LEFT JOIN roles_master r ON u.role_id = r.id
+       LEFT JOIN roles r ON u.role_id = r.id
        WHERE u.is_active = TRUE
-       ORDER BY r.role_hierarchy DESC, u.created_at DESC
+       ORDER BY u.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -167,13 +167,13 @@ export async function POST(request) {
       [
         username, 
         password, 
-        userEmail, 
-        employee_id === '' || employee_id === null ? null : employee_id, 
-        role_id === '' || role_id === null ? null : role_id, 
+        userEmail || null, 
+        employee_id || null, 
+        role_id || null, 
         permissions ? JSON.stringify(permissions) : null,
-        roleData ? roleData.department : employee.department,
-        fullName,
-        created_by === '' || created_by === null ? null : created_by
+        roleData ? roleData.department : (employee.department || null),
+        fullName || null,
+        created_by || null
       ]
     );
 
@@ -229,12 +229,12 @@ export async function PUT(request) {
 
     const fields = [];
     const vals = [];
-    // Allow updating role_id (system role), and optionally permissions
-    const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role', 'role_id', 'permissions'];
+    // Allow updating role_id (system role), permissions, and field_permissions
+    const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role', 'role_id', 'permissions', 'field_permissions'];
     allowed.forEach(k => {
       if (data.hasOwnProperty(k)) {
-        if (k === 'permissions') {
-          fields.push('permissions = ?');
+        if (k === 'permissions' || k === 'field_permissions') {
+          fields.push(`${k} = ?`);
           vals.push(data[k] ? JSON.stringify(data[k]) : null);
         } else if (k === 'employee_id' || k === 'role_id') {
           // Convert empty strings to NULL for integer fields

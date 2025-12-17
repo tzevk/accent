@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import AccessGuard from '@/components/AccessGuard';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 
@@ -1213,6 +1214,7 @@ export default function EmployeesPage() {
   };
 
   return (
+    <AccessGuard resource="employees" permission="read" showNavbar={false}>
     <div className="min-h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
       <div className="flex-1 overflow-hidden">
@@ -4353,10 +4355,11 @@ export default function EmployeesPage() {
             </div>
           )}
           </div>
-          {/* salary floating debug removed */}
+
         </div>
       </div>
     </div>
     </div>
+    </AccessGuard>
   );
 }

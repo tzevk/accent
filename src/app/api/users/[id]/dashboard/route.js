@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { getCurrentUser, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { hasPermission } from '@/utils/rbac';
 
 /**
  * GET /api/users/[id]/dashboard
@@ -16,19 +17,30 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
  */
 export async function GET(request, { params }) {
   try {
-    const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.READ);
-    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
     const requestedUserId = parseInt(id);
-    const currentUser = auth.user;
+    
+    // Get current user
+    const currentUser = await getCurrentUser(request);
+    
+    if (!currentUser) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Users can only view their own dashboard unless they're admin
-    if (requestedUserId !== currentUser.id && !currentUser.is_super_admin) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Forbidden: You can only view your own dashboard' 
-      }, { status: 403 });
+    // Users can ALWAYS view their own dashboard
+    const isOwnDashboard = requestedUserId === currentUser.id;
+    
+    // For viewing OTHER users' dashboards, require admin or specific permission
+    if (!isOwnDashboard) {
+      const canViewOthers = currentUser.is_super_admin || 
+                            hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
+      
+      if (!canViewOthers) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Forbidden: You can only view your own dashboard' 
+        }, { status: 403 });
+      }
     }
 
     const db = await dbConnect();

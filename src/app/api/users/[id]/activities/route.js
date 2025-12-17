@@ -1,6 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { randomUUID } from 'crypto';
 
@@ -19,23 +19,37 @@ import { randomUUID } from 'crypto';
  */
 export async function GET(request, { params }) {
   try {
-    const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.READ);
-    if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
     const requestedUserId = parseInt(id);
-    const currentUser = auth.user;
+    
+    // Get current user first to check if they're viewing their own activities
+    const { getCurrentUser } = await import('@/utils/api-permissions');
+    const currentUser = await getCurrentUser(request);
+    
+    if (!currentUser) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Users can only view their own activities unless they have elevated permissions
+    // Users can ALWAYS view their own activities - no permission check needed
+    const isOwnActivities = requestedUserId === currentUser.id;
+    
+    // For viewing OTHER users' activities, require ACTIVITIES:READ permission
+    if (!isOwnActivities) {
+      const canViewOthers = currentUser.is_super_admin || 
+                            hasPermission(currentUser, RESOURCES.ACTIVITIES, PERMISSIONS.READ) ||
+                            hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
+      
+      if (!canViewOthers) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Forbidden: You can only view your own activities' 
+        }, { status: 403 });
+      }
+    }
+
+    // Determine if user can view detailed info about others
     const canViewOthers = currentUser.is_super_admin || 
                           hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
-
-    if (requestedUserId !== currentUser.id && !canViewOthers) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Forbidden: You can only view your own activities' 
-      }, { status: 403 });
-    }
 
     let db;
     try {

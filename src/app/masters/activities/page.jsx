@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import Navbar from '@/components/Navbar';
+import AccessGuard from '@/components/AccessGuard';
 import { useEffect, useMemo, useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
@@ -279,6 +280,7 @@ export default function ActivityMasterPage() {
   };
 
   return (
+    <AccessGuard resource="activities" permission="read" showNavbar={false}>
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
       <div className="flex-1 overflow-hidden">
@@ -633,5 +635,6 @@ export default function ActivityMasterPage() {
         </div>
       </div>
     </div>
+    </AccessGuard>
   );
 }
