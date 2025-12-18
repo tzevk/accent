@@ -138,7 +138,6 @@ function EditProjectForm() {
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
   const [activities, setActivities] = useState([]); // Standalone activities list
   const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
-  const [employees, setEmployees] = useState([]);
   const [form, setForm] = useState(INITIAL_FORM);
   const [projectActivities, setProjectActivities] = useState([]);
   const [newScopeActivityName, setNewScopeActivityName] = useState('');
@@ -188,8 +187,8 @@ function EditProjectForm() {
   
   // Project Team Management
   const [projectTeamMembers, setProjectTeamMembers] = useState([]);
-  const [allEmployees, setAllEmployees] = useState([]);
-  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [teamMemberSearch, setTeamMemberSearch] = useState('');
   
   // Software Management
@@ -361,32 +360,8 @@ function EditProjectForm() {
         } catch (err) {
           console.warn('Failed to fetch sub-activities', err);
         }
-
-        // Fetch employees (request a large limit so we get all employees, not paginated)
-        try {
-          const employeesData = await fetchJSON('/api/employees?limit=10000&page=1');
-          // employees API returns an object with shape { employees, departments, pagination }
-          // older/other APIs return { success: true, data: [...] } — support both shapes
-          if (employeesData) {
-            if (Array.isArray(employeesData.employees)) {
-              console.log('Employees loaded:', employeesData.employees);
-              setEmployees(employeesData.employees || []);
-            } else if (employeesData.success && Array.isArray(employeesData.data)) {
-              console.log('Employees loaded (legacy shape):', employeesData.data);
-              setEmployees(employeesData.data || []);
-            } else {
-              // Fallback: if the API returned an array directly
-              if (Array.isArray(employeesData)) {
-                console.log('Employees loaded (raw array):', employeesData);
-                setEmployees(employeesData);
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to fetch employees', err);
-        }
         
-        // Fetch users from User Master (for Assigned To dropdowns)
+        // Fetch users from User Master (for Assigned To dropdowns and team selection)
         try {
           const usersData = await fetchJSON('/api/users?limit=10000');
           if (usersData && usersData.success && Array.isArray(usersData.data)) {
@@ -909,23 +884,23 @@ function EditProjectForm() {
     fetchSoftwareMaster();
   }, []);
 
-  // Fetch all employees for team selection
+  // Fetch all users for team selection
   useEffect(() => {
-    const fetchEmployees = async () => {
-      setEmployeesLoading(true);
+    const fetchUsers = async () => {
+      setUsersLoading(true);
       try {
-        const res = await fetch('/api/employees?limit=1000&status=active');
+        const res = await fetch('/api/users?limit=10000');
         const json = await res.json();
-        if (json?.employees && Array.isArray(json.employees)) {
-          setAllEmployees(json.employees);
+        if (json?.success && Array.isArray(json.data)) {
+          setAllUsers(json.data);
         }
       } catch (error) {
-        console.error('Failed to fetch employees:', error);
+        console.error('Failed to fetch users:', error);
       } finally {
-        setEmployeesLoading(false);
+        setUsersLoading(false);
       }
     };
-    fetchEmployees();
+    fetchUsers();
   }, []);
 
   // Load project team members from project data
@@ -1066,21 +1041,21 @@ function EditProjectForm() {
   };
 
   // Project Team Management Functions
-  const addTeamMember = (employee) => {
+  const addTeamMember = (user) => {
     // Check if already added
-    const exists = projectTeamMembers.some(member => member.id === employee.id);
+    const exists = projectTeamMembers.some(member => member.id === user.id);
     if (exists) {
-      alert('This employee is already in the team');
+      alert('This user is already in the team');
       return;
     }
 
     const teamMember = {
-      id: employee.id,
-      employee_id: employee.employee_id,
-      name: `${employee.first_name} ${employee.last_name}`,
-      email: employee.email,
-      department: employee.department,
-      position: employee.position,
+      id: user.id,
+      employee_id: user.employee_id || user.id,
+      name: user.full_name || user.username,
+      email: user.email,
+      department: user.department || '',
+      position: user.role_name || '',
       role: 'Team Member' // Default role, can be changed
     };
 
@@ -1117,16 +1092,16 @@ function EditProjectForm() {
     }));
   };
 
-  // Get filtered employees for team selection (only show those not already in team)
-  const availableEmployees = allEmployees.filter(emp => 
-    !projectTeamMembers.some(member => member.id === emp.id) &&
+  // Get filtered users for team selection (only show those not already in team)
+  const availableUsers = allUsers.filter(user => 
+    !projectTeamMembers.some(member => member.id === user.id) &&
     (teamMemberSearch === '' || 
-     `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
-     emp.employee_id?.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
-     emp.department?.toLowerCase().includes(teamMemberSearch.toLowerCase()))
+     (user.full_name || user.username || '').toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
+     user.email?.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
+     user.department?.toLowerCase().includes(teamMemberSearch.toLowerCase()))
   );
 
-  // Get project team members for use in other tabs (replaces full employee list)
+  // Get project team members for use in other tabs (replaces full user list)
   // This ensures only assigned team members appear in dropdowns throughout the project
   const getProjectTeamForDropdown = () => {
     return projectTeamMembers.map(member => ({
@@ -2701,7 +2676,7 @@ function EditProjectForm() {
                     <UserIcon className="h-4 w-4 text-[#7F2487]" />
                     <h2 className="text-sm font-bold text-gray-900">Project Team</h2>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Select team members from employee master for this project</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Select team members from user master for this project</p>
                 </div>
 
                 <div className="px-6 py-5 space-y-4">
@@ -2729,40 +2704,40 @@ function EditProjectForm() {
                             type="text"
                             value={teamMemberSearch}
                             onChange={(e) => setTeamMemberSearch(e.target.value)}
-                            placeholder="Search employees by name, employee ID, or department..."
+                            placeholder="Search users by name, email, or department..."
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent text-sm"
                           />
                         </div>
 
-                        {/* Available Employees List */}
-                        {employeesLoading ? (
+                        {/* Available Users List */}
+                        {usersLoading ? (
                           <div className="text-center py-8 text-gray-500">
                             <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-                            <p className="text-sm">Loading employees...</p>
+                            <p className="text-sm">Loading users...</p>
                           </div>
-                        ) : availableEmployees.length > 0 ? (
+                        ) : availableUsers.length > 0 ? (
                           <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
                             <table className="w-full text-xs">
                               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                                 <tr>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Employee ID</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">User ID</th>
                                   <th className="px-3 py-2 text-left font-semibold text-gray-700">Name</th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Department</th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Position</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Email</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Role</th>
                                   <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-100">
-                                {availableEmployees.map((emp) => (
-                                  <tr key={emp.id} className="hover:bg-purple-50 transition-colors">
-                                    <td className="px-3 py-2 text-gray-900 font-mono text-xs">{emp.employee_id || '-'}</td>
-                                    <td className="px-3 py-2 text-gray-900 font-medium">{emp.first_name} {emp.last_name}</td>
-                                    <td className="px-3 py-2 text-gray-600">{emp.department || '-'}</td>
-                                    <td className="px-3 py-2 text-gray-600">{emp.position || '-'}</td>
+                                {availableUsers.map((user) => (
+                                  <tr key={user.id} className="hover:bg-purple-50 transition-colors">
+                                    <td className="px-3 py-2 text-gray-900 font-mono text-xs">{user.id}</td>
+                                    <td className="px-3 py-2 text-gray-900 font-medium">{user.full_name || user.username}</td>
+                                    <td className="px-3 py-2 text-gray-600">{user.email || '-'}</td>
+                                    <td className="px-3 py-2 text-gray-600">{user.role_name || '-'}</td>
                                     <td className="px-3 py-2 text-center">
                                       <button
                                         type="button"
-                                        onClick={() => addTeamMember(emp)}
+                                        onClick={() => addTeamMember(user)}
                                         className="px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs font-medium hover:bg-[#6a1e73] transition-colors"
                                       >
                                         Add
@@ -2777,7 +2752,7 @@ function EditProjectForm() {
                           <div className="text-center py-6 text-gray-500">
                             <UserIcon className="h-10 w-10 mx-auto text-gray-300 mb-2" />
                             <p className="text-sm">
-                              {teamMemberSearch ? 'No employees found matching your search' : 'All employees have been added to the team'}
+                              {teamMemberSearch ? 'No users found matching your search' : 'All users have been added to the team'}
                             </p>
                           </div>
                         )}
@@ -2864,7 +2839,7 @@ function EditProjectForm() {
                           <div className="text-center py-12 text-gray-500">
                             <UserIcon className="h-12 w-12 mx-auto text-gray-300 mb-3" />
                             <p className="text-sm font-medium">No team members added yet</p>
-                            <p className="text-xs mt-1">Add team members from the employee list above</p>
+                            <p className="text-xs mt-1">Add team members from the user list above</p>
                           </div>
                         )}
                       </div>

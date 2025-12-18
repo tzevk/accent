@@ -6,7 +6,7 @@ import { XMarkIcon, PlusIcon, TrashIcon, UserIcon, ClockIcon } from '@heroicons/
 import { fetchJSON } from '@/utils/http';
 
 export default function ActivityAssignmentModal({ isOpen, onClose, projectId, onSuccess }) {
-  const [employees, setEmployees] = useState([]);
+  const [users, setUsers] = useState([]);
   const [projectActivities, setProjectActivities] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -28,7 +28,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
     { value: 'URGENT', label: 'Urgent', color: 'bg-red-100 text-red-800' }
   ];
 
-  // Load employees and existing assignments when modal opens
+  // Load users and existing assignments when modal opens
   useEffect(() => {
     if (isOpen && projectId) {
       loadData();
@@ -39,10 +39,10 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load employees
-      const empRes = await fetchJSON('/api/employees?limit=10000&page=1');
-      if (empRes && Array.isArray(empRes.employees)) {
-        setEmployees(empRes.employees);
+      // Load users from User Master
+      const usersRes = await fetchJSON('/api/users?limit=10000');
+      if (usersRes && usersRes.success && Array.isArray(usersRes.data)) {
+        setUsers(usersRes.data);
       }
 
       // Load project activities (scope activities)
@@ -71,7 +71,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
 
   const handleAddAssignment = () => {
     if (!newAssignment.user_id || !newAssignment.activity_name) {
-      alert('Please select an employee and activity');
+      alert('Please select a user and activity');
       return;
     }
 
@@ -140,9 +140,9 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
     }
   };
 
-  const getEmployeeName = (userId) => {
-    const emp = employees.find(e => e.id === userId);
-    return emp ? `${emp.first_name} ${emp.last_name}` : 'Unknown';
+  const getUserName = (userId) => {
+    const user = users.find(u => u.id === userId);
+    return user ? (user.full_name || user.username) : 'Unknown';
   };
 
   const getPriorityBadge = (priority) => {
@@ -216,9 +216,9 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           >
                             <option value="">Select team member</option>
-                            {employees.map((emp) => (
-                              <option key={emp.id} value={emp.id}>
-                                {emp.first_name} {emp.last_name}
+                            {users.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.full_name || user.username}
                               </option>
                             ))}
                           </select>
@@ -346,7 +346,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                               <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
                                 <h4 className="text-sm font-semibold text-[#7F2487] flex items-center gap-2">
                                   <UserIcon className="h-4 w-4" />
-                                  {getEmployeeName(parseInt(userId))}
+                                  {getUserName(parseInt(userId))}
                                   <span className="text-xs font-normal text-gray-600">
                                     ({userAssignments.length} {userAssignments.length === 1 ? 'activity' : 'activities'})
                                   </span>

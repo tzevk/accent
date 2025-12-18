@@ -1,81 +1,88 @@
 'use client';
 
+import React from 'react';
 import Navbar from '@/components/Navbar';
 import TodoList from '@/components/TodoList';
 import { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { 
   ClockIcon, 
   ChartBarIcon, 
-  CheckCircleIcon, 
-  ExclamationCircleIcon 
+  CheckCircleIcon,
+  CalendarDaysIcon,
+  BriefcaseIcon,
+  UserIcon,
+  ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
 
 export default function UserDashboard() {
   const { user } = useSessionRBAC();
-  const [activities, setActivities] = useState([]);
-  const [currentProject, setCurrentProject] = useState(null);
-  const [projectData, setProjectData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [timeLog] = useState({
-    monthDay: 31,
-    present: 26,
-    absent: 4,
-    weekOff: 6,
-    late: 2,
-    leave: 4,
-    balLeave: 12
+  
+  // Attendance & Time data
+  const [attendance, setAttendance] = useState({
+    inTime: null,
+    outTime: null,
+    currentMonth: '',
+    daysInMonth: 0,
+    daysPresent: 0,
+    weeklyOff: 0,
+    holidays: 0,
+    leaves: { total: 18, used: 0, balance: 18 }
   });
+  
+  // Projects data
+  const [projectsData, setProjectsData] = useState({
+    projects: [],
+    stats: {
+      totalProjects: 0,
+      totalActivities: 0,
+      totalAssignedHours: 0,
+      totalActualHours: 0,
+      completedActivities: 0,
+      inProgressActivities: 0
+    }
+  });
+  
+  // Analysis data
+  const [analysisData, setAnalysisData] = useState({
+    productivityTrend: [],
+    statusDistribution: [],
+    priorityDistribution: []
+  });
+  
+  // Expanded project for viewing activities
+  const [expandedProject, setExpandedProject] = useState(null);
 
   useEffect(() => {
     if (!user?.id) return;
     
     const loadData = async () => {
       try {
-        // Load user activities
-        const activitiesRes = await fetchJSON(`/api/users/${user.id}/activities`);
-        if (activitiesRes.success) {
-          const userActivities = activitiesRes.data || [];
-          setActivities(userActivities);
-          
-          // Get current project from first activity
-          if (userActivities.length > 0 && userActivities[0].project_id) {
-            try {
-              const projectRes = await fetchJSON(`/api/projects/${userActivities[0].project_id}`);
-              if (projectRes.success) {
-                setCurrentProject(projectRes.data);
-              }
-            } catch (err) {
-              console.error('Failed to load project:', err);
-            }
+        // Load attendance data
+        try {
+          const attendanceRes = await fetchJSON(`/api/users/${user.id}/attendance`);
+          if (attendanceRes.success) {
+            setAttendance(attendanceRes.data);
           }
+        } catch (err) {
+          console.error('Failed to load attendance:', err);
         }
 
-        // Generate manhours data based on activities
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const currentMonth = new Date().getMonth();
-        const recentMonths = [];
-        for (let i = 4; i >= 0; i--) {
-          const monthIndex = (currentMonth - i + 12) % 12;
-          recentMonths.push(months[monthIndex]);
+        // Load projects with activities
+        try {
+          const projectsRes = await fetchJSON(`/api/users/${user.id}/projects`);
+          if (projectsRes.success) {
+            setProjectsData(projectsRes.data);
+            
+            // Generate analysis data from projects
+            generateAnalysisData(projectsRes.data);
+          }
+        } catch (err) {
+          console.error('Failed to load projects:', err);
         }
-
-        const manhoursData = recentMonths.map(month => ({
-          month,
-          planned: Math.floor(Math.random() * 50) + 100,
-          actual: Math.floor(Math.random() * 50) + 90
-        }));
-
-        setProjectData({
-          manhours: manhoursData,
-          status: [
-            { name: 'On Track', value: 60, color: '#4ade80' },
-            { name: 'Delayed', value: 20, color: '#fbbf24' },
-            { name: 'Critical', value: 20, color: '#ef4444' }
-          ]
-        });
 
         setLoading(false);
       } catch (error) {
@@ -87,6 +94,70 @@ export default function UserDashboard() {
     loadData();
   }, [user?.id]);
 
+  const generateAnalysisData = (data) => {
+    const { projects, stats } = data;
+    
+    // Status distribution
+    const statusCounts = {
+      'Completed': 0,
+      'In Progress': 0,
+      'Not Started': 0,
+      'On Hold': 0
+    };
+    
+    projects.forEach(project => {
+      project.activities.forEach(activity => {
+        const status = activity.status || 'Not Started';
+        if (statusCounts[status] !== undefined) statusCounts[status]++;
+      });
+    });
+
+    const statusDistribution = [
+      { name: 'Completed', value: statusCounts['Completed'], color: '#22c55e' },
+      { name: 'In Progress', value: statusCounts['In Progress'], color: '#3b82f6' },
+      { name: 'Not Started', value: statusCounts['Not Started'], color: '#9ca3af' },
+      { name: 'On Hold', value: statusCounts['On Hold'], color: '#f59e0b' }
+    ].filter(s => s.value > 0);
+
+    // Generate productivity trend (last 5 months)
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentMonth = new Date().getMonth();
+    const productivityTrend = [];
+    
+    for (let i = 4; i >= 0; i--) {
+      const monthIndex = (currentMonth - i + 12) % 12;
+      const baseHours = stats.totalAssignedHours / 5 || 40;
+      productivityTrend.push({
+        month: months[monthIndex],
+        assigned: Math.round(baseHours + Math.random() * 20 - 10),
+        actual: Math.round(baseHours * 0.9 + Math.random() * 15 - 5)
+      });
+    }
+
+    setAnalysisData({
+      productivityTrend,
+      statusDistribution,
+      priorityDistribution: []
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return '--:--';
+    if (typeof time === 'string' && time.includes(':')) {
+      const [hours, minutes] = time.split(':');
+      const h = parseInt(hours);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      return `${h12}:${minutes} ${ampm}`;
+    }
+    return time;
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
   if (loading) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
@@ -96,323 +167,375 @@ export default function UserDashboard() {
             <TodoList />
           </div>
           <div className="flex-1 flex items-center justify-center ml-72">
-            <div className="text-gray-500">Loading...</div>
+            <div className="text-gray-500">Loading dashboard...</div>
           </div>
         </div>
       </div>
     );
   }
 
-  const totalHoursAllocated = activities.reduce((sum, act) => sum + (parseFloat(act.estimated_hours) || 0), 0);
-  const totalHoursUsed = activities.reduce((sum, act) => sum + (parseFloat(act.actual_hours) || 0), 0);
-  const totalHoursRemaining = totalHoursAllocated - totalHoursUsed;
-
-  // Calculate stats like admin dashboard
-  const completedActivities = activities.filter(a => a.status === 'Completed').length;
-  const inProgressActivities = activities.filter(a => a.status === 'In Progress').length;
-  const overdueActivities = activities.filter(a => a.due_date && new Date(a.due_date) < new Date() && a.status !== 'Completed').length;
+  const { stats } = projectsData;
+  const efficiencyRate = stats.totalAssignedHours > 0 
+    ? Math.round((stats.totalActualHours / stats.totalAssignedHours) * 100) 
+    : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
       <div className="flex pt-16">
-        {/* Todo List Panel - sticks to sidebar */}
+        {/* Todo List Panel */}
         <div className="todo-panel">
           <TodoList />
         </div>
         
         {/* Main Content */}
         <div className="flex-1 ml-72">
-          <div className="px-4 sm:px-6 lg:px-8 py-8">
-            {/* Welcome Section */}
+          <div className="px-4 sm:px-6 lg:px-8 py-6">
+            {/* Header */}
             <div className="mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.full_name || 'User'}!</h1>
-              <p className="text-gray-600 mt-1">Here&apos;s your activity dashboard</p>
+              <h1 className="text-2xl font-bold text-gray-900">Welcome, {user?.full_name || 'User'}!</h1>
+              <p className="text-gray-600 text-sm">{attendance.currentMonth}</p>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Total Activities */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Activities</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{activities.length}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <ChartBarIcon className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* In Progress */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">In Progress</p>
-                <p className="text-3xl font-bold text-yellow-600 mt-2">{inProgressActivities}</p>
-              </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <ClockIcon className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Completed */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Completed</p>
-                <p className="text-3xl font-bold text-green-600 mt-2">{completedActivities}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <CheckCircleIcon className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Overdue */}
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Overdue</p>
-                <p className="text-3xl font-bold text-red-600 mt-2">{overdueActivities}</p>
-              </div>
-              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <ExclamationCircleIcon className="w-6 h-6 text-red-600" />
-              </div>
-            </div>
-          </div>
-            </div>
-
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-              {/* Left Column - Charts and Time Log */}
-              <div className="space-y-6">
-            
-                {/* Current Project Card */}
-                {currentProject && (
-              <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Project</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-600">Project Name</p>
-                    <p className="text-base font-medium text-gray-900">{currentProject.name}</p>
+            {/* Row 1: Time & Attendance Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+              {/* In Time / Out Time Card */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <ClockIcon className="w-5 h-5 text-blue-600" />
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Project Code</p>
-                    <p className="text-base font-medium text-gray-900">{currentProject.project_code || currentProject.project_id}</p>
+                  <h3 className="font-semibold text-gray-900">Today&apos;s Time</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-600 mb-1">In Time</p>
+                    <p className="text-lg font-bold text-green-600">{formatTime(attendance.inTime)}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Status</p>
-                    <p className="text-base font-medium text-gray-900">{currentProject.status || 'Active'}</p>
+                  <div className="bg-orange-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-600 mb-1">Out Time</p>
+                    <p className="text-lg font-bold text-orange-600">{formatTime(attendance.outTime)}</p>
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Time Log Card */}
-            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Time Log</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-600">{timeLog.present}</p>
-                  <p className="text-xs text-gray-600 mt-1">Present Days</p>
-                </div>
-                <div className="text-center p-3 bg-gray-50 rounded-lg">
-                  <p className="text-2xl font-bold text-gray-600">{timeLog.monthDay}</p>
-                  <p className="text-xs text-gray-600 mt-1">Month Days</p>
-                </div>
-                <div className="text-center p-3 bg-red-50 rounded-lg">
-                  <p className="text-2xl font-bold text-red-600">{timeLog.absent}</p>
-                  <p className="text-xs text-gray-600 mt-1">Absent</p>
-                </div>
-                <div className="text-center p-3 bg-purple-50 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-600">{timeLog.weekOff}</p>
-                  <p className="text-xs text-gray-600 mt-1">Week Off</p>
-                </div>
-                <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                  <p className="text-2xl font-bold text-yellow-600">{timeLog.late}</p>
-                  <p className="text-xs text-gray-600 mt-1">Late</p>
-                </div>
-                <div className="text-center p-3 bg-orange-50 rounded-lg">
-                  <p className="text-2xl font-bold text-orange-600">{timeLog.leave}</p>
-                  <p className="text-xs text-gray-600 mt-1">Leave Taken</p>
-                </div>
-                <div className="col-span-2 text-center p-3 bg-green-50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600">{timeLog.balLeave}</p>
-                  <p className="text-xs text-gray-600 mt-1">Balance Leave</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Manhours Chart */}
-            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Planned vs Actual Manhours</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={projectData?.manhours || []}>
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="planned" fill="#fb923c" name="Planned" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="actual" fill="#60a5fa" name="Actual" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Project Status Chart */}
-            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Project Status Summary</h3>
-              
-              {/* Status Breakdown Stats */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {(projectData?.status || []).map((status, idx) => (
-                  <div key={idx} className="text-center p-2 rounded-lg border border-gray-200" style={{ backgroundColor: `${status.color}15` }}>
-                    <p className="text-lg font-bold" style={{ color: status.color }}>{status.value}%</p>
-                    <p className="text-xs text-gray-600 mt-0.5">{status.name}</p>
+              {/* Monthly Attendance Card */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <CalendarDaysIcon className="w-5 h-5 text-purple-600" />
                   </div>
-                ))}
+                  <h3 className="font-semibold text-gray-900">Attendance</h3>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center p-2 bg-blue-50 rounded-lg">
+                    <p className="text-lg font-bold text-blue-600">{attendance.daysPresent}</p>
+                    <p className="text-[10px] text-gray-600">Present</p>
+                  </div>
+                  <div className="text-center p-2 bg-gray-50 rounded-lg">
+                    <p className="text-lg font-bold text-gray-600">{attendance.weeklyOff}</p>
+                    <p className="text-[10px] text-gray-600">Week Off</p>
+                  </div>
+                  <div className="text-center p-2 bg-green-50 rounded-lg">
+                    <p className="text-lg font-bold text-green-600">{attendance.holidays}</p>
+                    <p className="text-[10px] text-gray-600">Holiday</p>
+                  </div>
+                </div>
               </div>
 
-              {/* Enhanced Donut Chart */}
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie
-                    data={projectData?.status || []}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={45}
-                    outerRadius={75}
-                    dataKey="value"
-                    paddingAngle={2}
-                    label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
-                      const RADIAN = Math.PI / 180;
-                      const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                      const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                      const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                      return (
-                        <text 
-                          x={x} 
-                          y={y} 
-                          fill="white" 
-                          textAnchor={x > cx ? 'start' : 'end'} 
-                          dominantBaseline="central"
-                          className="font-bold text-sm"
-                        >
-                          {`${value}%`}
-                        </text>
-                      );
-                    }}
-                  >
-                    {(projectData?.status || []).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} stroke="white" strokeWidth={2} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value) => `${value}%`}
-                    contentStyle={{ 
-                      backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      padding: '8px 12px'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {/* Leaves Card */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                    <UserIcon className="w-5 h-5 text-yellow-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Leaves</h3>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center p-2 bg-blue-50 rounded-lg">
+                    <p className="text-lg font-bold text-blue-600">{attendance.leaves.total}</p>
+                    <p className="text-[10px] text-gray-600">Total</p>
+                  </div>
+                  <div className="text-center p-2 bg-red-50 rounded-lg">
+                    <p className="text-lg font-bold text-red-600">{attendance.leaves.used}</p>
+                    <p className="text-[10px] text-gray-600">Used</p>
+                  </div>
+                  <div className="text-center p-2 bg-green-50 rounded-lg">
+                    <p className="text-lg font-bold text-green-600">{attendance.leaves.balance}</p>
+                    <p className="text-[10px] text-gray-600">Balance</p>
+                  </div>
+                </div>
+              </div>
 
-              {/* Summary Text */}
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <p className="text-xs text-gray-600 text-center">
-                  Overall project health and status distribution
-                </p>
+              {/* Work Summary Card */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <BriefcaseIcon className="w-5 h-5 text-green-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Work Summary</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="text-center p-2 bg-purple-50 rounded-lg">
+                    <p className="text-lg font-bold text-purple-600">{stats.totalProjects}</p>
+                    <p className="text-[10px] text-gray-600">Projects</p>
+                  </div>
+                  <div className="text-center p-2 bg-blue-50 rounded-lg">
+                    <p className="text-lg font-bold text-blue-600">{stats.totalActivities}</p>
+                    <p className="text-[10px] text-gray-600">Activities</p>
+                  </div>
+                  <div className="text-center p-2 bg-green-50 rounded-lg">
+                    <p className="text-lg font-bold text-green-600">{stats.completedActivities}</p>
+                    <p className="text-[10px] text-gray-600">Completed</p>
+                  </div>
+                  <div className="text-center p-2 bg-yellow-50 rounded-lg">
+                    <p className="text-lg font-bold text-yellow-600">{stats.inProgressActivities}</p>
+                    <p className="text-[10px] text-gray-600">In Progress</p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Right Column - Activities Table (2 columns wide) */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">My Activities</h3>
+            {/* Row 2: Assigned Projects Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">Assigned Projects</h3>
+                <span className="text-sm text-gray-500">{stats.totalProjects} project(s)</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Activity</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Project</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Hours Allocated</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Hours Used</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Due Date</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Priority</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Project Name</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Activities</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Start Date</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">End Date</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Assigned Hrs</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actual Hrs</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Total Hrs</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {activities.length === 0 ? (
+                  <tbody className="divide-y divide-gray-100">
+                    {projectsData.projects.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                          <div className="flex flex-col items-center">
-                            <ChartBarIcon className="w-12 h-12 text-gray-400 mb-2" />
-                            <p>No activities assigned yet</p>
-                          </div>
+                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                          <BriefcaseIcon className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                          <p>No projects assigned yet</p>
                         </td>
                       </tr>
                     ) : (
-                      activities.map((activity, index) => {
-                        const isOverdue = activity.due_date && new Date(activity.due_date) < new Date() && activity.status !== 'Completed';
-                        return (
-                          <tr key={activity.id} className={isOverdue ? 'bg-red-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="px-4 py-3 text-sm text-gray-900">{activity.activity_name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{activity.project_name || 'N/A'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900 text-center">{activity.estimated_hours || 0}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900 text-center">{activity.actual_hours || 0}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600 text-center">
-                              {activity.due_date ? new Date(activity.due_date).toLocaleDateString('en-GB') : '-'}
+                      projectsData.projects.map((project) => (
+                        <React.Fragment key={project.project_id}>
+                          <tr 
+                            className="hover:bg-gray-50 cursor-pointer"
+                            onClick={() => setExpandedProject(expandedProject === project.project_id ? null : project.project_id)}
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className={`transform transition-transform ${expandedProject === project.project_id ? 'rotate-90' : ''}`}>▶</span>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">{project.project_name}</p>
+                                  <p className="text-xs text-gray-500">{project.project_code}</p>
+                                </div>
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                activity.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
-                                activity.priority === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                                activity.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                                {activity.priority || 'LOW'}
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                {project.activityCount}
                               </span>
                             </td>
+                            <td className="px-4 py-3 text-center text-sm text-gray-600">{formatDate(project.project_start_date)}</td>
+                            <td className="px-4 py-3 text-center text-sm text-gray-600">{formatDate(project.project_end_date)}</td>
+                            <td className="px-4 py-3 text-center text-sm font-medium text-gray-900">{project.totalAssignedHours}</td>
+                            <td className="px-4 py-3 text-center text-sm font-medium text-blue-600">{project.totalActualHours}</td>
+                            <td className="px-4 py-3 text-center text-sm font-medium text-green-600">{project.totalAssignedHours + project.totalActualHours}</td>
                             <td className="px-4 py-3 text-center">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                activity.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                                activity.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
-                                activity.status === 'On Hold' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-gray-100 text-gray-800'
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                project.project_status === 'Completed' ? 'bg-green-100 text-green-700' :
+                                project.project_status === 'in-progress' || project.project_status === 'Ongoing' ? 'bg-blue-100 text-blue-700' :
+                                'bg-gray-100 text-gray-700'
                               }`}>
-                                {activity.status || 'Not Started'}
+                                {project.project_status || 'Active'}
                               </span>
                             </td>
                           </tr>
-                        );
-                      })
+                          
+                          {/* Expanded Activities Row */}
+                          {expandedProject === project.project_id && (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-0 bg-gray-50">
+                                <div className="py-3 pl-8">
+                                  <p className="text-xs font-semibold text-gray-600 mb-2 uppercase">Assigned Activities</p>
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-xs text-gray-500">
+                                        <th className="text-left py-1 pr-3">Sr.</th>
+                                        <th className="text-left py-1 pr-3">Activity Name</th>
+                                        <th className="text-center py-1 px-2">Start</th>
+                                        <th className="text-center py-1 px-2">End</th>
+                                        <th className="text-center py-1 px-2">Completed</th>
+                                        <th className="text-center py-1 px-2">Assigned Hrs</th>
+                                        <th className="text-center py-1 px-2">Actual Hrs</th>
+                                        <th className="text-center py-1 px-2">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {project.activities.map((activity) => (
+                                        <tr key={activity.id} className="border-t border-gray-200">
+                                          <td className="py-2 pr-3 text-gray-600">{activity.srNo}</td>
+                                          <td className="py-2 pr-3 font-medium text-gray-800">{activity.activity_name}</td>
+                                          <td className="py-2 px-2 text-center text-gray-600">{formatDate(activity.start_date)}</td>
+                                          <td className="py-2 px-2 text-center text-gray-600">{formatDate(activity.end_date)}</td>
+                                          <td className="py-2 px-2 text-center text-gray-600">{formatDate(activity.actual_completion_date)}</td>
+                                          <td className="py-2 px-2 text-center text-gray-900">{activity.assigned_manhours || 0}</td>
+                                          <td className="py-2 px-2 text-center text-blue-600">{activity.actual_manhours || 0}</td>
+                                          <td className="py-2 px-2 text-center">
+                                            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                                              activity.status === 'Completed' ? 'bg-green-100 text-green-700' :
+                                              activity.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                                              activity.status === 'On Hold' ? 'bg-yellow-100 text-yellow-700' :
+                                              'bg-gray-100 text-gray-600'
+                                            }`}>
+                                              {activity.status || 'Not Started'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))
                     )}
                   </tbody>
-                  {activities.length > 0 && (
+                  {projectsData.projects.length > 0 && (
                     <tfoot className="bg-gray-100 border-t-2 border-gray-300">
                       <tr>
-                        <td colSpan={2} className="px-4 py-3 text-sm font-bold text-gray-900 text-right">Total Hours:</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center">{totalHoursAllocated}</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center">{totalHoursUsed}</td>
-                        <td colSpan={3} className="px-4 py-3 text-sm text-gray-600 text-center">
-                          Remaining: {totalHoursRemaining} hrs
-                        </td>
+                        <td colSpan={4} className="px-4 py-3 text-sm font-bold text-gray-700 text-right">Totals:</td>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center">{stats.totalAssignedHours}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-blue-600 text-center">{stats.totalActualHours}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-green-600 text-center">{stats.totalAssignedHours + stats.totalActualHours}</td>
+                        <td className="px-4 py-3"></td>
                       </tr>
                     </tfoot>
                   )}
                 </table>
               </div>
             </div>
-          </div>
+
+            {/* Row 3: Analysis Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Productivity Trend Chart */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <ArrowTrendingUpIcon className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Manhours Trend</h3>
+                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={analysisData.productivityTrend}>
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Bar dataKey="assigned" fill="#f97316" name="Assigned" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="actual" fill="#3b82f6" name="Actual" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Status Distribution Chart */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <ChartBarIcon className="w-4 h-4 text-green-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Activity Status</h3>
+                </div>
+                {analysisData.statusDistribution.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie
+                        data={analysisData.statusDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={65}
+                        dataKey="value"
+                        paddingAngle={2}
+                      >
+                        {analysisData.statusDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${value} activities`} />
+                      <Legend 
+                        wrapperStyle={{ fontSize: '11px' }}
+                        formatter={(value) => <span className="text-gray-600">{value}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[180px] flex items-center justify-center text-gray-400 text-sm">
+                    No activity data
+                  </div>
+                )}
+              </div>
+
+              {/* Efficiency Card */}
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <CheckCircleIcon className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900">Performance</h3>
+                </div>
+                
+                {/* Efficiency Meter */}
+                <div className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-gray-600">Efficiency Rate</span>
+                    <span className={`text-lg font-bold ${
+                      efficiencyRate <= 100 ? 'text-green-600' : 'text-orange-600'
+                    }`}>{efficiencyRate}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className={`h-3 rounded-full transition-all ${
+                        efficiencyRate <= 100 ? 'bg-green-500' : 'bg-orange-500'
+                      }`}
+                      style={{ width: `${Math.min(efficiencyRate, 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-3 bg-orange-50 rounded-lg">
+                    <p className="text-xl font-bold text-orange-600">{stats.totalAssignedHours}</p>
+                    <p className="text-[10px] text-gray-600">Assigned Hours</p>
+                  </div>
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xl font-bold text-blue-600">{stats.totalActualHours}</p>
+                    <p className="text-[10px] text-gray-600">Actual Hours</p>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <p className="text-xl font-bold text-green-600">{stats.completedActivities}</p>
+                    <p className="text-[10px] text-gray-600">Completed</p>
+                  </div>
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <p className="text-xl font-bold text-red-600">
+                      {stats.totalActivities - stats.completedActivities - stats.inProgressActivities}
+                    </p>
+                    <p className="text-[10px] text-gray-600">Pending</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

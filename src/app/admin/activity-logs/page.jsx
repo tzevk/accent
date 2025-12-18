@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { useRouter } from 'next/navigation';
+import Navbar from '@/components/Navbar';
 import { 
   ClockIcon, 
   UserIcon, 
@@ -265,8 +266,10 @@ export default function ActivityLogsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Navbar />
+      
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b pt-16">
         <div className="px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>

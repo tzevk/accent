@@ -28,6 +28,29 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Enable spell check on all text inputs and textareas globally */
+input[type="text"],
+input[type="email"],
+input[type="search"],
+input:not([type]),
+textarea,
+[contenteditable="true"] {
+  spellcheck: true;
+  -webkit-spellcheck: true;
+}
+
+/* Style misspelled words (browser default is red wavy underline) */
+::spelling-error {
+  text-decoration: wavy underline red;
+  text-decoration-skip-ink: none;
+}
+
+/* Style grammar errors */
+::grammar-error {
+  text-decoration: wavy underline green;
+  text-decoration-skip-ink: none;
+}
+
 html, body, #__next, :root {
   background-color: #fff;
 }

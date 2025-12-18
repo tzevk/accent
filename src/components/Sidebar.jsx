@@ -7,16 +7,15 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import {
   ChevronDownIcon,
   ClockIcon,
-  Cog6ToothIcon,
   MapPinIcon,
   UserGroupIcon,
   DocumentTextIcon,
   BuildingOfficeIcon,
-  ChartBarIcon,
   ClipboardDocumentListIcon,
   BriefcaseIcon,
   ShieldCheckIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -26,6 +25,7 @@ export default function Sidebar() {
   const isSignin = pathname.startsWith('/signin');
   const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const isAdmin = user?.is_super_admin || user?.role?.code === 'admin';
 
   // Permission checks for each module
@@ -53,6 +53,28 @@ export default function Sidebar() {
     if (!mounted || isSignin) return;
     try { localStorage.setItem('sidebarPinned', String(pinned)); } catch {}
   }, [pinned, mounted, isSignin]);
+
+  // Fetch unread message count
+  useEffect(() => {
+    if (!mounted || isSignin || !user) return;
+    
+    const fetchUnreadCount = async () => {
+      try {
+        const res = await fetch('/api/messages/unread-count');
+        const data = await res.json();
+        if (data.success) {
+          setUnreadMessages(data.data.unread_count);
+        }
+      } catch (error) {
+        console.error('Failed to fetch unread messages:', error);
+      }
+    };
+
+    fetchUnreadCount();
+    // Poll every 60 seconds
+    const interval = setInterval(fetchUnreadCount, 60000);
+    return () => clearInterval(interval);
+  }, [mounted, isSignin, user]);
 
   const NavRow = ({ icon: Icon, label, href = '#', active = false, badge, caret }) => (
     <Link
@@ -100,6 +122,14 @@ export default function Sidebar() {
             <NavRow icon={ClockIcon} label="Dashboard" href="/dashboard" active={pathname === '/dashboard'} />
             {/* Work Logs - always visible (users log their own work) */}
             <NavRow icon={BriefcaseIcon} label="Work Logs" href="/work-logs" active={pathname.startsWith('/work-logs')} />
+            {/* Messages - always visible with unread badge */}
+            <NavRow 
+              icon={ChatBubbleLeftRightIcon} 
+              label="Messages" 
+              href="/messages" 
+              active={pathname.startsWith('/messages')} 
+              badge={unreadMessages > 0 ? unreadMessages : null}
+            />
           </div>
         </div>
 
@@ -140,20 +170,12 @@ export default function Sidebar() {
               <NavRow icon={UserGroupIcon} label="Live Monitoring" href="/admin/live-monitoring" active={pathname.startsWith('/admin/live-monitoring')} />
               <NavRow icon={ClipboardDocumentListIcon} label="Activity Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
               <NavRow icon={ShieldCheckIcon} label="Audit Logs" href="/admin/audit-logs" active={pathname.startsWith('/admin/audit-logs')} />
-              <NavRow icon={ChartBarIcon} label="Productivity Reports" href="/admin/productivity" active={pathname.startsWith('/admin/productivity')} />
             </div>
           </div>
         )}
 
         <div className="mt-auto px-3 pt-4 pb-4">
-          {/* SETTINGS header */}
-          <div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
-            <span>SETTINGS</span>
-          </div>
-          <div className="mt-1">
-            <NavRow icon={Cog6ToothIcon} label="My Profile" href="/profile" active={pathname.startsWith('/profile')} />
-          </div>
-          {/* Pin/Unpin control (no company logo) */}
+          {/* Pin/Unpin control */}
           <div className="mt-2">
             <button
               type="button"

@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import AuthGate from "@/components/AuthGate";
 import ActivityTracker from "@/components/ActivityTracker";
 import { SessionProvider } from "@/context/SessionContext";
+import { SpellCheckProvider } from "@/hooks/useSpellCheck";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,12 +29,14 @@ export default function RootLayout({ children }) {
         suppressHydrationWarning
       >
         <SessionProvider>
-          <Sidebar />
-          <AuthGate />
-          <ActivityTracker />
-          <div className="content-with-sidebar">
-            {children}
-          </div>
+          <SpellCheckProvider>
+            <Sidebar />
+            <AuthGate />
+            <ActivityTracker />
+            <div className="content-with-sidebar">
+              {children}
+            </div>
+          </SpellCheckProvider>
         </SessionProvider>
       </body>
     </html>

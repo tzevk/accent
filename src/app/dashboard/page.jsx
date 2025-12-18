@@ -26,7 +26,11 @@ const UserDashboard = dynamic(() => import('./user-dashboard'), { ssr: false });
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
-  const { user } = useSessionRBAC();
+  const { user, loading: userLoading } = useSessionRBAC();
+  
+  // Compute isMainAdmin early so useEffects can skip loading for non-admin users
+  const isMainAdmin = user?.email === 'admin@crmaccent.com' || user?.username === 'admin@crmaccent.com';
+  
   const [stats, setStats] = useState({
     leads: { total_leads: 0, under_discussion: 0, proposal_sent: 0, closed_won: 0 },
     proposals: { total: 0, pending: 0, approved: 0, draft: 0 },
@@ -61,6 +65,9 @@ export default function Dashboard() {
   
   
   useEffect(() => {
+    // Skip loading admin dashboard data for non-admin users
+    if (!isMainAdmin) return;
+    
     // Load project bar series AND sales (proposals) donut data independently.
     let abort = false;
 
@@ -116,7 +123,7 @@ export default function Dashboard() {
 
     load();
     return () => { abort = true; };
-  }, [analyticsPeriod, salesMetric]);
+  }, [analyticsPeriod, salesMetric, isMainAdmin]);
 
   // Persist and restore user's preferred sales metric
   useEffect(() => {
@@ -152,13 +159,17 @@ export default function Dashboard() {
     return `${withSymbol ? '₹' : ''}${sign}${fixed}${suffix}`;
   };
 
-// 1. Fetch Stats - safe, no dependencies
+// 1. Fetch Stats - safe, no dependencies (skip for non-admin users)
 useEffect(() => {
+  if (!isMainAdmin) return;
   fetchStats();
-}, []);
+}, [isMainAdmin]);
 
 // 2. Define fetchLeadsPage BEFORE using it in another useEffect
 const fetchLeadsPage = useCallback(async (page) => {
+  // Skip for non-admin users
+  if (!isMainAdmin) return;
+  
   try {
     setLeadsLoading(true);
     setLeadsError(null);
@@ -213,16 +224,17 @@ const fetchLeadsPage = useCallback(async (page) => {
   } finally {
     setLeadsLoading(false);
   }
-}, [rowsPerPage, sortBy, sortOrder]); 
-// only depends on sort order + rowsPerPage
+}, [rowsPerPage, sortBy, sortOrder, isMainAdmin]); 
+// only depends on sort order + rowsPerPage + isMainAdmin
 // IMPORTANT: does NOT depend on leadsPage or it will break pagination
 // IMPORTANT: stable reference => safe for useEffect
   
 
 // 3. This useEffect now safely runs AFTER the callback is initialized
 useEffect(() => {
+  if (!isMainAdmin) return;
   fetchLeadsPage(leadsPage);
-}, [leadsPage, sortBy, sortOrder, fetchLeadsPage]);
+}, [leadsPage, sortBy, sortOrder, fetchLeadsPage, isMainAdmin]);
 
   // Persist analytics period across visits
   useEffect(() => {
@@ -515,8 +527,18 @@ useEffect(() => {
     return `${dd}/${mm}/${yyyy}`;
   };
 
-  // If user role is 'user' (not admin), show simplified user dashboard
-  if (user && !user.is_super_admin && user.role?.code !== 'admin') {
+  // Wait for user to load before deciding which dashboard to show
+  if (userLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show user dashboard IMMEDIATELY for all non-admin users - no flash of admin dashboard
+  // isMainAdmin is computed at the top of the component
+  if (!isMainAdmin) {
     return <UserDashboard />;
   }
 
