@@ -604,7 +604,7 @@ export default function MessagesPage() {
                         type="file"
                         onChange={handleFileUpload}
                         className="hidden"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt,.csv"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt,.csv,.nwd,.dwg,.rar,.zip"
                       />
 
                       {/* Message Input */}

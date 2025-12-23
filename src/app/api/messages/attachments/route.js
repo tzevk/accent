@@ -16,7 +16,20 @@ const ALLOWED_TYPES = {
   'image/png': '.png',
   'image/gif': '.gif',
   'text/plain': '.txt',
-  'text/csv': '.csv'
+  'text/csv': '.csv',
+  // CAD and Navisworks files
+  'application/acad': '.dwg',
+  'application/x-acad': '.dwg',
+  'application/autocad_dwg': '.dwg',
+  'image/vnd.dwg': '.dwg',
+  'application/dwg': '.dwg',
+  'application/x-dwg': '.dwg',
+  'application/octet-stream': '.nwd', // Generic binary, will check extension
+  // Archive files
+  'application/zip': '.zip',
+  'application/x-zip-compressed': '.zip',
+  'application/x-rar-compressed': '.rar',
+  'application/vnd.rar': '.rar'
 };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -39,11 +52,15 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'No file uploaded' }, { status: 400 });
     }
 
-    // Check file type
-    if (!ALLOWED_TYPES[file.type]) {
+    // Check file type - also check by extension for binary types
+    const fileName = file.name || '';
+    const fileExt = fileName.toLowerCase().split('.').pop();
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'csv', 'nwd', 'dwg', 'rar', 'zip'];
+    
+    if (!ALLOWED_TYPES[file.type] && !allowedExtensions.includes(fileExt)) {
       return NextResponse.json({ 
         success: false, 
-        error: `File type not allowed. Allowed types: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF, TXT, CSV` 
+        error: `File type not allowed. Allowed types: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF, TXT, CSV, NWD, DWG, RAR, ZIP` 
       }, { status: 400 });
     }
 
@@ -55,8 +72,8 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // Generate unique filename
-    const extension = ALLOWED_TYPES[file.type];
+    // Generate unique filename - use original extension if mime type not recognized
+    const extension = ALLOWED_TYPES[file.type] || `.${fileExt}`;
     const uniqueFilename = `${uuidv4()}${extension}`;
     
     // Create upload directory if it doesn't exist
