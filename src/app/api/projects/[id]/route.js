@@ -801,6 +801,11 @@ export async function PUT(request, context) {
             if (activity.assigned_user && activity.assigned_user !== '') {
               const userId = parseInt(activity.assigned_user);
               if (!isNaN(userId)) {
+                // Use activity_name (frontend field) with fallback to name
+                const activityName = activity.activity_name || activity.name || '';
+                const subActivityName = activity.sub_activity_name || '';
+                const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
+                
                 await db.execute(
                   `INSERT INTO user_activity_assignments 
                    (user_id, project_id, activity_name, activity_description, due_date, priority, estimated_hours, status, created_at, updated_at)
@@ -808,8 +813,8 @@ export async function PUT(request, context) {
                   [
                     userId,
                     projectId,
-                    activity.name || '',
-                    activity.deliverables || '',
+                    fullActivityName,
+                    activity.deliverables || activity.remarks || '',
                     activity.due_date || null,
                     activity.priority || 'MEDIUM',
                     parseFloat(activity.planned_hours) || 0,

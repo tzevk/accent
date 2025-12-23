@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { ClockIcon, CheckCircleIcon, ExclamationTriangleIcon, FolderIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -229,6 +230,3 @@ export default function ActivityAssignmentsSection({ userId }) {
     </div>
   );
 }
-
-// Export useState at the end since we need it above
-import { useState, useEffect } from 'react';
