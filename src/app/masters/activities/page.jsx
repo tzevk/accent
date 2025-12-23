@@ -4,153 +4,165 @@
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-
-// Empty sub-activity object
-const EMPTY_SUB_ACTIVITY = {
-  name: "",
-  defaultDuration: 0,
-  defaultManhours: 0,
-};
+import { PlusIcon, TrashIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 export default function ActivityMasterPage() {
   const [disciplines, setDisciplines] = useState([]);
-  // disciplineForm and discipline editing removed — disciplines are fixed
-  const [disciplineForm, setDisciplineForm] = useState({ name: '', description: '', status: 'active' });
-  const [subActivityForm, setSubActivityForm] = useState(EMPTY_SUB_ACTIVITY);
-  const [selectedDisciplineId, setSelectedDisciplineId] = useState(null);
-  const [selectedActivityId, setSelectedActivityId] = useState(null);
-  const [editingActivityId, setEditingActivityId] = useState(null);
-  const [editingSubId, setEditingSubId] = useState(null);
-  const [showDisciplineForm, setShowDisciplineForm] = useState(false);
-  const [showActivityForm, setShowActivityForm] = useState(false);
-  const [showSubActivityForm, setShowSubActivityForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activities, setActivities] = useState([]);
-  const [subActivities, setSubActivities] = useState([]);
-  const [activityForm, setActivityForm] = useState({ activity_name: '' });
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
   
+  // Form inputs
+  const [selectedDisciplineId, setSelectedDisciplineId] = useState('');
+  const [selectedActivityId, setSelectedActivityId] = useState('');
+  const [newItemInput, setNewItemInput] = useState('');
+  
+  // Expanded disciplines in the grouped view
+  const [expandedDisciplines, setExpandedDisciplines] = useState(new Set());
 
   // Fetch disciplines with nested activities and sub-activities
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/activity-master');
-        const json = await res.json();
-        if (json.success && json.data) {
-          // Expected shape: [{ id, function_name, activities: [{ id, activity_name, subActivities: [...] }] }]
-          setDisciplines(json.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch activity master', err);
-        setDisciplines([]);
+  const fetchData = async () => {
+    try {
+      const res = await fetch('/api/activity-master');
+      const json = await res.json();
+      if (json.success && json.data) {
+        setDisciplines(json.data);
+        // Auto-expand all disciplines initially
+        setExpandedDisciplines(new Set(json.data.map(d => d.id)));
       }
-    })();
+    } catch (err) {
+      console.error('Failed to fetch activity master', err);
+      setDisciplines([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
 
-  
-
-  // Load activities when discipline is selected
-  useEffect(() => {
-    if (!selectedDisciplineId) {
-      setActivities([]);
-      setSelectedActivityId(null);
-      return;
-    }
-    const discipline = disciplines.find((d) => d.id === selectedDisciplineId);
-    if (discipline) {
-      setActivities(discipline.activities || []);
-    }
-  }, [selectedDisciplineId, disciplines]);
-
-  // Load sub-activities when activity is selected
-  useEffect(() => {
-    if (!selectedActivityId) {
-      setSubActivities([]);
-      return;
-    }
-    const activity = activities.find((a) => a.id === selectedActivityId);
-    if (activity) {
-      setSubActivities(activity.subActivities || []);
-    }
-  }, [selectedActivityId, activities]);
+  // Get activities for selected discipline (IDs are UUIDs/strings)
+  const selectedDiscipline = disciplines.find(d => String(d.id) === String(selectedDisciplineId));
+  const activitiesForDiscipline = selectedDiscipline?.activities || [];
 
   // Filter disciplines by search term
   const filteredDisciplines = useMemo(() => {
     if (!searchTerm) return disciplines;
     const term = searchTerm.toLowerCase();
-    return disciplines.filter((discipline) => {
-      const matchDiscipline = String(discipline.function_name || discipline.name || '').toLowerCase().includes(term);
-      const matchActivity = (discipline.activities || []).some((activity) => {
-        const activityMatch = String(activity.activity_name || activity.name || '').toLowerCase().includes(term);
-        const subActivityMatch = (activity.subActivities || []).some((sub) => {
-          return String(sub.name || '').toLowerCase().includes(term);
-        });
+    
+    return disciplines.filter(discipline => {
+      const matchDiscipline = discipline.function_name.toLowerCase().includes(term);
+      const matchActivity = (discipline.activities || []).some(activity => {
+        const activityMatch = activity.activity_name.toLowerCase().includes(term);
+        const subActivityMatch = (activity.subActivities || []).some(sub => 
+          sub.name.toLowerCase().includes(term)
+        );
         return activityMatch || subActivityMatch;
       });
       return matchDiscipline || matchActivity;
     });
   }, [disciplines, searchTerm]);
 
-  // Discipline management removed — disciplines are fixed list
-  const handleCreateDiscipline = () => {
-    setDisciplineForm({ name: '', description: '', status: 'active' });
-    setShowDisciplineForm(true);
+  // Toggle discipline expansion
+  const toggleDiscipline = (disciplineId) => {
+    setExpandedDisciplines(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(disciplineId)) {
+        newSet.delete(disciplineId);
+      } else {
+        newSet.add(disciplineId);
+      }
+      return newSet;
+    });
   };
 
-  const handleDisciplineSubmit = async (e) => {
-    e.preventDefault();
-    const name = disciplineForm.name?.trim();
-    if (!name) return;
-
-    try {
-      const res = await fetch('/api/activity-master', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          function_name: name,
-          description: disciplineForm.description || '',
-          status: disciplineForm.status || 'active',
-        }),
-      });
-      if (res.ok) {
-        // Refresh list and close form
-        const disciplinesRes = await fetch('/api/activity-master');
-        const disciplinesJson = await disciplinesRes.json();
-        if (disciplinesJson.success) {
-          setDisciplines(disciplinesJson.data);
-        }
-        setShowDisciplineForm(false);
-        setDisciplineForm({ name: '', description: '', status: 'active' });
-      }
-    } catch (err) {
-      console.error('Failed to create discipline', err);
+  // Determine what we're adding based on selections
+  const getAddContext = () => {
+    if (selectedActivityId) {
+      return { type: 'sub-activity', label: 'Sub-Activity', placeholder: 'Enter sub-activity name' };
+    } else if (selectedDisciplineId) {
+      return { type: 'activity', label: 'Activity', placeholder: 'Enter activity name' };
+    } else {
+      return { type: 'discipline', label: 'Discipline', placeholder: 'Enter discipline name' };
     }
   };
 
-  // Create Activity
-  const handleCreateActivity = (disciplineId) => {
-    setSelectedDisciplineId(disciplineId);
-    setActivityForm({ activity_name: '' });
-    setShowActivityForm(true);
+  const addContext = getAddContext();
+
+  // Unified Add Handler
+  const handleAdd = async () => {
+    if (!newItemInput.trim()) {
+      setError(`Please enter ${addContext.label.toLowerCase()} name`);
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      let res;
+      
+      if (addContext.type === 'sub-activity') {
+        res = await fetch('/api/activity-master/subactivities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            activity_id: selectedActivityId, 
+            name: newItemInput.trim()
+          }),
+        });
+      } else if (addContext.type === 'activity') {
+        res = await fetch('/api/activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            function_id: selectedDisciplineId, 
+            activity_name: newItemInput.trim() 
+          }),
+        });
+      } else {
+        res = await fetch('/api/activity-master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            function_name: newItemInput.trim(),
+            status: 'active'
+          }),
+        });
+      }
+      
+      if (res.ok) {
+        await fetchData();
+        setNewItemInput('');
+        // Expand the discipline if we added an activity
+        if (addContext.type === 'activity') {
+          setExpandedDisciplines(prev => new Set([...prev, selectedDisciplineId]));
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || `Failed to add ${addContext.label.toLowerCase()}`);
+      }
+    } catch (err) {
+      console.error(`Failed to add ${addContext.type}`, err);
+      setError(`Failed to add ${addContext.label.toLowerCase()}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Create Sub-Activity
-  const handleCreateSubActivity = (activityId) => {
-    setSelectedActivityId(activityId);
-    setSubActivityForm(EMPTY_SUB_ACTIVITY);
-    setEditingSubId(null);
-    setShowSubActivityForm(true);
-  };
-
-  // Edit Activity
-  const handleEditActivity = (activityId) => {
-    const activity = activities.find(a => a.id === activityId);
-    if (activity) {
-      setActivityForm({ activity_name: activity.activity_name });
-      setEditingActivityId(activityId);
-      setShowActivityForm(true);
+  // Delete Discipline
+  const handleDeleteDiscipline = async (disciplineId) => {
+    if (!confirm("Delete this discipline and all its activities?")) return;
+    try {
+      const res = await fetch(`/api/activity-master?id=${disciplineId}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchData();
+        if (selectedDisciplineId === String(disciplineId)) {
+          setSelectedDisciplineId('');
+          setSelectedActivityId('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete discipline', err);
     }
   };
 
@@ -160,15 +172,9 @@ export default function ActivityMasterPage() {
     try {
       const res = await fetch(`/api/activities?id=${activityId}`, { method: "DELETE" });
       if (res.ok) {
-        // Refresh disciplines to get updated data
-        const disciplinesRes = await fetch('/api/activity-master');
-        const disciplinesJson = await disciplinesRes.json();
-        if (disciplinesJson.success) {
-          setDisciplines(disciplinesJson.data);
-          // Clear selected activity if it was deleted
-          if (selectedActivityId === activityId) {
-            setSelectedActivityId(null);
-          }
+        await fetchData();
+        if (selectedActivityId === String(activityId)) {
+          setSelectedActivityId('');
         }
       }
     } catch (err) {
@@ -176,465 +182,338 @@ export default function ActivityMasterPage() {
     }
   };
 
-  // Edit and delete handlers for sub-activities
-  const handleEditSubActivity = (subId) => {
-    // TODO: Implement edit functionality
-    console.log('Edit sub-activity:', subId);
-  };
-
+  // Delete Sub-Activity
   const handleDeleteSubActivity = async (subId) => {
     if (!confirm("Delete this sub-activity?")) return;
     try {
       const res = await fetch(`/api/activity-master/subactivities?id=${subId}`, { method: "DELETE" });
       if (res.ok) {
-        // Refresh disciplines to get updated data
-        const disciplinesRes = await fetch('/api/activity-master');
-        const disciplinesJson = await disciplinesRes.json();
-        if (disciplinesJson.success) {
-          setDisciplines(disciplinesJson.data);
-        }
+        await fetchData();
       }
     } catch (err) {
       console.error('Failed to delete sub-activity', err);
     }
   };
 
-  // Save Activity (create or update)
-  const handleActivitySubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedDisciplineId || !activityForm.activity_name.trim()) return;
-
-    try {
-      if (editingActivityId) {
-        // Update existing activity
-        const res = await fetch('/api/activities', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: editingActivityId, activity_name: activityForm.activity_name }),
-        });
-        
-        if (res.ok) {
-          // Refresh disciplines to get updated activities
-          const disciplinesRes = await fetch('/api/activity-master');
-          const disciplinesJson = await disciplinesRes.json();
-          if (disciplinesJson.success) {
-            setDisciplines(disciplinesJson.data);
-          }
-        }
-      } else {
-        // Create new activity
-        const res = await fetch('/api/activities', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ function_id: selectedDisciplineId, activity_name: activityForm.activity_name }),
-        });
-        
-        if (res.ok) {
-          // Refresh disciplines to get updated activities
-          const disciplinesRes = await fetch('/api/activity-master');
-          const disciplinesJson = await disciplinesRes.json();
-          if (disciplinesJson.success) {
-            setDisciplines(disciplinesJson.data);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Failed to save activity', err);
-    }
-
-    setActivityForm({ activity_name: '' });
-    setEditingActivityId(null);
-    setShowActivityForm(false);
-  };
-
-  // Save Sub-Activity
-  const handleSubActivitySubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedActivityId || !subActivityForm.name.trim()) return;
-
-    try {
-      const res = await fetch('/api/activity-master/subactivities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          activity_id: selectedActivityId, 
-          name: subActivityForm.name,
-          default_duration: subActivityForm.defaultDuration,
-          default_manhours: subActivityForm.defaultManhours
-        }),
-      });
-      if (res.ok) {
-        // Refresh disciplines to get updated sub-activities
-        const disciplinesRes = await fetch('/api/activity-master');
-        const disciplinesJson = await disciplinesRes.json();
-        if (disciplinesJson.success) {
-          setDisciplines(disciplinesJson.data);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to create sub-activity', err);
-    }
-
-    setSubActivityForm(EMPTY_SUB_ACTIVITY);
-    setShowSubActivityForm(false);
-  };
+  // Count totals
+  const totalActivities = disciplines.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
+  const totalSubActivities = disciplines.reduce((sum, d) => 
+    sum + (d.activities || []).reduce((s, a) => s + (a.subActivities?.length || 0), 0), 0
+  );
 
   return (
     <AccessGuard resource="activities" permission="read" showNavbar={false}>
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      <Navbar />
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto">
-          <div className="px-8 pt-22 pb-8 space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-black">
-                  Activity Master Catalogue
-                </h1>
-                <p className="text-sm text-gray-600">
-                  Configure reusable disciplines and sub-activities so new projects can be populated instantly.
-                </p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Navbar />
+        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Activity Master</h1>
+            <p className="text-sm text-gray-600">
+              Configure disciplines, activities and sub-activities for projects
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex justify-between items-center">
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 font-bold">×</button>
+            </div>
+          )}
+
+          {/* Input Section - Simplified Step Flow */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex flex-wrap items-end gap-4">
+              
+              {/* Step 1: Discipline (optional - select existing or leave blank for new) */}
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  1. Discipline {selectedDisciplineId && <span className="text-green-600">✓</span>}
+                </label>
+                <select
+                  value={selectedDisciplineId}
+                  onChange={(e) => {
+                    setSelectedDisciplineId(e.target.value);
+                    setSelectedActivityId('');
+                    setNewItemInput('');
+                  }}
+                  className="w-52 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white"
+                >
+                  <option value="">+ New Discipline</option>
+                  {disciplines.map(d => (
+                    <option key={d.id} value={d.id}>{d.function_name}</option>
+                  ))}
+                </select>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search disciplines or activities…"
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-accent-primary focus:border-transparent"
-                />
-                {/* push button removed - disciplines are synced automatically from backend on load */}
+
+              {/* Step 2: Activity (only if discipline selected) */}
+              {selectedDisciplineId && (
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    2. Activity {selectedActivityId && <span className="text-green-600">✓</span>}
+                  </label>
+                  <select
+                    value={selectedActivityId}
+                    onChange={(e) => {
+                      setSelectedActivityId(e.target.value);
+                      setNewItemInput('');
+                    }}
+                    className="w-52 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white"
+                  >
+                    <option value="">+ New Activity</option>
+                    {activitiesForDiscipline.map(a => (
+                      <option key={a.id} value={a.id}>{a.activity_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Arrow indicator */}
+              <div className="flex items-center text-gray-400 pb-1">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+
+              {/* Dynamic Input - changes based on context */}
+              <div className="flex-1 min-w-[200px] space-y-1">
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Add {addContext.label}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newItemInput}
+                    onChange={(e) => setNewItemInput(e.target.value)}
+                    placeholder={addContext.placeholder}
+                    className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                  />
+                  <button
+                    onClick={handleAdd}
+                    disabled={loading || !newItemInput.trim()}
+                    className="px-5 py-2.5 bg-[#4472C4] text-white rounded-lg text-sm font-medium hover:bg-[#3961a8] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    Add {addContext.label}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
-                {error}
+            {/* Helper text */}
+            <p className="mt-4 text-xs text-gray-500">
+              {!selectedDisciplineId && "Start by selecting an existing discipline or type a new one to create it."}
+              {selectedDisciplineId && !selectedActivityId && `Adding activity to "${selectedDiscipline?.function_name}". Select an activity to add sub-activities.`}
+              {selectedActivityId && `Adding sub-activity to "${activitiesForDiscipline.find(a => String(a.id) === String(selectedActivityId))?.activity_name}".`}
+            </p>
+          </div>
+
+          {/* Stats Row */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="text-2xl font-bold text-[#7F2487]">{disciplines.length}</div>
+              <div className="text-sm text-gray-600">Disciplines</div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="text-2xl font-bold text-[#4472C4]">{totalActivities}</div>
+              <div className="text-sm text-gray-600">Activities</div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="text-2xl font-bold text-green-600">{totalSubActivities}</div>
+              <div className="text-sm text-gray-600">Sub-Activities</div>
+            </div>
+          </div>
+
+          {/* Grouped Table Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            {/* Search Bar */}
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search disciplines, activities or sub-activities…"
+                className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+              />
+              <div className="flex gap-2 ml-4">
+                <button
+                  onClick={() => setExpandedDisciplines(new Set(disciplines.map(d => d.id)))}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
+                >
+                  Expand All
+                </button>
+                <button
+                  onClick={() => setExpandedDisciplines(new Set())}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
+                >
+                  Collapse All
+                </button>
               </div>
-            )}
+            </div>
 
-            {/* Three Column Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Column 1 - Disciplines */}
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-black">Disciplines</h2>
-                  <button
-                    onClick={handleCreateDiscipline}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
-                  >
-                    <PlusIcon className="h-3 w-3" /> Add Discipline
-                  </button>
+            {/* Grouped Display */}
+            <div className="divide-y divide-gray-200">
+              {filteredDisciplines.length === 0 ? (
+                <div className="px-6 py-12 text-center text-gray-500">
+                  <p className="text-lg font-medium">No disciplines found</p>
+                  <p className="text-sm mt-1">Add your first discipline using the form above</p>
                 </div>
-
-                {showDisciplineForm && (
-                  <form onSubmit={handleDisciplineSubmit} className="space-y-3 border border-gray-200 rounded-md p-3">
-                    <div className="grid grid-cols-1 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-700 mb-1">Name</label>
-                        <input
-                          type="text"
-                          value={disciplineForm.name}
-                          onChange={(e) => setDisciplineForm({ ...disciplineForm, name: e.target.value })}
-                          placeholder="e.g., ELECTRICAL"
-                          required
-                          className="w-full px-3 py-2 border rounded-md text-sm"
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs text-gray-700 mb-1">Status</label>
-                          <select
-                            value={disciplineForm.status}
-                            onChange={(e) => setDisciplineForm({ ...disciplineForm, status: e.target.value })}
-                            className="w-full px-3 py-2 border rounded-md text-sm"
-                          >
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-700 mb-1">Description</label>
-                          <input
-                            type="text"
-                            value={disciplineForm.description}
-                            onChange={(e) => setDisciplineForm({ ...disciplineForm, description: e.target.value })}
-                            placeholder="Optional short description"
-                            className="w-full px-3 py-2 border rounded-md text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowDisciplineForm(false);
-                          setDisciplineForm({ name: '', description: '', status: 'active' });
-                        }}
-                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs text-black"
+              ) : (
+                filteredDisciplines.map((discipline) => {
+                  const isExpanded = expandedDisciplines.has(discipline.id);
+                  const activities = discipline.activities || [];
+                  
+                  return (
+                    <div key={discipline.id} className="bg-white">
+                      {/* Discipline Header */}
+                      <div 
+                        className="flex items-center justify-between px-4 py-3 bg-[#7F2487]/5 hover:bg-[#7F2487]/10 cursor-pointer"
+                        onClick={() => toggleDiscipline(discipline.id)}
                       >
-                        Cancel
-                      </button>
-                      <button type="submit" className="px-4 py-2 bg-[#7F2487] text-white rounded-md text-xs">
-                        Save Discipline
-                      </button>
-                    </div>
-                  </form>
-                )}
-                {filteredDisciplines.length === 0 ? (
-                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
-                    No disciplines found.
-                  </div>
-                ) : (
-                  filteredDisciplines.map((discipline) => (
-                    <div
-                      key={discipline.id}
-                      className={`border rounded-lg px-4 py-3 cursor-pointer ${
-                        selectedDisciplineId === discipline.id
-                          ? "border-[#7F2487] bg-[#7F2487]/10"
-                          : "border-gray-200 hover:bg-gray-50"
-                      }`}
-                      onClick={() => {
-                        setSelectedDisciplineId(discipline.id);
-                        setSelectedActivityId(null);
-                      }}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-sm font-semibold text-black">{discipline.function_name}</p>
-                          <p className="text-xs text-gray-500">{discipline.description}</p>
-                        </div>
-                        <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded-full">
-                          {(discipline.activities || []).length} activities
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </section>
-
-              {/* Column 2 - Activities */}
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-sm font-semibold text-black">Activities</h2>
-                  {selectedDisciplineId && (
-                    <button
-                      onClick={() => handleCreateActivity(selectedDisciplineId)}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
-                    >
-                      <PlusIcon className="h-3 w-3" /> Add Activity
-                    </button>
-                  )}
-                </div>
-
-                {showActivityForm && (
-                  <form onSubmit={handleActivitySubmit} className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    <input
-                      type="text"
-                      value={activityForm.activity_name}
-                      onChange={(e) => setActivityForm({ activity_name: e.target.value })}
-                      placeholder="Activity Name"
-                      required
-                      className="w-full px-3 py-2 border rounded-md text-sm"
-                    />
-                    <div className="flex justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowActivityForm(false);
-                          setEditingActivityId(null);
-                          setActivityForm({ activity_name: '' });
-                        }}
-                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm text-black"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-5 py-2 bg-[#7F2487] text-white rounded-md text-sm"
-                      >
-                        {editingActivityId ? 'Update Activity' : 'Save Activity'}
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                {!selectedDisciplineId ? (
-                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
-                    Select a discipline to view activities.
-                  </div>
-                ) : activities.length === 0 ? (
-                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
-                    No activities yet. Add your first activity.
-                  </div>
-                ) : (
-                  activities.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className={`border rounded-lg px-4 py-3 ${
-                        selectedActivityId === activity.id
-                          ? "border-[#7F2487] bg-[#7F2487]/10"
-                          : "border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div 
-                          className="flex-1 cursor-pointer"
-                          onClick={() => setSelectedActivityId(activity.id)}
-                        >
-                          <p className="text-sm font-semibold text-black">{activity.activity_name}</p>
-                          <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded-full inline-block mt-1">
-                            {(activity.subActivities || []).length} sub-activities
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? (
+                            <ChevronDownIcon className="w-5 h-5 text-[#7F2487]" />
+                          ) : (
+                            <ChevronRightIcon className="w-5 h-5 text-[#7F2487]" />
+                          )}
+                          <span className="font-semibold text-[#7F2487]">{discipline.function_name}</span>
+                          <span className="text-xs bg-[#7F2487]/20 text-[#7F2487] px-2 py-0.5 rounded-full">
+                            {activities.length} activities
                           </span>
                         </div>
-                        <div className="flex gap-1 ml-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditActivity(activity.id);
-                            }}
-                            className="p-1 text-gray-600 hover:text-gray-800"
-                            title="Edit activity"
-                          >
-                            <PencilIcon className="h-3 w-3" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteActivity(activity.id);
-                            }}
-                            className="p-1 text-red-600 hover:text-red-800"
-                            title="Delete activity"
-                          >
-                            <TrashIcon className="h-3 w-3" />
-                          </button>
-                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDiscipline(discipline.id);
+                          }}
+                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                          title="Delete discipline"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
                       </div>
-                    </div>
-                  ))
-                )}
-              </section>
 
-              {/* Column 3 - Sub-Activities */}
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-sm font-semibold text-black">Sub-Activities</h2>
-                  {selectedActivityId && (
-                    <button
-                      onClick={() => handleCreateSubActivity(selectedActivityId)}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-[#7F2487] text-white rounded-md text-xs"
-                    >
-                      <PlusIcon className="h-3 w-3" /> Add Sub-Activity
-                    </button>
-                  )}
-                </div>
-                {!selectedActivityId ? (
-                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
-                    Select an activity to view sub-activities.
-                  </div>
-                ) : subActivities.length === 0 ? (
-                  <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-5 text-center">
-                    No sub-activities yet. Add your first sub-activity.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {subActivities.map((subActivity) => (
-                      <div
-                        key={subActivity.id}
-                        className="border rounded-lg px-4 py-3 border-gray-200 hover:bg-gray-50"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-black">{subActivity.name}</p>
-                            <div className="mt-1 text-xs text-gray-500 space-y-1">
-                              {subActivity.default_manhours !== undefined && subActivity.default_manhours !== null && (
-                                <div>Manhours: {subActivity.default_manhours} hrs</div>
+                      {/* Activities & Sub-Activities Table */}
+                      {isExpanded && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                <th className="px-6 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
+                                  Sr.
+                                </th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                  Activity
+                                </th>
+                                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">
+                                  
+                                </th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                  Sub-Activity
+                                </th>
+                                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">
+                                  
+                                </th>
+                                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                                  Actions
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {activities.length === 0 ? (
+                                <tr>
+                                  <td colSpan={6} className="px-6 py-4 text-center text-gray-400 text-sm italic">
+                                    No activities yet. Add one using the form above.
+                                  </td>
+                                </tr>
+                              ) : (
+                                activities.map((activity, actIdx) => {
+                                  const subActivities = activity.subActivities || [];
+                                  
+                                  if (subActivities.length === 0) {
+                                    return (
+                                      <tr key={activity.id} className="hover:bg-gray-50">
+                                        <td className="px-6 py-2.5 text-sm text-gray-500">
+                                          {actIdx + 1}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-sm text-gray-900 font-medium">
+                                          {activity.activity_name}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-center">
+                                          <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />
+                                        </td>
+                                        <td className="px-4 py-2.5 text-sm text-gray-400 italic">
+                                          —
+                                        </td>
+                                        <td className="px-4 py-2.5 text-center">
+                                          
+                                        </td>
+                                        <td className="px-4 py-2.5 text-center">
+                                          <button
+                                            onClick={() => handleDeleteActivity(activity.id)}
+                                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                            title="Delete activity"
+                                          >
+                                            <TrashIcon className="w-4 h-4" />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+                                  
+                                  return subActivities.map((sub, subIdx) => (
+                                    <tr key={`${activity.id}-${sub.id}`} className="hover:bg-gray-50">
+                                      <td className="px-6 py-2.5 text-sm text-gray-500">
+                                        {subIdx === 0 ? `${actIdx + 1}` : ''}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-sm text-gray-900 font-medium">
+                                        {subIdx === 0 ? activity.activity_name : ''}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        {subIdx === 0 && <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-sm text-gray-700">
+                                        {sub.name}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />
+                                      </td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <div className="flex justify-center gap-1">
+                                          <button
+                                            onClick={() => handleDeleteSubActivity(sub.id)}
+                                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                            title="Delete sub-activity"
+                                          >
+                                            <TrashIcon className="w-4 h-4" />
+                                          </button>
+                                          {subIdx === 0 && subActivities.length > 0 && (
+                                            <button
+                                              onClick={() => handleDeleteActivity(activity.id)}
+                                              className="p-1 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded"
+                                              title="Delete entire activity"
+                                            >
+                                              <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ));
+                                })
                               )}
-                              {subActivity.default_rate !== undefined && subActivity.default_rate !== null && (
-                                <div>Default Rate: ₹{subActivity.default_rate}</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleEditSubActivity(subActivity.id)}
-                              className="p-1 text-gray-600 hover:text-gray-800"
-                            >
-                              <PencilIcon className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSubActivity(subActivity.id)}
-                              className="p-1 text-red-600 hover:text-red-800"
-                            >
-                              <TrashIcon className="h-3 w-3" />
-                            </button>
-                          </div>
+                            </tbody>
+                          </table>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {showSubActivityForm && (
-                  <form onSubmit={handleSubActivitySubmit} className="space-y-3 border-t pt-4 mt-4">
-                    <input
-                      value={subActivityForm.name}
-                      onChange={(e) =>
-                        setSubActivityForm((prev) => ({ ...prev, name: e.target.value }))
-                      }
-                      placeholder="Sub-Activity Name"
-                      required
-                      className="w-full px-3 py-2 border rounded-md text-sm"
-                    />
-                    <div className="grid grid-cols-2 gap-4">
-                      <input
-                        value={subActivityForm.defaultDuration}
-                        onChange={(e) =>
-                          setSubActivityForm((prev) => ({
-                            ...prev,
-                            defaultDuration: e.target.value,
-                          }))
-                        }
-                        placeholder="Duration (hrs)"
-                        className="w-full px-3 py-2 border rounded-md text-sm"
-                      />
-                      <input
-                        value={subActivityForm.defaultManhours}
-                        onChange={(e) =>
-                          setSubActivityForm((prev) => ({
-                            ...prev,
-                            defaultManhours: e.target.value,
-                          }))
-                        }
-                        placeholder="Manhours (hrs)"
-                        className="w-full px-3 py-2 border rounded-md text-sm"
-                      />
-                      {/* Only collect name, duration and manhours when creating sub-activities */}
+                      )}
                     </div>
-                    <div className="flex justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setShowSubActivityForm(false)}
-                        className="px-4 py-2 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-black"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-5 py-2 text-sm rounded-md bg-[#7F2487] text-white"
-                      >
-                        Save Sub-Activity
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </section>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
       </div>
-    </div>
     </AccessGuard>
   );
 }
