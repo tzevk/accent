@@ -2591,6 +2591,7 @@ function EditProjectForm() {
                       <table className="w-full text-xs">
                         <thead className="bg-gray-50 border-b border-gray-200">
                           <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700 w-12">Sr. No.</th>
                             <th className="px-3 py-2 text-left font-semibold text-gray-700">Category</th>
                             <th className="px-3 py-2 text-left font-semibold text-gray-700">Software</th>
                             <th className="px-3 py-2 text-left font-semibold text-gray-700">Provider</th>
@@ -2601,8 +2602,9 @@ function EditProjectForm() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {softwareItems.map((item) => (
+                          {softwareItems.map((item, index) => (
                             <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-3 py-2 text-gray-500 font-medium">{index + 1}</td>
                               <td className="px-3 py-2 text-gray-900 font-medium">{item.category_name}</td>
                               <td className="px-3 py-2 text-gray-900 font-medium">{item.software_name}</td>
                               <td className="px-3 py-2 text-gray-600">{item.provider || '-'}</td>
