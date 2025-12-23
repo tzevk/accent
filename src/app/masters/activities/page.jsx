@@ -4,7 +4,7 @@
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, TrashIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function ActivityMasterPage() {
   const [disciplines, setDisciplines] = useState([]);
@@ -16,6 +16,10 @@ export default function ActivityMasterPage() {
   const [selectedDisciplineId, setSelectedDisciplineId] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState('');
   const [newItemInput, setNewItemInput] = useState('');
+  const [manhoursInput, setManhoursInput] = useState('');
+  
+  // Edit state for sub-activity manhours
+  const [editingSubActivity, setEditingSubActivity] = useState(null); // { id, manhours }
   
   // Expanded disciplines in the grouped view
   const [expandedDisciplines, setExpandedDisciplines] = useState(new Set());
@@ -107,7 +111,8 @@ export default function ActivityMasterPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             activity_id: selectedActivityId, 
-            name: newItemInput.trim()
+            name: newItemInput.trim(),
+            default_manhours: manhoursInput ? parseFloat(manhoursInput) : 0
           }),
         });
       } else if (addContext.type === 'activity') {
@@ -133,6 +138,7 @@ export default function ActivityMasterPage() {
       if (res.ok) {
         await fetchData();
         setNewItemInput('');
+        setManhoursInput('');
         // Expand the discipline if we added an activity
         if (addContext.type === 'activity') {
           setExpandedDisciplines(prev => new Set([...prev, selectedDisciplineId]));
@@ -195,6 +201,36 @@ export default function ActivityMasterPage() {
     }
   };
 
+  // Update Sub-Activity Manhours
+  const handleUpdateSubActivity = async () => {
+    if (!editingSubActivity) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch('/api/activity-master/subactivities', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingSubActivity.id,
+          default_manhours: editingSubActivity.manhours ? parseFloat(editingSubActivity.manhours) : 0
+        })
+      });
+      
+      if (res.ok) {
+        await fetchData();
+        setEditingSubActivity(null);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to update manhours');
+      }
+    } catch (err) {
+      console.error('Failed to update sub-activity', err);
+      setError('Failed to update manhours');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Count totals
   const totalActivities = disciplines.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
   const totalSubActivities = disciplines.reduce((sum, d) => 
@@ -236,6 +272,7 @@ export default function ActivityMasterPage() {
                     setSelectedDisciplineId(e.target.value);
                     setSelectedActivityId('');
                     setNewItemInput('');
+                    setManhoursInput('');
                   }}
                   className="w-52 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white"
                 >
@@ -257,6 +294,7 @@ export default function ActivityMasterPage() {
                     onChange={(e) => {
                       setSelectedActivityId(e.target.value);
                       setNewItemInput('');
+                      setManhoursInput('');
                     }}
                     className="w-52 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white"
                   >
@@ -287,8 +325,21 @@ export default function ActivityMasterPage() {
                     onChange={(e) => setNewItemInput(e.target.value)}
                     placeholder={addContext.placeholder}
                     className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                    onKeyDown={(e) => e.key === 'Enter' && !selectedActivityId && handleAdd()}
                   />
+                  {/* Manhours input - only for sub-activities */}
+                  {selectedActivityId && (
+                    <input
+                      type="number"
+                      value={manhoursInput}
+                      onChange={(e) => setManhoursInput(e.target.value)}
+                      placeholder="Manhours"
+                      min="0"
+                      step="0.5"
+                      className="w-28 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+                      onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                    />
+                  )}
                   <button
                     onClick={handleAdd}
                     disabled={loading || !newItemInput.trim()}
@@ -411,6 +462,9 @@ export default function ActivityMasterPage() {
                                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                                   Sub-Activity
                                 </th>
+                                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                                  Manhours
+                                </th>
                                 <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">
                                   
                                 </th>
@@ -422,7 +476,7 @@ export default function ActivityMasterPage() {
                             <tbody className="divide-y divide-gray-100">
                               {activities.length === 0 ? (
                                 <tr>
-                                  <td colSpan={6} className="px-6 py-4 text-center text-gray-400 text-sm italic">
+                                  <td colSpan={7} className="px-6 py-4 text-center text-gray-400 text-sm italic">
                                     No activities yet. Add one using the form above.
                                   </td>
                                 </tr>
@@ -443,6 +497,9 @@ export default function ActivityMasterPage() {
                                           <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />
                                         </td>
                                         <td className="px-4 py-2.5 text-sm text-gray-400 italic">
+                                          —
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right text-sm text-gray-400">
                                           —
                                         </td>
                                         <td className="px-4 py-2.5 text-center">
@@ -474,6 +531,50 @@ export default function ActivityMasterPage() {
                                       </td>
                                       <td className="px-4 py-2.5 text-sm text-gray-700">
                                         {sub.name}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-right text-sm font-medium text-gray-700">
+                                        {editingSubActivity?.id === sub.id ? (
+                                          <div className="flex items-center justify-end gap-1">
+                                            <input
+                                              type="number"
+                                              value={editingSubActivity.manhours}
+                                              onChange={(e) => setEditingSubActivity({ ...editingSubActivity, manhours: e.target.value })}
+                                              className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#7F2487] focus:border-transparent text-right"
+                                              min="0"
+                                              step="0.5"
+                                              autoFocus
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleUpdateSubActivity();
+                                                if (e.key === 'Escape') setEditingSubActivity(null);
+                                              }}
+                                            />
+                                            <button
+                                              onClick={handleUpdateSubActivity}
+                                              className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded"
+                                              title="Save"
+                                            >
+                                              <CheckIcon className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                              onClick={() => setEditingSubActivity(null)}
+                                              className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                                              title="Cancel"
+                                            >
+                                              <XMarkIcon className="w-4 h-4" />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-end gap-1 group">
+                                            <span>{sub.default_manhours ? `${sub.default_manhours} hrs` : '—'}</span>
+                                            <button
+                                              onClick={() => setEditingSubActivity({ id: sub.id, manhours: sub.default_manhours || '' })}
+                                              className="p-1 text-gray-400 hover:text-[#7F2487] hover:bg-purple-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                              title="Edit manhours"
+                                            >
+                                              <PencilIcon className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="px-4 py-2.5 text-center">
                                         <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />

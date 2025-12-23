@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
+import { clearSessionCache } from '@/context/SessionContext';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { Poppins } from 'next/font/google';
 
@@ -61,7 +62,10 @@ export default function SignIn() {
       });
 
       if (data?.success) {
-        // Wait longer to ensure cookies are fully set and propagated
+        // Clear cached session data to ensure fresh session is loaded
+        clearSessionCache();
+        
+        // Wait for cookies to be set
         await new Promise(resolve => setTimeout(resolve, 300));
         
         // Verify session is actually established before redirecting

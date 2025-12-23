@@ -26,8 +26,14 @@ export function SessionProvider({ children }) {
   const mountedRef = useRef(true);
 
   const fetchSession = useCallback(async (force = false) => {
-    // Return cached data if still valid and not forcing refresh
+    // Clear cache when forcing refresh
     const now = Date.now();
+    if (force) {
+      sessionCache = null;
+      sessionCacheTime = 0;
+    }
+    
+    // Return cached data if still valid and not forcing refresh
     if (!force && sessionCache && (now - sessionCacheTime) < CACHE_TTL) {
       if (mountedRef.current) {
         setUser(sessionCache.user);
