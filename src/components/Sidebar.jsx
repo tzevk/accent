@@ -16,7 +16,8 @@ import {
   ShieldCheckIcon,
   ArrowRightOnRectangleIcon,
   ChatBubbleLeftRightIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -151,6 +152,9 @@ export default function Sidebar() {
             )}
             {canViewActivities && (
               <NavRow icon={DocumentTextIcon} label="Software Master" href="/masters/software" active={pathname.startsWith('/masters/software')} />
+            )}
+            {canViewEmployees && (
+              <NavRow icon={CurrencyDollarIcon} label="Salary Master" href="/masters/salary" active={pathname.startsWith('/masters/salary')} />
             )}
             {canViewCompanies && (
               <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />

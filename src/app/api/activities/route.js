@@ -18,37 +18,25 @@ export async function GET() {
       id VARCHAR(36) PRIMARY KEY,
       function_id VARCHAR(36) NOT NULL,
       activity_name VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS sub_activities (
-      id VARCHAR(36) PRIMARY KEY,
-      activity_id VARCHAR(36) NOT NULL,
-      name VARCHAR(255) NOT NULL,
-      default_duration DECIMAL(10,2) DEFAULT 0,
       default_manhours DECIMAL(10,2) DEFAULT 0,
-      default_rate DECIMAL(10,2) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
+    
+    // Add default_manhours column if it doesn't exist
+    try {
+      await db.execute(`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
 
     const [functions] = await db.execute(
       'SELECT id, function_name FROM functions_master ORDER BY function_name'
     );
 
     const [activities] = await db.execute(
-      'SELECT id, function_id, activity_name FROM activities_master ORDER BY activity_name'
+      'SELECT id, function_id, activity_name, COALESCE(default_manhours, 0) as default_manhours FROM activities_master ORDER BY activity_name'
     );
-
-    // fetch sub_activities if available
-    let subActivities = [];
-    try {
-      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours, default_rate FROM sub_activities');
-      subActivities = subs;
-    } catch {
-      // table might not exist yet; that's fine
-      subActivities = [];
-    }
 
     await db.end();
 
@@ -62,7 +50,7 @@ export async function GET() {
         .map((a) => ({
           id: a.id,
           name: a.activity_name,
-          subActivities: subActivities.filter((s) => String(s.activity_id) === String(a.id)).map((s) => ({ id: s.id, name: s.name, defaultDuration: s.default_duration, defaultManhours: s.default_manhours, defaultRate: s.default_rate }))
+          defaultManhours: parseFloat(a.default_manhours) || 0
         }))
     }));
 
@@ -75,24 +63,19 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { function_id, activity_name } = await request.json();
+    const { function_id, activity_name, default_manhours } = await request.json();
 
     if (!function_id || !activity_name) {
       return NextResponse.json({ success: false, error: 'Function ID and activity name are required' }, { status: 400 });
     }
 
     const id = randomUUID();
+    const manhours = parseFloat(default_manhours) || 0;
     const db = await dbConnect();
-    await db.execute(`CREATE TABLE IF NOT EXISTS activities_master (
-      id VARCHAR(36) PRIMARY KEY,
-      function_id VARCHAR(36) NOT NULL,
-      activity_name VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`);
+    
     await db.execute(
-      'INSERT INTO activities_master (id, function_id, activity_name) VALUES (?, ?, ?)',
-      [id, function_id, activity_name]
+      'INSERT INTO activities_master (id, function_id, activity_name, default_manhours) VALUES (?, ?, ?, ?)',
+      [id, function_id, activity_name, manhours]
     );
     await db.end();
 
@@ -109,14 +92,35 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const { id, activity_name } = await request.json();
+    const { id, activity_name, default_manhours } = await request.json();
 
-    if (!id || !activity_name) {
-      return NextResponse.json({ success: false, error: 'ID and activity name are required' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Activity ID is required' }, { status: 400 });
     }
 
     const db = await dbConnect();
-    await db.execute('UPDATE activities_master SET activity_name = ? WHERE id = ?', [activity_name, id]);
+    
+    // Build dynamic update query based on what fields are provided
+    const updates = [];
+    const values = [];
+    
+    if (activity_name !== undefined) {
+      updates.push('activity_name = ?');
+      values.push(activity_name);
+    }
+    
+    if (default_manhours !== undefined) {
+      updates.push('default_manhours = ?');
+      values.push(parseFloat(default_manhours) || 0);
+    }
+    
+    if (updates.length === 0) {
+      await db.end();
+      return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
+    }
+    
+    values.push(id);
+    await db.execute(`UPDATE activities_master SET ${updates.join(', ')} WHERE id = ?`, values);
     await db.end();
 
     return NextResponse.json({ success: true, message: 'Activity updated successfully' });

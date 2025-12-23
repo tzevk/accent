@@ -15,8 +15,13 @@ export default function ActivityAssignmentsSection({ userId }) {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
+        console.log('[ActivityAssignments] Fetching for userId:', userId);
         const response = await fetch(`/api/users/${userId}/dashboard`);
         const data = await response.json();
+        
+        console.log('[ActivityAssignments] API response:', data.success, data.data?.active_projects?.length || 0, 'projects');
+        console.log('[ActivityAssignments] Active Projects:', JSON.stringify(data.data?.active_projects, null, 2));
+        console.log('[ActivityAssignments] Status Summary:', data.data?.status_summary);
         
         if (data.success) {
           setDashboardData(data.data);
@@ -47,8 +52,21 @@ export default function ActivityAssignmentsSection({ userId }) {
     );
   }
 
-  if (error || !dashboardData) {
-    return null; // Silently skip if there's an error
+  if (error) {
+    // Show error message
+    return (
+      <div className="mb-6 p-4 bg-red-50 rounded-xl border border-red-200 text-center text-red-600 text-sm">
+        Error loading activities: {error}
+      </div>
+    );
+  }
+
+  if (!dashboardData) {
+    return (
+      <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200 text-center text-gray-500 text-sm">
+        No activity data available
+      </div>
+    );
   }
 
   const { status_summary, overdue_count, active_projects } = dashboardData;
@@ -148,7 +166,7 @@ export default function ActivityAssignmentsSection({ userId }) {
                       {activity.activity_name}
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
-                      {activity.project_name || 'No project'}
+                      {activity.project_title || activity.project_name || 'No project'}
                     </div>
                   </div>
                   <div className="ml-4 flex-shrink-0 text-right">
@@ -183,36 +201,36 @@ export default function ActivityAssignmentsSection({ userId }) {
 
         {/* Active Projects */}
         <div className="bg-white rounded-xl border border-purple-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Active Projects</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Assigned Projects</h3>
           {active_projects && active_projects.length > 0 ? (
             <div className="space-y-3">
               {active_projects.slice(0, 5).map((project) => (
                 <Link
                   key={project.project_id}
                   href={`/projects/${project.project_id}`}
-                  className="block p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="block p-4 rounded-lg bg-gradient-to-r from-purple-50 to-white hover:from-purple-100 border border-purple-100 transition-all"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="bg-purple-50 p-2 rounded">
-                        <FolderIcon className="h-5 w-5 text-[#64126D]" />
+                      <div className="bg-[#64126D] p-2.5 rounded-lg">
+                        <FolderIcon className="h-5 w-5 text-white" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-gray-900 truncate">
-                          {project.project_title}
+                        <div className="font-semibold text-sm text-gray-900 truncate">
+                          {project.project_title || project.name}
                         </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {project.client_name}
+                        <div className="text-xs text-gray-500 truncate mt-0.5">
+                          {project.client_name} {project.project_code && `• ${project.project_code}`}
                         </div>
                       </div>
                     </div>
                     <div className="ml-4 text-right flex-shrink-0">
-                      <div className="text-xs font-medium text-gray-700">
-                        {project.total_activities} tasks
+                      <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-purple-100 text-[#64126D] text-xs font-medium">
+                        {project.total_activities} {project.total_activities === 1 ? 'task' : 'tasks'}
                       </div>
                       {project.overdue > 0 && (
-                        <div className="text-xs text-red-600 mt-1">
-                          {project.overdue} overdue
+                        <div className="text-xs text-red-600 mt-1 font-medium">
+                          ⚠ {project.overdue} overdue
                         </div>
                       )}
                     </div>
@@ -222,7 +240,7 @@ export default function ActivityAssignmentsSection({ userId }) {
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500 text-sm">
-              No active projects with assignments
+              No projects assigned yet
             </div>
           )}
         </div>

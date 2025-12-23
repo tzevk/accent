@@ -806,19 +806,43 @@ export async function PUT(request, context) {
                 const subActivityName = activity.sub_activity_name || '';
                 const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
                 
+                // Map priority to table's enum values
+                const priorityMap = {
+                  'LOW': 'Low',
+                  'MEDIUM': 'Medium', 
+                  'HIGH': 'High',
+                  'URGENT': 'Critical'
+                };
+                const priority = priorityMap[activity.priority] || 'Medium';
+                
+                // Map status to table's enum values
+                const statusMap = {
+                  'NOT_STARTED': 'Not Started',
+                  'IN_PROGRESS': 'In Progress',
+                  'ON_HOLD': 'On Hold',
+                  'COMPLETED': 'Completed',
+                  'CANCELLED': 'Cancelled'
+                };
+                const status = statusMap[activity.status_completed] || 'Not Started';
+                
+                // Generate UUID for id
+                const activityId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
                 await db.execute(
                   `INSERT INTO user_activity_assignments 
-                   (user_id, project_id, activity_name, activity_description, due_date, priority, estimated_hours, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                   (id, user_id, project_id, activity_name, discipline_name, due_date, priority, estimated_hours, status, notes, assigned_date, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
                   [
+                    activityId,
                     userId,
                     projectId,
                     fullActivityName,
-                    activity.deliverables || activity.remarks || '',
+                    activity.function_name || activity.discipline || '',
                     activity.due_date || null,
-                    activity.priority || 'MEDIUM',
+                    priority,
                     parseFloat(activity.planned_hours) || 0,
-                    activity.status_completed || 'NOT_STARTED'
+                    status,
+                    activity.deliverables || activity.remarks || ''
                   ]
                 );
               }

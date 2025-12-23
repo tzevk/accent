@@ -1,10 +1,9 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useEffect, useMemo, useState } from 'react';
-import { PlusIcon, TrashIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, CheckIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function ActivityMasterPage() {
   const [disciplines, setDisciplines] = useState([]);
@@ -14,25 +13,19 @@ export default function ActivityMasterPage() {
   
   // Form inputs
   const [selectedDisciplineId, setSelectedDisciplineId] = useState('');
-  const [selectedActivityId, setSelectedActivityId] = useState('');
   const [newItemInput, setNewItemInput] = useState('');
   const [manhoursInput, setManhoursInput] = useState('');
   
-  // Edit state for sub-activity manhours
-  const [editingSubActivity, setEditingSubActivity] = useState(null); // { id, manhours }
-  
-  // Expanded disciplines in the grouped view
-  const [expandedDisciplines, setExpandedDisciplines] = useState(new Set());
+  // Edit state for activity manhours
+  const [editingActivity, setEditingActivity] = useState(null); // { id, manhours }
 
-  // Fetch disciplines with nested activities and sub-activities
+  // Fetch disciplines with nested activities
   const fetchData = async () => {
     try {
       const res = await fetch('/api/activity-master');
       const json = await res.json();
       if (json.success && json.data) {
         setDisciplines(json.data);
-        // Auto-expand all disciplines initially
-        setExpandedDisciplines(new Set(json.data.map(d => d.id)));
       }
     } catch (err) {
       console.error('Failed to fetch activity master', err);
@@ -44,9 +37,8 @@ export default function ActivityMasterPage() {
     fetchData();
   }, []);
 
-  // Get activities for selected discipline (IDs are UUIDs/strings)
+  // Get activities for selected discipline
   const selectedDiscipline = disciplines.find(d => String(d.id) === String(selectedDisciplineId));
-  const activitiesForDiscipline = selectedDiscipline?.activities || [];
 
   // Filter disciplines by search term
   const filteredDisciplines = useMemo(() => {
@@ -55,35 +47,16 @@ export default function ActivityMasterPage() {
     
     return disciplines.filter(discipline => {
       const matchDiscipline = discipline.function_name.toLowerCase().includes(term);
-      const matchActivity = (discipline.activities || []).some(activity => {
-        const activityMatch = activity.activity_name.toLowerCase().includes(term);
-        const subActivityMatch = (activity.subActivities || []).some(sub => 
-          sub.name.toLowerCase().includes(term)
-        );
-        return activityMatch || subActivityMatch;
-      });
+      const matchActivity = (discipline.activities || []).some(activity => 
+        activity.activity_name.toLowerCase().includes(term)
+      );
       return matchDiscipline || matchActivity;
     });
   }, [disciplines, searchTerm]);
 
-  // Toggle discipline expansion
-  const toggleDiscipline = (disciplineId) => {
-    setExpandedDisciplines(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(disciplineId)) {
-        newSet.delete(disciplineId);
-      } else {
-        newSet.add(disciplineId);
-      }
-      return newSet;
-    });
-  };
-
   // Determine what we're adding based on selections
   const getAddContext = () => {
-    if (selectedActivityId) {
-      return { type: 'sub-activity', label: 'Sub-Activity', placeholder: 'Enter sub-activity name' };
-    } else if (selectedDisciplineId) {
+    if (selectedDisciplineId) {
       return { type: 'activity', label: 'Activity', placeholder: 'Enter activity name' };
     } else {
       return { type: 'discipline', label: 'Discipline', placeholder: 'Enter discipline name' };
@@ -105,23 +78,14 @@ export default function ActivityMasterPage() {
     try {
       let res;
       
-      if (addContext.type === 'sub-activity') {
-        res = await fetch('/api/activity-master/subactivities', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            activity_id: selectedActivityId, 
-            name: newItemInput.trim(),
-            default_manhours: manhoursInput ? parseFloat(manhoursInput) : 0
-          }),
-        });
-      } else if (addContext.type === 'activity') {
+      if (addContext.type === 'activity') {
         res = await fetch('/api/activities', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             function_id: selectedDisciplineId, 
-            activity_name: newItemInput.trim() 
+            activity_name: newItemInput.trim(),
+            default_manhours: manhoursInput ? parseFloat(manhoursInput) : 0
           }),
         });
       } else {
@@ -139,10 +103,6 @@ export default function ActivityMasterPage() {
         await fetchData();
         setNewItemInput('');
         setManhoursInput('');
-        // Expand the discipline if we added an activity
-        if (addContext.type === 'activity') {
-          setExpandedDisciplines(prev => new Set([...prev, selectedDisciplineId]));
-        }
       } else {
         const data = await res.json();
         setError(data.error || `Failed to add ${addContext.label.toLowerCase()}`);
@@ -164,7 +124,6 @@ export default function ActivityMasterPage() {
         await fetchData();
         if (selectedDisciplineId === String(disciplineId)) {
           setSelectedDisciplineId('');
-          setSelectedActivityId('');
         }
       }
     } catch (err) {
@@ -174,57 +133,41 @@ export default function ActivityMasterPage() {
 
   // Delete Activity
   const handleDeleteActivity = async (activityId) => {
-    if (!confirm("Delete this activity and all its sub-activities?")) return;
+    if (!confirm("Delete this activity?")) return;
     try {
       const res = await fetch(`/api/activities?id=${activityId}`, { method: "DELETE" });
       if (res.ok) {
         await fetchData();
-        if (selectedActivityId === String(activityId)) {
-          setSelectedActivityId('');
-        }
       }
     } catch (err) {
       console.error('Failed to delete activity', err);
     }
   };
 
-  // Delete Sub-Activity
-  const handleDeleteSubActivity = async (subId) => {
-    if (!confirm("Delete this sub-activity?")) return;
-    try {
-      const res = await fetch(`/api/activity-master/subactivities?id=${subId}`, { method: "DELETE" });
-      if (res.ok) {
-        await fetchData();
-      }
-    } catch (err) {
-      console.error('Failed to delete sub-activity', err);
-    }
-  };
-
-  // Update Sub-Activity Manhours
-  const handleUpdateSubActivity = async () => {
-    if (!editingSubActivity) return;
+  // Update Activity Manhours
+  const handleUpdateActivity = async () => {
+    if (!editingActivity) return;
     
     setLoading(true);
     try {
-      const res = await fetch('/api/activity-master/subactivities', {
+      const res = await fetch('/api/activities', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: editingSubActivity.id,
-          default_manhours: editingSubActivity.manhours ? parseFloat(editingSubActivity.manhours) : 0
+          id: editingActivity.id,
+          default_manhours: editingActivity.manhours ? parseFloat(editingActivity.manhours) : 0
         })
       });
       
       if (res.ok) {
         await fetchData();
-        setEditingSubActivity(null);
+        setEditingActivity(null);
       } else {
         const data = await res.json();
         setError(data.error || 'Failed to update manhours');
       }
     } catch (err) {
-      console.error('Failed to update sub-activity', err);
+      console.error('Failed to update activity', err);
       setError('Failed to update manhours');
     } finally {
       setLoading(false);
@@ -233,9 +176,6 @@ export default function ActivityMasterPage() {
 
   // Count totals
   const totalActivities = disciplines.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
-  const totalSubActivities = disciplines.reduce((sum, d) => 
-    sum + (d.activities || []).reduce((s, a) => s + (a.subActivities?.length || 0), 0), 0
-  );
 
   return (
     <AccessGuard resource="activities" permission="read" showNavbar={false}>
@@ -246,7 +186,7 @@ export default function ActivityMasterPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Activity Master</h1>
             <p className="text-sm text-gray-600">
-              Configure disciplines, activities and sub-activities for projects
+              Configure disciplines and activities for projects
             </p>
           </div>
 
@@ -257,11 +197,11 @@ export default function ActivityMasterPage() {
             </div>
           )}
 
-          {/* Input Section - Simplified Step Flow */}
+          {/* Input Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
             <div className="flex flex-wrap items-end gap-4">
               
-              {/* Step 1: Discipline (optional - select existing or leave blank for new) */}
+              {/* Step 1: Discipline */}
               <div className="space-y-1">
                 <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
                   1. Discipline {selectedDisciplineId && <span className="text-green-600">✓</span>}
@@ -270,7 +210,6 @@ export default function ActivityMasterPage() {
                   value={selectedDisciplineId}
                   onChange={(e) => {
                     setSelectedDisciplineId(e.target.value);
-                    setSelectedActivityId('');
                     setNewItemInput('');
                     setManhoursInput('');
                   }}
@@ -283,29 +222,6 @@ export default function ActivityMasterPage() {
                 </select>
               </div>
 
-              {/* Step 2: Activity (only if discipline selected) */}
-              {selectedDisciplineId && (
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    2. Activity {selectedActivityId && <span className="text-green-600">✓</span>}
-                  </label>
-                  <select
-                    value={selectedActivityId}
-                    onChange={(e) => {
-                      setSelectedActivityId(e.target.value);
-                      setNewItemInput('');
-                      setManhoursInput('');
-                    }}
-                    className="w-52 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white"
-                  >
-                    <option value="">+ New Activity</option>
-                    {activitiesForDiscipline.map(a => (
-                      <option key={a.id} value={a.id}>{a.activity_name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               {/* Arrow indicator */}
               <div className="flex items-center text-gray-400 pb-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -313,10 +229,10 @@ export default function ActivityMasterPage() {
                 </svg>
               </div>
 
-              {/* Dynamic Input - changes based on context */}
+              {/* Dynamic Input */}
               <div className="flex-1 min-w-[200px] space-y-1">
                 <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Add {addContext.label}
+                  {selectedDisciplineId ? '2. Add Activity' : 'Add Discipline'}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -325,10 +241,10 @@ export default function ActivityMasterPage() {
                     onChange={(e) => setNewItemInput(e.target.value)}
                     placeholder={addContext.placeholder}
                     className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
-                    onKeyDown={(e) => e.key === 'Enter' && !selectedActivityId && handleAdd()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                   />
-                  {/* Manhours input - only for sub-activities */}
-                  {selectedActivityId && (
+                  {/* Manhours input - only for activities */}
+                  {selectedDisciplineId && (
                     <input
                       type="number"
                       value={manhoursInput}
@@ -355,13 +271,12 @@ export default function ActivityMasterPage() {
             {/* Helper text */}
             <p className="mt-4 text-xs text-gray-500">
               {!selectedDisciplineId && "Start by selecting an existing discipline or type a new one to create it."}
-              {selectedDisciplineId && !selectedActivityId && `Adding activity to "${selectedDiscipline?.function_name}". Select an activity to add sub-activities.`}
-              {selectedActivityId && `Adding sub-activity to "${activitiesForDiscipline.find(a => String(a.id) === String(selectedActivityId))?.activity_name}".`}
+              {selectedDisciplineId && `Adding activity to "${selectedDiscipline?.function_name}".`}
             </p>
           </div>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="text-2xl font-bold text-[#7F2487]">{disciplines.length}</div>
               <div className="text-sm text-gray-600">Disciplines</div>
@@ -370,247 +285,203 @@ export default function ActivityMasterPage() {
               <div className="text-2xl font-bold text-[#4472C4]">{totalActivities}</div>
               <div className="text-sm text-gray-600">Activities</div>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="text-2xl font-bold text-green-600">{totalSubActivities}</div>
-              <div className="text-sm text-gray-600">Sub-Activities</div>
-            </div>
           </div>
 
-          {/* Grouped Table Section */}
+          {/* Table Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             {/* Search Bar */}
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+            <div className="p-4 border-b border-gray-200">
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search disciplines, activities or sub-activities…"
+                placeholder="Search disciplines or activities…"
                 className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
               />
-              <div className="flex gap-2 ml-4">
-                <button
-                  onClick={() => setExpandedDisciplines(new Set(disciplines.map(d => d.id)))}
-                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
-                >
-                  Expand All
-                </button>
-                <button
-                  onClick={() => setExpandedDisciplines(new Set())}
-                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
-                >
-                  Collapse All
-                </button>
-              </div>
             </div>
 
-            {/* Grouped Display */}
-            <div className="divide-y divide-gray-200">
-              {filteredDisciplines.length === 0 ? (
-                <div className="px-6 py-12 text-center text-gray-500">
-                  <p className="text-lg font-medium">No disciplines found</p>
-                  <p className="text-sm mt-1">Add your first discipline using the form above</p>
-                </div>
-              ) : (
-                filteredDisciplines.map((discipline) => {
-                  const isExpanded = expandedDisciplines.has(discipline.id);
-                  const activities = discipline.activities || [];
-                  
-                  return (
-                    <div key={discipline.id} className="bg-white">
-                      {/* Discipline Header */}
-                      <div 
-                        className="flex items-center justify-between px-4 py-3 bg-[#7F2487]/5 hover:bg-[#7F2487]/10 cursor-pointer"
-                        onClick={() => toggleDiscipline(discipline.id)}
-                      >
-                        <div className="flex items-center gap-3">
-                          {isExpanded ? (
-                            <ChevronDownIcon className="w-5 h-5 text-[#7F2487]" />
-                          ) : (
-                            <ChevronRightIcon className="w-5 h-5 text-[#7F2487]" />
-                          )}
-                          <span className="font-semibold text-[#7F2487]">{discipline.function_name}</span>
-                          <span className="text-xs bg-[#7F2487]/20 text-[#7F2487] px-2 py-0.5 rounded-full">
-                            {activities.length} activities
-                          </span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteDiscipline(discipline.id);
-                          }}
-                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-                          title="Delete discipline"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                      </div>
+            {/* Table Display */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">
+                      Sr.
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Discipline
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Activity
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">
+                      Manhours
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(() => {
+                    // Flatten the data into rows
+                    const rows = [];
+                    let srNo = 0;
+                    
+                    filteredDisciplines.forEach((discipline) => {
+                      const activities = discipline.activities || [];
+                      
+                      if (activities.length === 0) {
+                        // Discipline with no activities
+                        srNo++;
+                        rows.push({
+                          key: `d-${discipline.id}`,
+                          srNo,
+                          discipline: discipline,
+                          activity: null,
+                          type: 'discipline-only',
+                          isFirstInDiscipline: true,
+                          activityCount: 0
+                        });
+                      } else {
+                        // Each activity gets a row
+                        activities.forEach((activity, actIdx) => {
+                          srNo++;
+                          rows.push({
+                            key: `a-${activity.id}`,
+                            srNo,
+                            discipline: discipline,
+                            activity: activity,
+                            type: 'full',
+                            isFirstInDiscipline: actIdx === 0,
+                            activityCount: activities.length
+                          });
+                        });
+                      }
+                    });
 
-                      {/* Activities & Sub-Activities Table */}
-                      {isExpanded && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                              <tr>
-                                <th className="px-6 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-16">
-                                  Sr.
-                                </th>
-                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                  Activity
-                                </th>
-                                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">
-                                  
-                                </th>
-                                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                  Sub-Activity
-                                </th>
-                                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">
-                                  Manhours
-                                </th>
-                                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">
-                                  
-                                </th>
-                                <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
-                                  Actions
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {activities.length === 0 ? (
-                                <tr>
-                                  <td colSpan={7} className="px-6 py-4 text-center text-gray-400 text-sm italic">
-                                    No activities yet. Add one using the form above.
-                                  </td>
-                                </tr>
-                              ) : (
-                                activities.map((activity, actIdx) => {
-                                  const subActivities = activity.subActivities || [];
-                                  
-                                  if (subActivities.length === 0) {
-                                    return (
-                                      <tr key={activity.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-2.5 text-sm text-gray-500">
-                                          {actIdx + 1}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-sm text-gray-900 font-medium">
-                                          {activity.activity_name}
-                                        </td>
-                                        <td className="px-4 py-2.5 text-center">
-                                          <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />
-                                        </td>
-                                        <td className="px-4 py-2.5 text-sm text-gray-400 italic">
-                                          —
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right text-sm text-gray-400">
-                                          —
-                                        </td>
-                                        <td className="px-4 py-2.5 text-center">
-                                          
-                                        </td>
-                                        <td className="px-4 py-2.5 text-center">
-                                          <button
-                                            onClick={() => handleDeleteActivity(activity.id)}
-                                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-                                            title="Delete activity"
-                                          >
-                                            <TrashIcon className="w-4 h-4" />
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  }
-                                  
-                                  return subActivities.map((sub, subIdx) => (
-                                    <tr key={`${activity.id}-${sub.id}`} className="hover:bg-gray-50">
-                                      <td className="px-6 py-2.5 text-sm text-gray-500">
-                                        {subIdx === 0 ? `${actIdx + 1}` : ''}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-sm text-gray-900 font-medium">
-                                        {subIdx === 0 ? activity.activity_name : ''}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-center">
-                                        {subIdx === 0 && <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-sm text-gray-700">
-                                        {sub.name}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-right text-sm font-medium text-gray-700">
-                                        {editingSubActivity?.id === sub.id ? (
-                                          <div className="flex items-center justify-end gap-1">
-                                            <input
-                                              type="number"
-                                              value={editingSubActivity.manhours}
-                                              onChange={(e) => setEditingSubActivity({ ...editingSubActivity, manhours: e.target.value })}
-                                              className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#7F2487] focus:border-transparent text-right"
-                                              min="0"
-                                              step="0.5"
-                                              autoFocus
-                                              onKeyDown={(e) => {
-                                                if (e.key === 'Enter') handleUpdateSubActivity();
-                                                if (e.key === 'Escape') setEditingSubActivity(null);
-                                              }}
-                                            />
-                                            <button
-                                              onClick={handleUpdateSubActivity}
-                                              className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded"
-                                              title="Save"
-                                            >
-                                              <CheckIcon className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                              onClick={() => setEditingSubActivity(null)}
-                                              className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-                                              title="Cancel"
-                                            >
-                                              <XMarkIcon className="w-4 h-4" />
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          <div className="flex items-center justify-end gap-1 group">
-                                            <span>{sub.default_manhours ? `${sub.default_manhours} hrs` : '—'}</span>
-                                            <button
-                                              onClick={() => setEditingSubActivity({ id: sub.id, manhours: sub.default_manhours || '' })}
-                                              className="p-1 text-gray-400 hover:text-[#7F2487] hover:bg-purple-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                              title="Edit manhours"
-                                            >
-                                              <PencilIcon className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        )}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-center">
-                                        <CheckIcon className="w-5 h-5 text-green-500 mx-auto" />
-                                      </td>
-                                      <td className="px-4 py-2.5 text-center">
-                                        <div className="flex justify-center gap-1">
-                                          <button
-                                            onClick={() => handleDeleteSubActivity(sub.id)}
-                                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-                                            title="Delete sub-activity"
-                                          >
-                                            <TrashIcon className="w-4 h-4" />
-                                          </button>
-                                          {subIdx === 0 && subActivities.length > 0 && (
-                                            <button
-                                              onClick={() => handleDeleteActivity(activity.id)}
-                                              className="p-1 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded"
-                                              title="Delete entire activity"
-                                            >
-                                              <TrashIcon className="w-4 h-4" />
-                                            </button>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ));
-                                })
+                    if (rows.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                            <p className="text-lg font-medium">No data found</p>
+                            <p className="text-sm mt-1">Add disciplines and activities using the form above</p>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return rows.map((row) => (
+                      <tr key={row.key} className={`hover:bg-gray-50 ${row.isFirstInDiscipline ? 'border-t-2 border-gray-200' : ''}`}>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {row.srNo}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.isFirstInDiscipline ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-[#7F2487]">
+                                {row.discipline.function_name}
+                              </span>
+                              {row.activityCount > 0 && (
+                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                  {row.activityCount}
+                                </span>
                               )}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                              {row.type === 'discipline-only' && (
+                                <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                                  No activities
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-300">↳</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.activity ? (
+                            <span className="text-sm text-gray-900">{row.activity.activity_name}</span>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {row.activity ? (
+                            editingActivity?.id === row.activity.id ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <input
+                                  type="number"
+                                  value={editingActivity.manhours}
+                                  onChange={(e) => setEditingActivity({ ...editingActivity, manhours: e.target.value })}
+                                  className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#7F2487] focus:border-transparent text-right"
+                                  min="0"
+                                  step="0.5"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleUpdateActivity();
+                                    if (e.key === 'Escape') setEditingActivity(null);
+                                  }}
+                                />
+                                <button
+                                  onClick={handleUpdateActivity}
+                                  className="p-1 text-green-600 hover:text-green-700 hover:bg-green-50 rounded"
+                                  title="Save"
+                                >
+                                  <CheckIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setEditingActivity(null)}
+                                  className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                                  title="Cancel"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1 group">
+                                <span className="text-sm font-medium text-gray-700">
+                                  {row.activity.default_manhours ? `${row.activity.default_manhours} hrs` : '—'}
+                                </span>
+                                <button
+                                  onClick={() => setEditingActivity({ id: row.activity.id, manhours: row.activity.default_manhours || '' })}
+                                  className="p-1 text-gray-400 hover:text-[#7F2487] hover:bg-purple-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Edit manhours"
+                                >
+                                  <PencilIcon className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex justify-center gap-1">
+                            {/* Delete Activity */}
+                            {row.activity && (
+                              <button
+                                onClick={() => handleDeleteActivity(row.activity.id)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                title="Delete activity"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Delete Discipline (show if no activity) */}
+                            {!row.activity && (
+                              <button
+                                onClick={() => handleDeleteDiscipline(row.discipline.id)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                title="Delete discipline"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

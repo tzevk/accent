@@ -7,12 +7,14 @@ import { fetchJSON } from '@/utils/http';
 
 export default function ActivityAssignmentModal({ isOpen, onClose, projectId, onSuccess }) {
   const [users, setUsers] = useState([]);
-  const [projectActivities, setProjectActivities] = useState([]);
+  const [disciplines, setDisciplines] = useState([]); // All disciplines with their activities
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedDisciplineId, setSelectedDisciplineId] = useState('');
   const [newAssignment, setNewAssignment] = useState({
     user_id: '',
+    activity_id: '',
     activity_name: '',
     activity_description: '',
     due_date: '',
@@ -27,6 +29,14 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
     { value: 'HIGH', label: 'High', color: 'bg-orange-100 text-orange-800' },
     { value: 'URGENT', label: 'Urgent', color: 'bg-red-100 text-red-800' }
   ];
+
+  // Get activities for selected discipline
+  const selectedDiscipline = disciplines.find(d => String(d.id) === String(selectedDisciplineId));
+  const availableActivities = selectedDiscipline?.activities || [];
+  
+  // Debug log
+  console.log('[ActivityAssignmentModal] Selected discipline:', selectedDisciplineId, selectedDiscipline?.function_name);
+  console.log('[ActivityAssignmentModal] Available activities:', availableActivities.length, availableActivities.map(a => a.activity_name));
 
   // Load users and existing assignments when modal opens
   useEffect(() => {
@@ -45,16 +55,15 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
         setUsers(usersRes.data);
       }
 
-      // Load project activities (scope activities)
-      const projRes = await fetchJSON(`/api/projects/${projectId}`);
-      if (projRes.success && projRes.data) {
-        // Parse scope activities from project
-        const scopeActivities = projRes.data.scope_activities ? 
-          (typeof projRes.data.scope_activities === 'string' 
-            ? JSON.parse(projRes.data.scope_activities) 
-            : projRes.data.scope_activities) 
-          : [];
-        setProjectActivities(scopeActivities);
+      // Load all disciplines with activities from Activity Master
+      const activityMasterRes = await fetchJSON('/api/activity-master');
+      console.log('[ActivityAssignmentModal] Activity Master Response:', activityMasterRes);
+      if (activityMasterRes.success && activityMasterRes.data) {
+        console.log('[ActivityAssignmentModal] Disciplines loaded:', activityMasterRes.data.length);
+        activityMasterRes.data.forEach(d => {
+          console.log(`  - ${d.function_name}: ${d.activities?.length || 0} activities`);
+        });
+        setDisciplines(activityMasterRes.data);
       }
 
       // Load existing assignments
@@ -71,14 +80,17 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
 
   const handleAddAssignment = () => {
     if (!newAssignment.user_id || !newAssignment.activity_name) {
-      alert('Please select a user and activity');
+      alert('Please select a user, discipline, and activity');
       return;
     }
 
     const assignment = {
       user_id: parseInt(newAssignment.user_id),
+      activity_id: newAssignment.activity_id || null,
       activity_name: newAssignment.activity_name,
       activity_description: newAssignment.activity_description,
+      discipline_id: selectedDisciplineId || null,
+      discipline_name: selectedDiscipline?.function_name || '',
       due_date: newAssignment.due_date,
       priority: newAssignment.priority,
       estimated_hours: parseFloat(newAssignment.estimated_hours) || 0,
@@ -98,8 +110,10 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
           // Reload assignments
           loadData();
           // Reset form
+          setSelectedDisciplineId('');
           setNewAssignment({
             user_id: '',
+            activity_id: '',
             activity_name: '',
             activity_description: '',
             due_date: '',
@@ -205,7 +219,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                         <PlusIcon className="h-4 w-4 text-[#7F2487]" />
                         New Assignment
                       </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
                             Team Member *
@@ -226,24 +240,54 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
 
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Activity *
+                            Discipline *
                           </label>
                           <select
-                            value={newAssignment.activity_name}
+                            value={selectedDisciplineId}
                             onChange={(e) => {
-                              const selected = projectActivities.find(a => a.name === e.target.value);
+                              setSelectedDisciplineId(e.target.value);
+                              // Reset activity when discipline changes
                               setNewAssignment({
                                 ...newAssignment,
-                                activity_name: e.target.value,
-                                activity_description: selected?.description || ''
+                                activity_id: '',
+                                activity_name: '',
+                                activity_description: ''
                               });
                             }}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           >
-                            <option value="">Select activity</option>
-                            {projectActivities.map((activity, idx) => (
-                              <option key={idx} value={activity.name}>
-                                {activity.name}
+                            <option value="">Select discipline</option>
+                            {disciplines.map((disc) => (
+                              <option key={disc.id} value={disc.id}>
+                                {disc.function_name} ({disc.activities?.length || 0} activities)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Activity *
+                          </label>
+                          <select
+                            value={newAssignment.activity_id}
+                            onChange={(e) => {
+                              const selected = availableActivities.find(a => String(a.id) === String(e.target.value));
+                              setNewAssignment({
+                                ...newAssignment,
+                                activity_id: e.target.value,
+                                activity_name: selected?.activity_name || '',
+                                activity_description: '',
+                                estimated_hours: selected?.default_manhours || ''
+                              });
+                            }}
+                            disabled={!selectedDisciplineId}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                          >
+                            <option value="">{selectedDisciplineId ? 'Select activity' : 'Select discipline first'}</option>
+                            {availableActivities.map((activity) => (
+                              <option key={activity.id} value={activity.id}>
+                                {activity.activity_name} {activity.default_manhours ? `(${activity.default_manhours}h)` : ''}
                               </option>
                             ))}
                           </select>
@@ -289,19 +333,6 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                             value={newAssignment.estimated_hours}
                             onChange={(e) => setNewAssignment({ ...newAssignment, estimated_hours: e.target.value })}
                             placeholder="0"
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Description
-                          </label>
-                          <input
-                            type="text"
-                            value={newAssignment.activity_description}
-                            onChange={(e) => setNewAssignment({ ...newAssignment, activity_description: e.target.value })}
-                            placeholder="Optional description"
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           />
                         </div>

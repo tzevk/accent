@@ -18,34 +18,34 @@ export async function GET() {
       id VARCHAR(36) PRIMARY KEY,
       function_id VARCHAR(36) NOT NULL,
       activity_name VARCHAR(255) NOT NULL,
+      default_manhours DECIMAL(10,2) DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
+    
+    // Add default_manhours column if it doesn't exist
+    try {
+      await db.execute(`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
     const [functions] = await db.execute(
       'SELECT id, function_name, status, description, created_at, updated_at FROM functions_master ORDER BY function_name'
     );
     let activities = [];
     try {
       const [acts] = await db.execute(
-        'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
+        'SELECT id, function_id, activity_name, COALESCE(default_manhours, 0) as default_manhours, created_at, updated_at FROM activities_master ORDER BY activity_name'
       );
       activities = acts;
     } catch {
       activities = [];
     }
 
-    // try fetching sub_activities (may not exist yet)
-    let subActivities = [];
-    try {
-      const [subs] = await db.execute('SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities');
-      subActivities = subs;
-    } catch {
-      subActivities = [];
-    }
-
     await db.end();
 
-    // Map functions to activities -> subActivities
+    // Map functions to activities (without subActivities)
     const mapped = functions.map((func) => ({
       id: func.id,
       function_name: func.function_name,
@@ -58,9 +58,9 @@ export async function GET() {
         .map((activity) => ({
           id: activity.id,
           activity_name: activity.activity_name,
+          default_manhours: parseFloat(activity.default_manhours) || 0,
           created_at: activity.created_at,
-          updated_at: activity.updated_at,
-          subActivities: subActivities.filter((s) => String(s.activity_id) === String(activity.id)).map((s) => ({ id: s.id, name: s.name, default_duration: s.default_duration, default_manhours: s.default_manhours, default_rate: s.default_rate }))
+          updated_at: activity.updated_at
         }))
     }));
 

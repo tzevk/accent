@@ -180,6 +180,9 @@ export default function EmployeesPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   // Roles for System Role assignment
   const [roles, setRoles] = useState([]);
+  // Salary structures from Salary Master
+  const [salaryStructures, setSalaryStructures] = useState([]);
+  const [selectedSalaryStructure, setSelectedSalaryStructure] = useState('');
   // Safe wrapper for opening the view form
   const openViewForm = (employee) => {
     if (!employee) return;
@@ -465,6 +468,47 @@ export default function EmployeesPage() {
       delete mo[field];
       return { ...prev, manual_overrides: mo };
     });
+  };
+
+  // Apply a salary structure from Salary Master
+  const applySalaryStructure = (structureId) => {
+    const structure = salaryStructures.find(s => String(s.id) === String(structureId));
+    if (!structure) {
+      setSelectedSalaryStructure('');
+      return;
+    }
+    
+    setSelectedSalaryStructure(structureId);
+    
+    // Apply the structure values to salaryData
+    setSalaryData(prev => ({
+      ...prev,
+      gross_salary: structure.gross_salary || '',
+      basic_da: structure.basic_salary || '',
+      hra: structure.hra || '',
+      conveyance_allowance: structure.conveyance_allowance || '',
+      call_allowance: structure.call_allowance || '',
+      other_allowance: structure.other_allowance || '',
+      professional_tax: structure.professional_tax || 200,
+      mlwf_employee: structure.mlwf_employee || 5,
+      mlwf_employer: structure.mlwf_employer || 13,
+      mediclaim: structure.mediclaim || 0,
+      annual_leaves: structure.annual_leaves || 21,
+      manual_overrides: {} // Reset manual overrides
+    }));
+
+    // Also update salaryInputs for consistency
+    setSalaryInputs(prev => ({
+      ...prev,
+      da: structure.da || '',
+      hra: structure.hra || '',
+      conveyance: structure.conveyance_allowance || '',
+      call_allowance: structure.call_allowance || '',
+      other_allowance: structure.other_allowance || '',
+      pf: structure.pf_percentage || 12,
+      pt: structure.professional_tax || 200,
+      mlwf: structure.mlwf_employee || 5
+    }));
   };
   
   // remove unused salaryCalculation state
@@ -816,6 +860,22 @@ export default function EmployeesPage() {
       } catch {}
     };
     loadRoles();
+  }, []);
+
+  // Load salary structures from Salary Master
+  useEffect(() => {
+    const loadSalaryStructures = async () => {
+      try {
+        const res = await fetch('/api/salary-master?active=true');
+        const json = await res.json();
+        if (res.ok && json?.success) {
+          setSalaryStructures(json.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to load salary structures:', err);
+      }
+    };
+    loadSalaryStructures();
   }, []);
 
   // Clear success messages automatically after a short delay so setter is plainly used
@@ -1955,6 +2015,37 @@ export default function EmployeesPage() {
                     {/* Salary Structure */}
                     {addSubTab === 'salary' && (
                       <div>
+                        {/* Salary Structure Selection */}
+                        <div className="bg-white rounded-xl border border-purple-200 shadow-sm p-4 mb-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h5 className="text-sm font-semibold text-gray-900">Select Salary Structure</h5>
+                              <p className="text-xs text-gray-500 mt-0.5">Choose a predefined structure from Salary Master</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <select
+                                value={selectedSalaryStructure}
+                                onChange={(e) => applySalaryStructure(e.target.value)}
+                                className="px-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] text-sm min-w-[200px]"
+                              >
+                                <option value="">-- Select Structure --</option>
+                                {salaryStructures.map(s => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name} (₹{(s.gross_salary || 0).toLocaleString('en-IN')})
+                                  </option>
+                                ))}
+                              </select>
+                              <a
+                                href="/masters/salary"
+                                target="_blank"
+                                className="text-xs text-[#7F2487] hover:underline"
+                              >
+                                Manage Structures →
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
                         {/* Header with Info Banner */}
                         <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm mb-6">
                           <div className="flex items-start gap-4">
@@ -3235,6 +3326,37 @@ export default function EmployeesPage() {
                     {/* Salary Structure */}
                     {editSubTab === 'salary' && (
                       <div>
+                        {/* Salary Structure Selection */}
+                        <div className="bg-white rounded-xl border border-purple-200 shadow-sm p-4 mb-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h5 className="text-sm font-semibold text-gray-900">Select Salary Structure</h5>
+                              <p className="text-xs text-gray-500 mt-0.5">Choose a predefined structure from Salary Master</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <select
+                                value={selectedSalaryStructure}
+                                onChange={(e) => applySalaryStructure(e.target.value)}
+                                className="px-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] text-sm min-w-[200px]"
+                              >
+                                <option value="">-- Select Structure --</option>
+                                {salaryStructures.map(s => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name} (₹{(s.gross_salary || 0).toLocaleString('en-IN')})
+                                  </option>
+                                ))}
+                              </select>
+                              <a
+                                href="/masters/salary"
+                                target="_blank"
+                                className="text-xs text-[#7F2487] hover:underline"
+                              >
+                                Manage Structures →
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
                         {/* Header with Info Banner */}
                         <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm mb-6">
                           <div className="flex items-start gap-4">

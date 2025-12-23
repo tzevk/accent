@@ -38,15 +38,15 @@ export async function GET(request, { params }) {
       if (tables.length > 0) {
         const [assignedProjects] = await db.execute(`
           SELECT DISTINCT
-            p.id as project_id,
+            p.project_id as project_id,
             p.name as project_name,
-            p.project_id as project_code,
+            p.project_code as project_code,
             p.status as project_status,
             p.start_date as project_start_date,
             p.end_date as project_end_date,
             p.budget as project_estimated_hours
           FROM projects p
-          INNER JOIN user_activity_assignments uaa ON p.id = uaa.project_id
+          INNER JOIN user_activity_assignments uaa ON p.project_id = uaa.project_id
           WHERE uaa.user_id = ?
           ORDER BY p.start_date DESC
         `, [requestedUserId]);
@@ -65,9 +65,9 @@ export async function GET(request, { params }) {
         // Get all projects and filter by project_team JSON containing the user ID
         const [allProjects] = await db.execute(`
           SELECT 
-            p.id as project_id,
+            p.project_id as project_id,
             p.name as project_name,
-            p.project_id as project_code,
+            p.project_code as project_code,
             p.status as project_status,
             p.start_date as project_start_date,
             p.end_date as project_end_date,
