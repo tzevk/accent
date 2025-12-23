@@ -12,7 +12,6 @@ import {
   ArrowPathIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  ShieldCheckIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
@@ -225,47 +224,46 @@ function AuditLogsContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
         {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <ShieldCheckIcon className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
-                <p className="text-sm text-gray-500">Track all system changes and user actions</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`inline-flex items-center px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                  showFilters
-                    ? 'border-purple-500 text-purple-700 bg-purple-50'
-                    : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                }`}
-              >
-                <FunnelIcon className="h-4 w-4 mr-2" />
-                Filters
-              </button>
-              <button
-                onClick={fetchLogs}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <ArrowPathIcon className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-            </div>
+        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+              <ol className="inline-flex items-center gap-2">
+                <li>Admin</li>
+                <li className="text-gray-300">/</li>
+                <li className="text-gray-700">Audit Logs</li>
+              </ol>
+            </nav>
+            <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                showFilters
+                  ? 'border-2 border-[#64126D] text-[#64126D] bg-purple-50'
+                  : 'border border-purple-200 text-[#64126D] bg-white hover:bg-purple-50'
+              }`}
+            >
+              <FunnelIcon className="h-4 w-4 mr-2" />
+              Filters
+            </button>
+            <button
+              onClick={fetchLogs}
+              className="inline-flex items-center gap-2 rounded-lg border border-purple-200 text-[#64126D] px-3.5 py-2 hover:bg-purple-50"
+            >
+              <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
         </div>
 
         {/* Filters Panel */}
         {showFilters && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="bg-white rounded-xl border border-purple-200 p-4 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {/* Search */}
               <div>
@@ -277,7 +275,7 @@ function AuditLogsContent() {
                     value={filters.search}
                     onChange={(e) => handleFilterChange('search', e.target.value)}
                     placeholder="Search..."
-                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full pl-9 pr-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                   />
                 </div>
               </div>
@@ -288,7 +286,7 @@ function AuditLogsContent() {
                 <select
                   value={filters.action}
                   onChange={(e) => handleFilterChange('action', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 >
                   <option value="">All Actions</option>
                   {Object.entries(ACTION_LABELS).map(([key, label]) => (
@@ -303,7 +301,7 @@ function AuditLogsContent() {
                 <select
                   value={filters.resource}
                   onChange={(e) => handleFilterChange('resource', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 >
                   <option value="">All Resources</option>
                   {Object.entries(RESOURCE_LABELS).map(([key, label]) => (
@@ -319,7 +317,7 @@ function AuditLogsContent() {
                   type="date"
                   value={filters.startDate}
                   onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 />
               </div>
 
@@ -330,7 +328,7 @@ function AuditLogsContent() {
                   type="date"
                   value={filters.endDate}
                   onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full px-3 py-2 border border-purple-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                 />
               </div>
 
@@ -338,7 +336,7 @@ function AuditLogsContent() {
               <div className="flex items-end">
                 <button
                   onClick={clearFilters}
-                  className="w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="w-full px-3 py-2 text-sm text-[#64126D] hover:bg-purple-50 rounded-lg transition-colors"
                 >
                   Clear Filters
                 </button>
@@ -356,10 +354,10 @@ function AuditLogsContent() {
         )}
 
         {/* Logs Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-purple-200 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]"></div>
             </div>
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
@@ -368,7 +366,7 @@ function AuditLogsContent() {
               {Object.values(filters).some(f => f) && (
                 <button
                   onClick={clearFilters}
-                  className="mt-2 text-sm text-purple-600 hover:text-purple-700"
+                  className="mt-2 text-sm text-[#64126D] hover:text-purple-700"
                 >
                   Clear filters
                 </button>
@@ -376,33 +374,33 @@ function AuditLogsContent() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-purple-200">
+                <thead className="bg-purple-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-12">
                       
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Timestamp
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       User
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Action
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Resource
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Resource ID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       IP Address
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-gray-100">
                   {logs.map((log) => (
                     <>
                       <tr
@@ -429,8 +427,8 @@ function AuditLogsContent() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center mr-3">
-                              <UserIcon className="h-4 w-4 text-gray-500" />
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#64126D] to-[#5a1161] flex items-center justify-center mr-3">
+                              <UserIcon className="h-4 w-4 text-white" />
                             </div>
                             <div>
                               <div className="text-sm font-medium text-gray-900">
@@ -485,7 +483,7 @@ function AuditLogsContent() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div className="px-6 py-4 border-t border-purple-200 flex items-center justify-between">
               <div className="text-sm text-gray-500">
                 Page {page} of {totalPages}
               </div>
@@ -493,14 +491,14 @@ function AuditLogsContent() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 border border-purple-200 rounded-lg text-sm font-medium text-[#64126D] bg-white hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 border border-purple-200 rounded-lg text-sm font-medium text-[#64126D] bg-white hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>

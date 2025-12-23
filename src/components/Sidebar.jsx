@@ -15,7 +15,8 @@ import {
   BriefcaseIcon,
   ShieldCheckIcon,
   ArrowRightOnRectangleIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -168,8 +169,8 @@ export default function Sidebar() {
             </div>
             <div className="space-y-1 mt-1">
               <NavRow icon={UserGroupIcon} label="Live Monitoring" href="/admin/live-monitoring" active={pathname.startsWith('/admin/live-monitoring')} />
-              <NavRow icon={ClipboardDocumentListIcon} label="Activity Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
-              <NavRow icon={ShieldCheckIcon} label="Audit Logs" href="/admin/audit-logs" active={pathname.startsWith('/admin/audit-logs')} />
+              <NavRow icon={ClipboardDocumentListIcon} label="Admin Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
+              <NavRow icon={CheckCircleIcon} label="All Todos" href="/admin/todos" active={pathname.startsWith('/admin/todos')} />
             </div>
           </div>
         )}

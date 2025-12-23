@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
@@ -14,23 +14,63 @@ import {
   ComputerDesktopIcon,
   CursorArrowRaysIcon,
   ChartBarIcon,
-  BriefcaseIcon
+  BriefcaseIcon,
+  ShieldExclamationIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import StatusBadge, { StatusBadgeWithBg } from '@/components/StatusBadge';
+
+// Audit Log Constants
+const AUDIT_ACTION_LABELS = {
+  update_permissions: 'Updated Permissions',
+  create: 'Created',
+  update: 'Updated',
+  delete: 'Deleted',
+  login: 'Logged In',
+  logout: 'Logged Out',
+  export: 'Exported Data',
+  import: 'Imported Data'
+};
+
+const AUDIT_ACTION_COLORS = {
+  update_permissions: 'bg-purple-100 text-purple-800',
+  create: 'bg-green-100 text-green-800',
+  update: 'bg-blue-100 text-blue-800',
+  delete: 'bg-red-100 text-red-800',
+  login: 'bg-cyan-100 text-cyan-800',
+  logout: 'bg-gray-100 text-gray-800',
+  export: 'bg-yellow-100 text-yellow-800',
+  import: 'bg-indigo-100 text-indigo-800'
+};
+
+const AUDIT_RESOURCE_LABELS = {
+  user_permissions: 'User Permissions',
+  users: 'Users',
+  employees: 'Employees',
+  leads: 'Leads',
+  projects: 'Projects',
+  vendors: 'Vendors',
+  proposals: 'Proposals',
+  documents: 'Documents'
+};
 
 export default function ActivityLogsPage() {
   const { user, loading: authLoading } = useSessionRBAC();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('activity'); // 'activity' or 'work-logs'
+  const [activeTab, setActiveTab] = useState('activity'); // 'activity', 'work-logs', or 'audit'
   const [logs, setLogs] = useState([]);
   const [workLogs, setWorkLogs] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [workLogsLoading, setWorkLogsLoading] = useState(true);
+  const [auditLogsLoading, setAuditLogsLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [userStatusMap, setUserStatusMap] = useState({});
   const [workSummary, setWorkSummary] = useState(null);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [workLogsPagination, setWorkLogsPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [auditLogsPagination, setAuditLogsPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [expandedAuditRow, setExpandedAuditRow] = useState(null);
   
   // Filters
   const [selectedUser, setSelectedUser] = useState('all');
@@ -45,6 +85,13 @@ export default function ActivityLogsPage() {
   const [workLogStartDate, setWorkLogStartDate] = useState('');
   const [workLogEndDate, setWorkLogEndDate] = useState('');
 
+  // Audit Logs Filters
+  const [auditAction, setAuditAction] = useState('all');
+  const [auditResource, setAuditResource] = useState('all');
+  const [auditStartDate, setAuditStartDate] = useState('');
+  const [auditEndDate, setAuditEndDate] = useState('');
+  const [auditSearch, setAuditSearch] = useState('');
+
   // Action type options
   const actionTypes = [
     'all', 'login', 'logout', 'create', 'read', 'update', 'delete', 
@@ -53,7 +100,7 @@ export default function ActivityLogsPage() {
   ];
 
   useEffect(() => {
-    if (!authLoading && (!user || !(user.is_super_admin || user.role?.name === 'Admin'))) {
+    if (!authLoading && (!user || !(user.is_super_admin || user.role?.code === 'admin'))) {
       router.push('/dashboard');
     }
   }, [user, authLoading, router]);
@@ -168,6 +215,38 @@ export default function ActivityLogsPage() {
     }
   };
 
+  const fetchAuditLogs = async () => {
+    setAuditLogsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: auditLogsPagination.page.toString(),
+        limit: auditLogsPagination.limit.toString(),
+      });
+      
+      if (auditAction !== 'all') params.append('action', auditAction);
+      if (auditResource !== 'all') params.append('resource_type', auditResource);
+      if (auditStartDate) params.append('start_date', auditStartDate);
+      if (auditEndDate) params.append('end_date', auditEndDate);
+      if (auditSearch) params.append('search', auditSearch);
+
+      const response = await fetch(`/api/audit-logs?${params}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setAuditLogs(data.data);
+        setAuditLogsPagination(prev => ({
+          ...prev,
+          total: data.pagination.total,
+          totalPages: data.pagination.totalPages
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch audit logs:', error);
+    } finally {
+      setAuditLogsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchUserStatus();
@@ -188,11 +267,13 @@ export default function ActivityLogsPage() {
     if (activeTab === 'activity') {
       fetchLogs();
       fetchWorkSummary(selectedUser);
-    } else {
+    } else if (activeTab === 'work-logs') {
       fetchWorkLogs();
+    } else if (activeTab === 'audit-logs') {
+      fetchAuditLogs();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.page, selectedUser, selectedActionType, startDate, endDate, workLogsPagination.page, workLogUser, workLogType, workLogStartDate, workLogEndDate, activeTab]);
+  }, [pagination.page, selectedUser, selectedActionType, startDate, endDate, workLogsPagination.page, workLogUser, workLogType, workLogStartDate, workLogEndDate, activeTab, auditLogsPagination.page, auditAction, auditResource, auditStartDate, auditEndDate, auditSearch]);
 
   const handleRefresh = () => {
     if (activeTab === 'activity') {
@@ -201,8 +282,10 @@ export default function ActivityLogsPage() {
       if (selectedUser !== 'all') {
         fetchWorkSummary(selectedUser);
       }
-    } else {
+    } else if (activeTab === 'work-logs') {
       fetchWorkLogs();
+    } else if (activeTab === 'audit-logs') {
+      fetchAuditLogs();
     }
   };
 
@@ -260,7 +343,7 @@ export default function ActivityLogsPage() {
     );
   });
 
-  if (authLoading || (user && !(user.is_super_admin || user.role?.name === 'Admin'))) {
+  if (authLoading || (user && !(user.is_super_admin || user.role?.code === 'admin'))) {
     return null;
   }
 
@@ -268,39 +351,40 @@ export default function ActivityLogsPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b pt-16">
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Activity Logs</h1>
-              <p className="mt-1 text-sm text-gray-500">Monitor all user activities across the system</p>
-            </div>
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <ArrowPathIcon className="w-5 h-5" />
-              Refresh
-            </button>
+      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
+        {/* Header */}
+        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+              <ol className="inline-flex items-center gap-2">
+                <li>Admin</li>
+                <li className="text-gray-300">/</li>
+                <li className="text-gray-700">Admin Logs</li>
+              </ol>
+            </nav>
+            <h1 className="text-3xl font-bold text-gray-900">Admin Logs</h1>
           </div>
+          <button
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-2 rounded-lg border border-purple-200 text-[#64126D] px-3.5 py-2 hover:bg-purple-50"
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
-      </div>
-
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
         {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-sm mb-6 overflow-hidden">
-          <div className="flex border-b">
+        <div className="bg-white border border-purple-200 rounded-xl mb-6 overflow-hidden">
+          <div className="flex border-b border-purple-100">
             <button
               onClick={() => setActiveTab('activity')}
               className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
                 activeTab === 'activity'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                  ? 'text-[#64126D] border-b-2 border-[#64126D] bg-purple-50'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <div className="flex items-center justify-center gap-2">
-                <ClockIcon className="w-5 h-5" />
+                <ClockIcon className="h-5 w-5" />
                 Activity Logs
               </div>
             </button>
@@ -308,13 +392,26 @@ export default function ActivityLogsPage() {
               onClick={() => setActiveTab('work-logs')}
               className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
                 activeTab === 'work-logs'
-                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                  ? 'text-[#64126D] border-b-2 border-[#64126D] bg-purple-50'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <div className="flex items-center justify-center gap-2">
-                <BriefcaseIcon className="w-5 h-5" />
+                <BriefcaseIcon className="h-5 w-5" />
                 User Work Logs
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('audit-logs')}
+              className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
+                activeTab === 'audit-logs'
+                  ? 'text-[#64126D] border-b-2 border-[#64126D] bg-purple-50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <ShieldExclamationIcon className="h-5 w-5" />
+                Audit Logs
               </div>
             </button>
           </div>
@@ -323,9 +420,9 @@ export default function ActivityLogsPage() {
         {activeTab === 'activity' ? (
           <>
             {/* Filters */}
-            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div className="bg-white border border-purple-200 rounded-xl p-6 mb-6">
           <div className="flex items-center gap-2 mb-4">
-            <FunnelIcon className="w-5 h-5 text-gray-500" />
+            <FunnelIcon className="h-5 w-5 text-[#64126D]" />
             <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
           </div>
 
@@ -413,10 +510,10 @@ export default function ActivityLogsPage() {
 
         {/* Work Summary for Selected User */}
         {selectedUser !== 'all' && workSummary && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="bg-white border border-purple-200 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                <div className="w-12 h-12 bg-gradient-to-br from-[#64126D] to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
                   {users.find(u => u.id === parseInt(selectedUser))?.full_name?.charAt(0) || 'U'}
                 </div>
                 <div>
@@ -499,61 +596,45 @@ export default function ActivityLogsPage() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Logs</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{pagination.total.toLocaleString()}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <DocumentTextIcon className="w-6 h-6 text-blue-600" />
-              </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+          <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <DocumentTextIcon className="h-5 w-5 text-[#64126D]" />
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Total Logs</span>
             </div>
+            <span className="text-2xl font-bold text-gray-900">{pagination.total.toLocaleString()}</span>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Active Users</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{users.length}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <UserIcon className="w-6 h-6 text-green-600" />
-              </div>
+          <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <UserIcon className="h-5 w-5 text-green-500" />
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Active Users</span>
             </div>
+            <span className="text-2xl font-bold text-green-600">{users.length}</span>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Showing</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{filteredLogs.length}</p>
-              </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <FunnelIcon className="w-6 h-6 text-purple-600" />
-              </div>
+          <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <FunnelIcon className="h-5 w-5 text-purple-500" />
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Showing</span>
             </div>
+            <span className="text-2xl font-bold text-purple-600">{filteredLogs.length}</span>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Current Page</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{pagination.page} / {pagination.totalPages}</p>
-              </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <DocumentTextIcon className="w-6 h-6 text-yellow-600" />
-              </div>
+          <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <DocumentTextIcon className="h-5 w-5 text-amber-500" />
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Current Page</span>
             </div>
+            <span className="text-2xl font-bold text-amber-600">{pagination.page} / {pagination.totalPages}</span>
           </div>
         </div>
 
         {/* Activity Logs Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white border border-purple-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-purple-50 border-b border-purple-100">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Timestamp
@@ -704,12 +785,12 @@ export default function ActivityLogsPage() {
           )}
         </div>
           </>
-        ) : (
+        ) : activeTab === 'work-logs' ? (
           <>
             {/* Work Logs Filters */}
-            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div className="bg-white border border-purple-200 rounded-xl p-6 mb-6">
               <div className="flex items-center gap-2 mb-4">
-                <FunnelIcon className="w-5 h-5 text-gray-500" />
+                <FunnelIcon className="h-5 w-5 text-[#64126D]" />
                 <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
               </div>
 
@@ -786,67 +867,51 @@ export default function ActivityLogsPage() {
             </div>
 
             {/* Work Logs Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Total Logs</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{workLogsPagination.total.toLocaleString()}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <BriefcaseIcon className="w-6 h-6 text-blue-600" />
-                  </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+              <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <BriefcaseIcon className="h-5 w-5 text-[#64126D]" />
+                  <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Total Logs</span>
                 </div>
+                <span className="text-2xl font-bold text-gray-900">{workLogsPagination.total.toLocaleString()}</span>
               </div>
 
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Plan Logs</p>
-                    <p className="text-2xl font-bold text-blue-600 mt-1">
-                      {workLogs.filter(log => log.log_type === 'plan').length}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <DocumentTextIcon className="w-6 h-6 text-blue-600" />
-                  </div>
+              <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-blue-500" />
+                  <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Plan Logs</span>
                 </div>
+                <span className="text-2xl font-bold text-blue-600">
+                  {workLogs.filter(log => log.log_type === 'plan').length}
+                </span>
               </div>
 
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Done Logs</p>
-                    <p className="text-2xl font-bold text-green-600 mt-1">
-                      {workLogs.filter(log => log.log_type === 'done').length}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                    <DocumentTextIcon className="w-6 h-6 text-green-600" />
-                  </div>
+              <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-green-500" />
+                  <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Done Logs</span>
                 </div>
+                <span className="text-2xl font-bold text-green-600">
+                  {workLogs.filter(log => log.log_type === 'done').length}
+                </span>
               </div>
 
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">Current Page</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                      {workLogsPagination.page} / {workLogsPagination.totalPages}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <DocumentTextIcon className="w-6 h-6 text-purple-600" />
-                  </div>
+              <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-amber-500" />
+                  <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Current Page</span>
                 </div>
+                <span className="text-2xl font-bold text-amber-600">
+                  {workLogsPagination.page} / {workLogsPagination.totalPages}
+                </span>
               </div>
             </div>
 
             {/* Work Logs Table */}
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-white border border-purple-200 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-purple-50 border-b border-purple-100">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Date
@@ -987,7 +1052,258 @@ export default function ActivityLogsPage() {
               )}
             </div>
           </>
-        )}
+        ) : activeTab === 'audit-logs' ? (
+          <>
+            {/* Audit Logs Filters */}
+            <div className="bg-white border border-purple-200 rounded-xl p-6 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <FunnelIcon className="h-5 w-5 text-[#64126D]" />
+                <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Action Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Action</label>
+                  <select
+                    value={auditAction}
+                    onChange={(e) => {
+                      setAuditAction(e.target.value);
+                      setAuditLogsPagination(prev => ({ ...prev, page: 1 }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Actions</option>
+                    {Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Resource Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Resource</label>
+                  <select
+                    value={auditResource}
+                    onChange={(e) => {
+                      setAuditResource(e.target.value);
+                      setAuditLogsPagination(prev => ({ ...prev, page: 1 }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Resources</option>
+                    {Object.entries(AUDIT_RESOURCE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Start Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                  <input
+                    type="date"
+                    value={auditStartDate}
+                    onChange={(e) => {
+                      setAuditStartDate(e.target.value);
+                      setAuditLogsPagination(prev => ({ ...prev, page: 1 }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* End Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                  <input
+                    type="date"
+                    value={auditEndDate}
+                    onChange={(e) => {
+                      setAuditEndDate(e.target.value);
+                      setAuditLogsPagination(prev => ({ ...prev, page: 1 }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                  <input
+                    type="text"
+                    value={auditSearch}
+                    onChange={(e) => {
+                      setAuditSearch(e.target.value);
+                      setAuditLogsPagination(prev => ({ ...prev, page: 1 }));
+                    }}
+                    placeholder="Search audit logs..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Clear Filters */}
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => {
+                    setAuditAction('all');
+                    setAuditResource('all');
+                    setAuditStartDate('');
+                    setAuditEndDate('');
+                    setAuditSearch('');
+                    setAuditLogsPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+
+            {/* Audit Logs Table */}
+            <div className="bg-white border border-purple-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-purple-50 border-b border-purple-100">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sr. No.</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resource</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {auditLogsLoading ? (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#64126D]"></div>
+                            Loading audit logs...
+                          </div>
+                        </td>
+                      </tr>
+                    ) : auditLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                          No audit logs found
+                        </td>
+                      </tr>
+                    ) : (
+                      auditLogs.map((log, index) => (
+                        <React.Fragment key={log.id}>
+                          <tr className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {((auditLogsPagination.page - 1) * auditLogsPagination.limit) + index + 1}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {new Date(log.created_at).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                                  <UserIcon className="w-4 h-4 text-purple-600" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {log.user_name || 'Unknown User'}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {log.username || '-'}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${AUDIT_ACTION_COLORS[log.action] || 'bg-gray-100 text-gray-800'}`}>
+                                {AUDIT_ACTION_LABELS[log.action] || log.action}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {AUDIT_RESOURCE_LABELS[log.resource_type] || log.resource_type}
+                              {log.resource_id && <span className="text-gray-500"> #{log.resource_id}</span>}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {log.ip_address || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {(log.old_values || log.new_values) ? (
+                                <button
+                                  onClick={() => setExpandedAuditRow(expandedAuditRow === log.id ? null : log.id)}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1"
+                                >
+                                  {expandedAuditRow === log.id ? 'Hide' : 'View'}
+                                  <ChevronDownIcon className={`w-4 h-4 transition-transform ${expandedAuditRow === log.id ? 'rotate-180' : ''}`} />
+                                </button>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )}
+                            </td>
+                          </tr>
+                          {expandedAuditRow === log.id && (
+                            <tr className="bg-gray-50">
+                              <td colSpan="7" className="px-6 py-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  {log.old_values && (
+                                    <div>
+                                      <h4 className="text-sm font-medium text-gray-700 mb-2">Previous Values</h4>
+                                      <pre className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 overflow-auto max-h-40">
+                                        {typeof log.old_values === 'string' ? log.old_values : JSON.stringify(log.old_values, null, 2)}
+                                      </pre>
+                                    </div>
+                                  )}
+                                  {log.new_values && (
+                                    <div>
+                                      <h4 className="text-sm font-medium text-gray-700 mb-2">New Values</h4>
+                                      <pre className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800 overflow-auto max-h-40">
+                                        {typeof log.new_values === 'string' ? log.new_values : JSON.stringify(log.new_values, null, 2)}
+                                      </pre>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {!auditLogsLoading && auditLogs.length > 0 && (
+                <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t">
+                  <div className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{((auditLogsPagination.page - 1) * auditLogsPagination.limit) + 1}</span> to{' '}
+                    <span className="font-medium">
+                      {Math.min(auditLogsPagination.page * auditLogsPagination.limit, auditLogsPagination.total)}
+                    </span> of{' '}
+                    <span className="font-medium">{auditLogsPagination.total}</span> results
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setAuditLogsPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                      disabled={auditLogsPagination.page === 1}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setAuditLogsPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
+                      disabled={auditLogsPagination.page >= auditLogsPagination.totalPages}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

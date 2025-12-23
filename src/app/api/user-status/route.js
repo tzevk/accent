@@ -38,7 +38,7 @@ export async function GET(request) {
            WHERE user_id = u.id AND action_type = 'view_page' 
            ORDER BY created_at DESC LIMIT 1) as current_page
         FROM users u
-        LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN roles_master r ON u.role_id = r.id
         LEFT JOIN user_activity_logs ual ON u.id = ual.user_id
         WHERE ual.created_at >= ?
         GROUP BY u.id
@@ -87,7 +87,7 @@ export async function GET(request) {
          WHERE user_id = u.id AND status = 'active' 
          ORDER BY session_start DESC LIMIT 1) as session_start
       FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
+      LEFT JOIN roles_master r ON u.role_id = r.id
       WHERE u.id IN (${placeholders})`,
       userIds
     );

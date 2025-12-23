@@ -24,13 +24,6 @@ export default function LiveMonitoringPage() {
   const [sortBy, setSortBy] = useState('status'); // 'status' | 'name' | 'screen_time'
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Redirect non-admin users
-  useEffect(() => {
-    if (!authLoading && (!user || user.role !== 'Admin')) {
-      router.push('/dashboard');
-    }
-  }, [user, authLoading, router]);
-
   // Fetch users on mount and set up auto-refresh
   useEffect(() => {
     fetchUsers();
@@ -130,13 +123,40 @@ export default function LiveMonitoringPage() {
     return `${secs}s`;
   };
 
-  if (authLoading || loading) {
+  // Show loading while checking auth
+  if (authLoading) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#64126D]"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated
+  if (!user) {
+    router.push('/signin');
+    return null;
+  }
+
+  // Redirect if not admin
+  if (!(user.is_super_admin || user.role?.code === 'admin')) {
+    router.push('/dashboard');
+    return null;
+  }
+
+  if (loading) {
+    return (
+      <div className="h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[#64126D]"></div>
             <p className="mt-4 text-gray-600">Loading live monitoring...</p>
           </div>
         </div>
