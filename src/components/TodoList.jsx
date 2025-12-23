@@ -8,7 +8,8 @@ import {
   CalendarIcon,
   FlagIcon,
   PencilIcon,
-  ClipboardDocumentListIcon
+  ClipboardDocumentListIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 
 const PRIORITY_COLORS = {
@@ -23,6 +24,18 @@ const PRIORITY_LABELS = {
   low: 'Low'
 };
 
+// Helper to get today's date in YYYY-MM-DD format
+const getTodayDate = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
+
+// Helper to get current time in HH:MM format
+const getCurrentTime = () => {
+  const now = new Date();
+  return now.toTimeString().slice(0, 5);
+};
+
 export default function TodoList() {
   const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +46,8 @@ export default function TodoList() {
     title: '',
     description: '',
     priority: 'medium',
-    due_date: ''
+    due_date: getTodayDate(),
+    due_time: getCurrentTime()
   });
 
   const fetchTodos = useCallback(async () => {
@@ -58,16 +72,31 @@ export default function TodoList() {
     e.preventDefault();
     if (!newTodo.title.trim()) return;
 
+    // Combine date and time for due_date
+    let dueDateTime = newTodo.due_date;
+    if (newTodo.due_date && newTodo.due_time) {
+      dueDateTime = `${newTodo.due_date}T${newTodo.due_time}:00`;
+    }
+
     try {
       const res = await fetch('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTodo)
+        body: JSON.stringify({
+          ...newTodo,
+          due_date: dueDateTime
+        })
       });
       const data = await res.json();
       if (data.success) {
         setTodos(prev => [data.data, ...prev]);
-        setNewTodo({ title: '', description: '', priority: 'medium', due_date: '' });
+        setNewTodo({ 
+          title: '', 
+          description: '', 
+          priority: 'medium', 
+          due_date: getTodayDate(),
+          due_time: getCurrentTime()
+        });
         setShowAddForm(false);
       }
     } catch (error) {
@@ -133,15 +162,23 @@ export default function TodoList() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    if (date < today) {
-      return { text: 'Overdue', class: 'text-red-600 bg-red-50' };
-    } else if (date.toDateString() === today.toDateString()) {
-      return { text: 'Today', class: 'text-amber-600 bg-amber-50' };
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return { text: 'Tomorrow', class: 'text-blue-600 bg-blue-50' };
+    // Format time if available
+    const hasTime = dateStr.includes('T') && !dateStr.endsWith('00:00:00');
+    const timeStr = hasTime ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+    
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+    
+    if (dateOnly < today) {
+      return { text: `Overdue${timeStr ? ' • ' + timeStr : ''}`, class: 'text-red-600 bg-red-50' };
+    } else if (dateOnly.toDateString() === today.toDateString()) {
+      return { text: `Today${timeStr ? ' • ' + timeStr : ''}`, class: 'text-amber-600 bg-amber-50' };
+    } else if (dateOnly.toDateString() === tomorrow.toDateString()) {
+      return { text: `Tomorrow${timeStr ? ' • ' + timeStr : ''}`, class: 'text-blue-600 bg-blue-50' };
     } else {
+      const dateText = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       return { 
-        text: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
+        text: `${dateText}${timeStr ? ' • ' + timeStr : ''}`, 
         class: 'text-gray-600 bg-gray-50' 
       };
     }
@@ -160,7 +197,17 @@ export default function TodoList() {
             <h2 className="font-semibold text-gray-900">My Tasks</h2>
           </div>
           <button
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => {
+              // Reset form with current date/time when opening
+              setNewTodo({
+                title: '',
+                description: '',
+                priority: 'medium',
+                due_date: getTodayDate(),
+                due_time: getCurrentTime()
+              });
+              setShowAddForm(!showAddForm);
+            }}
             className="p-1.5 rounded-lg hover:bg-purple-50 text-purple-600 transition-colors"
             title="Add task"
           >
@@ -195,23 +242,46 @@ export default function TodoList() {
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 mb-2"
             autoFocus
           />
-          <div className="flex items-center space-x-2 mb-2">
+          
+          {/* Priority */}
+          <div className="mb-2">
+            <label className="block text-xs text-gray-500 mb-1">Priority</label>
             <select
               value={newTodo.priority}
               onChange={(e) => setNewTodo(prev => ({ ...prev, priority: e.target.value }))}
-              className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
             >
-              <option value="low">Low Priority</option>
-              <option value="medium">Medium Priority</option>
-              <option value="high">High Priority</option>
+              <option value="low">🟢 Low Priority</option>
+              <option value="medium">🟡 Medium Priority</option>
+              <option value="high">🔴 High Priority</option>
             </select>
-            <input
-              type="date"
-              value={newTodo.due_date}
-              onChange={(e) => setNewTodo(prev => ({ ...prev, due_date: e.target.value }))}
-              className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-            />
           </div>
+          
+          {/* Date and Time */}
+          <div className="mb-3">
+            <label className="block text-xs text-gray-500 mb-1">Due Date & Time</label>
+            <div className="flex items-center space-x-2">
+              <div className="flex-1 relative">
+                <CalendarIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="date"
+                  value={newTodo.due_date}
+                  onChange={(e) => setNewTodo(prev => ({ ...prev, due_date: e.target.value }))}
+                  className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div className="flex-1 relative">
+                <ClockIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="time"
+                  value={newTodo.due_time}
+                  onChange={(e) => setNewTodo(prev => ({ ...prev, due_time: e.target.value }))}
+                  className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+          </div>
+          
           <div className="flex items-center space-x-2">
             <button
               type="submit"
@@ -224,7 +294,13 @@ export default function TodoList() {
               type="button"
               onClick={() => {
                 setShowAddForm(false);
-                setNewTodo({ title: '', description: '', priority: 'medium', due_date: '' });
+                setNewTodo({ 
+                  title: '', 
+                  description: '', 
+                  priority: 'medium', 
+                  due_date: getTodayDate(),
+                  due_time: getCurrentTime()
+                });
               }}
               className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
             >
@@ -344,16 +420,40 @@ export default function TodoList() {
 }
 
 function EditTodoForm({ todo, onSave, onCancel }) {
+  // Parse existing date and time
+  const parseDateTime = (dateStr) => {
+    if (!dateStr) return { date: getTodayDate(), time: getCurrentTime() };
+    const date = new Date(dateStr);
+    return {
+      date: date.toISOString().split('T')[0],
+      time: date.toTimeString().slice(0, 5)
+    };
+  };
+  
+  const { date: initialDate, time: initialTime } = parseDateTime(todo.due_date);
+  
   const [form, setForm] = useState({
     title: todo.title,
     priority: todo.priority,
-    due_date: todo.due_date ? todo.due_date.split('T')[0] : ''
+    due_date: initialDate,
+    due_time: initialTime
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    onSave(form);
+    
+    // Combine date and time
+    let dueDateTime = form.due_date;
+    if (form.due_date && form.due_time) {
+      dueDateTime = `${form.due_date}T${form.due_time}:00`;
+    }
+    
+    onSave({
+      title: form.title,
+      priority: form.priority,
+      due_date: dueDateTime
+    });
   };
 
   return (
@@ -371,14 +471,22 @@ function EditTodoForm({ todo, onSave, onCancel }) {
           onChange={(e) => setForm(prev => ({ ...prev, priority: e.target.value }))}
           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
         >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+          <option value="low">🟢 Low</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="high">🔴 High</option>
         </select>
+      </div>
+      <div className="flex items-center space-x-2">
         <input
           type="date"
           value={form.due_date}
           onChange={(e) => setForm(prev => ({ ...prev, due_date: e.target.value }))}
+          className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
+        />
+        <input
+          type="time"
+          value={form.due_time}
+          onChange={(e) => setForm(prev => ({ ...prev, due_time: e.target.value }))}
           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded"
         />
       </div>

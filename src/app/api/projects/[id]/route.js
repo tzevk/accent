@@ -416,7 +416,7 @@ export async function PUT(request, context) {
     
     const {
       name,
-      // project_id is intentionally excluded - it's the primary key and should not be updated
+      project_id,
       client_name,
       client_contact_details,
       project_location_country,
@@ -438,6 +438,7 @@ export async function PUT(request, context) {
       priority,
       assigned_to,
       description,
+      additional_scope,
       notes,
       proposal_id,
       // Commercial Details
@@ -514,6 +515,7 @@ export async function PUT(request, context) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_duration_planned DECIMAL(10,2)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_duration_actual DECIMAL(10,2)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS additional_scope TEXT');
       
       // Commercial Details
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_value DECIMAL(15,2)');
@@ -594,7 +596,7 @@ export async function PUT(request, context) {
 
     const fieldValues = [
       ['name', name === undefined ? null : name],
-      // SKIP project_id - it's the primary key and should not be updated
+      ['project_id', project_id === undefined ? null : project_id],
       ['client_name', clientNameParam],
       ['client_contact_details', client_contact_details === undefined ? null : client_contact_details],
       ['project_location_country', project_location_country === undefined ? null : project_location_country],
@@ -616,6 +618,7 @@ export async function PUT(request, context) {
       ['priority', priority === undefined ? null : priority],
       ['assigned_to', assigned_to === undefined ? null : assigned_to],
       ['description', description === undefined ? null : description],
+      ['additional_scope', additional_scope === undefined ? null : additional_scope],
       ['notes', notes === undefined ? null : notes],
       ['proposal_id', (proposal_id === undefined || proposal_id === null || proposal_id === '' ) ? null : proposal_id],
       ['project_value', normalizeDecimal(project_value)],

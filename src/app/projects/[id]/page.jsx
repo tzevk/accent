@@ -107,7 +107,6 @@ export default function ProjectViewPage() {
   const [openSections, setOpenSections] = useState({
     basic: true,
     scope: true,
-    unitQty: false,
     deliverables: true
   });
 
@@ -140,10 +139,6 @@ export default function ProjectViewPage() {
     return (
       pick(['scope_of_work', 'proposal_scope', 'scope', 'description']) || null
     );
-  }, [pick]);
-
-  const unitQtyField = useMemo(() => {
-    return pick(['unit_qty', 'unit', 'quantity', 'units', 'unit_quantity']) || null;
   }, [pick]);
 
   const deliverablesField = useMemo(() => {
@@ -369,65 +364,6 @@ export default function ProjectViewPage() {
                   )}
                 </div>
 
-                {/* Scope (collapsible) */}
-                <div className="border-t border-gray-200 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => toggleSection('scope')}
-                    className="w-full flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      <MapPinIcon className="h-5 w-5 text-[#7F2487]" />
-                      <h3 className="text-sm font-semibold text-black">Scope</h3>
-                    </div>
-                    <div className="text-sm text-gray-500">{openSections.scope ? 'Hide' : 'Show'}</div>
-                  </button>
-                  {openSections.scope && (
-                    <div className="mt-3 space-y-3">
-                      {scopeField ? (
-                        <div className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
-                          <p className="text-sm text-gray-600 whitespace-pre-line">{scopeField}</p>
-                        </div>
-                      ) : scopeSummary.length > 0 ? (
-                        scopeSummary.map((note) => (
-                          <div key={note.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
-                            <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{note.title}</h4>
-                            <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{note.content}</p>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-gray-500">No scope captured. Use the edit view to import scope from the linked proposal or add custom scope.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Unit / Qty (collapsible) */}
-                <div className="border-t border-gray-200 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => toggleSection('unitQty')}
-                    className="w-full flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      <ClipboardDocumentCheckIcon className="h-5 w-5 text-[#7F2487]" />
-                      <h3 className="text-sm font-semibold text-black">Unit / Qty</h3>
-                    </div>
-                    <div className="text-sm text-gray-500">{openSections.unitQty ? 'Hide' : 'Show'}</div>
-                  </button>
-                  {openSections.unitQty && (
-                    <div className="mt-3">
-                      {unitQtyField ? (
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-                          <p className="text-sm text-gray-600">{unitQtyField}</p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">No unit/quantity data captured. Add unit/qty in the edit view or import from proposal.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
                 {/* Deliverables (collapsible) */}
                 <div className="border-t border-gray-200 pt-4">
                   <button
@@ -481,6 +417,141 @@ export default function ProjectViewPage() {
                   )}
                 </div>
               </div>
+              </section>
+            )}
+
+            {/* Scope Tab - Enhanced with Original + Additional Scope */}
+            {activeTab === 'scope' && (
+              <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                {/* Header */}
+                <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-900">Scope of Work</h2>
+                        <p className="text-xs text-gray-500">Project scope details and amendments</p>
+                      </div>
+                    </div>
+                    {/* Scope Summary Badges */}
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${scopeField ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {scopeField ? 'Original Scope Defined' : 'No Original Scope'}
+                      </span>
+                      {project.additional_scope && (
+                        <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+                          Additional Scope Added
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-6 space-y-6">
+                  {/* Original Scope Section */}
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-5 border border-gray-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">1</span>
+                      <label className="text-sm font-bold text-gray-800">Original Project Scope</label>
+                      <span className="text-xs text-gray-400 ml-2">(from Proposal)</span>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm min-h-[100px]">
+                      {scopeField ? (
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{scopeField}</p>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 text-gray-400">
+                          <DocumentTextIcon className="h-8 w-8 mb-2" />
+                          <p className="text-sm">No original scope defined yet</p>
+                          <p className="text-xs">Scope will be fetched from linked proposal</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Additional Scope Section */}
+                  <div className="bg-gradient-to-br from-amber-50/50 to-orange-50/30 rounded-xl p-5 border border-amber-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center w-6 h-6 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">2</span>
+                        <label className="text-sm font-bold text-gray-800">Additional Scope Items</label>
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">Change Orders / Variations</span>
+                      </div>
+                      {project.additional_scope && (() => {
+                        const items = project.additional_scope.split('\n').filter(item => item.trim());
+                        return items.length > 0 && (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <CheckCircleIcon className="w-4 h-4" />
+                            {items.length} item{items.length > 1 ? 's' : ''}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
+                      {project.additional_scope ? (() => {
+                        const items = project.additional_scope.split('\n').filter(item => item.trim());
+                        if (items.length === 0) {
+                          return (
+                            <div className="p-6 text-center text-gray-400">
+                              <DocumentTextIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">No additional scope items added</p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <ul className="divide-y divide-amber-100">
+                            {items.map((item, idx) => (
+                              <li key={idx} className="flex items-start gap-3 px-4 py-3">
+                                <span className="flex-shrink-0 w-5 h-5 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-xs font-bold mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <span className="flex-1 text-sm text-gray-700">{item.replace(/^[•\-\*]\s*/, '')}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        );
+                      })() : (
+                        <div className="p-6 text-center text-gray-400">
+                          <DocumentTextIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No additional scope items added</p>
+                          <p className="text-xs mt-1">Use the Edit view to add scope amendments</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Combined Scope Preview */}
+                  {(scopeField || project.additional_scope) && (
+                    <div className="bg-gradient-to-br from-purple-50/50 to-blue-50/30 rounded-xl p-5 border border-purple-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="inline-flex items-center justify-center w-6 h-6 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">📋</span>
+                        <label className="text-sm font-bold text-gray-800">Complete Scope Overview</label>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm space-y-4">
+                        {scopeField && (
+                          <div>
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">Original Scope</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{scopeField}</p>
+                          </div>
+                        )}
+                        {project.additional_scope && (
+                          <div className={scopeField ? 'pt-3 border-t border-gray-200' : ''}>
+                            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">Additional Scope Items</p>
+                            <ul className="space-y-1.5">
+                              {project.additional_scope.split('\n').filter(item => item.trim()).map((item, idx) => (
+                                <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                  <span className="text-amber-500 mt-0.5">•</span>
+                                  <span>{item.replace(/^[•\-\*]\s*/, '')}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </section>
             )}
 

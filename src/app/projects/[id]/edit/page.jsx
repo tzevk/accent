@@ -13,6 +13,7 @@ import Image from 'next/image';
 const INITIAL_FORM = {
   // Scope & Annexure fields
   scope_of_work: '',
+  additional_scope: '',
   input_documents: '',
   deliverables: '',
   software_included: '',
@@ -159,7 +160,6 @@ function EditProjectForm() {
   const [openSections, setOpenSections] = useState({
     basic: true,
     scope: true,
-    unitQty: false,
     deliverables: true,
     teamMemberAdd: true,
     currentTeam: true
@@ -1613,10 +1613,8 @@ function EditProjectForm() {
     console.log('[SUBMIT] Starting submission...');
     
     try {
-      // Exclude project_id from payload as it's the primary key
-      const { project_id, ...formWithoutPk } = form;
       const payload = {
-        ...formWithoutPk,
+        ...form,
         project_duration_planned: form.project_duration_planned ? Number(form.project_duration_planned) : null,
         project_duration_actual: form.project_duration_actual ? Number(form.project_duration_actual) : null,
         project_value: form.project_value ? Number(form.project_value) : null,
@@ -2146,35 +2144,6 @@ function EditProjectForm() {
                           ))}
                       </div>
                     )}
-
-                    {/* Unit / Qty (collapsible) */}
-                    <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
-                      <button type="button" onClick={() => toggleSection('unitQty')} className="w-full flex items-center justify-between group hover:bg-white/50 rounded-md px-2 py-1.5 transition-colors">
-                        <div className="flex items-center gap-2">
-                          <ChevronDownIcon className={`h-3.5 w-3.5 text-purple-600 transition-transform ${openSections.unitQty ? 'rotate-180' : ''}`} />
-                          <h3 className="text-sm font-semibold text-gray-700">Unit / Qty</h3>
-                        </div>
-                        <span className="text-xs text-purple-600">{openSections.unitQty ? '−' : '+'}</span>
-                      </button>
-                      {openSections.unitQty && (
-                        <div className="mt-4 space-y-4 pt-3 border-t border-purple-100">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">Unit / Qty</label>
-                              <input type="text" name="unit_qty" value={form.unit_qty} onChange={handleChange} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">Duration Planned (days)</label>
-                              <input type="number" name="project_duration_planned" value={form.project_duration_planned} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">Duration Actual (days)</label>
-                              <input type="number" name="project_duration_actual" value={form.project_duration_actual} onChange={handleChange} step="0.01" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent" />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
 
                     {/* Enhanced Deliverables Section */}
                     <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
@@ -3889,47 +3858,68 @@ function EditProjectForm() {
             {/* Project Activity / Daily Activity Tab */}
             {activeTab === 'project_activity' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                  <div className="flex items-center gap-2">
-                    <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
-                    <h2 className="text-sm font-bold text-gray-900">Project Activities</h2>
+                <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <DocumentIcon className="h-5 w-5 text-[#7F2487]" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-gray-900">Project Activities</h2>
+                        <p className="text-xs text-gray-500 mt-0.5">Track project activities with planned and actual hours</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full font-medium">
+                        {projectActivities.length} Activities
+                      </span>
+                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded-full font-medium">
+                        {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)} Planned Hrs
+                      </span>
+                      <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-full font-medium">
+                        {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)} Actual Hrs
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Manage disciplines, activities, sub-activities with planning and tracking</p>
                 </div>
 
-                <div className="px-6 py-5 space-y-4">
-                  {/* Add Activity Section */}
-                  <div className="bg-gradient-to-br from-purple-25 via-white to-purple-25 rounded-lg p-4 border border-purple-100 shadow-sm">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <div className="px-6 py-5 space-y-5">
+                  {/* Add Activity Section - Simplified */}
+                  <div className="bg-gradient-to-br from-purple-50 via-white to-purple-50 rounded-xl p-5 border border-purple-100 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
                       <PlusIcon className="h-4 w-4 text-[#7F2487]" />
                       Add New Activity
                     </h4>
                     
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Manual Activity Input */}
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          value={newScopeActivityName} 
-                          onChange={(e) => setNewScopeActivityName(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && addScopeActivity()}
-                          placeholder="Type activity name manually..." 
-                          className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] bg-white" 
-                        />
-                        <button 
-                          type="button" 
-                          onClick={addScopeActivity}
-                          disabled={!newScopeActivityName.trim()}
-                          className="px-3 py-1.5 bg-[#7F2487] text-white rounded text-sm font-semibold hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                        >
-                          <PlusIcon className="h-3.5 w-3.5" />
-                          Add Manual
-                        </button>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-gray-600">Manual Entry</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={newScopeActivityName} 
+                            onChange={(e) => setNewScopeActivityName(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && addScopeActivity()}
+                            placeholder="Type activity name..." 
+                            className="flex-1 px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] bg-white" 
+                          />
+                          <button 
+                            type="button" 
+                            onClick={addScopeActivity}
+                            disabled={!newScopeActivityName.trim()}
+                            className="px-4 py-2.5 bg-[#7F2487] text-white rounded-lg text-sm font-semibold hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                            Add
+                          </button>
+                        </div>
                       </div>
                       
                       {/* Activity Master Dropdown */}
                       {functions.length > 0 && (
-                        <div className="flex gap-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-gray-600">Select from Activity Master</label>
                           <select
                             onChange={(e) => {
                               const value = e.target.value;
@@ -3947,18 +3937,11 @@ function EditProjectForm() {
                                         type: 'activity',
                                         source: 'master',
                                         name: activity.activity_name,
-                                        status: 'NEW',
-                                        deliverables: '',
-                                        manhours: 0,
-                                        unit_qty: '',
+                                        discipline: func.function_name,
+                                        activity_name: activity.activity_name,
+                                        sub_activity_name: '',
                                         planned_hours: 0,
-                                        start_time: '',
-                                        end_time: '',
                                         actual_hours: 0,
-                                        activity_done_by: '',
-                                        status_completed: '',
-                                        remark: '',
-                                        assigned_users: [],
                                         assigned_user: '',
                                         due_date: '',
                                         priority: 'MEDIUM',
@@ -3978,25 +3961,17 @@ function EditProjectForm() {
                                         type: 'subactivity',
                                         source: 'master',
                                         name: subActivity.name,
-                                        status: 'NEW',
-                                        deliverables: '',
-                                        manhours: 0,
-                                        unit_qty: '',
-                                        planned_hours: 0,
-                                        start_time: '',
-                                        end_time: '',
+                                        discipline: func.function_name,
+                                        activity_name: activity.activity_name,
+                                        sub_activity_name: subActivity.name,
+                                        planned_hours: subActivity.default_manhours || 0,
                                         actual_hours: 0,
-                                        activity_done_by: '',
-                                        status_completed: '',
-                                        remark: '',
-                                        assigned_users: [],
                                         assigned_user: '',
                                         due_date: '',
                                         priority: 'MEDIUM',
                                         function_id: funcId,
                                         function_name: func.function_name,
-                                        activity_id: activity.id,
-                                        activity_name: activity.activity_name
+                                        activity_id: activity.id
                                       }]);
                                     }
                                   }
@@ -4004,9 +3979,9 @@ function EditProjectForm() {
                                 e.target.value = '';
                               }
                             }}
-                            className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] bg-white"
+                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] bg-white"
                           >
-                            <option value="">Or select from Activity Master...</option>
+                            <option value="">Select discipline / activity / sub-activity...</option>
                             {functions.map(func => (
                               <optgroup key={func.id} label={`📁 ${func.function_name}`}>
                                 {(func.activities || []).map(activity => (
@@ -4023,7 +3998,7 @@ function EditProjectForm() {
                                         value={`${func.id}|${subActivity.id}|subactivity`}
                                         disabled={projectActivities.some(pa => pa.id === subActivity.id && pa.type === 'subactivity')}
                                       >
-                                        &nbsp;&nbsp;&nbsp;↳ {subActivity.name}
+                                        &nbsp;&nbsp;&nbsp;↳ {subActivity.name} {subActivity.default_manhours ? `(${subActivity.default_manhours} hrs)` : ''}
                                       </option>
                                     ))}
                                   </Fragment>
@@ -4036,189 +4011,183 @@ function EditProjectForm() {
                     </div>
                   </div>
 
-                  {/* Hierarchical Activity Table */}
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Activities Hierarchy & Tracking</h4>
-                    
-                    <div className="overflow-x-auto bg-white rounded border border-gray-200">
-                      <table className="w-full text-xs border-collapse">
+                  {/* Simplified Activity Table - Grouped by Discipline */}
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
                         <thead>
-                          <tr className="bg-gray-100 border-b">
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-48">Activity Name</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-24">Source</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-40">Assigned To</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-32">Due Date</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Priority</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Planned Hrs</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Start Time</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">End Time</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-28">Actual Hrs</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-32">Status</th>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700 w-40">Remark</th>
-                            <th className="text-center py-2 px-3 font-semibold text-gray-700 w-24">Actions</th>
+                          <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
+                            <th className="text-left py-3 px-4 font-bold text-gray-700">Activity</th>
+                            <th className="text-left py-3 px-4 font-bold text-gray-700">Sub Activity</th>
+                            <th className="text-left py-3 px-4 font-bold text-gray-700 w-40">Assigned To</th>
+                            <th className="text-left py-3 px-4 font-bold text-gray-700 w-36">Due Date</th>
+                            <th className="text-left py-3 px-4 font-bold text-gray-700 w-28">Priority</th>
+                            <th className="text-center py-3 px-4 font-bold text-gray-700 w-28">Planned Hrs</th>
+                            <th className="text-center py-3 px-4 font-bold text-gray-700 w-28">Actual Hrs</th>
+                            <th className="text-center py-3 px-4 font-bold text-gray-700 w-20">Action</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-gray-100">
                           {projectActivities.length === 0 ? (
-                            <tr><td colSpan={12} className="text-center py-6 text-gray-500 text-sm">No activities added. Add manually or select from Activity Master.</td></tr>
+                            <tr>
+                              <td colSpan={8} className="text-center py-12">
+                                <div className="flex flex-col items-center">
+                                  <DocumentIcon className="h-12 w-12 text-gray-300 mb-3" />
+                                  <p className="text-gray-500 font-medium">No activities added yet</p>
+                                  <p className="text-xs text-gray-400 mt-1">Add activities manually or select from Activity Master above</p>
+                                </div>
+                              </td>
+                            </tr>
                           ) : (
-                            // Group by discipline
+                            // Group activities by discipline
                             (() => {
-                              const grouped = {};
-                              projectActivities.forEach(act => {
-                                const discipline = act.function_name || 'Manual / Other';
-                                if (!grouped[discipline]) grouped[discipline] = [];
-                                grouped[discipline].push(act);
-                              });
-
-                              return Object.entries(grouped).map(([discipline, acts]) => (
-                                <Fragment key={discipline}>
-                                  {/* Discipline Header Row */}
-                                  <tr className="bg-gradient-to-r from-purple-100 to-purple-50 border-b-2 border-purple-300">
-                                    <td colSpan={12} className="py-2 px-3">
-                                      <span className="font-bold text-purple-900 text-sm flex items-center gap-2">
-                                        📁 {discipline}
-                                        <span className="text-xs font-normal text-purple-700">({acts.length} {acts.length === 1 ? 'activity' : 'activities'})</span>
-                                      </span>
-                                    </td>
-                                  </tr>
-                                  
-                                  {/* Activities and Sub-activities */}
-                                  {acts.map((act) => (
-                                    <tr key={`${act.id}-${act.type}`} className="border-b hover:bg-purple-50 transition-colors">
-                                      <td className="py-2 px-3">
-                                        <div className="flex items-center gap-1">
-                                          {act.type === 'subactivity' && <span className="text-purple-400">↳</span>}
-                                          <input 
-                                            type="text" 
-                                            value={act.name} 
-                                            onChange={(e) => updateScopeActivity(act.id, 'name', e.target.value)} 
-                                            className="flex-1 text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                          />
+                              const grouped = projectActivities.reduce((acc, act) => {
+                                const discipline = act.function_name || act.discipline || 'Manual Entry';
+                                if (!acc[discipline]) acc[discipline] = [];
+                                acc[discipline].push(act);
+                                return acc;
+                              }, {});
+                              
+                              return Object.entries(grouped).map(([discipline, activities]) => {
+                                const disciplinePlanned = activities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0);
+                                const disciplineActual = activities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0);
+                                
+                                return (
+                                  <Fragment key={discipline}>
+                                    {/* Discipline Header Row */}
+                                    <tr className="bg-gradient-to-r from-purple-50 to-purple-100/50 border-t-2 border-purple-200">
+                                      <td colSpan={8} className="py-3 px-4">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-3">
+                                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold bg-purple-600 text-white shadow-sm">
+                                              📁 {discipline}
+                                            </span>
+                                            <span className="text-xs text-gray-500">
+                                              {activities.length} {activities.length === 1 ? 'activity' : 'activities'}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-4 text-xs">
+                                            <span className="flex items-center gap-1 text-blue-700">
+                                              <span className="font-medium">Planned:</span>
+                                              <span className="px-2 py-0.5 bg-blue-100 rounded font-bold">{disciplinePlanned.toFixed(1)} hrs</span>
+                                            </span>
+                                            <span className="flex items-center gap-1 text-amber-700">
+                                              <span className="font-medium">Actual:</span>
+                                              <span className="px-2 py-0.5 bg-amber-100 rounded font-bold">{disciplineActual.toFixed(1)} hrs</span>
+                                            </span>
+                                          </div>
                                         </div>
-                                        {act.type === 'subactivity' && act.activity_name && (
-                                          <div className="text-xs text-gray-500 mt-0.5 ml-4">Parent: {act.activity_name}</div>
-                                        )}
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${
-                                          act.source === 'master' ? 'bg-blue-100 text-blue-700' : 
-                                          act.source === 'manual' ? 'bg-green-100 text-green-700' : 
-                                          'bg-purple-100 text-purple-700'
-                                        }`}>
-                                          {act.source === 'master' ? 'Master' : act.source === 'manual' ? 'Manual' : 'Proposal'}
-                                        </span>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <select
-                                          value={act.assigned_user || ''}
-                                          onChange={(e) => updateScopeActivity(act.id, 'assigned_user', e.target.value)}
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                                        >
-                                          <option value="">Unassigned</option>
-                                          {userMaster.map(user => (
-                                            <option key={user.id} value={user.id}>
-                                              {user.full_name || user.employee_name || user.username}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <input 
-                                          type="date" 
-                                          value={act.due_date || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'due_date', e.target.value)} 
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <select 
-                                          value={act.priority || 'MEDIUM'} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'priority', e.target.value)} 
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                                        >
-                                          <option value="LOW">Low</option>
-                                          <option value="MEDIUM">Medium</option>
-                                          <option value="HIGH">High</option>
-                                          <option value="URGENT">Urgent</option>
-                                        </select>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <input 
-                                          type="number" 
-                                          value={act.planned_hours || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'planned_hours', e.target.value)} 
-                                          placeholder="0"
-                                          min="0"
-                                          step="0.5"
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <input 
-                                          type="time" 
-                                          value={act.start_time || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'start_time', e.target.value)} 
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <input 
-                                          type="time" 
-                                          value={act.end_time || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'end_time', e.target.value)} 
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <input 
-                                          type="number" 
-                                          value={act.actual_hours || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'actual_hours', e.target.value)} 
-                                          placeholder="0"
-                                          min="0"
-                                          step="0.5"
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <select 
-                                          value={act.status_completed || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'status_completed', e.target.value)} 
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                                        >
-                                          <option value="">Select</option>
-                                          <option value="NOT_STARTED">Not Started</option>
-                                          <option value="IN_PROGRESS">In Progress</option>
-                                          <option value="COMPLETED">Completed</option>
-                                          <option value="OVERDUE">Overdue</option>
-                                        </select>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <input 
-                                          type="text" 
-                                          value={act.remark || ''} 
-                                          onChange={(e) => updateScopeActivity(act.id, 'remark', e.target.value)} 
-                                          placeholder="Notes"
-                                          className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                                        />
-                                      </td>
-                                      <td className="py-2 px-3 text-center">
-                                        <button 
-                                          type="button" 
-                                          onClick={() => removeScopeActivity(act.id)} 
-                                          className="text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50 transition-colors font-medium"
-                                        >
-                                          Remove
-                                        </button>
                                       </td>
                                     </tr>
-                                  ))}
-                                </Fragment>
-                              ));
+                                    {/* Activity Rows */}
+                                    {activities.map((act) => (
+                                      <tr key={`${act.id}-${act.type}`} className="hover:bg-purple-50/30 transition-colors">
+                                        <td className="py-3 px-4">
+                                          <input 
+                                            type="text" 
+                                            value={act.activity_name || act.name || ''} 
+                                            onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
+                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]" 
+                                            placeholder="Activity name"
+                                          />
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <input 
+                                            type="text" 
+                                            value={act.sub_activity_name || (act.type === 'subactivity' ? act.name : '') || ''} 
+                                            onChange={(e) => updateScopeActivity(act.id, 'sub_activity_name', e.target.value)} 
+                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]" 
+                                            placeholder="Sub-activity (optional)"
+                                          />
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <select
+                                            value={act.assigned_user || ''}
+                                            onChange={(e) => updateScopeActivity(act.id, 'assigned_user', e.target.value)}
+                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
+                                          >
+                                            <option value="">Select user...</option>
+                                            {userMaster.map(user => (
+                                              <option key={user.id} value={user.id}>
+                                                {user.full_name || user.employee_name || user.username}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <input 
+                                            type="date" 
+                                            value={act.due_date || ''} 
+                                            onChange={(e) => updateScopeActivity(act.id, 'due_date', e.target.value)} 
+                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]" 
+                                          />
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <select 
+                                            value={act.priority || 'MEDIUM'} 
+                                            onChange={(e) => updateScopeActivity(act.id, 'priority', e.target.value)} 
+                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
+                                          >
+                                            <option value="LOW">🟢 Low</option>
+                                            <option value="MEDIUM">🟡 Medium</option>
+                                            <option value="HIGH">🟠 High</option>
+                                            <option value="URGENT">🔴 Urgent</option>
+                                          </select>
+                                        </td>
+                                        <td className="py-3 px-4 text-center">
+                                          <div className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium text-sm min-w-[60px]">
+                                            {act.planned_hours || 0}
+                                          </div>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <input 
+                                            type="number" 
+                                            value={act.actual_hours || ''} 
+                                            onChange={(e) => updateScopeActivity(act.id, 'actual_hours', e.target.value)} 
+                                            placeholder="0"
+                                            min="0"
+                                            step="0.5"
+                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] text-center" 
+                                          />
+                                        </td>
+                                        <td className="py-3 px-4 text-center">
+                                          <button 
+                                            type="button" 
+                                            onClick={() => removeScopeActivity(act.id)} 
+                                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Remove activity"
+                                          >
+                                            <TrashIcon className="h-4 w-4" />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </Fragment>
+                                );
+                              });
                             })()
                           )}
                         </tbody>
+                        {projectActivities.length > 0 && (
+                          <tfoot>
+                            <tr className="bg-gradient-to-r from-gray-100 to-gray-200 border-t-2 border-gray-300">
+                              <td colSpan={5} className="py-3 px-4 text-right font-bold text-gray-800">
+                                Grand Totals ({Object.keys(projectActivities.reduce((acc, act) => { acc[act.function_name || act.discipline || 'Manual Entry'] = true; return acc; }, {})).length} disciplines):
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-200 text-blue-900 rounded-lg font-bold text-sm">
+                                  {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)} hrs
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center justify-center px-3 py-1.5 bg-amber-200 text-amber-900 rounded-lg font-bold text-sm">
+                                  {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)} hrs
+                                </span>
+                              </td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        )}
                       </table>
                     </div>
                   </div>
@@ -4228,21 +4197,203 @@ function EditProjectForm() {
 
             {/* Scope of Work Tab */}
             {activeTab === 'scope' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                  <div className="flex items-center gap-2">
-                    <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
-                    <h2 className="text-sm font-bold text-gray-900">Scope of Work</h2>
+              <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                {/* Header */}
+                <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <DocumentIcon className="h-5 w-5 text-[#7F2487]" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-900">Scope of Work</h2>
+                        <p className="text-xs text-gray-500">Define and manage project scope details</p>
+                      </div>
+                    </div>
+                    {/* Scope Summary Badge */}
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                        {form.scope_of_work ? 'Original Scope Defined' : 'No Original Scope'}
+                      </span>
+                      {form.additional_scope && (
+                        <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+                          Additional Scope Added
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="px-6 py-5">
-                  {/* Scope Description - Fetched from Proposal */}
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Project Scope</label>
-                    <div className="bg-white rounded p-3 border border-gray-200 min-h-[100px]">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{form.scope_of_work || form.description || 'No scope defined yet.'}</p>
+
+                <div className="px-6 py-6 space-y-6">
+                  {/* Original Scope Section */}
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-5 border border-gray-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">1</span>
+                      <label className="text-sm font-bold text-gray-800">Original Project Scope</label>
+                      <span className="text-xs text-gray-400 ml-2">(from Proposal)</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">Scope is fetched from the proposal and can be edited in Project Details.</p>
+                    <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm min-h-[120px]">
+                      {form.scope_of_work || form.description ? (
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{form.scope_of_work || form.description}</p>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 text-gray-400">
+                          <DocumentIcon className="h-8 w-8 mb-2" />
+                          <p className="text-sm">No original scope defined yet</p>
+                          <p className="text-xs">Scope will be fetched from linked proposal</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"></path></svg>
+                      Original scope is linked to the proposal and can be edited in Project Details tab.
+                    </p>
+                  </div>
+
+                  {/* Additional Scope Section - Bullet Points */}
+                  <div className="bg-gradient-to-br from-amber-50/50 to-orange-50/30 rounded-xl p-5 border border-amber-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center w-6 h-6 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">2</span>
+                        <label className="text-sm font-bold text-gray-800">Additional Scope Items</label>
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">Change Orders / Variations</span>
+                      </div>
+                      {(() => {
+                        const items = (form.additional_scope || '').split('\n').filter(item => item.trim());
+                        return items.length > 0 && (
+                          <span className="text-xs text-green-600 flex items-center gap-1">
+                            <CheckCircleIcon className="w-4 h-4" />
+                            {items.length} item{items.length > 1 ? 's' : ''}
+                          </span>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Add New Item - Right below heading */}
+                    <div className="flex gap-2 mb-4">
+                      <div className="flex-1 relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500">•</span>
+                        <input
+                          type="text"
+                          id="additional-scope-input"
+                          placeholder="Type new scope item and press Enter or click Add..."
+                          className="w-full pl-7 pr-4 py-2.5 text-sm border border-amber-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] bg-white placeholder:text-gray-400"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              e.preventDefault();
+                              const newItem = e.target.value.trim();
+                              const currentItems = (form.additional_scope || '').split('\n').filter(item => item.trim());
+                              const updatedScope = [...currentItems, newItem].join('\n');
+                              setForm(prev => ({ ...prev, additional_scope: updatedScope }));
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById('additional-scope-input');
+                          if (input && input.value.trim()) {
+                            const newItem = input.value.trim();
+                            const currentItems = (form.additional_scope || '').split('\n').filter(item => item.trim());
+                            const updatedScope = [...currentItems, newItem].join('\n');
+                            setForm(prev => ({ ...prev, additional_scope: updatedScope }));
+                            input.value = '';
+                            input.focus();
+                          }
+                        }}
+                        className="px-4 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-sm font-medium flex items-center gap-1"
+                      >
+                        <PlusIcon className="w-4 h-4" />
+                        Add
+                      </button>
+                    </div>
+                    
+                    {/* Existing Items List */}
+                    <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
+                      {(() => {
+                        const items = (form.additional_scope || '').split('\n').filter(item => item.trim());
+                        if (items.length === 0) {
+                          return (
+                            <div className="p-6 text-center text-gray-400">
+                              <DocumentIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">No additional scope items added yet</p>
+                              <p className="text-xs mt-1">Use the field above to add items</p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <ul className="divide-y divide-amber-100">
+                            {items.map((item, idx) => (
+                              <li key={idx} className="flex items-start gap-3 px-4 py-3 hover:bg-amber-50/50 group">
+                                <span className="flex-shrink-0 w-5 h-5 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-xs font-bold mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <span className="flex-1 text-sm text-gray-700">{item.replace(/^[•\-\*]\s*/, '')}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newItems = items.filter((_, i) => i !== idx);
+                                    setForm(prev => ({ ...prev, additional_scope: newItems.join('\n') }));
+                                  }}
+                                  className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Remove item"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        );
+                      })()}
+                    </div>
+
+                    <p className="text-xs text-gray-500 mt-3 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"></path></svg>
+                      Press Enter or click Add to add scope items. Document changes, amendments, or additional work.
+                    </p>
+                  </div>
+
+                  {/* Combined Scope Preview */}
+                  {(form.scope_of_work || form.description || form.additional_scope) && (
+                    <div className="bg-gradient-to-br from-purple-50/50 to-blue-50/30 rounded-xl p-5 border border-purple-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="inline-flex items-center justify-center w-6 h-6 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">📋</span>
+                        <label className="text-sm font-bold text-gray-800">Complete Scope Overview</label>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm space-y-4">
+                        {(form.scope_of_work || form.description) && (
+                          <div>
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">Original Scope</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{form.scope_of_work || form.description}</p>
+                          </div>
+                        )}
+                        {form.additional_scope && (
+                          <div className={form.scope_of_work || form.description ? 'pt-3 border-t border-gray-200' : ''}>
+                            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">Additional Scope Items</p>
+                            <ul className="space-y-1.5">
+                              {form.additional_scope.split('\n').filter(item => item.trim()).map((item, idx) => (
+                                <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                  <span className="text-amber-500 mt-0.5">•</span>
+                                  <span>{item.replace(/^[•\-\*]\s*/, '')}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Tips */}
+                  <div className="bg-blue-50/50 rounded-lg p-4 border border-blue-100">
+                    <p className="text-xs font-semibold text-blue-800 mb-2">💡 Scope Management Tips</p>
+                    <ul className="text-xs text-blue-700 space-y-1">
+                      <li>• Document all scope changes with dates and approval references</li>
+                      <li>• Link additional scope items to change orders or client emails</li>
+                      <li>• Track impact on timeline and budget in Commercial tab</li>
+                      <li>• Update Project Activities tab when scope changes</li>
+                    </ul>
                   </div>
                 </div>
               </section>
