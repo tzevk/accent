@@ -3,6 +3,7 @@
 import React from 'react';
 import Navbar from '@/components/Navbar';
 import TodoList from '@/components/TodoList';
+import ActivityAssignmentsSection from '@/components/ActivityAssignmentsSection';
 import { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -197,6 +198,9 @@ export default function UserDashboard() {
               <h1 className="text-2xl font-bold text-gray-900">Welcome, {user?.full_name || 'User'}!</h1>
               <p className="text-gray-600 text-sm">{attendance.currentMonth}</p>
             </div>
+
+            {/* Activity Assignments Section */}
+            {user?.id && <ActivityAssignmentsSection userId={user.id} />}
 
             {/* Row 1: Time & Attendance Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
