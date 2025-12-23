@@ -148,10 +148,18 @@ export async function POST(request) {
     } = body;
 
     // Validation
-    if (!receiver_id || !subject || !messageBody) {
+    if (!receiver_id || !subject) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Missing required fields: receiver_id, subject, body' 
+        error: 'Missing required fields: receiver_id, subject' 
+      }, { status: 400 });
+    }
+
+    // Body is required unless there are attachments
+    if (!messageBody && (!attachments || attachments.length === 0)) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Message body is required when no attachments are provided' 
       }, { status: 400 });
     }
 

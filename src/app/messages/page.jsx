@@ -13,7 +13,9 @@ import {
   ArrowPathIcon,
   UserCircleIcon,
   PlusIcon,
-  ChevronLeftIcon
+  ChevronLeftIcon,
+  ArrowDownTrayIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline';
 
 export default function MessagesPage() {
@@ -200,21 +202,29 @@ export default function MessagesPage() {
 
   // Send message
   const handleSendMessage = async () => {
-    if (!activeConversation || (!messageText.trim() && attachments.length === 0)) return;
+    if (!activeConversation?.user_id) {
+      alert('Please select a conversation first');
+      return;
+    }
+    if (!messageText.trim() && attachments.length === 0) {
+      return;
+    }
 
     setSending(true);
     try {
+      const payload = {
+        receiver_id: activeConversation.user_id,
+        subject: 'Message',
+        body: messageText.trim() || (attachments.length > 0 ? '[Attachment]' : ''),
+        related_module: 'none',
+        related_id: null,
+        attachments
+      };
+      
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          receiver_id: activeConversation.user_id,
-          subject: 'Message',
-          body: messageText.trim(),
-          related_module: 'none',
-          related_id: null,
-          attachments
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
 
@@ -262,6 +272,42 @@ export default function MessagesPage() {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Check if file is an image
+  const isImageFile = (fileType) => {
+    return fileType?.startsWith('image/');
+  };
+
+  // Download attachment
+  const handleDownloadAttachment = async (attachmentId, fileName) => {
+    try {
+      const response = await fetch(`/api/messages/attachments/${attachmentId}`);
+      if (!response.ok) {
+        throw new Error('Failed to download file');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download file');
+    }
   };
 
   // Filter conversations
@@ -468,8 +514,43 @@ export default function MessagesPage() {
                                       {msg.subject}
                                     </p>
                                   )}
-                                  <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
-                                  {msg.attachment_count > 0 && (
+                                  {msg.body && msg.body !== '[Attachment]' && (
+                                    <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
+                                  )}
+                                  {/* Display Attachments */}
+                                  {msg.attachments && msg.attachments.length > 0 && (
+                                    <div className={`mt-2 space-y-2 ${msg.body && msg.body !== '[Attachment]' ? 'pt-2 border-t border-opacity-20' : ''} ${isMe ? 'border-purple-200' : 'border-gray-200'}`}>
+                                      {msg.attachments.map((att) => (
+                                        <div 
+                                          key={att.id} 
+                                          className={`flex items-center gap-2 p-2 rounded-lg ${isMe ? 'bg-purple-600/30' : 'bg-gray-100'}`}
+                                        >
+                                          {isImageFile(att.file_type) ? (
+                                            <PhotoIcon className={`w-5 h-5 flex-shrink-0 ${isMe ? 'text-purple-200' : 'text-gray-500'}`} />
+                                          ) : (
+                                            <DocumentIcon className={`w-5 h-5 flex-shrink-0 ${isMe ? 'text-purple-200' : 'text-gray-500'}`} />
+                                          )}
+                                          <div className="flex-1 min-w-0">
+                                            <p className={`text-xs font-medium truncate ${isMe ? 'text-white' : 'text-gray-700'}`}>
+                                              {att.original_name}
+                                            </p>
+                                            <p className={`text-xs ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
+                                              {formatFileSize(att.file_size)}
+                                            </p>
+                                          </div>
+                                          <button
+                                            onClick={() => handleDownloadAttachment(att.id, att.original_name)}
+                                            className={`p-1.5 rounded-full hover:bg-opacity-20 transition-colors ${isMe ? 'hover:bg-white text-white' : 'hover:bg-gray-300 text-gray-600'}`}
+                                            title="Download"
+                                          >
+                                            <ArrowDownTrayIcon className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Legacy: Show attachment count if no attachments array but has count */}
+                                  {(!msg.attachments || msg.attachments.length === 0) && msg.attachment_count > 0 && (
                                     <div className={`flex items-center gap-1 mt-2 text-xs ${isMe ? 'text-purple-200' : 'text-gray-500'}`}>
                                       <PaperClipIcon className="w-3 h-3" />
                                       {msg.attachment_count} attachment{msg.attachment_count > 1 ? 's' : ''}

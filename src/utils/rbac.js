@@ -5,6 +5,7 @@
 
 // Define all available resources and their permissions
 export const RESOURCES = {
+  // Main Modules
   LEADS: 'leads',
   PROJECTS: 'projects', 
   EMPLOYEES: 'employees',
@@ -12,11 +13,24 @@ export const RESOURCES = {
   COMPANIES: 'companies',
   VENDORS: 'vendors',
   PROPOSALS: 'proposals',
+  DASHBOARD: 'dashboard',
+  REPORTS: 'reports',
+  WORK_LOGS: 'work_logs',
+  MESSAGES: 'messages',
+  PROFILE: 'profile',
+  
+  // Masters
   ACTIVITIES: 'activities',
+  SOFTWARE: 'software',
   DOCUMENTS: 'documents',
   ROLES: 'roles',
-  DASHBOARD: 'dashboard',
-  REPORTS: 'reports'
+  
+  // Admin
+  SETTINGS: 'settings',
+  ADMIN_MONITORING: 'admin_monitoring',
+  ADMIN_ACTIVITY_LOGS: 'admin_activity_logs',
+  ADMIN_AUDIT_LOGS: 'admin_audit_logs',
+  ADMIN_PRODUCTIVITY: 'admin_productivity'
 };
 
 export const PERMISSIONS = {
@@ -113,13 +127,18 @@ export function hasPermission(user, resource, permission) {
   
   const permissionKey = generatePermissionKey(resource, permission);
   
-  // Check direct user permissions first
-  if (user.permissions && user.permissions.includes(permissionKey)) {
+  // Check merged permissions first (most comprehensive)
+  if (user.merged_permissions && Array.isArray(user.merged_permissions) && user.merged_permissions.includes(permissionKey)) {
+    return true;
+  }
+  
+  // Check direct user permissions
+  if (user.permissions && Array.isArray(user.permissions) && user.permissions.includes(permissionKey)) {
     return true;
   }
   
   // Check role-based permissions
-  if (user.role_permissions && user.role_permissions.includes(permissionKey)) {
+  if (user.role_permissions && Array.isArray(user.role_permissions) && user.role_permissions.includes(permissionKey)) {
     return true;
   }
   

@@ -221,8 +221,9 @@ const MODULE_FIELDS = {
     }
   },
   vendors: {
-    name: 'Vendors',
+    name: 'Vendor Master',
     description: 'Vendor management',
+    category: 'master',
     sections: {
       basic: {
         name: 'Basic Information',
@@ -254,8 +255,9 @@ const MODULE_FIELDS = {
     }
   },
   companies: {
-    name: 'Companies',
+    name: 'Company Master',
     description: 'Client company records',
+    category: 'master',
     sections: {
       basic: {
         name: 'Basic Information',
@@ -377,6 +379,289 @@ const MODULE_FIELDS = {
           employee_reports: { label: 'Employee Reports', type: 'report' },
           financial_reports: { label: 'Financial Reports', type: 'report', sensitive: true },
           activity_reports: { label: 'Activity Reports', type: 'report' }
+        }
+      }
+    }
+  },
+  // ==================== MASTERS ====================
+  activities: {
+    name: 'Activity Master',
+    description: 'Manage disciplines, activities and sub-activities',
+    category: 'master',
+    sections: {
+      disciplines: {
+        name: 'Disciplines',
+        fields: {
+          function_name: { label: 'Discipline Name', type: 'text' },
+          status: { label: 'Status', type: 'select' },
+          description: { label: 'Description', type: 'textarea' }
+        }
+      },
+      activities_list: {
+        name: 'Activities',
+        fields: {
+          activity_name: { label: 'Activity Name', type: 'text' },
+          function_id: { label: 'Parent Discipline', type: 'select' }
+        }
+      },
+      sub_activities: {
+        name: 'Sub-Activities',
+        fields: {
+          name: { label: 'Sub-Activity Name', type: 'text' },
+          default_manhours: { label: 'Default Manhours', type: 'number' },
+          default_rate: { label: 'Default Rate', type: 'currency' }
+        }
+      }
+    }
+  },
+  software: {
+    name: 'Software Master',
+    description: 'Manage software and versions',
+    category: 'master',
+    sections: {
+      software_list: {
+        name: 'Software',
+        fields: {
+          software_name: { label: 'Software Name', type: 'text' },
+          category: { label: 'Category', type: 'select' },
+          vendor: { label: 'Vendor', type: 'text' },
+          license_type: { label: 'License Type', type: 'select' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      versions: {
+        name: 'Versions',
+        fields: {
+          version_number: { label: 'Version Number', type: 'text' },
+          release_date: { label: 'Release Date', type: 'date' },
+          is_active: { label: 'Is Active', type: 'boolean' }
+        }
+      }
+    }
+  },
+  documents: {
+    name: 'Document Master',
+    description: 'Manage document types and templates',
+    category: 'master',
+    sections: {
+      document_types: {
+        name: 'Document Types',
+        fields: {
+          document_type: { label: 'Document Type', type: 'text' },
+          category: { label: 'Category', type: 'select' },
+          description: { label: 'Description', type: 'textarea' },
+          is_required: { label: 'Is Required', type: 'boolean' }
+        }
+      },
+      templates: {
+        name: 'Templates',
+        fields: {
+          template_name: { label: 'Template Name', type: 'text' },
+          file_path: { label: 'File Path', type: 'text' },
+          status: { label: 'Status', type: 'select' }
+        }
+      }
+    }
+  },
+  roles: {
+    name: 'Role Master',
+    description: 'Manage user roles and role templates',
+    category: 'master',
+    sections: {
+      roles_list: {
+        name: 'Roles',
+        fields: {
+          role_name: { label: 'Role Name', type: 'text' },
+          role_code: { label: 'Role Code', type: 'text' },
+          description: { label: 'Description', type: 'textarea' },
+          is_system_role: { label: 'System Role', type: 'boolean' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      permissions_template: {
+        name: 'Default Permissions',
+        fields: {
+          default_permissions: { label: 'Default Permissions', type: 'json', sensitive: true }
+        }
+      }
+    }
+  },
+  // ==================== MAIN MODULES ====================
+  work_logs: {
+    name: 'Work Logs',
+    description: 'Daily work log entries and time tracking',
+    category: 'module',
+    sections: {
+      entries: {
+        name: 'Work Log Entries',
+        fields: {
+          log_date: { label: 'Log Date', type: 'date' },
+          project_id: { label: 'Project', type: 'select' },
+          activity_id: { label: 'Activity', type: 'select' },
+          sub_activity_id: { label: 'Sub-Activity', type: 'select' },
+          hours_worked: { label: 'Hours Worked', type: 'number' },
+          description: { label: 'Description', type: 'textarea' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      summary: {
+        name: 'Summary',
+        fields: {
+          total_hours: { label: 'Total Hours', type: 'number' },
+          weekly_summary: { label: 'Weekly Summary', type: 'report' },
+          monthly_summary: { label: 'Monthly Summary', type: 'report' }
+        }
+      }
+    }
+  },
+  messages: {
+    name: 'Messages',
+    description: 'Internal messaging and communication',
+    category: 'module',
+    sections: {
+      messaging: {
+        name: 'Messaging',
+        fields: {
+          inbox: { label: 'Inbox', type: 'view' },
+          sent: { label: 'Sent Messages', type: 'view' },
+          compose: { label: 'Compose Message', type: 'action' },
+          attachments: { label: 'Attachments', type: 'file' }
+        }
+      },
+      threads: {
+        name: 'Conversations',
+        fields: {
+          view_threads: { label: 'View Threads', type: 'view' },
+          reply: { label: 'Reply to Messages', type: 'action' }
+        }
+      }
+    }
+  },
+  settings: {
+    name: 'Settings',
+    description: 'Application and system settings',
+    category: 'admin',
+    sections: {
+      general: {
+        name: 'General Settings',
+        fields: {
+          company_info: { label: 'Company Information', type: 'text' },
+          logo: { label: 'Logo', type: 'file' },
+          timezone: { label: 'Timezone', type: 'select' },
+          date_format: { label: 'Date Format', type: 'select' }
+        }
+      },
+      notifications: {
+        name: 'Notification Settings',
+        fields: {
+          email_notifications: { label: 'Email Notifications', type: 'boolean' },
+          push_notifications: { label: 'Push Notifications', type: 'boolean' },
+          reminder_settings: { label: 'Reminder Settings', type: 'json' }
+        }
+      },
+      integrations: {
+        name: 'Integrations',
+        fields: {
+          api_keys: { label: 'API Keys', type: 'text', sensitive: true },
+          webhooks: { label: 'Webhooks', type: 'json', sensitive: true },
+          third_party: { label: 'Third Party Integrations', type: 'json' }
+        }
+      }
+    }
+  },
+  profile: {
+    name: 'Profile',
+    description: 'User profile and personal settings',
+    category: 'module',
+    sections: {
+      personal: {
+        name: 'Personal Information',
+        fields: {
+          full_name: { label: 'Full Name', type: 'text' },
+          email: { label: 'Email', type: 'email' },
+          phone: { label: 'Phone', type: 'phone' },
+          avatar: { label: 'Profile Picture', type: 'file' }
+        }
+      },
+      preferences: {
+        name: 'Preferences',
+        fields: {
+          language: { label: 'Language', type: 'select' },
+          theme: { label: 'Theme', type: 'select' },
+          notification_preferences: { label: 'Notification Preferences', type: 'json' }
+        }
+      },
+      security: {
+        name: 'Security',
+        fields: {
+          change_password: { label: 'Change Password', type: 'action', sensitive: true },
+          two_factor: { label: 'Two Factor Auth', type: 'boolean', sensitive: true },
+          active_sessions: { label: 'Active Sessions', type: 'view' }
+        }
+      }
+    }
+  },
+  // ==================== ADMIN MODULES ====================
+  admin_monitoring: {
+    name: 'Live Monitoring',
+    description: 'Real-time user activity monitoring',
+    category: 'admin',
+    sections: {
+      monitoring: {
+        name: 'Monitoring',
+        fields: {
+          active_users: { label: 'Active Users', type: 'widget' },
+          user_status: { label: 'User Status', type: 'view' },
+          screen_time: { label: 'Screen Time', type: 'report' },
+          activity_tracking: { label: 'Activity Tracking', type: 'report' }
+        }
+      }
+    }
+  },
+  admin_activity_logs: {
+    name: 'Activity Logs',
+    description: 'User activity history and logs',
+    category: 'admin',
+    sections: {
+      logs: {
+        name: 'Logs',
+        fields: {
+          view_logs: { label: 'View Logs', type: 'view' },
+          filter_by_user: { label: 'Filter by User', type: 'select' },
+          filter_by_action: { label: 'Filter by Action', type: 'select' },
+          export_logs: { label: 'Export Logs', type: 'action' }
+        }
+      }
+    }
+  },
+  admin_audit_logs: {
+    name: 'Audit Logs',
+    description: 'System audit trail and security logs',
+    category: 'admin',
+    sections: {
+      audit: {
+        name: 'Audit Trail',
+        fields: {
+          view_audit: { label: 'View Audit Trail', type: 'view' },
+          security_events: { label: 'Security Events', type: 'view', sensitive: true },
+          data_changes: { label: 'Data Changes', type: 'view' },
+          login_history: { label: 'Login History', type: 'view' }
+        }
+      }
+    }
+  },
+  admin_productivity: {
+    name: 'Productivity',
+    description: 'Team productivity analytics',
+    category: 'admin',
+    sections: {
+      analytics: {
+        name: 'Analytics',
+        fields: {
+          productivity_dashboard: { label: 'Productivity Dashboard', type: 'widget' },
+          team_performance: { label: 'Team Performance', type: 'report' },
+          individual_metrics: { label: 'Individual Metrics', type: 'report' },
+          time_analysis: { label: 'Time Analysis', type: 'report' }
         }
       }
     }
@@ -824,46 +1109,134 @@ export default function UserPermissionsPage() {
 
         <div className="flex gap-6 h-[calc(100vh-200px)]">
           {/* Module Sidebar */}
-          <div className="w-64 flex-shrink-0">
+          <div className="w-72 flex-shrink-0">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col">
               <div className="p-4 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                <h3 className="font-semibold text-gray-900">Modules</h3>
+                <h3 className="font-semibold text-gray-900">Modules & Masters</h3>
               </div>
               <div className="p-2 overflow-y-auto flex-1">
-                {Object.keys(MODULE_FIELDS).map(module => {
-                  const moduleDef = MODULE_FIELDS[module];
-                  const fieldCounts = getFieldPermCount(module);
-                  const moduleCount = getModulePermCount(module);
-                  const isActive = activeModule === module;
-                  
-                  return (
-                    <button
-                      key={module}
-                      onClick={() => setActiveModule(module)}
-                      className={`w-full text-left px-3 py-3 rounded-lg transition-all ${
-                        isActive 
-                          ? 'bg-blue-50 border-l-4 border-blue-500' 
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`font-medium ${isActive ? 'text-blue-700' : 'text-gray-700'}`}>
-                          {moduleDef.name}
-                        </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          moduleCount > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {moduleCount}/6
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <span className="text-xs text-green-600">{fieldCounts.edit}E</span>
-                        <span className="text-xs text-blue-600">{fieldCounts.view}V</span>
-                        <span className="text-xs text-red-600">{fieldCounts.hidden}H</span>
-                      </div>
-                    </button>
-                  );
-                })}
+                {/* Main Modules */}
+                <div className="mb-3">
+                  <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Main Modules
+                  </div>
+                  {Object.keys(MODULE_FIELDS).filter(m => !MODULE_FIELDS[m].category || MODULE_FIELDS[m].category === 'module').filter(m => !['activities', 'software', 'documents', 'roles'].includes(m)).map(module => {
+                    const moduleDef = MODULE_FIELDS[module];
+                    const fieldCounts = getFieldPermCount(module);
+                    const moduleCount = getModulePermCount(module);
+                    const isActive = activeModule === module;
+                    
+                    return (
+                      <button
+                        key={module}
+                        onClick={() => setActiveModule(module)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg transition-all ${
+                          isActive 
+                            ? 'bg-blue-50 border-l-4 border-blue-500' 
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium text-sm ${isActive ? 'text-blue-700' : 'text-gray-700'}`}>
+                            {moduleDef.name}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            moduleCount > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {moduleCount}/6
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className="text-xs text-green-600">{fieldCounts.edit}E</span>
+                          <span className="text-xs text-blue-600">{fieldCounts.view}V</span>
+                          <span className="text-xs text-red-600">{fieldCounts.hidden}H</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Masters */}
+                <div className="mb-3">
+                  <div className="px-3 py-1.5 text-xs font-semibold text-purple-600 uppercase tracking-wide bg-purple-50 rounded">
+                    Masters
+                  </div>
+                  {Object.keys(MODULE_FIELDS).filter(m => MODULE_FIELDS[m].category === 'master' || ['activities', 'software', 'documents', 'roles'].includes(m)).map(module => {
+                    const moduleDef = MODULE_FIELDS[module];
+                    const fieldCounts = getFieldPermCount(module);
+                    const moduleCount = getModulePermCount(module);
+                    const isActive = activeModule === module;
+                    
+                    return (
+                      <button
+                        key={module}
+                        onClick={() => setActiveModule(module)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg transition-all ${
+                          isActive 
+                            ? 'bg-purple-50 border-l-4 border-purple-500' 
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium text-sm ${isActive ? 'text-purple-700' : 'text-gray-700'}`}>
+                            {moduleDef.name}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            moduleCount > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {moduleCount}/6
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className="text-xs text-green-600">{fieldCounts.edit}E</span>
+                          <span className="text-xs text-blue-600">{fieldCounts.view}V</span>
+                          <span className="text-xs text-red-600">{fieldCounts.hidden}H</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Admin */}
+                <div className="mb-3">
+                  <div className="px-3 py-1.5 text-xs font-semibold text-red-600 uppercase tracking-wide bg-red-50 rounded">
+                    Admin
+                  </div>
+                  {Object.keys(MODULE_FIELDS).filter(m => MODULE_FIELDS[m].category === 'admin').map(module => {
+                    const moduleDef = MODULE_FIELDS[module];
+                    const fieldCounts = getFieldPermCount(module);
+                    const moduleCount = getModulePermCount(module);
+                    const isActive = activeModule === module;
+                    
+                    return (
+                      <button
+                        key={module}
+                        onClick={() => setActiveModule(module)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg transition-all ${
+                          isActive 
+                            ? 'bg-red-50 border-l-4 border-red-500' 
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium text-sm ${isActive ? 'text-red-700' : 'text-gray-700'}`}>
+                            {moduleDef.name}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            moduleCount > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {moduleCount}/6
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 mt-0.5">
+                          <span className="text-xs text-green-600">{fieldCounts.edit}E</span>
+                          <span className="text-xs text-blue-600">{fieldCounts.view}V</span>
+                          <span className="text-xs text-red-600">{fieldCounts.hidden}H</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

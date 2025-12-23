@@ -76,6 +76,41 @@ export async function GET(request, { params }) {
       LIMIT ? OFFSET ?
     `, [currentUser.id, otherUserId, otherUserId, currentUser.id, limit, offset]);
 
+    // Get attachments for all messages
+    const messageIds = messages.map(m => m.id);
+    let attachmentsMap = {};
+    
+    if (messageIds.length > 0) {
+      const placeholders = messageIds.map(() => '?').join(',');
+      const [attachments] = await db.execute(`
+        SELECT 
+          id,
+          message_id,
+          file_name,
+          original_name,
+          file_path,
+          file_type,
+          file_size
+        FROM message_attachments
+        WHERE message_id IN (${placeholders})
+        ORDER BY id ASC
+      `, messageIds);
+
+      // Group attachments by message_id
+      attachments.forEach(att => {
+        if (!attachmentsMap[att.message_id]) {
+          attachmentsMap[att.message_id] = [];
+        }
+        attachmentsMap[att.message_id].push(att);
+      });
+    }
+
+    // Add attachments to each message
+    const messagesWithAttachments = messages.map(msg => ({
+      ...msg,
+      attachments: attachmentsMap[msg.id] || []
+    }));
+
     // Mark all received messages in this thread as read
     await db.execute(`
       UPDATE messages 
@@ -89,7 +124,7 @@ export async function GET(request, { params }) {
       success: true,
       data: {
         other_user: otherUser[0],
-        messages: messages.reverse(), // Return in chronological order
+        messages: messagesWithAttachments.reverse(), // Return in chronological order
         pagination: {
           page,
           limit,
