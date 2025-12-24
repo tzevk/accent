@@ -333,6 +333,7 @@ export async function PUT(request) {
     const data = await request.json();
     const {
       id,
+      project_id,
       name,
       description,
       company_id,
@@ -340,11 +341,7 @@ export async function PUT(request) {
       start_date,
       end_date,
       target_date,
-      budget,
       status,
-      priority,
-      progress,
-      notes,
       assigned_to,
       type,
       proposal_id,
@@ -356,7 +353,10 @@ export async function PUT(request) {
       in_house_meeting
     } = data;
 
-    if (!id || !name) {
+    // Support both id and project_id for backward compatibility
+    const projectId = project_id || id;
+
+    if (!projectId || !name) {
       return NextResponse.json({ 
         success: false, 
         error: 'ID and project name are required' 
@@ -399,8 +399,8 @@ export async function PUT(request) {
 
     // Check if project exists
     const [existing] = await db.execute(
-      'SELECT id FROM projects WHERE id = ?',
-      [id]
+      'SELECT project_id FROM projects WHERE project_id = ?',
+      [projectId]
     );
 
     if (existing.length === 0) {
@@ -411,7 +411,7 @@ export async function PUT(request) {
       }, { status: 404 });
     }
 
-    // Update project (including manhours and cost_breakup and new fields)
+    // Update project - only use columns that exist in the table
     await db.execute(
       `UPDATE projects SET 
         name = ?,
@@ -422,45 +422,37 @@ export async function PUT(request) {
         start_date = ?,
         end_date = ?,
         target_date = ?,
-        budget = ?,
         status = ?,
-        priority = ?,
-        progress = ?,
-        notes = ?,
         assigned_to = ?,
         type = ?,
         proposal_id = ?,
-        activities = ?,
-        disciplines = ?,
+        assigned_disciplines = ?,
+        assigned_activities = ?,
         discipline_descriptions = ?,
         assignments = ?,
         project_schedule = ?,
         input_document = ?,
         list_of_deliverables = ?,
         kickoff_meeting = ?,
-        in_house_meeting = ?
-        ,project_assumption_list = ?,
+        in_house_meeting = ?,
+        project_assumption_list = ?,
         project_lessons_learnt_list = ?
-      WHERE id = ?`,
+      WHERE project_id = ?`,
       [
         name,
-        description,
-  effectiveCompanyId || null,
-        client_name,
+        description || null,
+        effectiveCompanyId || null,
+        client_name || null,
         project_manager || null,
         start_date || null,
         end_date || null,
         target_date || null,
-        budget || null,
         status || 'planning',
-        priority || 'medium',
-        progress || 0,
-        notes || null,
         assigned_to || null,
         type || 'ONGOING',
         proposal_id || null,
-        JSON.stringify(data.activities || []),
-        JSON.stringify(data.disciplines || []),
+        JSON.stringify(data.disciplines || data.assigned_disciplines || []),
+        JSON.stringify(data.activities || data.assigned_activities || []),
         JSON.stringify(data.discipline_descriptions || {}),
         JSON.stringify(data.assignments || []),
         project_schedule || null,
@@ -470,14 +462,14 @@ export async function PUT(request) {
         in_house_meeting || null,
         data.project_assumption_list ? (typeof data.project_assumption_list === 'string' ? data.project_assumption_list : JSON.stringify(data.project_assumption_list)) : null,
         data.project_lessons_learnt_list ? (typeof data.project_lessons_learnt_list === 'string' ? data.project_lessons_learnt_list : JSON.stringify(data.project_lessons_learnt_list)) : null,
-        id
+        projectId
       ]
     );
     
     // Get the updated project
     const [updatedProject] = await db.execute(
-      'SELECT * FROM projects WHERE id = ?',
-      [id]
+      'SELECT * FROM projects WHERE project_id = ?',
+      [projectId]
     );
     
     await db.end();
@@ -486,7 +478,7 @@ export async function PUT(request) {
     logActivity({
       actionType: 'update',
       resourceType: 'project',
-      resourceId: id.toString(),
+      resourceId: projectId.toString(),
       description: `Updated project: ${name}`,
       details: {
         project_id: updatedProject[0]?.project_id,

@@ -596,7 +596,9 @@ export async function PUT(request, context) {
 
     const fieldValues = [
       ['name', name === undefined ? null : name],
-      ['project_id', project_id === undefined ? null : project_id],
+      // NOTE: project_id is the primary key and should NOT be updated here.
+      // Updating it would violate foreign key constraints (e.g., user_activity_assignments).
+      // The project_id is used to identify the record via the WHERE clause, not to be changed.
       ['client_name', clientNameParam],
       ['client_contact_details', client_contact_details === undefined ? null : client_contact_details],
       ['project_location_country', project_location_country === undefined ? null : project_location_country],
