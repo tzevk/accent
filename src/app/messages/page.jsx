@@ -11,272 +11,224 @@ import {
   DocumentIcon,
   XMarkIcon,
   ArrowPathIcon,
-  UserCircleIcon,
-  PlusIcon,
   ChevronLeftIcon,
   ArrowDownTrayIcon,
-  PhotoIcon,
   InboxIcon,
-  PaperAirplaneIcon as SentIcon,
   TrashIcon,
-  StarIcon,
   ArchiveBoxIcon,
-  EllipsisHorizontalIcon,
-  ChevronRightIcon,
   EnvelopeIcon,
-  EnvelopeOpenIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
-  FlagIcon
+  FlagIcon,
+  Cog6ToothIcon,
+  BellIcon,
+  Bars3Icon,
+  PencilSquareIcon
 } from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { FlagIcon as FlagIconSolid } from '@heroicons/react/24/solid';
 
 export default function MessagesPage() {
   const { user, loading: authLoading } = useSessionRBAC();
-  const [conversations, setConversations] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   
-  // Active conversation
-  const [activeConversation, setActiveConversation] = useState(null);
-  const [threadMessages, setThreadMessages] = useState([]);
-  const [threadLoading, setThreadLoading] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState(null);
   
-  // Compose state
-  const [showNewChat, setShowNewChat] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [messageSubject, setMessageSubject] = useState('');
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState([]);
-  const [uploading, setUploading] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [toRecipients, setToRecipients] = useState([]);
+  const [ccRecipients, setCcRecipients] = useState([]);
+  const [bccRecipients, setBccRecipients] = useState([]);
+  const [activeField, setActiveField] = useState('to');
   
-  // Folder state
   const [activeFolder, setActiveFolder] = useState('inbox');
-  const [starredMessages, setStarredMessages] = useState(new Set());
-  
-  // Collapsed folder pane
+  const [flaggedMessages, setFlaggedMessages] = useState(new Set());
   const [folderPaneCollapsed, setFolderPaneCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('focused');
   
-  const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Scroll to bottom of messages
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [threadMessages]);
-
-  // Fetch all conversations (grouped by user)
-  const fetchConversations = useCallback(async () => {
+  // Fetch individual messages (not grouped by thread)
+  const fetchMessages = useCallback(async () => {
     try {
       setLoading(true);
-      // Fetch inbox and group by sender
-      const inboxRes = await fetchJSON('/api/messages?type=inbox&limit=100');
-      const sentRes = await fetchJSON('/api/messages?type=sent&limit=100');
+      // Fetch both inbox and sent messages
+      const [inboxRes, sentRes] = await Promise.all([
+        fetchJSON('/api/messages?type=inbox&limit=500'),
+        fetchJSON('/api/messages?type=sent&limit=500')
+      ]);
       
-      if (inboxRes.success && sentRes.success) {
-        const allMessages = [...(inboxRes.data.messages || []), ...(sentRes.data.messages || [])];
-        const conversationMap = new Map();
-        
-        allMessages.forEach(msg => {
-          const otherUserId = msg.sender_id === user?.id ? msg.receiver_id : msg.sender_id;
-          const otherUserName = msg.sender_id === user?.id ? msg.receiver_name : msg.sender_name;
-          const otherUserEmail = msg.sender_id === user?.id ? msg.receiver_email : msg.sender_email;
-          
-          const existing = conversationMap.get(otherUserId);
-          const msgDate = new Date(msg.created_at);
-          
-          if (!existing || msgDate > new Date(existing.last_message_at)) {
-            const unreadIncrement = msg.sender_id !== user?.id && !msg.read_status ? 1 : 0;
-            conversationMap.set(otherUserId, {
-              user_id: otherUserId,
-              user_name: otherUserName || 'Unknown User',
-              user_email: otherUserEmail,
-              last_message: msg.body_preview || msg.subject || '',
-              last_message_at: msg.created_at,
-              unread_count: (existing?.unread_count || 0) + unreadIncrement,
-              last_subject: msg.subject
-            });
-          } else if (msg.sender_id !== user?.id && !msg.read_status) {
-            existing.unread_count = (existing.unread_count || 0) + 1;
-          }
-        });
-        
-        setConversations(Array.from(conversationMap.values()).sort((a, b) => 
-          new Date(b.last_message_at) - new Date(a.last_message_at)
-        ));
-        setUnreadCount(inboxRes.data.unread_count || 0);
+      let allMessages = [];
+      
+      if (inboxRes.success) {
+        const inboxMessages = inboxRes.data?.messages || inboxRes.data || [];
+        allMessages = [...allMessages, ...inboxMessages];
       }
-    } catch (e) {
-      console.error('Failed to fetch conversations:', e);
+      
+      if (sentRes.success) {
+        const sentMessages = sentRes.data?.messages || sentRes.data || [];
+        allMessages = [...allMessages, ...sentMessages];
+      }
+      
+      // Remove duplicates by id
+      const uniqueMessages = Array.from(
+        new Map(allMessages.map(m => [m.id, m])).values()
+      );
+      
+      // Sort by date, newest first
+      const sortedMessages = uniqueMessages.sort((a, b) => 
+        new Date(b.created_at) - new Date(a.created_at)
+      );
+      setMessages(sortedMessages);
+      
+      // Count unread (only inbox messages can be unread)
+      const unread = sortedMessages.filter(m => !m.read_status && m.receiver_id === user?.id).length;
+      setUnreadCount(unread);
+    } catch (error) {
+      console.error('Failed to fetch messages:', error);
     } finally {
       setLoading(false);
     }
   }, [user?.id]);
 
-  // Fetch users for new chat
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetchJSON('/api/users?limit=1000');
-      if (res.success) {
-        setUsers(res.data.filter(u => u.id !== user?.id));
+      const res = await fetchJSON('/api/users');
+      if (res.success && res.data) {
+        const userList = Array.isArray(res.data) ? res.data : (res.data.users || []);
+        const otherUsers = userList.filter(u => u.id !== user?.id);
+        setUsers(otherUsers);
       }
     } catch (error) {
       console.error('Failed to fetch users:', error);
     }
   }, [user?.id]);
 
-  // Fetch thread messages
-  const fetchThread = useCallback(async (userId) => {
-    try {
-      setThreadLoading(true);
-      const res = await fetchJSON(`/api/messages/thread/${userId}`);
-      if (res.success) {
-        setThreadMessages(res.data.messages || []);
-        // Refresh conversations to update unread counts
-        fetchConversations();
-      }
-    } catch (error) {
-      console.error('Failed to fetch thread:', error);
-    } finally {
-      setThreadLoading(false);
-    }
-  }, [fetchConversations]);
-
-  // Initial load
   useEffect(() => {
-    if (!authLoading && user) {
-      fetchConversations();
+    if (user?.id) {
+      fetchMessages();
       fetchUsers();
     }
-  }, [authLoading, user, fetchConversations, fetchUsers]);
+  }, [user?.id, fetchMessages, fetchUsers]);
 
-  // Poll for new messages
-  useEffect(() => {
-    if (!user) return;
-    
-    const interval = setInterval(() => {
-      fetchConversations();
-      if (activeConversation) {
-        fetchThread(activeConversation.user_id);
-      }
-    }, 30000); // Every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, [user, activeConversation, fetchConversations, fetchThread]);
-
-  // Open conversation
-  const openConversation = (conv) => {
-    setActiveConversation(conv);
-    setShowNewChat(false);
+  const selectMessage = async (msg) => {
+    setSelectedMessage(msg);
     setShowCompose(false);
-    fetchThread(conv.user_id);
-    // Auto-select first message
-    setSelectedMessage(null);
+    
+    // Fetch full message (this also marks it as read on the server)
+    if (!msg.read_status) {
+      try {
+        await fetchJSON(`/api/messages/${msg.id}`);
+        fetchMessages();
+      } catch (error) {
+        console.error('Failed to fetch message:', error);
+      }
+    }
   };
 
-  // Start new chat with user
-  const startNewChat = (selectedUser) => {
-    const conv = {
-      user_id: selectedUser.id,
-      user_name: selectedUser.full_name || selectedUser.username,
-      user_email: selectedUser.email,
-      last_message: '',
-      unread_count: 0
-    };
-    setActiveConversation(conv);
-    setShowNewChat(false);
-    setShowCompose(true);
-    setThreadMessages([]);
-    fetchThread(selectedUser.id);
-  };
-
-  // File upload handler
   const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-    setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'message-attachment');
 
-      const res = await fetch('/api/messages/attachments', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
+        const response = await fetch('/api/messages/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (data.success) {
-        setAttachments([...attachments, data.data]);
-      } else {
-        alert(data.error || 'Failed to upload file');
+        const result = await response.json();
+        if (result.success) {
+          setAttachments(prev => [...prev, {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            url: result.data.filePath
+          }]);
+        }
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      alert('Failed to upload file');
-    } finally {
-      setUploading(false);
-      e.target.value = '';
+      console.error('Failed to upload file:', error);
     }
   };
 
-  // Send message
-  const handleSendMessage = async () => {
-    if (!activeConversation?.user_id) {
-      alert('Please select a conversation first');
-      return;
-    }
-    if (!messageText.trim() && attachments.length === 0) {
-      return;
-    }
+  const removeAttachment = (index) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
 
+  const sendMessage = async () => {
+    if ((!messageText.trim() && attachments.length === 0) || toRecipients.length === 0) return;
+    
     setSending(true);
     try {
-      const payload = {
-        receiver_id: activeConversation.user_id,
-        subject: messageSubject.trim() || 'Message',
-        body: messageText.trim() || (attachments.length > 0 ? '[Attachment]' : ''),
-        related_module: 'none',
-        related_id: null,
-        attachments
-      };
-      
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setMessageText('');
-        setMessageSubject('');
-        setAttachments([]);
-        setShowCompose(false);
-        fetchThread(activeConversation.user_id);
-        fetchConversations();
-      } else {
-        alert(data.error || 'Failed to send message');
+      for (const recipient of toRecipients) {
+        await fetchJSON('/api/messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            receiver_id: recipient.id,
+            message: messageText,
+            subject: messageSubject,
+            attachments: attachments.length > 0 ? JSON.stringify(attachments) : null
+          })
+        });
       }
+
+      setMessageText('');
+      setMessageSubject('');
+      setAttachments([]);
+      setToRecipients([]);
+      setCcRecipients([]);
+      setBccRecipients([]);
+      setShowCompose(false);
+      fetchMessages();
     } catch (error) {
-      console.error('Send error:', error);
-      alert('Failed to send message');
+      console.error('Failed to send message:', error);
     } finally {
       setSending(false);
     }
   };
 
-  // Toggle star
-  const toggleStar = (msgId) => {
-    setStarredMessages(prev => {
+  const sendReply = async () => {
+    if (!messageText.trim() || !selectedMessage) return;
+    
+    setSending(true);
+    try {
+      await fetchJSON('/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          receiver_id: selectedMessage.sender_id,
+          message: messageText,
+          subject: `Re: ${selectedMessage.subject || 'No Subject'}`,
+          attachments: attachments.length > 0 ? JSON.stringify(attachments) : null
+        })
+      });
+
+      setMessageText('');
+      setAttachments([]);
+      fetchMessages();
+    } catch (error) {
+      console.error('Failed to send reply:', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const toggleFlag = (e, msgId) => {
+    e.stopPropagation();
+    setFlaggedMessages(prev => {
       const newSet = new Set(prev);
       if (newSet.has(msgId)) {
         newSet.delete(msgId);
@@ -287,761 +239,652 @@ export default function MessagesPage() {
     });
   };
 
-  // Format date for message list (Outlook style)
-  const formatListDate = (dateStr) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const startNewMessage = () => {
+    setShowCompose(true);
+    setSelectedMessage(null);
+    setMessageText('');
+    setMessageSubject('');
+    setAttachments([]);
+    setToRecipients([]);
+    setCcRecipients([]);
+    setBccRecipients([]);
+    setRecipientSearch('');
+  };
 
-    if (days === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return 'Yesterday';
-    } else if (days < 7) {
-      return date.toLocaleDateString([], { weekday: 'short' });
-    } else if (date.getFullYear() === now.getFullYear()) {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  const addRecipient = (userToAdd, field) => {
+    if (field === 'to' && !toRecipients.find(r => r.id === userToAdd.id)) {
+      setToRecipients([...toRecipients, userToAdd]);
+    } else if (field === 'cc' && !ccRecipients.find(r => r.id === userToAdd.id)) {
+      setCcRecipients([...ccRecipients, userToAdd]);
+    } else if (field === 'bcc' && !bccRecipients.find(r => r.id === userToAdd.id)) {
+      setBccRecipients([...bccRecipients, userToAdd]);
+    }
+    setRecipientSearch('');
+  };
+
+  const removeRecipient = (userId, field) => {
+    if (field === 'to') {
+      setToRecipients(toRecipients.filter(r => r.id !== userId));
+    } else if (field === 'cc') {
+      setCcRecipients(ccRecipients.filter(r => r.id !== userId));
+    } else if (field === 'bcc') {
+      setBccRecipients(bccRecipients.filter(r => r.id !== userId));
     }
   };
 
-  // Format full date for reading pane
-  const formatFullDate = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString([], { 
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } else if (diffDays < 7) {
+      return date.toLocaleDateString('en-US', { weekday: 'short' });
+    } else {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  };
+
+  const formatFullDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
       weekday: 'long', 
       year: 'numeric', 
       month: 'long', 
       day: 'numeric',
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit'
     });
   };
 
-  // Format date
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (days === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return 'Yesterday';
-    } else if (days < 7) {
-      return date.toLocaleDateString([], { weekday: 'short' });
-    } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
+  const getInitials = (name) => {
+    if (!name) return '?';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  // Format message time
-  const formatMessageTime = (dateStr) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    
-    if (isToday) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Format file size
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  // Check if file is an image
-  const isImageFile = (fileType) => {
-    return fileType?.startsWith('image/');
-  };
-
-  // Download attachment
-  const handleDownloadAttachment = async (attachmentId, fileName) => {
+  const parseAttachments = (attachments) => {
+    if (!attachments || attachments === '' || attachments === 'null') return [];
     try {
-      const response = await fetch(`/api/messages/attachments/${attachmentId}`);
-      if (!response.ok) {
-        throw new Error('Failed to download file');
-      }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download error:', error);
-      alert('Failed to download file');
+      const parsed = JSON.parse(attachments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
   };
 
-  // Filter conversations
-  const filteredConversations = conversations.filter(conv =>
-    conv.user_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(u => 
+    u.name?.toLowerCase().includes(recipientSearch.toLowerCase()) ||
+    u.email?.toLowerCase().includes(recipientSearch.toLowerCase())
   );
 
-  // Filter users for new chat
-  const filteredUsers = users.filter(u => {
-    const name = (u.full_name || u.username || '').toLowerCase();
-    const email = (u.email || '').toLowerCase();
-    const term = searchTerm.toLowerCase();
-    return name.includes(term) || email.includes(term);
-  });
+  const filteredMessages = messages.filter(msg =>
+    msg.sender_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    msg.body_preview?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    msg.subject?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const folders = [
+    { id: 'inbox', name: 'Inbox', icon: InboxIcon, count: unreadCount },
+    { id: 'drafts', name: 'Drafts', icon: DocumentIcon, count: 0 },
+    { id: 'sent', name: 'Sent Items', icon: PaperAirplaneIcon, count: 0 },
+    { id: 'deleted', name: 'Deleted Items', icon: TrashIcon, count: 0 },
+    { id: 'archive', name: 'Archive', icon: ArchiveBoxIcon, count: 0 },
+  ];
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+          <ArrowPathIcon className="h-8 w-8 animate-spin text-[#64126D]" />
+        </div>
       </div>
     );
   }
 
-  // Folder items for sidebar
-  const folders = [
-    { id: 'inbox', name: 'Inbox', icon: InboxIcon, count: unreadCount },
-    { id: 'sent', name: 'Sent Items', icon: SentIcon, count: 0 },
-    { id: 'starred', name: 'Starred', icon: StarIcon, count: starredMessages.size },
-    { id: 'archive', name: 'Archive', icon: ArchiveBoxIcon, count: 0 },
-    { id: 'trash', name: 'Deleted Items', icon: TrashIcon, count: 0 },
-  ];
-
-  // Get initials for avatar
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    const parts = name.split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return name.charAt(0).toUpperCase();
-  };
-
-  // Get avatar color based on name
-  const getAvatarColor = (name) => {
-    const colors = [
-      'bg-[#7F2487]', 'bg-[#4D025B]', 'bg-purple-600', 'bg-indigo-600',
-      'bg-blue-600', 'bg-teal-600', 'bg-emerald-600', 'bg-amber-600'
-    ];
-    const index = (name?.charCodeAt(0) || 0) % colors.length;
-    return colors[index];
-  };
-
   return (
-    <div className="min-h-screen bg-[#f3f2f1]">
+    <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
-      
-      <div className="pt-1 h-screen flex flex-col">
-        {/* Outlook-style Toolbar */}
-        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2">
-          <button
-            onClick={() => { setShowCompose(true); setActiveConversation(null); setMessageText(''); setMessageSubject(''); }}
-            className="flex items-center gap-2 px-4 py-2 bg-[#7F2487] text-white rounded hover:bg-[#6a1e73] transition-colors font-medium"
-          >
-            <PlusIcon className="w-4 h-4" />
-            New Message
-          </button>
-          <div className="h-6 w-px bg-gray-300 mx-2" />
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Reply">
-            <ArrowUturnLeftIcon className="w-5 h-5" />
-          </button>
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Reply All">
-            <ArrowUturnRightIcon className="w-5 h-5" />
-          </button>
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Forward">
-            <PaperAirplaneIcon className="w-5 h-5" />
-          </button>
-          <div className="h-6 w-px bg-gray-300 mx-2" />
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Delete">
-            <TrashIcon className="w-5 h-5" />
-          </button>
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Archive">
-            <ArchiveBoxIcon className="w-5 h-5" />
-          </button>
-          <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" title="Flag">
-            <FlagIcon className="w-5 h-5" />
-          </button>
-          <div className="flex-1" />
-          <button 
-            onClick={() => { fetchConversations(); if (activeConversation) fetchThread(activeConversation.user_id); }}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors" 
-            title="Refresh"
-          >
-            <ArrowPathIcon className="w-5 h-5" />
-          </button>
+      {/* Outlook Header Bar - Fixed */}
+      <div className="bg-[#64126D] h-12 flex items-center px-4 gap-4 flex-shrink-0">
+        <button 
+          onClick={() => setFolderPaneCollapsed(!folderPaneCollapsed)}
+          className="text-white hover:bg-white/10 p-1.5 rounded"
+        >
+          <Bars3Icon className="h-5 w-5" />
+        </button>
+        
+        <div className="flex-1 max-w-xl">
+          <div className="relative">
+            <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/60" />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-1.5 bg-white/10 text-white placeholder-white/60 rounded text-sm focus:outline-none focus:bg-white/20"
+            />
+          </div>
         </div>
+        
+        <div className="flex items-center gap-2">
+          <button className="text-white hover:bg-white/10 p-1.5 rounded">
+            <Cog6ToothIcon className="h-5 w-5" />
+          </button>
+          <button className="text-white hover:bg-white/10 p-1.5 rounded">
+            <BellIcon className="h-5 w-5" />
+          </button>
+          <div className="h-8 w-8 rounded-full bg-[#7F2387] flex items-center justify-center text-white text-sm font-medium">
+            {getInitials(user?.name)}
+          </div>
+        </div>
+      </div>
 
-        {/* Main Content - Three Panel Layout */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Panel - Folder Navigation */}
-          <div className={`${folderPaneCollapsed ? 'w-12' : 'w-56'} bg-[#f9f9f9] border-r border-gray-200 flex flex-col transition-all duration-200`}>
-            <div className="p-2">
-              {!folderPaneCollapsed && (
-                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Folders
-                </div>
-              )}
+      {/* Main Content Area - Takes remaining height */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Folder Pane - Fixed */}
+        {!folderPaneCollapsed && (
+          <div className="w-56 border-r border-gray-200 bg-gray-50 flex-shrink-0 overflow-hidden">
+            {/* New Mail Button */}
+            <div className="p-3">
+              <button
+                onClick={startNewMessage}
+                className="w-full flex items-center gap-2 px-4 py-2 bg-[#7F2387] text-white rounded hover:bg-[#64126D] transition-colors"
+              >
+                <PencilSquareIcon className="h-5 w-5" />
+                <span className="font-medium">New mail</span>
+              </button>
+            </div>
+            
+            {/* Folders */}
+            <nav>
               {folders.map((folder) => (
                 <button
                   key={folder.id}
                   onClick={() => setActiveFolder(folder.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded text-left transition-colors ${
-                    activeFolder === folder.id 
-                      ? 'bg-[#7F2487]/10 text-[#7F2487]' 
-                      : 'text-gray-700 hover:bg-gray-200'
+                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 ${
+                    activeFolder === folder.id ? 'bg-white border-l-2 border-[#7F2387] font-medium' : ''
                   }`}
-                  title={folderPaneCollapsed ? folder.name : undefined}
                 >
-                  <folder.icon className={`w-5 h-5 flex-shrink-0 ${activeFolder === folder.id ? 'text-[#7F2487]' : 'text-gray-500'}`} />
-                  {!folderPaneCollapsed && (
-                    <>
-                      <span className="flex-1 text-sm font-medium">{folder.name}</span>
-                      {folder.count > 0 && (
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                          activeFolder === folder.id ? 'bg-[#7F2487] text-white' : 'bg-gray-300 text-gray-600'
-                        }`}>
-                          {folder.count}
-                        </span>
-                      )}
-                    </>
+                  <folder.icon className={`h-5 w-5 ${activeFolder === folder.id ? 'text-[#7F2387]' : 'text-gray-500'}`} />
+                  <span className="flex-1 text-left text-gray-700">{folder.name}</span>
+                  {folder.count > 0 && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-[#7F2387] text-white">
+                      {folder.count}
+                    </span>
                   )}
                 </button>
               ))}
-            </div>
-            <div className="flex-1" />
+            </nav>
+          </div>
+        )}
+
+        {/* Message List Column */}
+        <div className={`${showCompose ? 'hidden md:flex' : 'flex'} flex-col border-r border-gray-200 ${folderPaneCollapsed ? 'w-80' : 'w-72'} flex-shrink-0 min-h-0 overflow-hidden`}>
+          {/* Focused/Other Tabs - Fixed */}
+          <div className="flex border-b border-gray-200 bg-white flex-shrink-0">
             <button
-              onClick={() => setFolderPaneCollapsed(!folderPaneCollapsed)}
-              className="p-2 text-gray-500 hover:bg-gray-200 border-t border-gray-200"
+              onClick={() => setActiveTab('focused')}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 ${
+                activeTab === 'focused' 
+                  ? 'border-[#7F2387] text-[#7F2387]' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
             >
-              {folderPaneCollapsed ? <ChevronRightIcon className="w-5 h-5 mx-auto" /> : <ChevronLeftIcon className="w-5 h-5 mx-auto" />}
+              Focused
+            </button>
+            <button
+              onClick={() => setActiveTab('other')}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 ${
+                activeTab === 'other' 
+                  ? 'border-[#7F2387] text-[#7F2387]' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Other
             </button>
           </div>
-
-          {/* Middle Panel - Message List */}
-          <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-            {/* Search */}
-            <div className="p-3 border-b border-gray-200">
-              <div className="relative">
-                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={showNewChat ? "Search people..." : "Search messages..."}
-                  className="w-full pl-9 pr-4 py-2 bg-[#f3f2f1] border border-transparent rounded text-sm focus:border-[#7F2487] focus:bg-white focus:outline-none"
-                />
+          
+          {/* Message List Items - Scrollable */}
+          <div className="flex-1 bg-white overflow-y-auto">
+            {loading ? (
+              <div className="flex justify-center items-center h-32">
+                <ArrowPathIcon className="h-6 w-6 animate-spin text-[#7F2387]" />
               </div>
-            </div>
-
-            {/* Message List Header */}
-            <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-700">
-                {showNewChat ? 'Select Recipient' : activeFolder === 'inbox' ? 'Inbox' : folders.find(f => f.id === activeFolder)?.name}
-              </span>
-              <span className="text-xs text-gray-500">
-                {showNewChat ? `${filteredUsers.length} people` : `${filteredConversations.length} conversations`}
-              </span>
-            </div>
-
-            {/* Message List */}
-            <div className="flex-1 overflow-y-auto">
-              {showNewChat ? (
-                // User selection list
-                <div>
-                  <button
-                    onClick={() => setShowNewChat(false)}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#7F2487] hover:bg-gray-50 border-b border-gray-100"
-                  >
-                    <ChevronLeftIcon className="w-4 h-4" />
-                    Back to messages
-                  </button>
-                  {filteredUsers.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-gray-500 text-sm">
-                      No users found
+            ) : filteredMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8">
+                <InboxIcon className="h-12 w-12 mb-2" />
+                <p className="text-sm">No messages</p>
+              </div>
+            ) : (
+              filteredMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  onClick={() => selectMessage(msg)}
+                  className={`border-b border-gray-100 p-3 cursor-pointer hover:bg-gray-50 ${
+                    selectedMessage?.id === msg.id ? 'bg-[#7F2387]/5 border-l-2 border-l-[#7F2387]' : ''
+                  }`}
+                >
+                  <div className="flex gap-3">
+                    {/* Unread Indicator */}
+                    <div className="flex flex-col items-center pt-1 w-2">
+                      {!msg.read_status && (
+                        <div className="w-2 h-2 rounded-full bg-[#7F2387]" />
+                      )}
                     </div>
-                  ) : (
-                    filteredUsers.map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => startNewChat(u)}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f3f2f1] transition-colors text-left border-b border-gray-100"
-                      >
-                        <div className={`w-10 h-10 ${getAvatarColor(u.full_name || u.username)} rounded-full flex items-center justify-center text-white text-sm font-semibold`}>
-                          {getInitials(u.full_name || u.username)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate text-sm">
-                            {u.full_name || u.username}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">{u.email}</p>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              ) : loading ? (
-                <div className="flex items-center justify-center py-20">
-                  <ArrowPathIcon className="w-6 h-6 text-gray-400 animate-spin" />
-                </div>
-              ) : filteredConversations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                  <EnvelopeIcon className="w-12 h-12 text-gray-300 mb-3" />
-                  <p className="text-gray-600 font-medium text-sm">No messages</p>
-                  <p className="text-xs text-gray-500 mt-1">Start a conversation</p>
-                </div>
-              ) : (
-                filteredConversations.map((conv) => {
-                  const isSelected = activeConversation?.user_id === conv.user_id;
-                  const isUnread = conv.unread_count > 0;
-                  
-                  return (
-                    <button
-                      key={conv.user_id}
-                      onClick={() => openConversation(conv)}
-                      className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
-                        isSelected 
-                          ? 'bg-[#7F2487]/10 border-l-2 border-l-[#7F2487]' 
-                          : 'hover:bg-[#f3f2f1] border-l-2 border-l-transparent'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Unread indicator */}
-                        <div className="pt-1">
-                          {isUnread ? (
-                            <div className="w-2 h-2 bg-[#7F2487] rounded-full" />
-                          ) : (
-                            <div className="w-2 h-2" />
-                          )}
-                        </div>
-                        
-                        {/* Avatar */}
-                        <div className={`w-10 h-10 ${getAvatarColor(conv.user_name)} rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0`}>
-                          {getInitials(conv.user_name)}
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className={`text-sm truncate ${isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
-                              {conv.user_name}
-                            </span>
-                            <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                              {formatListDate(conv.last_message_at)}
-                            </span>
-                          </div>
-                          <p className={`text-xs truncate ${isUnread ? 'font-medium text-gray-800' : 'text-gray-500'}`}>
-                            {conv.last_subject && conv.last_subject !== 'Message' ? conv.last_subject : 'No subject'}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
-                            {conv.last_message || 'No preview available'}
-                          </p>
-                        </div>
+                    
+                    {/* Avatar */}
+                    <div className="h-10 w-10 rounded-full bg-[#7F2387] flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
+                      {getInitials(msg.sender_name)}
+                    </div>
+                    
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`truncate ${!msg.read_status ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                          {msg.sender_name}
+                        </span>
+                        <span className="text-xs text-gray-500 flex-shrink-0">
+                          {formatTime(msg.created_at)}
+                        </span>
                       </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Right Panel - Reading Pane / Compose */}
-          <div className="flex-1 bg-white flex flex-col">
-            {showCompose ? (
-              // Compose View - Outlook Style
-              <div className="flex-1 flex flex-col bg-white">
-                {/* From field */}
-                <div className="px-6 py-3 border-b border-gray-200 flex items-center">
-                  <span className="text-sm text-gray-500 w-20">From:</span>
-                  <div className="flex-1 flex items-center justify-between">
-                    <span className="text-sm text-gray-900">{user?.full_name || user?.username} ({user?.email?.substring(0, 15)}...)</span>
-                    <div className="flex items-center gap-2">
-                      <button className="p-1 text-gray-400 hover:text-gray-600" title="High Importance">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 15l7-7 7 7" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 10l7-7 7 7" />
-                        </svg>
-                      </button>
+                      <div className={`text-sm truncate ${!msg.read_status ? 'font-medium text-gray-800' : 'text-gray-600'}`}>
+                        {msg.subject || 'No Subject'}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate mt-0.5">
+                        {msg.body_preview}
+                      </div>
+                    </div>
+                    
+                    {/* Actions */}
+                    <div className="flex flex-col items-center gap-1">
                       <button 
-                        onClick={() => { setShowCompose(false); setShowNewChat(false); }}
-                        className="p-1 text-gray-400 hover:text-gray-600" 
-                        title="Pop out"
+                        onClick={(e) => toggleFlag(e, msg.id)}
+                        className="p-1 hover:bg-gray-100 rounded"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
+                        {flaggedMessages.has(msg.id) ? (
+                          <FlagIconSolid className="h-4 w-4 text-red-500" />
+                        ) : (
+                          <FlagIcon className="h-4 w-4 text-gray-400" />
+                        )}
                       </button>
                     </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Reading Pane / Compose */}
+        <div className="flex-1 flex flex-col bg-white min-w-0 h-full overflow-hidden">
+          {showCompose ? (
+            /* Compose View */
+            <div className="flex flex-col h-full">
+              {/* Compose Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCompose(false)}
+                    className="md:hidden p-1 hover:bg-gray-100 rounded"
+                  >
+                    <ChevronLeftIcon className="h-5 w-5 text-gray-500" />
+                  </button>
+                  <h2 className="font-medium text-gray-900">New Message</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCompose(false)}
+                    className="p-2 hover:bg-gray-100 rounded text-gray-500"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Compose Form */}
+              <div className="flex-1 flex flex-col min-h-0">
+                {/* From Field */}
+                <div className="flex items-center border-b border-gray-100 px-4 py-2 flex-shrink-0">
+                  <label className="w-16 text-sm text-gray-500">From:</label>
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-[#7F2387] flex items-center justify-center text-white text-xs">
+                      {getInitials(user?.name)}
+                    </div>
+                    <span className="text-sm text-gray-700">{user?.email}</span>
                   </div>
                 </div>
                 
-                {/* To field */}
-                <div className="px-6 py-3 border-b border-gray-200 flex items-center">
-                  <span className="text-sm text-gray-500 w-20">To:</span>
-                  <div className="flex-1 flex items-center">
-                    {activeConversation ? (
-                      <div className="flex items-center gap-2 px-2 py-1 bg-gray-100 rounded text-sm mr-2">
-                        <span className="text-gray-900">{activeConversation.user_name}</span>
-                        <button 
-                          onClick={() => setActiveConversation(null)}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          <XMarkIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
+                {/* To Field */}
+                <div className="flex items-start border-b border-gray-100 px-4 py-2 flex-shrink-0 relative">
+                  <label className="w-16 text-sm text-gray-500 pt-1">To:</label>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {toRecipients.map(r => (
+                        <span key={r.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#7F2387]/10 text-[#7F2387] rounded text-sm">
+                          {r.name || r.full_name || r.username}
+                          <button onClick={() => removeRecipient(r.id, 'to')} className="hover:text-[#64126D]">
+                            <XMarkIcon className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
                       <input
                         type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder=""
-                        className="flex-1 text-sm border-0 focus:ring-0 p-0 placeholder-gray-400 bg-transparent"
-                        autoFocus
+                        value={activeField === 'to' ? recipientSearch : ''}
+                        onChange={(e) => { setActiveField('to'); setRecipientSearch(e.target.value); }}
+                        onFocus={() => setActiveField('to')}
+                        placeholder={toRecipients.length === 0 ? "Add recipients" : ""}
+                        className="flex-1 min-w-[100px] text-sm focus:outline-none py-1"
                       />
+                    </div>
+                    {activeField === 'to' && recipientSearch && filteredUsers.length > 0 && (
+                      <div className="absolute left-16 right-4 z-10 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {filteredUsers.map(u => (
+                          <button
+                            key={u.id}
+                            onClick={() => addRecipient(u, 'to')}
+                            className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left"
+                          >
+                            <div className="h-8 w-8 rounded-full bg-[#7F2387] flex items-center justify-center text-white text-xs">
+                              {getInitials(u.name || u.full_name || u.username)}
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{u.name || u.full_name || u.username}</div>
+                              <div className="text-xs text-gray-500">{u.email}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <button className="text-gray-500 hover:text-[#7F2487]">Cc</button>
-                    <button className="text-gray-500 hover:text-[#7F2487]">Bcc</button>
-                    <button className="p-1 text-gray-400 hover:text-gray-600" title="Add from contacts">
-                      <UserCircleIcon className="w-5 h-5" />
-                    </button>
+                  <div className="flex gap-2 text-sm text-[#7F2387]">
+                    {!showCc && <button onClick={() => setShowCc(true)} className="hover:underline">Cc</button>}
+                    {!showBcc && <button onClick={() => setShowBcc(true)} className="hover:underline">Bcc</button>}
                   </div>
                 </div>
-
-                {/* User suggestions dropdown when no recipient selected */}
-                {!activeConversation && searchTerm && (
-                  <div className="absolute top-[180px] left-[calc(50%+140px)] right-6 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {filteredUsers.slice(0, 5).map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => {
-                          startNewChat(u);
-                          setSearchTerm('');
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 text-left"
-                      >
-                        <div className={`w-8 h-8 ${getAvatarColor(u.full_name || u.username)} rounded-full flex items-center justify-center text-white text-xs font-semibold`}>
-                          {getInitials(u.full_name || u.username)}
+                
+                {/* Cc Field */}
+                {showCc && (
+                  <div className="flex items-start border-b border-gray-100 px-4 py-2 flex-shrink-0 relative">
+                    <label className="w-16 text-sm text-gray-500 pt-1">Cc:</label>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {ccRecipients.map(r => (
+                          <span key={r.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#7F2387]/10 text-[#7F2387] rounded text-sm">
+                            {r.name || r.full_name || r.username}
+                            <button onClick={() => removeRecipient(r.id, 'cc')} className="hover:text-[#64126D]">
+                              <XMarkIcon className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={activeField === 'cc' ? recipientSearch : ''}
+                          onChange={(e) => { setActiveField('cc'); setRecipientSearch(e.target.value); }}
+                          onFocus={() => setActiveField('cc')}
+                          className="flex-1 min-w-[100px] text-sm focus:outline-none py-1"
+                        />
+                      </div>
+                      {activeField === 'cc' && recipientSearch && filteredUsers.length > 0 && (
+                        <div className="absolute left-16 right-4 z-10 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {filteredUsers.map(u => (
+                            <button
+                              key={u.id}
+                              onClick={() => addRecipient(u, 'cc')}
+                              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left"
+                            >
+                              <div className="h-8 w-8 rounded-full bg-[#7F2387] flex items-center justify-center text-white text-xs">
+                                {getInitials(u.name || u.full_name || u.username)}
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{u.name || u.full_name || u.username}</div>
+                                <div className="text-xs text-gray-500">{u.email}</div>
+                              </div>
+                            </button>
+                          ))}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{u.full_name || u.username}</p>
-                          <p className="text-xs text-gray-500">{u.email}</p>
-                        </div>
-                      </button>
-                    ))}
+                      )}
+                    </div>
                   </div>
                 )}
                 
-                {/* Subject field */}
-                <div className="px-6 py-3 border-b border-gray-200 flex items-center">
-                  <span className="text-sm text-gray-500 w-20">Subject:</span>
+                {/* Bcc Field */}
+                {showBcc && (
+                  <div className="flex items-start border-b border-gray-100 px-4 py-2 flex-shrink-0 relative">
+                    <label className="w-16 text-sm text-gray-500 pt-1">Bcc:</label>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {bccRecipients.map(r => (
+                          <span key={r.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#7F2387]/10 text-[#7F2387] rounded text-sm">
+                            {r.name || r.full_name || r.username}
+                            <button onClick={() => removeRecipient(r.id, 'bcc')} className="hover:text-[#64126D]">
+                              <XMarkIcon className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={activeField === 'bcc' ? recipientSearch : ''}
+                          onChange={(e) => { setActiveField('bcc'); setRecipientSearch(e.target.value); }}
+                          onFocus={() => setActiveField('bcc')}
+                          className="flex-1 min-w-[100px] text-sm focus:outline-none py-1"
+                        />
+                      </div>
+                      {activeField === 'bcc' && recipientSearch && filteredUsers.length > 0 && (
+                        <div className="absolute left-16 right-4 z-10 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {filteredUsers.map(u => (
+                            <button
+                              key={u.id}
+                              onClick={() => addRecipient(u, 'bcc')}
+                              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left"
+                            >
+                              <div className="h-8 w-8 rounded-full bg-[#7F2387] flex items-center justify-center text-white text-xs">
+                                {getInitials(u.name || u.full_name || u.username)}
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{u.name || u.full_name || u.username}</div>
+                                <div className="text-xs text-gray-500">{u.email}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Subject Field */}
+                <div className="flex items-center border-b border-gray-100 px-4 py-2 flex-shrink-0">
+                  <label className="w-16 text-sm text-gray-500">Subject:</label>
                   <input
                     type="text"
                     value={messageSubject}
                     onChange={(e) => setMessageSubject(e.target.value)}
-                    placeholder=""
-                    className="flex-1 text-sm border-0 focus:ring-0 p-0 placeholder-gray-400 bg-transparent"
+                    placeholder="Add a subject"
+                    className="flex-1 text-sm focus:outline-none"
                   />
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Importance</span>
-                    <ChevronRightIcon className="w-4 h-4 text-gray-400 rotate-90" />
-                  </div>
                 </div>
                 
-                {/* Formatting Toolbar */}
-                <div className="px-6 py-2 border-b border-gray-200 flex items-center gap-1">
-                  <button className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="Undo">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                    </svg>
-                  </button>
-                  <button className="p-1.5 text-gray-400 hover:bg-gray-100 rounded" title="Redo">
-                    <ChevronRightIcon className="w-4 h-4 rotate-90" />
-                  </button>
-                  <button className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="Paste">
-                    <DocumentIcon className="w-4 h-4" />
-                  </button>
-                  <div className="w-px h-5 bg-gray-300 mx-1" />
-                  <div className="flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded cursor-pointer">
-                    <span className="text-sm text-gray-700">Aptos</span>
-                  </div>
-                  <div className="flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded cursor-pointer">
-                    <span className="text-sm text-gray-700">12</span>
-                  </div>
-                  <button className="p-1.5 text-gray-500 hover:bg-gray-100 rounded" title="More options">
-                    <EllipsisHorizontalIcon className="w-4 h-4" />
-                  </button>
+                {/* Message Body */}
+                <div className="flex-1 p-4">
+                  <textarea
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    placeholder="Write your message here..."
+                    className="w-full h-full text-sm focus:outline-none resize-none"
+                  />
                 </div>
                 
                 {/* Attachments */}
                 {attachments.length > 0 && (
-                  <div className="px-6 py-2 border-b border-gray-100 flex flex-wrap gap-2">
-                    {attachments.map((att, idx) => (
-                      <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
-                        <PaperClipIcon className="w-4 h-4 text-gray-500" />
-                        <span className="text-gray-700 truncate max-w-[150px]">{att.original_name}</span>
-                        <button
-                          onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
-                          className="text-gray-400 hover:text-red-500"
-                        >
-                          <XMarkIcon className="w-4 h-4" />
-                        </button>
-                      </div>
+                  <div className="px-4 pb-2 flex-shrink-0">
+                    <div className="flex flex-wrap gap-2">
+                      {attachments.map((att, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded">
+                          <DocumentIcon className="h-4 w-4 text-gray-500" />
+                          <span className="text-sm text-gray-700">{att.name}</span>
+                          <button onClick={() => removeAttachment(idx)} className="text-gray-400 hover:text-gray-600">
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Compose Footer */}
+              <div className="border-t border-gray-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={sendMessage}
+                    disabled={sending || toRecipients.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#7F2387] text-white rounded hover:bg-[#64126D] disabled:opacity-50"
+                  >
+                    <PaperAirplaneIcon className="h-4 w-4" />
+                    <span>Send</span>
+                  </button>
+                  
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 hover:bg-gray-100 rounded text-gray-500"
+                    title="Attach file"
+                  >
+                    <PaperClipIcon className="h-5 w-5" />
+                  </button>
+                </div>
+                
+                <button
+                  onClick={() => setShowCompose(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          ) : selectedMessage ? (
+            /* Reading Pane - Single Message */
+            <div className="flex flex-col h-full min-h-0">
+              {/* Message Header */}
+              <div className="border-b border-gray-200 p-4 flex-shrink-0">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2 md:hidden">
+                    <button
+                      onClick={() => setSelectedMessage(null)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <ChevronLeftIcon className="h-5 w-5 text-gray-500" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="h-10 w-10 rounded-full bg-[#7F2387] flex items-center justify-center text-white font-medium">
+                      {getInitials(selectedMessage.sender_name)}
+                    </div>
+                    <div>
+                      <h2 className="font-medium text-gray-900">{selectedMessage.sender_name}</h2>
+                      <p className="text-sm text-gray-500">{selectedMessage.sender_email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button className="p-2 hover:bg-gray-100 rounded text-gray-500">
+                      <ArrowUturnLeftIcon className="h-5 w-5" />
+                    </button>
+                    <button className="p-2 hover:bg-gray-100 rounded text-gray-500">
+                      <ArrowUturnRightIcon className="h-5 w-5" />
+                    </button>
+                    <button className="p-2 hover:bg-gray-100 rounded text-gray-500">
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <h3 className="text-lg font-medium text-gray-900">{selectedMessage.subject || 'No Subject'}</h3>
+                  <p className="text-sm text-gray-500 mt-1">{formatFullDate(selectedMessage.created_at)}</p>
+                </div>
+              </div>
+              
+              {/* Message Content */}
+              <div className="flex-1 p-4 overflow-y-auto min-h-0">
+                <div className="text-gray-700 whitespace-pre-wrap">
+                  {selectedMessage.body_preview || selectedMessage.body}
+                </div>
+                {parseAttachments(selectedMessage.attachments).length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {parseAttachments(selectedMessage.attachments).map((att, attIdx) => (
+                      <a
+                        key={attIdx}
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded hover:bg-gray-200"
+                      >
+                        <DocumentIcon className="h-4 w-4 text-gray-500" />
+                        <span className="text-sm text-gray-700">{att.name}</span>
+                        <ArrowDownTrayIcon className="h-4 w-4 text-gray-400" />
+                      </a>
                     ))}
                   </div>
                 )}
-                
-                {/* Message body */}
-                <div className="flex-1 px-6 py-4 overflow-y-auto">
-                  <textarea
+              </div>
+              
+              {/* Reply Box */}
+              <div className="border-t border-gray-200 px-2 py-1 flex-shrink-0">
+                <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 py-1 bg-white">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1 hover:bg-gray-100 rounded text-gray-500"
+                    title="Attach file"
+                  >
+                    <PaperClipIcon className="h-4 w-4" />
+                  </button>
+                  <input
+                    type="text"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
-                    placeholder=""
-                    className="w-full h-full min-h-[200px] resize-none border-0 focus:ring-0 text-sm text-gray-800 placeholder-gray-400 bg-transparent"
-                    style={{ fontFamily: 'Aptos, Calibri, Arial, sans-serif' }}
+                    placeholder="Type your reply..."
+                    className="flex-1 text-sm focus:outline-none"
                   />
-                </div>
-                
-                {/* Footer with Send and Draft saved */}
-                <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleSendMessage}
-                      disabled={sending || !activeConversation || (!messageText.trim() && attachments.length === 0)}
-                      className="flex items-center gap-2 px-5 py-2 bg-[#7F2487] text-white rounded hover:bg-[#6a1e73] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                    >
-                      {sending ? (
-                        <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <PaperAirplaneIcon className="w-4 h-4" />
-                      )}
-                      Send
-                    </button>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
-                      title="Attach file"
-                    >
-                      <PaperClipIcon className="w-5 h-5" />
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt,.csv,.nwd,.dwg,.rar,.zip"
-                    />
-                    <button
-                      onClick={() => { setShowCompose(false); setShowNewChat(false); setMessageText(''); setMessageSubject(''); setAttachments([]); }}
-                      className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition-colors text-sm"
-                    >
-                      Discard
-                    </button>
-                  </div>
-                  <span className="text-xs text-gray-500">Draft saved just now</span>
-                </div>
-              </div>
-            ) : activeConversation ? (
-              // Reading Pane with Thread
-              <div className="flex-1 flex flex-col">
-                {/* Conversation Header */}
-                <div className="px-6 py-4 border-b border-gray-200 bg-[#faf9f8]">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 ${getAvatarColor(activeConversation.user_name)} rounded-full flex items-center justify-center text-white text-lg font-semibold`}>
-                      {getInitials(activeConversation.user_name)}
-                    </div>
-                    <div className="flex-1">
-                      <h2 className="text-lg font-semibold text-gray-900">{activeConversation.user_name}</h2>
-                      <p className="text-sm text-gray-500">{activeConversation.user_email}</p>
-                    </div>
-                    <button
-                      onClick={() => setShowCompose(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#7F2487] text-white rounded hover:bg-[#6a1e73] transition-colors text-sm font-medium"
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                      Reply
-                    </button>
-                  </div>
-                </div>
-
-                {/* Thread Messages */}
-                <div className="flex-1 overflow-y-auto">
-                  {threadLoading ? (
-                    <div className="flex items-center justify-center h-full">
-                      <ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
-                    </div>
-                  ) : threadMessages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                      <EnvelopeIcon className="w-16 h-16 text-gray-300 mb-4" />
-                      <p className="text-lg font-medium">No messages yet</p>
-                      <p className="text-sm">Click Reply to start the conversation</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {threadMessages.map((msg) => {
-                        const isMe = msg.sender_id === user?.id;
-                        const isStarred = starredMessages.has(msg.id);
-                        
-                        return (
-                          <div key={msg.id} className="px-6 py-4 hover:bg-[#faf9f8] transition-colors">
-                            {/* Message Header */}
-                            <div className="flex items-start gap-3 mb-3">
-                              <div className={`w-10 h-10 ${getAvatarColor(isMe ? user?.full_name : activeConversation.user_name)} rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0`}>
-                                {getInitials(isMe ? user?.full_name : activeConversation.user_name)}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <span className="font-semibold text-gray-900 text-sm">
-                                    {isMe ? 'You' : activeConversation.user_name}
-                                  </span>
-                                  {!isMe && (
-                                    <span className="text-xs text-gray-500">
-                                      &lt;{activeConversation.user_email}&gt;
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-500">
-                                  {formatFullDate(msg.created_at)}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button 
-                                  onClick={() => toggleStar(msg.id)}
-                                  className="p-1 text-gray-400 hover:text-yellow-500 transition-colors"
-                                >
-                                  {isStarred ? (
-                                    <StarIconSolid className="w-5 h-5 text-yellow-500" />
-                                  ) : (
-                                    <StarIcon className="w-5 h-5" />
-                                  )}
-                                </button>
-                                <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
-                                  <EllipsisHorizontalIcon className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </div>
-                            
-                            {/* Subject */}
-                            {msg.subject && msg.subject !== 'Message' && (
-                              <p className="text-sm font-medium text-gray-800 mb-2">{msg.subject}</p>
-                            )}
-                            
-                            {/* Body */}
-                            {msg.body && msg.body !== '[Attachment]' && (
-                              <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mb-3">
-                                {msg.body}
-                              </div>
-                            )}
-                            
-                            {/* Attachments */}
-                            {msg.attachments && msg.attachments.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-gray-100">
-                                <p className="text-xs font-medium text-gray-500 mb-2">
-                                  {msg.attachments.length} Attachment{msg.attachments.length > 1 ? 's' : ''}
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                  {msg.attachments.map((att) => (
-                                    <button
-                                      key={att.id}
-                                      onClick={() => handleDownloadAttachment(att.id, att.original_name)}
-                                      className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors group"
-                                    >
-                                      {isImageFile(att.file_type) ? (
-                                        <PhotoIcon className="w-5 h-5 text-[#7F2487]" />
-                                      ) : (
-                                        <DocumentIcon className="w-5 h-5 text-[#7F2487]" />
-                                      )}
-                                      <div className="text-left">
-                                        <p className="text-sm font-medium text-gray-700 truncate max-w-[150px]">
-                                          {att.original_name}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                          {formatFileSize(att.file_size)}
-                                        </p>
-                                      </div>
-                                      <ArrowDownTrayIcon className="w-4 h-4 text-gray-400 group-hover:text-[#7F2487] ml-2" />
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Reply */}
-                <div className="p-4 border-t border-gray-200 bg-[#faf9f8]">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 ${getAvatarColor(user?.full_name)} rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0`}>
-                      {getInitials(user?.full_name)}
-                    </div>
-                    <div className="flex-1 flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
-                      <input
-                        type="text"
-                        value={messageText}
-                        onChange={(e) => setMessageText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                          }
-                        }}
-                        placeholder="Type a quick reply..."
-                        className="flex-1 text-sm border-0 focus:ring-0 p-0 placeholder-gray-400"
-                      />
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
-                        className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                        title="Attach file"
-                      >
-                        <PaperClipIcon className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={handleSendMessage}
-                        disabled={sending || !messageText.trim()}
-                        className="p-1 text-[#7F2487] hover:text-[#6a1e73] transition-colors disabled:opacity-50"
-                      >
-                        <PaperAirplaneIcon className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              // No conversation selected
-              <div className="flex-1 flex flex-col items-center justify-center bg-[#faf9f8]">
-                <div className="text-center">
-                  <div className="w-24 h-24 bg-[#7F2487]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <EnvelopeOpenIcon className="w-12 h-12 text-[#7F2487]" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-700 mb-2">Select a message</h2>
-                  <p className="text-gray-500 mb-6">Choose a conversation from the list or start a new one</p>
                   <button
-                    onClick={() => { setShowCompose(true); setActiveConversation(null); setMessageText(''); setMessageSubject(''); }}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#7F2487] text-white rounded hover:bg-[#6a1e73] transition-colors font-medium"
+                    onClick={sendReply}
+                    disabled={sending || !messageText.trim()}
+                    className="flex items-center gap-1 px-3 py-1 bg-[#7F2387] text-white rounded hover:bg-[#64126D] disabled:opacity-50 text-sm"
                   >
-                    <PlusIcon className="w-5 h-5" />
-                    New Message
+                    <PaperAirplaneIcon className="h-4 w-4" />
+                    <span>Send</span>
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            /* Empty State */
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <EnvelopeIcon className="h-16 w-16 mb-4" />
+              <p className="text-lg font-medium text-gray-500">Select a message to read</p>
+              <p className="text-sm">Or start a new conversation</p>
+              <button
+                onClick={startNewMessage}
+                className="mt-4 flex items-center gap-2 px-4 py-2 bg-[#7F2387] text-white rounded hover:bg-[#64126D]"
+              >
+                <PencilSquareIcon className="h-5 w-5" />
+                <span>New Message</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
