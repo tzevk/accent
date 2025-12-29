@@ -1,0 +1,527 @@
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Navbar from '@/components/Navbar';
+import { 
+  ArrowLeftIcon, 
+  CalendarDaysIcon,
+  UserGroupIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ArrowPathIcon
+} from '@heroicons/react/24/outline';
+
+export default function EmployeeAttendancePage() {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  
+  // Current month/year for calendar
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [attendanceData, setAttendanceData] = useState({});
+  
+  // Get current month's days
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  
+  // Generate days of the month with week info
+  const daysInMonth = useMemo(() => {
+    const days = [];
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const date = new Date(currentYear, currentMonth, d);
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+      const weekNumber = Math.ceil((d + firstDay.getDay()) / 7);
+      
+      days.push({
+        date: d,
+        fullDate: date.toISOString().split('T')[0],
+        dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        dayOfWeek,
+        weekNumber,
+        isSunday: dayOfWeek === 0,
+        isSaturday: dayOfWeek === 6,
+        isToday: date.toDateString() === new Date().toDateString()
+      });
+    }
+    return days;
+  }, [currentYear, currentMonth]);
+
+  // Get weeks for the month
+  const weeks = useMemo(() => {
+    const weekMap = {};
+    daysInMonth.forEach(day => {
+      if (!weekMap[day.weekNumber]) {
+        weekMap[day.weekNumber] = [];
+      }
+      weekMap[day.weekNumber].push(day);
+    });
+    return Object.entries(weekMap).map(([num, days]) => ({ weekNumber: parseInt(num), days }));
+  }, [daysInMonth]);
+
+  // Fetch employees
+  const fetchEmployees = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/employees?limit=1000&status=active');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch employees');
+      
+      const employeeList = data.employees || data.data || [];
+      setEmployees(employeeList);
+      
+      // Initialize attendance data for all employees
+      const initialAttendance = {};
+      employeeList.forEach(emp => {
+        initialAttendance[emp.id] = {
+          ...emp,
+          days: {},
+          overtime: 0,
+          weeklyOff: 0,
+          present: 0,
+          absent: 0,
+          privilegedLeave: 0
+        };
+        
+        // Set default attendance for each day
+        daysInMonth.forEach(day => {
+          // Default: Sunday = weekly off, other days = present
+          if (day.isSunday) {
+            initialAttendance[emp.id].days[day.fullDate] = 'WO'; // Weekly Off
+            initialAttendance[emp.id].weeklyOff++;
+          } else if (day.isSaturday) {
+            // Check if 1st or 3rd Saturday (weekly off)
+            const saturdayOfMonth = Math.ceil(day.date / 7);
+            if (saturdayOfMonth === 1 || saturdayOfMonth === 3) {
+              initialAttendance[emp.id].days[day.fullDate] = 'WO';
+              initialAttendance[emp.id].weeklyOff++;
+            } else {
+              initialAttendance[emp.id].days[day.fullDate] = 'P';
+              initialAttendance[emp.id].present++;
+            }
+          } else {
+            initialAttendance[emp.id].days[day.fullDate] = 'P'; // Present
+            initialAttendance[emp.id].present++;
+          }
+        });
+      });
+      
+      setAttendanceData(initialAttendance);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [daysInMonth]);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
+
+  // Toggle attendance status for a specific employee and day
+  const toggleAttendance = (employeeId, fullDate, currentStatus) => {
+    const statusCycle = ['P', 'A', 'PL', 'OT', 'WO']; // Present, Absent, Privileged Leave, Overtime, Weekly Off
+    const currentIndex = statusCycle.indexOf(currentStatus);
+    const nextStatus = statusCycle[(currentIndex + 1) % statusCycle.length];
+    
+    setAttendanceData(prev => {
+      const empData = { ...prev[employeeId] };
+      const oldStatus = empData.days[fullDate];
+      empData.days[fullDate] = nextStatus;
+      
+      // Update counts
+      if (oldStatus === 'P') empData.present--;
+      if (oldStatus === 'A') empData.absent--;
+      if (oldStatus === 'PL') empData.privilegedLeave--;
+      if (oldStatus === 'OT') empData.overtime--;
+      if (oldStatus === 'WO') empData.weeklyOff--;
+      
+      if (nextStatus === 'P') empData.present++;
+      if (nextStatus === 'A') empData.absent++;
+      if (nextStatus === 'PL') empData.privilegedLeave++;
+      if (nextStatus === 'OT') empData.overtime++;
+      if (nextStatus === 'WO') empData.weeklyOff++;
+      
+      return { ...prev, [employeeId]: empData };
+    });
+  };
+
+  // Get status color and icon
+  const getStatusStyle = (status) => {
+    switch (status) {
+      case 'P': return { bg: 'bg-green-100', text: 'text-green-700', label: 'P' };
+      case 'A': return { bg: 'bg-red-100', text: 'text-red-700', label: 'A' };
+      case 'PL': return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'PL' };
+      case 'OT': return { bg: 'bg-purple-100', text: 'text-purple-700', label: 'OT' };
+      case 'WO': return { bg: 'bg-gray-100', text: 'text-gray-500', label: 'WO' };
+      default: return { bg: 'bg-gray-50', text: 'text-gray-400', label: '-' };
+    }
+  };
+
+  // Navigate months
+  const goToPreviousMonth = () => {
+    setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+  };
+
+  const goToCurrentMonth = () => {
+    setCurrentDate(new Date());
+  };
+
+  // Save attendance to database
+  const saveAttendance = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      // Prepare attendance records for API
+      const attendance_records = [];
+      const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      
+      Object.values(attendanceData).forEach(empData => {
+        Object.entries(empData.days).forEach(([dateKey, status]) => {
+          attendance_records.push({
+            employee_id: empData.id,
+            attendance_date: dateKey,
+            status: status,
+            overtime_hours: status === 'OT' ? 2 : 0, // Default 2 hours OT
+            is_weekly_off: status === 'WO'
+          });
+        });
+      });
+
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendance_records, month: monthKey })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save attendance');
+      
+      setSuccess(`Attendance saved successfully! ${data.successCount} records updated.`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  // Load saved attendance from API when month changes
+  const loadSavedAttendance = useCallback(async () => {
+    if (employees.length === 0) return;
+    
+    try {
+      const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      const res = await fetch(`/api/attendance?month=${monthKey}`);
+      const data = await res.json();
+      
+      if (res.ok && data.summary && data.summary.length > 0) {
+        // Merge saved attendance with current data
+        setAttendanceData(prev => {
+          const updated = { ...prev };
+          data.summary.forEach(empSummary => {
+            if (updated[empSummary.employee_id]) {
+              // Update days from saved data
+              Object.entries(empSummary.days).forEach(([dateKey, dayData]) => {
+                updated[empSummary.employee_id].days[dateKey] = dayData.status;
+              });
+              
+              // Recalculate counts
+              let present = 0, absent = 0, pl = 0, ot = 0, wo = 0;
+              Object.values(updated[empSummary.employee_id].days).forEach(status => {
+                if (status === 'P') present++;
+                if (status === 'A') absent++;
+                if (status === 'PL') pl++;
+                if (status === 'OT') { ot++; present++; }
+                if (status === 'WO') wo++;
+              });
+              updated[empSummary.employee_id].present = present;
+              updated[empSummary.employee_id].absent = absent;
+              updated[empSummary.employee_id].privilegedLeave = pl;
+              updated[empSummary.employee_id].overtime = ot;
+              updated[empSummary.employee_id].weeklyOff = wo;
+            }
+          });
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error('Error loading saved attendance:', err);
+    }
+  }, [currentYear, currentMonth, employees.length]);
+
+  useEffect(() => {
+    if (employees.length > 0) {
+      loadSavedAttendance();
+    }
+  }, [employees.length, currentMonth, currentYear, loadSavedAttendance]);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      
+      {/* Main Content Area with proper spacing for navbar */}
+      <div className="pt-16">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Link 
+                  href="/employees"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+                </Link>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <CalendarDaysIcon className="h-7 w-7 text-purple-600" />
+                    Employee Attendance
+                  </h1>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Mark daily attendance for all employees
+                  </p>
+                </div>
+              </div>
+            
+              {/* Month Navigation */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={goToPreviousMonth}
+                    className="p-2 hover:bg-white rounded-lg transition-colors"
+                  >
+                    <ChevronLeftIcon className="h-5 w-5 text-gray-600" />
+                  </button>
+                  <span className="px-4 py-2 font-semibold text-gray-900 min-w-[180px] text-center">
+                    {monthName}
+                  </span>
+                  <button
+                    onClick={goToNextMonth}
+                    className="p-2 hover:bg-white rounded-lg transition-colors"
+                  >
+                    <ChevronRightIcon className="h-5 w-5 text-gray-600" />
+                  </button>
+                </div>
+                <button
+                  onClick={goToCurrentMonth}
+                  className="px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                >
+                  Today
+                </button>
+                <button
+                  onClick={saveAttendance}
+                  disabled={saving}
+                  className="px-4 py-2 bg-gradient-to-r from-[#64126D] to-[#86288F] text-white rounded-lg hover:from-[#86288F] hover:to-[#64126D] transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  {saving ? (
+                    <>
+                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Attendance'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Status Messages */}
+        {error && (
+          <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+            {success}
+          </div>
+        )}
+
+        {/* Legend */}
+        <div className="px-6 py-4">
+          <div className="flex items-center gap-6 text-sm">
+            <span className="text-gray-600 font-medium">Legend:</span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">P</span>
+              <span className="text-gray-600">Present</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">A</span>
+              <span className="text-gray-600">Absent</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">PL</span>
+              <span className="text-gray-600">Privileged Leave</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">OT</span>
+              <span className="text-gray-600">Overtime</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-medium">WO</span>
+              <span className="text-gray-600">Weekly Off</span>
+            </div>
+            <span className="text-gray-400 ml-4">Click on a cell to cycle through statuses</span>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="px-6 pb-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600"></div>
+              <span className="ml-4 text-gray-600">Loading employees...</span>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                <thead>
+                  {/* Week Headers */}
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[100px]">
+                      Emp Code
+                    </th>
+                    <th className="sticky left-[100px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[180px]">
+                      Full Name
+                    </th>
+                    {weeks.map(week => (
+                      <th 
+                        key={week.weekNumber}
+                        colSpan={week.days.length}
+                        className="px-2 py-2 text-center text-xs font-semibold text-purple-700 uppercase tracking-wider bg-purple-50 border-l border-purple-200"
+                      >
+                        Week {week.weekNumber}
+                      </th>
+                    ))}
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider bg-purple-50 border-l border-purple-200">OT</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">WO</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-green-600 uppercase tracking-wider bg-green-50">P</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-red-600 uppercase tracking-wider bg-red-50">A</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-blue-600 uppercase tracking-wider bg-blue-50">PL</th>
+                  </tr>
+                  {/* Day Headers */}
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="sticky left-0 z-20 bg-gray-50"></th>
+                    <th className="sticky left-[100px] z-20 bg-gray-50"></th>
+                    {daysInMonth.map(day => (
+                      <th
+                        key={day.fullDate}
+                        className={`px-1 py-2 text-center text-xs font-medium min-w-[36px] ${
+                          day.isToday ? 'bg-purple-100 text-purple-800' : 
+                          day.isSunday ? 'bg-red-50 text-red-600' :
+                          day.isSaturday ? 'bg-amber-50 text-amber-600' :
+                          'text-gray-600'
+                        }`}
+                      >
+                        <div>{day.dayName}</div>
+                        <div className="font-bold">{day.date}</div>
+                      </th>
+                    ))}
+                    <th className="bg-purple-50"></th>
+                    <th className="bg-gray-100"></th>
+                    <th className="bg-green-50"></th>
+                    <th className="bg-red-50"></th>
+                    <th className="bg-blue-50"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {Object.values(attendanceData).map((empData, index) => (
+                    <tr key={empData.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                      <td className="sticky left-0 z-10 bg-inherit px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap border-r border-gray-100">
+                        {empData.employee_id || empData.employee_code || empData.emp_code || `EMP${String(empData.id).padStart(3, '0')}`}
+                      </td>
+                      <td className="sticky left-[100px] z-10 bg-inherit px-4 py-3 text-sm text-gray-700 whitespace-nowrap border-r border-gray-200">
+                        {`${empData.first_name || ''} ${empData.last_name || ''}`.trim() || 'N/A'}
+                      </td>
+                      {daysInMonth.map(day => {
+                        const status = empData.days[day.fullDate] || '-';
+                        const style = getStatusStyle(status);
+                        return (
+                          <td
+                            key={day.fullDate}
+                            className={`px-1 py-2 text-center ${day.isSunday ? 'bg-red-50/30' : day.isSaturday ? 'bg-amber-50/30' : ''}`}
+                          >
+                            <button
+                              onClick={() => toggleAttendance(empData.id, day.fullDate, status)}
+                              className={`w-8 h-8 rounded-lg text-xs font-semibold ${style.bg} ${style.text} hover:ring-2 hover:ring-purple-300 transition-all`}
+                            >
+                              {style.label}
+                            </button>
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-purple-600 bg-purple-50/50 border-l border-purple-100">
+                        {empData.overtime}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-gray-600 bg-gray-100/50">
+                        {empData.weeklyOff}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-green-600 bg-green-50/50">
+                        {empData.present}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-red-600 bg-red-50/50">
+                        {empData.absent}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-blue-600 bg-blue-50/50">
+                        {empData.privilegedLeave}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Summary Footer */}
+            {employees.length > 0 && (
+              <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">
+                    Total Employees: <span className="font-semibold text-gray-900">{employees.length}</span>
+                  </span>
+                  <span className="text-gray-600">
+                    Days in Month: <span className="font-semibold text-gray-900">{daysInMonth.length}</span>
+                  </span>
+                </div>
+              </div>
+            )}
+            </div>
+          )}
+
+          {!loading && employees.length === 0 && (
+            <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
+              <UserGroupIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Employees Found</h3>
+              <p className="text-gray-500 mb-4">There are no active employees to display attendance for.</p>
+              <Link
+                href="/employees"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <ArrowLeftIcon className="h-4 w-4" />
+                Go to Employees
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

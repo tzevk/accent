@@ -179,9 +179,9 @@ export default function MessagesPage() {
           method: 'POST',
           body: JSON.stringify({
             receiver_id: recipient.id,
-            message: messageText,
+            body: messageText,
             subject: messageSubject,
-            attachments: attachments.length > 0 ? JSON.stringify(attachments) : null
+            attachments: attachments.length > 0 ? attachments : []
           })
         });
       }

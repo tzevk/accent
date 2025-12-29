@@ -153,9 +153,6 @@ export default function Sidebar() {
             {canViewActivities && (
               <NavRow icon={DocumentTextIcon} label="Software Master" href="/masters/software" active={pathname.startsWith('/masters/software')} />
             )}
-            {canViewEmployees && (
-              <NavRow icon={CurrencyDollarIcon} label="Salary Master" href="/masters/salary" active={pathname.startsWith('/masters/salary')} />
-            )}
             {canViewCompanies && (
               <NavRow icon={BuildingOfficeIcon} label="Company Master" href="/company" active={pathname.startsWith('/company')} />
             )}

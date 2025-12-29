@@ -4,6 +4,7 @@ import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 
 import {
   UserGroupIcon,
@@ -12,16 +13,10 @@ import {
   FunnelIcon,
   PencilIcon,
   TrashIcon,
-    EyeIcon,
-    ChevronLeftIcon,
-    ChevronRightIcon,
-  DocumentArrowDownIcon,
-  CurrencyDollarIcon,
+  EyeIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CalendarDaysIcon,
-  ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
-  ClockIcon,
-  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 
 const Avatar = ({ src, firstName, lastName, size = 40 }) => {
@@ -53,7 +48,6 @@ const Avatar = ({ src, firstName, lastName, size = 40 }) => {
 
 
 export default function EmployeesPage() {
-  // (removed debug floating save helper) - production save flow uses submitSalaryMaster
   // Safe profile photo change handler: forwards to canonical handler if present,
   // otherwise shows a friendly error and avoids runtime ReferenceError while
   // the file is mid-refactor.
@@ -102,7 +96,6 @@ export default function EmployeesPage() {
     workplace: '',
     level: '',
     reporting_to: '',
-    salary: '',
     joining_date: '',
 
     // Statutory toggles (match API)
@@ -118,17 +111,6 @@ export default function EmployeesPage() {
     institute: '',
     passing_year: '',
     work_experience: '',
-
-    // Salary structure (UI only; will be serialized)
-    leave_structure: '',
-    salary_structure: '',
-    basic_salary: '',
-    hra: '',
-    conveyance: '',
-    medical_allowance: '',
-    special_allowance: '',
-    incentives: '',
-    deductions: '',
 
     // Bank details
     bank_name: '',
@@ -165,7 +147,7 @@ export default function EmployeesPage() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeTab, setActiveTab] = useState('list');
+  const [activeTab, setActiveTab] = useState('list'); // Keep for add/edit/view modes
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -175,14 +157,9 @@ export default function EmployeesPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [formData, setFormData] = useState(defaultFormData);
   const [formErrors, setFormErrors] = useState({});
-  const [importFile, setImportFile] = useState(null);
-  const [importResults, setImportResults] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   // Roles for System Role assignment
   const [roles, setRoles] = useState([]);
-  // Salary structures from Salary Master
-  const [salaryStructures, setSalaryStructures] = useState([]);
-  const [selectedSalaryStructure, setSelectedSalaryStructure] = useState('');
   // Safe wrapper for opening the view form
   const openViewForm = (employee) => {
     if (!employee) return;
@@ -201,25 +178,6 @@ export default function EmployeesPage() {
   const openEditForm_safe = (employee) => {
     if (!employee) return;
     try {
-      // Parse salary parts if present
-      let salaryParts = {};
-      if (employee.salary_structure) {
-        try {
-          const parsed = typeof employee.salary_structure === 'string' ? JSON.parse(employee.salary_structure) : employee.salary_structure;
-          if (parsed && typeof parsed === 'object') {
-            salaryParts = {
-              basic_salary: parsed.basic_salary ?? '',
-              hra: parsed.hra ?? '',
-              conveyance: parsed.conveyance ?? '',
-              medical_allowance: parsed.medical_allowance ?? '',
-              special_allowance: parsed.special_allowance ?? '',
-              incentives: parsed.incentives ?? '',
-              deductions: parsed.deductions ?? ''
-            };
-          }
-        } catch {}
-      }
-
       const sysRoleId = (() => {
         try {
           const match = roles.find(r => r.role_name === employee.role);
@@ -227,7 +185,7 @@ export default function EmployeesPage() {
         } catch { return ''; }
       })();
 
-      setFormData({ ...defaultFormData, ...employee, ...salaryParts, system_role_id: sysRoleId, system_role_name: employee.role || '', hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '', joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '', dob: employee.dob ? employee.dob.split('T')[0] : '' });
+      setFormData({ ...defaultFormData, ...employee, system_role_id: sysRoleId, system_role_name: employee.role || '', hire_date: employee.hire_date ? employee.hire_date.split('T')[0] : '', joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '', dob: employee.dob ? employee.dob.split('T')[0] : '' });
       setSelectedEmployee(employee);
       setFormErrors({});
       setEditSubTab('personal');
@@ -329,453 +287,531 @@ export default function EmployeesPage() {
     setFormErrors(prev => ({ ...prev, general: 'Form submission temporarily unavailable. Please try again.' }));
   };
   // Add Employee sub-tabs (like Projects edit tabs)
-  const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
+  const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance'];
   const [addSubTab, setAddSubTab] = useState('personal');
   
-  // Edit Employee sub-tabs (same structure as add)
-  const editSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance','salary'];
+  // Edit Employee sub-tabs (same structure as add) - includes salary structure
+  const editSubTabOrder = ['personal','contact','work','salary','academic','govt','bank','attendance'];
   const [editSubTab, setEditSubTab] = useState('personal');
-  // Simple Salary State
-  const [salaryData, setSalaryData] = useState({
-    // Leave details
-    annual_leaves: 21,
-    pl_used: '',
-    pl_balance: '',
-    
-    // General details (attendance)
-    month_days: '',
-    working_days: '',
-    week_offs: '',
-    absent_days: '',
-    paid_days: '',
-    holiday_working_days: '',
-    ot_hours: '',
-    
-  // Salary breakup
-  gross_salary: '',
-  basic_da: '',
-  hra: '',
-  conveyance_allowance: '',
-  call_allowance: '',
-  other_allowance: '',
-  // Leave & OT
-  // treat absent_days as leaveDays (user-visible field labelled 'Absent')
-  absent_days: '',
-  total_working_days: 26,
-  ot_hours: '',
-  ot_rate: '',
-  total_working_hours: 208,
-  // computed / derived fields
-  adjusted_gross: 0,
-  leave_deduction: 0,
-  ot_pay: 0,
-  employee_pf: 0,
-  employer_pf: 0,
-  bonus: 0,
-  professional_tax: 200,
-  mlwf_employee: 5,
-  mlwf_employer: 13,
-  mediclaim: 500,
-  in_hand_salary: 0,
-  ctc: 0,
-  // manual overrides tracker: { fieldName: true }
-  manual_overrides: {},
-    
-    // Other income
-    holiday_working_hours: '',
-    weekly_off_working: '',
-    ot_charges: '',
-    
-    // Employee contributions (deductions)
-    employee_pf: '',
-    employee_pt: '',
-    retention_amount: '',
-    mlwf_employee: '',
-    other_deductions: '',
-    
-    // In-hand salary
-    in_hand_salary: '',
-    
-    // Company contributions
-    employer_pf: '',
-    bonus: '',
-    mlwf_company: 13,
-    medical_insurance: 500,
-    
-    // Employee CTC
-    employee_ctc: '',
-    
-    // Legacy fields
-    basic_salary: '',
-    net_salary: 0,
-    salary_structure: null, // Will store the JSON structure for server
-    effective_from: ''
-  });
 
-  // Inputs model used for the Salary add/edit form and save flow
-  const [salaryInputs, setSalaryInputs] = useState({
-    basic_salary: '',
-    attendance_days: '',
-    total_working_days: 26,
-    loan_active: 'no',
-    loan_emi: '',
-    advance_payment: '',
-    salary_type: 'Monthly',
-    effective_from: '',
-    additional_earnings: '',
-    additional_deductions: '',
-    pf: '',
-    pt: '',
-    mlwf: '',
-    da: '',
-    hra: '',
-    conveyance: '',
-    call_allowance: '',
-    other_allowance: '',
-    pl_used: '',
-    pl_balance: ''
-  });
-
-  // Helper to set salary fields and mark manual overrides
-  const setSalaryField = (field, value, manual = true) => {
-    // normalize numeric fields to empty string or number-like strings; actual parsing happens in compute
-    // Special-case: when primary inputs that affect splits are edited (like gross_salary or other_allowance),
-    // remove manual override flags for computed split fields so they bifurcate automatically.
-    setSalaryData(prev => {
-      const mo = { ...(prev.manual_overrides || {}) };
-      // mark this field as manual if requested
-      if (manual) mo[field] = true;
-
-      // if gross or other allowance (or attendance/OT inputs) changed, clear split overrides so bifurcation runs
-  const triggerClear = ['gross_salary', 'other_allowance', 'absent_days', 'total_working_days', 'month_days', 'ot_hours', 'ot_rate', 'total_working_hours'];
-      if (triggerClear.includes(field)) {
-        delete mo.basic_da;
-        delete mo.hra;
-        delete mo.conveyance_allowance;
-      }
-
-      return {
-        ...prev,
-        [field]: value,
-        manual_overrides: mo
-      };
-    });
-  };
-
-  const resetFormula = (field) => {
-    setSalaryData(prev => {
-      const mo = { ...(prev.manual_overrides || {}) };
-      delete mo[field];
-      return { ...prev, manual_overrides: mo };
-    });
-  };
-
-  // Apply a salary structure from Salary Master
-  const applySalaryStructure = (structureId) => {
-    const structure = salaryStructures.find(s => String(s.id) === String(structureId));
-    if (!structure) {
-      setSelectedSalaryStructure('');
-      return;
-    }
-    
-    setSelectedSalaryStructure(structureId);
-    
-    // Apply the structure values to salaryData
-    setSalaryData(prev => ({
-      ...prev,
-      gross_salary: structure.gross_salary || '',
-      basic_da: structure.basic_salary || '',
-      hra: structure.hra || '',
-      conveyance_allowance: structure.conveyance_allowance || '',
-      call_allowance: structure.call_allowance || '',
-      other_allowance: structure.other_allowance || '',
-      professional_tax: structure.professional_tax || 200,
-      mlwf_employee: structure.mlwf_employee || 5,
-      mlwf_employer: structure.mlwf_employer || 13,
-      mediclaim: structure.mediclaim || 0,
-      annual_leaves: structure.annual_leaves || 21,
-      manual_overrides: {} // Reset manual overrides
-    }));
-
-    // Also update salaryInputs for consistency
-    setSalaryInputs(prev => ({
-      ...prev,
-      da: structure.da || '',
-      hra: structure.hra || '',
-      conveyance: structure.conveyance_allowance || '',
-      call_allowance: structure.call_allowance || '',
-      other_allowance: structure.other_allowance || '',
-      pf: structure.pf_percentage || 12,
-      pt: structure.professional_tax || 200,
-      mlwf: structure.mlwf_employee || 5
-    }));
-  };
-  
-  // remove unused salaryCalculation state
+  // Salary Structure State
+  const [salaryStructures, setSalaryStructures] = useState([]);
+  const [activeSalaryStructure, setActiveSalaryStructure] = useState(null);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
-  const [salarySuccess, setSalarySuccess] = useState('');
-  // Salary rows loaded from DB (most-recent-first)
-  const [salaryRows, setSalaryRows] = useState([]);
-  const [editingSalaryId, setEditingSalaryId] = useState(null);
+  const [showSalaryForm, setShowSalaryForm] = useState(false);
+  const [calculatedBreakdown, setCalculatedBreakdown] = useState(null);
+  
+  // Salary calculation percentages (editable)
+  const [salaryPercentages, setSalaryPercentages] = useState({
+    hra_percent: 50,           // HRA % of Basic
+    conveyance: 1600,          // Fixed conveyance
+    medical: 1250,             // Fixed medical
+    employee_pf_percent: 12,   // Employee PF %
+    employer_pf_percent: 12,   // Employer PF %
+    employee_esic_percent: 0.75, // Employee ESIC %
+    employer_esic_percent: 3.25, // Employer ESIC %
+    gratuity_percent: 4.81,    // Gratuity %
+    pf_admin_percent: 0.5,     // PF Admin %
+    edli_percent: 0.5,         // EDLI %
+  });
 
-  // Memoize manual_overrides JSON so we can use a stable dependency in effects
-  const salaryManualOverridesString = useMemo(() => JSON.stringify(salaryData.manual_overrides || {}), [salaryData.manual_overrides]);
+  const [salaryFormData, setSalaryFormData] = useState({
+    pay_type: 'monthly',
+    effective_from: new Date().toISOString().split('T')[0],
+    ctc: '',
+    gross_salary: '',
+    basic_salary: '',
+    hourly_rate: '',
+    daily_rate: '',
+    ot_multiplier: '1.5',
+    pf_applicable: true,
+    esic_applicable: false,
+    pt_applicable: true,
+    mlwf_applicable: true,
+    tds_applicable: true,
+    pf_wage_ceiling: '15000',
+    standard_working_days: '26',
+    standard_hours_per_day: '8',
+    remarks: ''
+  });
+  const [salaryComponents, setSalaryComponents] = useState([]);
 
-  // Comprehensive reactive salary engine
-  useEffect(() => {
-    // compute derived values based on inputs and manual overrides
-    setSalaryData(prev => {
-      const toNum = (v) => {
-        const n = Number(String(v || '').replace(/,/g, ''));
-        return Number.isFinite(n) ? n : 0;
-      };
-
-      const grossInput = toNum(prev.gross_salary);
-      const otherAllowance = toNum(prev.other_allowance);
-      const callAllowance = toNum(prev.call_allowance);
-      const totalWorkingDays = toNum(prev.total_working_days) || 26;
-      const leaveDays = toNum(prev.absent_days);
-      const totalWorkingHours = toNum(prev.total_working_hours) || 208;
-      const otHours = toNum(prev.ot_hours);
-      const otRate = toNum(prev.ot_rate) || 1;
-
-      // Leave deduction based on input gross
-  const leaveDeduction = Math.round((grossInput / totalWorkingDays) * leaveDays);
-
-  // PL balance: annual leaves minus PL used (cannot be negative)
-  const annualLeaves = toNum(prev.annual_leaves) || 0;
-  const plUsed = toNum(prev.pl_used) || 0;
-  const plBalance = Math.max(0, annualLeaves - plUsed);
-
-  // Attendance-derived values: week offs, working days, paid days
-  const monthDays = toNum(prev.month_days) || 0;
-  // If monthDays provided, estimate weekly offs as floor(monthDays/7), otherwise use totalWorkingDays/7 rounded
-  const weekOffsCalc = monthDays ? Math.floor(monthDays / 7) : Math.max(0, Math.floor(totalWorkingDays / 7));
-  const workingDaysCalc = Math.max(0, (monthDays || totalWorkingDays) - weekOffsCalc);
-  // paid days = working days - absent days (cannot be negative)
-  const paidDaysCalc = Math.max(0, workingDaysCalc - leaveDays);
-
-      // OT pay uses grossInput prorated to hours and multiplied by multiplier otRate
-      const otPay = Math.round((grossInput / totalWorkingHours) * otHours * otRate);
-
-      // Adjusted gross = grossInput - leaveDeduction + otPay
-      const adjustedGross = Math.round(Math.max(0, grossInput - leaveDeduction + otPay));
-
-      // Base for split excludes otherAllowance
-      const baseForSplit = Math.max(0, adjustedGross - otherAllowance);
-
-      // Default splits
-      const defaultBasicDa = Math.round(0.6 * baseForSplit);
-      const defaultHra = Math.round(0.2 * baseForSplit);
-      const defaultConveyance = Math.round(0.1 * baseForSplit);
-
-      // If user manually edited a field, preserve it; otherwise use default
-      const basicDa = prev.manual_overrides?.basic_da ? Math.round(toNum(prev.basic_da)) : defaultBasicDa;
-
-      // Employee PF = 12% of Basic+DA (cap 1800)
-      const employeePfRaw = Math.round(0.12 * basicDa);
-      const employeePf = Math.min(1800, employeePfRaw);
-
-      // Employer PF = 13% of Basic+DA (cap 1950)
-      const employerPfRaw = Math.round(0.13 * basicDa);
-      const employerPf = Math.min(1950, employerPfRaw);
-
-      // Bonus = 8.33% of Basic+DA
-      const bonus = Math.round(0.0833 * basicDa);
-
-      const professionalTax = 200;
-      const mlwfEmployee = 5;
-      const mlwfEmployer = 13;
-      const mediclaim = 500;
-
-      // In-Hand = adjustedGross + callAllowance - (employee PF + professional tax + mlwf employee)
-      const inHand = Math.round(Math.max(0, adjustedGross + callAllowance - (employeePf + professionalTax + mlwfEmployee)));
-
-      // CTC = adjustedGross + callAllowance + (employer PF + bonus + mlwf employer + mediclaim + otherAllowance)
-      const ctc = Math.round(adjustedGross + callAllowance + (employerPf + bonus + mlwfEmployer + mediclaim + otherAllowance));
-
-  // Prepare new state but only overwrite fields that are computed (do not unset manual overrides)
-      const next = { ...prev };
-    next.leave_deduction = leaveDeduction;
-    next.pl_balance = plBalance;
-    // Write attendance-derived fields unless manually overridden
-    if (!prev.manual_overrides?.week_offs) next.week_offs = weekOffsCalc;
-    if (!prev.manual_overrides?.working_days) next.working_days = workingDaysCalc;
-    if (!prev.manual_overrides?.paid_days) next.paid_days = paidDaysCalc;
-      next.ot_pay = otPay;
-      next.adjusted_gross = adjustedGross;
-      next.gross_salary = grossInput; // keep original gross input shown
-
-      // Write computed splits only if not manual
-      if (!prev.manual_overrides?.basic_da) next.basic_da = defaultBasicDa;
-      if (!prev.manual_overrides?.hra) next.hra = defaultHra;
-      if (!prev.manual_overrides?.conveyance_allowance) next.conveyance_allowance = defaultConveyance;
-
-      next.employee_pf = employeePf;
-      next.employer_pf = employerPf;
-      next.bonus = bonus;
-      next.professional_tax = professionalTax;
-      next.mlwf_employee = mlwfEmployee;
-      next.mlwf_employer = mlwfEmployer;
-      next.mediclaim = mediclaim;
-      next.in_hand_salary = inHand;
-  next.ctc = ctc;
-  // mirror computed CTC to employee_ctc for UI/editing consistency
-  next.employee_ctc = ctc;
-
-      // round all currency-like values to integers
-      ['leave_deduction','ot_pay','adjusted_gross','employee_pf','employer_pf','bonus','in_hand_salary','ctc','pl_balance','week_offs','working_days','paid_days'].forEach(k => {
-        if (next[k] !== undefined) next[k] = Math.round(Number(next[k]) || 0);
-      });
-
-      return next;
-    });
-  }, [
-    salaryData.gross_salary,
-    salaryData.other_allowance,
-    salaryData.call_allowance,
-  salaryData.absent_days,
-    salaryData.pl_used,
-    salaryData.annual_leaves,
-    salaryData.total_working_days,
-  salaryData.month_days,
-    salaryData.ot_hours,
-    salaryData.ot_rate,
-    salaryData.total_working_hours,
-    salaryManualOverridesString
-  ]);
-
-  // Fetch persisted salary rows for the selected employee and map primary fields into the UI
-  const loadSalaryRows = useCallback(async (empId) => {
-    console.debug('[salary] loadSalaryRows called for', empId);
-    if (!empId || !selectedEmployee) return;
+  // Fetch salary structures for an employee
+  const fetchSalaryStructures = useCallback(async (employeeId) => {
+    if (!employeeId) return;
     setSalaryLoading(true);
     setSalaryError('');
     try {
-      // Fetch salary data from API
-      const response = await fetch(`/api/employees/${empId}/salary`);
-      const result = await response.json();
-      
-      let salaryStructure = {};
-      let manualOverrides = {};
-      
-      if (response.ok && result.success && result.data) {
-        // If we have a salary record from the database
-        if (result.data.record) {
-          salaryStructure = result.data.record;
-          // Parse manual_overrides if it's a string
-          if (salaryStructure.manual_overrides) {
-            try {
-              manualOverrides = typeof salaryStructure.manual_overrides === 'string' 
-                ? JSON.parse(salaryStructure.manual_overrides) 
-                : salaryStructure.manual_overrides;
-            } catch (e) {
-              console.error('[salary] failed to parse manual_overrides', e);
-              manualOverrides = {};
-            }
-          }
-        }
-      } else {
-        // Fallback to employee's salary_structure if no salary record exists
-        if (selectedEmployee.salary_structure) {
-          try {
-            salaryStructure = typeof selectedEmployee.salary_structure === 'string'
-              ? JSON.parse(selectedEmployee.salary_structure)
-              : selectedEmployee.salary_structure;
-          } catch (e) {
-            console.error('[salary] failed to parse salary_structure', e);
-            salaryStructure = {};
-          }
-        }
-      }
-
-      // Populate salaryInputs from salaryStructure
-      setSalaryInputs({
-        basic_salary: salaryStructure.basic_salary || '',
-        hra: salaryStructure.hra || '',
-        conveyance: salaryStructure.conveyance || '',
-        medical_allowance: salaryStructure.medical_allowance || '',
-        special_allowance: salaryStructure.special_allowance || '',
-        incentives: salaryStructure.incentives || '',
-        deductions: salaryStructure.deductions || '',
-        effective_from: salaryStructure.effective_from || '',
-        // Keep other fields as defaults
-        attendance_days: '',
-        total_working_days: '',
-        loan_active: 'No',
-        loan_emi: '',
-        advance_payment: '',
-        salary_type: 'Monthly',
-        additional_earnings: '',
-        additional_deductions: '',
-        pf: '',
-        pt: '',
-        mlwf: '',
-        da: '',
-        call_allowance: '',
-        other_allowance: '',
-        pl_used: '',
-        pl_balance: '',
-      });
-
-      // Set salaryData for display with manual_overrides
-      setSalaryData({
-        gross_salary: salaryStructure.gross_salary || selectedEmployee.gross_salary || 0,
-        basic_da: salaryStructure.basic_da || salaryStructure.da || 0,
-        hra: salaryStructure.hra || 0,
-        conveyance_allowance: salaryStructure.conveyance_allowance || salaryStructure.conveyance || 0,
-        other_allowance: salaryStructure.other_allowance || 0,
-        total_deductions: selectedEmployee.total_deductions || 0,
-        net_salary: salaryStructure.in_hand_salary || selectedEmployee.net_salary || 0,
-        in_hand_salary: salaryStructure.in_hand_salary || 0,
-        employee_ctc: salaryStructure.ctc || salaryStructure.employee_ctc || 0,
-        adjusted_gross: salaryStructure.adjusted_gross || 0,
-        leave_deduction: salaryStructure.leave_deduction || 0,
-        ot_pay: salaryStructure.ot_pay || 0,
-        employee_pf: salaryStructure.employee_pf || 0,
-        employer_pf: salaryStructure.employer_pf || 0,
-        bonus: salaryStructure.bonus || 0,
-        employee_pt: salaryStructure.pt || salaryStructure.professional_tax || 0,
-        week_offs: salaryStructure.week_offs || 0,
-        working_days: salaryStructure.working_days || 0,
-        paid_days: salaryStructure.paid_days || 0,
-        absent_days: salaryStructure.absent_days || 0,
-        pl_used: salaryStructure.pl_used || 0,
-        pl_balance: salaryStructure.pl_balance || 0,
-        ot_hours: salaryStructure.ot_hours || 0,
-        ot_rate: salaryStructure.ot_rate || 0,
-        manual_overrides: manualOverrides,
-      });
-
-      // Set salaryRows to a single row for display
-      setSalaryRows([{
-        id: salaryStructure.id || 1,
-        ...salaryStructure,
-        gross_salary: salaryStructure.gross_salary || selectedEmployee.gross_salary,
-        total_deductions: selectedEmployee.total_deductions,
-        net_salary: selectedEmployee.net_salary,
-        manual_overrides: manualOverrides,
-      }]);
-
+      const res = await fetch(`/api/employees/${employeeId}/salary-structure`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch salary structures');
+      setSalaryStructures(data.salaryStructures || []);
+      setActiveSalaryStructure(data.activeSalaryStructure || null);
     } catch (err) {
-      console.error('[salary] failed to load salary data', err);
-      setSalaryError('Failed to load salary data.');
+      console.error('Error fetching salary structures:', err);
+      setSalaryError(err.message);
     } finally {
       setSalaryLoading(false);
     }
-  }, [selectedEmployee]);
+  }, []);
 
-  useEffect(() => {
-    loadSalaryRows(selectedEmployee?.id);
-  }, [selectedEmployee?.id, loadSalaryRows]);
+  // Save salary structure
+  const handleSaveSalaryStructure = async () => {
+    if (!selectedEmployee?.id) return;
+    setSalaryLoading(true);
+    setSalaryError('');
+    try {
+      const res = await fetch(`/api/employees/${selectedEmployee.id}/salary-structure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...salaryFormData,
+          components: salaryComponents
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save salary structure');
+      
+      // Refresh salary structures
+      await fetchSalaryStructures(selectedEmployee.id);
+      setShowSalaryForm(false);
+      setSuccessMessage('Salary structure saved successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Error saving salary structure:', err);
+      setSalaryError(err.message);
+    } finally {
+      setSalaryLoading(false);
+    }
+  };
 
-  // Also reload when the Salary tab is shown to the user
-  useEffect(() => {
-    if (editSubTab === 'salary') loadSalaryRows(selectedEmployee?.id);
-  }, [editSubTab, selectedEmployee?.id, loadSalaryRows]);
+  // Add component to salary structure
+  const addSalaryComponent = () => {
+    setSalaryComponents([...salaryComponents, {
+      component_name: '',
+      component_code: '',
+      component_type: 'earning',
+      calculation_type: 'fixed',
+      fixed_amount: '',
+      percentage_value: '',
+      percentage_of: 'basic',
+      is_taxable: true,
+      is_statutory: false,
+      statutory_type: '',
+      show_in_slip: true
+    }]);
+  };
 
-  // Add attendance related extras (not used currently)
+  // Remove component from salary structure
+  const removeSalaryComponent = (index) => {
+    setSalaryComponents(salaryComponents.filter((_, i) => i !== index));
+  };
+
+  // Update component
+  const updateSalaryComponent = (index, field, value) => {
+    const updated = [...salaryComponents];
+    updated[index] = { ...updated[index], [field]: value };
+    setSalaryComponents(updated);
+  };
+
+  // Reset salary form
+  const resetSalaryForm = () => {
+    setSalaryFormData({
+      pay_type: 'monthly',
+      effective_from: new Date().toISOString().split('T')[0],
+      ctc: '',
+      gross_salary: '',
+      basic_salary: '',
+      hourly_rate: '',
+      daily_rate: '',
+      ot_multiplier: '1.5',
+      pf_applicable: true,
+      esic_applicable: false,
+      pt_applicable: true,
+      mlwf_applicable: true,
+      tds_applicable: true,
+      pf_wage_ceiling: '15000',
+      standard_working_days: '26',
+      standard_hours_per_day: '8',
+      remarks: ''
+    });
+    setSalaryComponents([]);
+    setCalculatedBreakdown(null);
+  };
+
+  // State for editing salary structure
+  const [editingSalaryStructure, setEditingSalaryStructure] = useState(null);
+
+  // Edit salary structure - load data into form
+  const handleEditSalaryStructure = (structure) => {
+    setEditingSalaryStructure(structure);
+    setSalaryFormData({
+      pay_type: structure.pay_type || 'monthly',
+      effective_from: structure.effective_from ? new Date(structure.effective_from).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      ctc: structure.ctc || '',
+      gross_salary: structure.gross_salary || '',
+      basic_salary: structure.basic_salary || '',
+      hourly_rate: structure.hourly_rate || '',
+      daily_rate: structure.daily_rate || '',
+      ot_multiplier: structure.ot_multiplier || '1.5',
+      pf_applicable: structure.pf_applicable === 1,
+      esic_applicable: structure.esic_applicable === 1,
+      pt_applicable: structure.pt_applicable === 1,
+      mlwf_applicable: structure.mlwf_applicable === 1,
+      tds_applicable: structure.tds_applicable === 1,
+      pf_wage_ceiling: structure.pf_wage_ceiling || '15000',
+      standard_working_days: structure.standard_working_days || '26',
+      standard_hours_per_day: structure.standard_hours_per_day || '8',
+      remarks: structure.remarks || ''
+    });
+    setSalaryComponents(structure.components || []);
+    setShowSalaryForm(true);
+    
+    // Calculate breakdown for edit mode
+    if (structure.basic_salary) {
+      const breakdown = calculateSalaryBreakdown(
+        structure.basic_salary,
+        structure.pf_applicable === 1,
+        structure.esic_applicable === 1,
+        structure.pf_wage_ceiling || '15000',
+        salaryPercentages
+      );
+      setCalculatedBreakdown(breakdown);
+    }
+  };
+
+  // Update existing salary structure
+  const handleUpdateSalaryStructure = async () => {
+    if (!selectedEmployee?.id || !editingSalaryStructure?.id) return;
+    setSalaryLoading(true);
+    setSalaryError('');
+    try {
+      const res = await fetch(`/api/employees/${selectedEmployee.id}/salary-structure`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          salary_structure_id: editingSalaryStructure.id,
+          ...salaryFormData,
+          components: salaryComponents
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update salary structure');
+      
+      // Refresh salary structures
+      await fetchSalaryStructures(selectedEmployee.id);
+      setShowSalaryForm(false);
+      setEditingSalaryStructure(null);
+      resetSalaryForm();
+      setSuccessMessage('Salary structure updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Error updating salary structure:', err);
+      setSalaryError(err.message);
+    } finally {
+      setSalaryLoading(false);
+    }
+  };
+
+  // Delete salary structure
+  const handleDeleteSalaryStructure = async (structureId) => {
+    if (!selectedEmployee?.id || !structureId) return;
+    
+    if (!confirm('Are you sure you want to delete this salary structure? This action cannot be undone.')) {
+      return;
+    }
+    
+    setSalaryLoading(true);
+    setSalaryError('');
+    try {
+      const res = await fetch(`/api/employees/${selectedEmployee.id}/salary-structure?structureId=${structureId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete salary structure');
+      
+      // Refresh salary structures
+      await fetchSalaryStructures(selectedEmployee.id);
+      setSuccessMessage('Salary structure deleted successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Error deleting salary structure:', err);
+      setSalaryError(err.message);
+    } finally {
+      setSalaryLoading(false);
+    }
+  };
+
+  // Cancel editing
+  const handleCancelSalaryEdit = () => {
+    setShowSalaryForm(false);
+    setEditingSalaryStructure(null);
+    resetSalaryForm();
+  };
+
+  // Auto-calculate Indian Payroll Salary Breakdown - Complete Breakdown
+  // Based on: Basic Pay is 50% of Gross (Gross = Basic × 2)
+  const calculateSalaryBreakdown = useCallback((basicSalary, pfApplicable, esicApplicable, pfCeiling, percentages) => {
+    const monthlyBasic = parseFloat(basicSalary) || 0;
+
+    if (monthlyBasic === 0) return null;
+
+    // Get percentages with defaults
+    const {
+      hra_percent = 50,
+      conveyance: conveyanceFixed = 1600,
+      medical: medicalFixed = 1250,
+      employee_pf_percent = 12,
+      employer_pf_percent = 12,
+      employee_esic_percent = 0.75,
+      employer_esic_percent = 3.25,
+      gratuity_percent = 4.81,
+      pf_admin_percent = 0.5,
+      edli_percent = 0.5,
+    } = percentages || {};
+
+    // ═══════════════════════════════════════════════════════════════════
+    // GROSS PAY CALCULATION
+    // Basic Pay is 50% of Gross, so Gross = Basic × 2
+    // ═══════════════════════════════════════════════════════════════════
+    const monthlyGross = Math.round(monthlyBasic * 2);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EARNINGS / ALLOWANCES (Components of Gross Pay)
+    // ═══════════════════════════════════════════════════════════════════
+    
+    // HRA: Fixed 50% of Basic
+    const hra = Math.round(monthlyBasic * (hra_percent / 100));
+    
+    // Conveyance Allowance (Transport Allowance) - Fixed amount
+    const conveyance = Math.min(conveyanceFixed, Math.round(monthlyGross * 0.04));
+    
+    // Medical Allowance - Fixed amount
+    const medical = Math.min(medicalFixed, Math.round(monthlyGross * 0.03));
+    
+    // Special Allowance (Balancing figure to match Gross)
+    const specialAllowance = Math.max(0, monthlyGross - monthlyBasic - hra - conveyance - medical);
+
+    const totalEarnings = monthlyBasic + hra + conveyance + medical + specialAllowance;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EMPLOYEE DEDUCTIONS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    // PF Calculation Base (capped at ₹15,000 unless "actual" selected)
+    const pfWageBase = pfCeiling === 'actual' ? monthlyBasic : Math.min(monthlyBasic, 15000);
+    
+    // Employee PF: % of Basic (or PF wage ceiling)
+    const employeePF = pfApplicable ? Math.round(pfWageBase * (employee_pf_percent / 100)) : 0;
+    
+    // Employee Pension Scheme (EPS): Part of PF - 8.33% of Basic (max ₹15,000)
+    const epsBase = Math.min(monthlyBasic, 15000);
+    
+    // EPF (actual EPF contribution) = Employee PF
+    const employeeEPF = pfApplicable ? employeePF : 0;
+    
+    // ESI: % of Gross (only if Gross ≤ ₹21,000)
+    const esicEligible = esicApplicable && monthlyGross <= 21000;
+    const employeeESIC = esicEligible ? Math.round(monthlyGross * (employee_esic_percent / 100)) : 0;
+
+    // Professional Tax (Maharashtra slab - varies by state)
+    let pt = 0;
+    if (monthlyGross > 10000) pt = 200;
+    else if (monthlyGross > 7500) pt = 175;
+    else if (monthlyGross > 5000) pt = 150;
+
+    // Labour Welfare Fund (LWF) - Maharashtra (June & December)
+    const lwf = 0; // Usually ₹25 twice a year, keeping 0 for monthly
+
+    // TDS (Income Tax) - Placeholder, requires full tax calculation
+    const tds = 0; // Will be calculated based on annual income & regime
+
+    const totalEmployeeDeductions = employeePF + employeeESIC + pt + lwf + tds;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EMPLOYER CONTRIBUTIONS (Not deducted from salary)
+    // ═══════════════════════════════════════════════════════════════════
+    
+    // Employer PF: % of Basic (3.67% to EPF + 8.33% to EPS)
+    const employerPF = pfApplicable ? Math.round(pfWageBase * (employer_pf_percent / 100)) : 0;
+    const employerEPF = pfApplicable ? Math.round(pfWageBase * 0.0367) : 0; // 3.67% to EPF
+    const employerEPS = pfApplicable ? Math.round(epsBase * 0.0833) : 0; // 8.33% to EPS (max on 15k)
+    
+    // Employer ESI: % of Gross
+    const employerESIC = esicEligible ? Math.round(monthlyGross * (employer_esic_percent / 100)) : 0;
+    
+    // PF Admin Charges: % of Basic
+    const pfAdminCharges = pfApplicable ? Math.round(pfWageBase * (pf_admin_percent / 100)) : 0;
+    
+    // EDLI (Employee Deposit Linked Insurance): % of Basic
+    const edliCharges = pfApplicable ? Math.round(pfWageBase * (edli_percent / 100)) : 0;
+    
+    // EDLI Admin: 0.01% (negligible, keeping for accuracy)
+    const edliAdmin = pfApplicable ? Math.round(pfWageBase * 0.0001) : 0;
+
+    // Gratuity Provision: % of Basic (for 5+ years service)
+    const gratuity = Math.round(monthlyBasic * (gratuity_percent / 100));
+
+    const totalEmployerContributions = employerPF + employerESIC + pfAdminCharges + edliCharges + edliAdmin + gratuity;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // NET PAY & CTC CALCULATIONS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    const netSalary = totalEarnings - totalEmployeeDeductions;
+    const monthlyCtc = monthlyGross + totalEmployerContributions;
+    const annualCTC = monthlyCtc * 12;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ANNUAL CALCULATIONS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    const annualBasic = monthlyBasic * 12;
+    const annualHRA = hra * 12;
+    const annualGross = monthlyGross * 12;
+    const annualNet = netSalary * 12;
+
+    return {
+      // Monthly Earnings
+      earnings: {
+        basic: monthlyBasic,
+        hra: hra,
+        hraPercent: `${hra_percent}%`,
+        conveyance: conveyance,
+        medical: medical,
+        specialAllowance: specialAllowance,
+        total: totalEarnings
+      },
+      // Monthly Employee Deductions
+      deductions: {
+        employeePF: employeePF,
+        employeePFPercent: employee_pf_percent,
+        employeeEPF: employeeEPF,
+        employeeESIC: employeeESIC,
+        employeeESICPercent: employee_esic_percent,
+        pt: pt,
+        lwf: lwf,
+        tds: tds,
+        total: totalEmployeeDeductions
+      },
+      // Monthly Employer Contributions
+      employer: {
+        pf: employerPF,
+        pfPercent: employer_pf_percent,
+        epf: employerEPF,
+        eps: employerEPS,
+        esic: employerESIC,
+        esicPercent: employer_esic_percent,
+        pfAdmin: pfAdminCharges,
+        pfAdminPercent: pf_admin_percent,
+        edli: edliCharges,
+        edliPercent: edli_percent,
+        edliAdmin: edliAdmin,
+        gratuity: gratuity,
+        gratuityPercent: gratuity_percent,
+        total: totalEmployerContributions
+      },
+      // PF Details
+      pfDetails: {
+        wageBase: pfWageBase,
+        employeeContribution: employeePF,
+        employeePercent: employee_pf_percent,
+        employerEPF: employerEPF,
+        employerEPS: employerEPS,
+        employerPercent: employer_pf_percent,
+        totalPF: employeePF + employerPF,
+        annualPF: (employeePF + employerPF) * 12
+      },
+      // Summary
+      summary: {
+        grossSalary: monthlyGross,
+        totalDeductions: totalEmployeeDeductions,
+        netSalary: netSalary,
+        employerCost: totalEmployerContributions,
+        totalCTC: monthlyCtc,
+        annualBasic: annualBasic,
+        annualHRA: annualHRA,
+        annualGross: annualGross,
+        annualDeductions: totalEmployeeDeductions * 12,
+        annualNet: annualNet,
+        annualEmployerCost: totalEmployerContributions * 12,
+        annualCTC: annualCTC
+      },
+      // Percentages used
+      percentages: {
+        hra: hra_percent,
+        employeePF: employee_pf_percent,
+        employerPF: employer_pf_percent,
+        employeeESIC: employee_esic_percent,
+        employerESIC: employer_esic_percent,
+        gratuity: gratuity_percent,
+        pfAdmin: pf_admin_percent,
+        edli: edli_percent
+      },
+      // Flags
+      flags: {
+        pfApplicable: pfApplicable,
+        esicApplicable: esicApplicable,
+        esicEligible: esicEligible,
+        pfCeiling: pfCeiling
+      }
+    };
+  }, []);
+
+  // Handle salary field changes with auto-calculation
+  const handleSalaryFieldChange = (field, value) => {
+    const newFormData = { ...salaryFormData, [field]: value };
+    setSalaryFormData(newFormData);
+
+    // Recalculate breakdown when relevant fields change
+    if (['basic_salary', 'pf_applicable', 'esic_applicable', 'pf_wage_ceiling'].includes(field)) {
+      const breakdown = calculateSalaryBreakdown(
+        field === 'basic_salary' ? value : newFormData.basic_salary,
+        field === 'pf_applicable' ? value : newFormData.pf_applicable,
+        field === 'esic_applicable' ? value : newFormData.esic_applicable,
+        field === 'pf_wage_ceiling' ? value : newFormData.pf_wage_ceiling,
+        salaryPercentages
+      );
+      setCalculatedBreakdown(breakdown);
+      
+      // Auto-fill gross from basic
+      if (field === 'basic_salary' && breakdown) {
+        setSalaryFormData(prev => ({
+          ...prev,
+          basic_salary: value,
+          gross_salary: breakdown.summary.grossSalary.toString(),
+          ctc: breakdown.summary.annualCTC.toString()
+        }));
+      }
+    }
+  };
+
+  // Handle percentage changes
+  const handlePercentageChange = (field, value) => {
+    const newPercentages = { ...salaryPercentages, [field]: parseFloat(value) || 0 };
+    setSalaryPercentages(newPercentages);
+    
+    // Recalculate breakdown with new percentages
+    if (salaryFormData.basic_salary) {
+      const breakdown = calculateSalaryBreakdown(
+        salaryFormData.basic_salary,
+        salaryFormData.pf_applicable,
+        salaryFormData.esic_applicable,
+        salaryFormData.pf_wage_ceiling,
+        newPercentages
+      );
+      setCalculatedBreakdown(breakdown);
+      
+      if (breakdown) {
+        setSalaryFormData(prev => ({
+          ...prev,
+          gross_salary: breakdown.summary.grossSalary.toString(),
+          ctc: breakdown.summary.annualCTC.toString()
+        }));
+      }
+    }
+  };
 
   // Fetch employees
   const fetchEmployees = useCallback(async () => {
@@ -862,22 +898,6 @@ export default function EmployeesPage() {
     loadRoles();
   }, []);
 
-  // Load salary structures from Salary Master
-  useEffect(() => {
-    const loadSalaryStructures = async () => {
-      try {
-        const res = await fetch('/api/salary-master?active=true');
-        const json = await res.json();
-        if (res.ok && json?.success) {
-          setSalaryStructures(json.data || []);
-        }
-      } catch (err) {
-        console.error('Failed to load salary structures:', err);
-      }
-    };
-    loadSalaryStructures();
-  }, []);
-
   // Clear success messages automatically after a short delay so setter is plainly used
   useEffect(() => {
     if (!successMessage) return undefined;
@@ -909,132 +929,6 @@ export default function EmployeesPage() {
       void applySystemRoleToLinkedUser;
     }
   }, [applySystemRoleToLinkedUser]);
-
-  const submitSalaryMaster = async (e) => {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    console.debug('[salary] submitSalaryMaster clicked', { selectedEmployeeId: selectedEmployee?.id, editingSalaryId, salaryData });
-    setSalaryError('');
-    setSalarySuccess('');
-    if (!selectedEmployee?.id) {
-      setSalaryError('Select an employee first.');
-      return;
-    }
-    if (!salaryData.gross_salary || Number(salaryData.gross_salary) <= 0) {
-      setSalaryError('Gross Salary is required and must be greater than 0.');
-      return;
-    }
-
-    // Build salary structure object from salaryData
-    const salaryStructure = {
-      basic_salary: Number(salaryData.basic_da || 0) || 0,
-      hra: Number(salaryData.hra || 0) || 0,
-      conveyance: Number(salaryData.conveyance_allowance || 0) || 0,
-      medical_allowance: Number(salaryData.medical_insurance || 0) || 0,
-      special_allowance: Number(salaryData.other_allowance || 0) || 0,
-      incentives: Number(salaryData.ot_pay || 0) || 0,
-      deductions: Number((Number(salaryData.employee_pf || 0) + Number(salaryData.employee_pt || 0) + Number(salaryData.other_deductions || 0) + Number(salaryData.mlwf_employee || 0)) || 0) || 0,
-      effective_from: salaryData.effective_from || null,
-    };
-
-    // Calculate gross and net from salaryData
-    const gross = Number(salaryData.adjusted_gross || salaryData.gross_salary || 0) || 0;
-    const net = Number(salaryData.in_hand_salary || salaryData.net_salary || 0) || Math.max(0, gross - (salaryStructure.deductions || 0));
-
-    try {
-      setSalaryLoading(true);
-
-      // Build the salary row payload for the salary endpoint
-      const salaryPayload = {
-        ...salaryStructure,
-        gross_salary: gross,
-        total_deductions: salaryStructure.deductions,
-        net_salary: net,
-        attendance_days: Number(salaryData.paid_days || 0),
-        total_working_days: Number(salaryData.total_working_days || salaryData.working_days || 0),
-        loan_active: 0, // Not in new UI
-        loan_emi: 0,
-        advance_payment: 0,
-        salary_type: 'Monthly',
-        effective_from: salaryData.effective_from || null,
-        additional_earnings: Number(salaryData.ot_pay || 0),
-        additional_deductions: Number(salaryData.other_deductions || 0),
-        pf: Number(salaryData.employee_pf || 0),
-        pt: Number(salaryData.employee_pt || 0),
-        mlwf: Number(salaryData.mlwf_employee || 0),
-        pl_used: Number(salaryData.pl_used || 0),
-        pl_balance: Number(salaryData.pl_balance || 0),
-        // Add new fields from salaryData
-        da: Number(salaryData.basic_da || 0),
-        basic_da: Number(salaryData.basic_da || 0),
-        conveyance_allowance: Number(salaryData.conveyance_allowance || 0),
-        call_allowance: Number(salaryData.call_allowance || 0),
-        other_allowance: Number(salaryData.other_allowance || 0),
-        month_days: Number(salaryData.month_days || 0),
-        working_days: Number(salaryData.working_days || 0),
-        week_offs: Number(salaryData.week_offs || 0),
-        absent_days: Number(salaryData.absent_days || 0),
-        paid_days: Number(salaryData.paid_days || 0),
-        holiday_working_days: Number(salaryData.holiday_working_days || 0),
-        ot_hours: Number(salaryData.ot_hours || 0),
-        ot_rate: Number(salaryData.ot_rate || 0),
-        adjusted_gross: Number(salaryData.adjusted_gross || 0),
-        leave_deduction: Number(salaryData.leave_deduction || 0),
-        ot_pay: Number(salaryData.ot_pay || 0),
-        employee_pf: Number(salaryData.employee_pf || 0),
-        employer_pf: Number(salaryData.employer_pf || 0),
-        bonus: Number(salaryData.bonus || 0),
-        professional_tax: Number(salaryData.employee_pt || 0),
-        retention_amount: Number(salaryData.retention_amount || 0),
-        mlwf_company: Number(salaryData.mlwf_company || 13),
-        mlwf_employer: Number(salaryData.mlwf_company || 13),
-        medical_insurance: Number(salaryData.medical_insurance || 500),
-        mediclaim: Number(salaryData.medical_insurance || 500),
-        in_hand_salary: Number(salaryData.in_hand_salary || 0),
-        employee_ctc: Number(salaryData.employee_ctc || 0),
-        annual_leaves: Number(salaryData.annual_leaves || 21),
-        manual_overrides: JSON.stringify(salaryData.manual_overrides || {}),
-      };
-
-      // Determine whether to create or update a salary row
-      const isUpdate = !!editingSalaryId;
-      const salaryUrl = isUpdate
-        ? `/api/employees/${selectedEmployee.id}/salary/${editingSalaryId}`
-        : `/api/employees/${selectedEmployee.id}/salary`;
-
-      const res = await fetch(salaryUrl, {
-        method: isUpdate ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(salaryPayload),
-      });
-      const json = await res.json().catch(() => null);
-
-      if (res.ok && json && (json.success || json.id)) {
-        setSalarySuccess('Salary saved successfully.');
-        setSalaryError('');
-
-        // Refresh salary rows for the employee to ensure consistency
-        try { await loadSalaryRows(selectedEmployee.id); } catch { /* ignore */ }
-
-        // Also update the employee record summary locally so list shows latest gross/net
-        setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
-        // clear edit mode after successful save
-        setEditingSalaryId(null);
-        // clear success message after a short delay to reduce UI noise
-        setTimeout(() => { try { setSalarySuccess(''); } catch {} }, 3000);
-        // Refresh employees list summary in background
-        fetchEmployees();
-      } else {
-        setSalaryError((json && (json.error || json.message)) || 'Failed to save salary.');
-        setSalarySuccess('');
-      }
-    } catch (err) {
-      console.error('Failed to submit salary', err);
-      setSalaryError('Network or server error while saving salary.');
-      setSalarySuccess('');
-    } finally {
-      setSalaryLoading(false);
-    }
-  };    
 
   // Handle profile photo upload to /api/uploads
   const handleProfilePhotoChange = async (e) => {
@@ -1084,193 +978,12 @@ export default function EmployeesPage() {
     }
   };
 
-  // Save the currently computed salary (from salaryData) as a salary row.
-  const saveCalculatedSalary = async (e) => {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    setSalaryError('');
-    setSalarySuccess('');
-    if (!selectedEmployee?.id) {
-      setSalaryError('Select an employee first.');
-      return;
-    }
-
-    // Build salary structure from computed salaryData where available,
-    // falling back to salaryInputs for missing pieces.
-    const salaryStructure = {
-      basic_salary: Number(salaryData.basic_da || salaryInputs.basic_salary || 0) || 0,
-      hra: Number(salaryData.hra || salaryInputs.hra || 0) || 0,
-      conveyance: Number(salaryData.conveyance_allowance || salaryInputs.conveyance || 0) || 0,
-      medical_allowance: Number(salaryData.medical_allowance || salaryInputs.medical_allowance || 0) || 0,
-      special_allowance: Number(salaryData.special_allowance || salaryInputs.special_allowance || 0) || 0,
-      incentives: Number(salaryData.incentives || salaryInputs.incentives || 0) || 0,
-      deductions: Number((Number(salaryData.employee_pf || 0) + Number(salaryData.employee_pt || 0) + Number(salaryData.other_deductions || 0) + Number(salaryData.mlwf_employee || 0)) || salaryInputs.deductions || 0) || 0,
-      effective_from: salaryInputs.effective_from || salaryData.effective_from || null,
-    };
-
-    const gross = Number(salaryData.adjusted_gross || salaryData.gross_salary || 0) || 0;
-    const net = Number(salaryData.in_hand_salary || salaryData.net_salary || 0) || Math.max(0, gross - (salaryStructure.deductions || 0));
-
-    try {
-      setSalaryLoading(true);
-
-      const salaryPayload = {
-        ...salaryStructure,
-        gross_salary: gross,
-        total_deductions: salaryStructure.deductions,
-        net_salary: net,
-        attendance_days: Number(salaryInputs.attendance_days || salaryData.paid_days || 0),
-        total_working_days: Number(salaryInputs.total_working_days || salaryData.total_working_days || 0),
-        loan_active: String(salaryInputs.loan_active).toLowerCase() === 'yes' ? 1 : 0,
-        loan_emi: Number(salaryInputs.loan_emi || 0),
-        advance_payment: Number(salaryInputs.advance_payment || 0),
-        salary_type: salaryInputs.salary_type || 'Monthly',
-        effective_from: salaryInputs.effective_from || salaryData.effective_from || null,
-        additional_earnings: Number(salaryInputs.additional_earnings || 0),
-        additional_deductions: Number(salaryInputs.additional_deductions || 0),
-        pf: Number(salaryInputs.pf || salaryData.employee_pf || 0),
-        pt: Number(salaryInputs.pt || salaryData.employee_pt || 0),
-        mlwf: Number(salaryInputs.mlwf || salaryData.mlwf_employee || 0),
-        pl_used: Number(salaryInputs.pl_used || 0),
-        pl_balance: Number(salaryInputs.pl_balance || salaryData.pl_balance || 0),
-      };
-
-      const isUpdate = !!editingSalaryId;
-      const salaryUrl = isUpdate
-        ? `/api/employees/${selectedEmployee.id}/salary/${editingSalaryId}`
-        : `/api/employees/${selectedEmployee.id}/salary`;
-
-      const res = await fetch(salaryUrl, {
-        method: isUpdate ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(salaryPayload),
-      });
-
-      const json = await res.json().catch(() => null);
-      if (res.ok && json && (json.success || json.id)) {
-        setSalarySuccess('Calculated salary saved successfully.');
-        setSalaryError('');
-        try { await loadSalaryRows(selectedEmployee.id); } catch {}
-        setSelectedEmployee(prev => prev ? ({ ...prev, salary_structure: JSON.stringify(salaryStructure), gross_salary: gross, total_deductions: salaryStructure.deductions, net_salary: net }) : prev);
-        setEditingSalaryId(null);
-        fetchEmployees();
-      } else {
-        setSalaryError((json && (json.error || json.message)) || 'Failed to save calculated salary.');
-        setSalarySuccess('');
-      }
-    } catch (err) {
-      console.error('Failed to save calculated salary', err);
-      setSalaryError('Network or server error while saving calculated salary.');
-      setSalarySuccess('');
-    } finally {
-      setSalaryLoading(false);
-    }
-  };
-
-  const formatCurrency = (amount) => {
-    return amount ? new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount) : '-';
-  };
-
   const formatDate = (date) => {
     return date ? new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     }) : '-';
-  };
-
-  // Render salary structure in a readable format for the view page
-  const renderSalaryStructure = (raw) => {
-    try {
-      if (!raw) return (
-        <div className="text-sm text-gray-500">No salary structure</div>
-      );
-      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-
-      const formatINR = (v) => {
-        if (v == null || v === '' || Number.isNaN(Number(v))) return '—';
-        return `₹${Number(v).toLocaleString('en-IN')}`;
-      };
-
-      const renderValue = (val) => {
-        if (val == null) return '—';
-        if (typeof val === 'number' || (!isNaN(Number(val)) && val !== '')) return formatINR(val);
-        if (typeof val === 'string') return val;
-        return JSON.stringify(val);
-      };
-
-      // If top-level is an array, render rows
-      if (Array.isArray(obj)) {
-        return (
-          <div className="md:col-span-2">
-            <table className="w-full text-sm text-left">
-              <tbody>
-                {obj.map((row, idx) => (
-                  <tr key={idx} className="border-b border-gray-100">
-                    <td className="py-2 pr-4 align-top font-medium">{row.label || row.name || `Item ${idx + 1}`}</td>
-                    <td className="py-2 align-top">{renderValue(row.amount ?? row.value ?? row)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-      }
-
-      // If object, render sections and key-values
-      if (typeof obj === 'object') {
-        return (
-          <div className="md:col-span-2">
-            {Object.keys(obj).map((k) => {
-              const v = obj[k];
-              if (v && typeof v === 'object' && !Array.isArray(v)) {
-                return (
-                  <div key={k} className="mb-3">
-                    <div className="text-xs text-gray-500 font-semibold uppercase mb-1">{k.replace(/_/g, ' ')}</div>
-                    <div className="bg-gray-50 p-2 rounded">
-                      <table className="w-full text-sm">
-                        <tbody>
-                          {Object.keys(v).map((sub) => (
-                            <tr key={sub} className="border-b border-transparent">
-                              <td className="py-1 pr-4 text-gray-700">{sub.replace(/_/g, ' ')}</td>
-                              <td className="py-1 text-gray-900 font-medium">{renderValue(v[sub])}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                              <div className="mt-4">
-                                <button
-                                  type="button"
-                                  onClick={submitSalaryMaster}
-                                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-teal-500 text-white rounded-lg hover:from-green-700 hover:to-teal-600"
-                                >
-                                  {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
-                                </button>
-                                {salaryError && <p className="mt-2 text-sm text-red-600">{salaryError}</p>}
-                                {salarySuccess && <p className="mt-2 text-sm text-green-600">{salarySuccess}</p>}
-                              </div>
-                            </div>
-                );
-              }
-
-              return (
-                <div key={k} className="grid grid-cols-2 gap-2 py-1 border-b border-transparent">
-                  <div className="text-xs text-gray-500">{k.replace(/_/g, ' ')}</div>
-                  <div className="font-medium text-gray-900">{renderValue(v)}</div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      }
-
-      return <div className="text-sm text-gray-500">Unsupported salary structure</div>;
-    } catch {
-      return <div className="text-sm text-gray-500">Unable to parse salary structure</div>;
-    }
   };
 
   return (
@@ -1292,7 +1005,14 @@ export default function EmployeesPage() {
               <div className="mt-2 text-sm text-green-600">{successMessage}</div>
             )}
           </div>
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex items-center gap-3">
+            <Link
+              href="/employees/attendance"
+              className="inline-flex items-center space-x-2 bg-white border-2 border-purple-600 text-purple-600 hover:bg-purple-50 px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-300"
+            >
+              <CalendarDaysIcon className="h-5 w-5" />
+              <span>Attendance</span>
+            </Link>
             <button
               onClick={() => {
                 setActiveTab('add');
@@ -1307,52 +1027,7 @@ export default function EmployeesPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-8">
-          <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-            <nav className="flex" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab('list')}
-                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
-                  activeTab === 'list'
-                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                Employee List ({employees.length})
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('import');
-                  setImportFile(null);
-                  setImportResults(null);
-                  setFormErrors({});
-                }}
-                className={`flex-1 py-4 px-6 text-center font-semibold text-sm transition-all duration-300 ${
-                  activeTab === 'import'
-                    ? 'bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                Import CSV/Excel
-              </button>
-              {activeTab === 'edit' && (
-                <button
-                  className="flex-1 py-4 px-6 text-center font-semibold text-sm bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg"
-                >
-                  Edit Employee
-                </button>
-              )}
-              {activeTab === 'view' && (
-                <button
-                  className="flex-1 py-4 px-6 text-center font-semibold text-sm bg-gradient-to-r from-[#64126D] to-[#86288F] text-white shadow-lg"
-                >
-                  View Employee
-                </button>
-              )}
-            </nav>
-          </div>
-        </div>
+
 
         {/* Content */}
         <div className="pb-8">
@@ -1674,7 +1349,6 @@ export default function EmployeesPage() {
                         { key: 'govt', label: 'Government IDs' },
                         { key: 'bank', label: 'Bank Details' },
                         { key: 'attendance', label: 'Attendance & Exit' },
-                        { key: 'salary', label: 'Salary Structure' },
                       ].map((t) => (
                         <button
                           key={t.key}
@@ -1892,15 +1566,10 @@ export default function EmployeesPage() {
                           <label className="block text-sm font-medium text-gray-700 mb-2">PF No</label>
                           <input type="text" value={formData.pf_no || ''} onChange={(e) => setFormData({ ...formData, pf_no: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Salary</label>
-                          <input type="number" min="0" step="0.01" value={formData.salary || ''} onChange={(e) => setFormData({ ...formData, salary: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                        </div>
                       </div>
                     </div>
                     )}
 
-                    {/* Actions */}
                     {/* Statutory */}
 
 
@@ -2012,755 +1681,6 @@ export default function EmployeesPage() {
                     </div>
                     )}
 
-                    {/* Salary Structure */}
-                    {addSubTab === 'salary' && (
-                      <div>
-                        {/* Salary Structure Selection */}
-                        <div className="bg-white rounded-xl border border-purple-200 shadow-sm p-4 mb-6">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h5 className="text-sm font-semibold text-gray-900">Select Salary Structure</h5>
-                              <p className="text-xs text-gray-500 mt-0.5">Choose a predefined structure from Salary Master</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <select
-                                value={selectedSalaryStructure}
-                                onChange={(e) => applySalaryStructure(e.target.value)}
-                                className="px-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] text-sm min-w-[200px]"
-                              >
-                                <option value="">-- Select Structure --</option>
-                                {salaryStructures.map(s => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.name} (₹{(s.gross_salary || 0).toLocaleString('en-IN')})
-                                  </option>
-                                ))}
-                              </select>
-                              <a
-                                href="/masters/salary"
-                                target="_blank"
-                                className="text-xs text-[#7F2487] hover:underline"
-                              >
-                                Manage Structures →
-                              </a>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Header with Info Banner */}
-                        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm mb-6">
-                          <div className="flex items-start gap-4">
-                            <div className="flex-shrink-0 bg-emerald-100 p-3 rounded-lg">
-                              <CurrencyDollarIcon className="h-8 w-8 text-emerald-600" />
-                            </div>
-                            <div className="flex-1">
-                              <h4 className="text-2xl font-bold text-gray-900 mb-2">Salary Structure & Calculations</h4>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                  <span className="text-gray-700">Annual Leave: <strong>21 days</strong></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                  <span className="text-gray-700">Financial Year: <strong>April - March</strong></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                                  <span className="text-gray-700">Work Week: <strong>Sun Off | Sat 1st, 3rd</strong></span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* DB Salary Preview */}
-                        {salaryRows && salaryRows.length > 0 && (
-                          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <div>
-                                <h5 className="text-sm font-semibold text-gray-900">Current Salary Record</h5>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  Effective from: {salaryRows[0].effective_from ? new Date(salaryRows[0].effective_from).toLocaleDateString() : '—'}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500">Gross Salary</p>
-                                <p className="text-lg font-bold text-emerald-600">₹{(salaryRows[0].gross_salary ?? salaryRows[0].gross ?? 0).toLocaleString('en-IN')}</p>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => loadSalaryRows(selectedEmployee?.id)}
-                                className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
-                              >
-                                Reload from DB
-                              </button>
-                              {salaryRows[0].id && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const row = salaryRows[0];
-                                      setSalaryData(prev => ({
-                                        ...prev,
-                                        gross_salary: row.gross_salary ?? row.gross ?? prev.gross_salary,
-                                        basic_da: row.basic_da ?? row.da ?? prev.basic_da,
-                                        hra: row.hra ?? prev.hra,
-                                        conveyance_allowance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance_allowance,
-                                        other_allowance: row.other_allowance ?? prev.other_allowance,
-                                        employee_pf: row.employee_pf ?? row.pf ?? prev.employee_pf,
-                                        employee_pt: row.employee_pt ?? row.pt ?? prev.employee_pt,
-                                        pl_used: row.pl_used ?? prev.pl_used,
-                                        pl_balance: row.pl_balance ?? prev.pl_balance
-                                      }));
-                                      setEditingSalaryId(row.id);
-                                    }}
-                                    className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                                  >
-                                    Edit Record
-                                  </button>
-                                  {editingSalaryId && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingSalaryId(null);
-                                        setSalarySuccess('');
-                                        setSalaryError('');
-                                      }}
-                                      className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
-                                    >
-                                      Cancel Edit
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Main Content: Form + Live Preview */}
-                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                          {/* Left Column - Input Forms (2/3 width) */}
-                          <div className="xl:col-span-2 space-y-6">
-                            
-                            {/* Employee Info Card */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <UserGroupIcon className="h-5 w-5 text-blue-600" />
-                                  Employee Information
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Full Name</label>
-                                  <input
-                                    type="text"
-                                    value={`${formData.first_name || ''} ${formData.last_name || ''}`.trim()}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Designation</label>
-                                  <input
-                                    type="text"
-                                    value={formData.position || ''}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Leave Management */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 border-b border-amber-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CalendarDaysIcon className="h-5 w-5 text-amber-600" />
-                                  Leave Management
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Annual Leaves</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.annual_leaves || 21}
-                                    onChange={(e) => setSalaryField('annual_leaves', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">PL Used</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.pl_used || ''}
-                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">PL Balance</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.pl_balance || ''}
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Attendance Details */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-purple-50 to-pink-50 px-4 py-3 border-b border-purple-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CalendarDaysIcon className="h-5 w-5 text-purple-600" />
-                                  Attendance & Working Days
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Month Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.month_days || ''}
-                                    onChange={(e) => setSalaryField('month_days', e.target.value)}
-                                    placeholder="e.g., 30"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Working Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.working_days || ''}
-                                    onChange={(e) => setSalaryField('working_days', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Week Offs</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.week_offs || ''}
-                                    onChange={(e) => setSalaryField('week_offs', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Absent Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.absent_days || ''}
-                                    onChange={(e) => setSalaryField('absent_days', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Paid Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.paid_days || ''}
-                                    onChange={(e) => setSalaryField('paid_days', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Holiday Work Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.holiday_working_days || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, holiday_working_days: e.target.value })}
-                                    placeholder="From master"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Overtime */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-cyan-50 to-sky-50 px-4 py-3 border-b border-cyan-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <ClockIcon className="h-5 w-5 text-cyan-600" />
-                                  Overtime (OT)
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Hours</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.ot_hours || ''}
-                                    onChange={(e) => setSalaryField('ot_hours', e.target.value)}
-                                    step="0.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Rate Multiplier</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.ot_rate || ''}
-                                    onChange={(e) => setSalaryField('ot_rate', e.target.value)}
-                                    step="0.1"
-                                    placeholder="e.g., 1.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Salary Breakdown */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 border-b border-emerald-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CurrencyDollarIcon className="h-5 w-5 text-emerald-600" />
-                                  Salary Components
-                                </h5>
-                              </div>
-                              <div className="p-4 space-y-4">
-                                {/* Gross Salary */}
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                    Gross Salary <span className="text-emerald-600">(Primary Input)</span>
-                                  </label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.gross_salary || ''}
-                                    onChange={(e) => setSalaryField('gross_salary', e.target.value)}
-                                    className="w-full px-4 py-2.5 text-base font-semibold border-2 border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {/* Basic + DA */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      Basic + DA {salaryData.manual_overrides?.basic_da && <span className="text-amber-600">(Manual)</span>}
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">60% of (Adjusted Gross − Other Allow.)</p>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="number"
-                                        value={salaryData.basic_da || ''}
-                                        onChange={(e) => setSalaryField('basic_da', e.target.value)}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                      />
-                                      {salaryData.manual_overrides?.basic_da && (
-                                        <button
-                                          type="button"
-                                          onClick={() => resetFormula('basic_da')}
-                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
-                                        >
-                                          Reset
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* HRA */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      HRA {salaryData.manual_overrides?.hra && <span className="text-amber-600">(Manual)</span>}
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">20% of (Adjusted Gross − Other Allow.)</p>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="number"
-                                        value={salaryData.hra || ''}
-                                        onChange={(e) => setSalaryField('hra', e.target.value)}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                      />
-                                      {salaryData.manual_overrides?.hra && (
-                                        <button
-                                          type="button"
-                                          onClick={() => resetFormula('hra')}
-                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
-                                        >
-                                          Reset
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Conveyance */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      Conveyance Allowance {salaryData.manual_overrides?.conveyance_allowance && <span className="text-amber-600">(Manual)</span>}
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">10% of (Adjusted Gross − Other Allow.)</p>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="number"
-                                        value={salaryData.conveyance_allowance || ''}
-                                        onChange={(e) => setSalaryField('conveyance_allowance', e.target.value)}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                      />
-                                      {salaryData.manual_overrides?.conveyance_allowance && (
-                                        <button
-                                          type="button"
-                                          onClick={() => resetFormula('conveyance_allowance')}
-                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
-                                        >
-                                          Reset
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Call Allowance */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Call Allowance</label>
-                                    <input
-                                      type="number"
-                                      value={salaryData.call_allowance || ''}
-                                      onChange={(e) => setSalaryData({ ...salaryData, call_allowance: e.target.value })}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                    />
-                                  </div>
-
-                                  {/* Other Allowance */}
-                                  <div className="md:col-span-2">
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      Other Allowance
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">Additive to CTC; excluded from base split when &gt; 0</p>
-                                    <input
-                                      type="number"
-                                      value={salaryData.other_allowance || ''}
-                                      onChange={(e) => setSalaryField('other_allowance', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Other Income */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 px-4 py-3 border-b border-teal-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <ArrowTrendingUpIcon className="h-5 w-5 text-teal-600" />
-                                  Additional Income
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Holiday Work (Hrs)</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.holiday_working_hours || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, holiday_working_hours: e.target.value })}
-                                    step="0.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Weekly Off Work</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.weekly_off_working || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, weekly_off_working: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Charges</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.ot_charges || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, ot_charges: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Deductions - Employee */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-red-50 to-pink-50 px-4 py-3 border-b border-red-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <ArrowTrendingDownIcon className="h-5 w-5 text-red-600" />
-                                  Employee Deductions
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee PF</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employee_pf || ''}
-                                    onChange={(e) => setSalaryField('employee_pf', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                  <p className="text-[10px] text-gray-500 mt-1">12% of Basic+DA (Max ₹1800)</p>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Professional Tax</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employee_pt || salaryData.professional_tax || 200}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employee_pt: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Retention Amount</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.retention_amount || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, retention_amount: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">MLWF</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.mlwf_employee || 5}
-                                    onChange={(e) => setSalaryData({ ...salaryData, mlwf_employee: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div className="md:col-span-2">
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Other Deductions</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.other_deductions || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, other_deductions: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Employer Contributions */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 border-b border-indigo-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CurrencyDollarIcon className="h-5 w-5 text-indigo-600" />
-                                  Employer Contributions
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employer PF</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employer_pf || ''}
-                                    onChange={(e) => setSalaryField('employer_pf', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                  <p className="text-[10px] text-gray-500 mt-1">13% of Basic+DA (Max ₹1950)</p>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Bonus</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.bonus || ''}
-                                    onChange={(e) => setSalaryField('bonus', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                  <p className="text-[10px] text-gray-500 mt-1">8.33% of Basic+DA</p>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">MLWF Company</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.mlwf_company || salaryData.mlwf_employer || 13}
-                                    onChange={(e) => setSalaryData({ ...salaryData, mlwf_company: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Medical/PA Insurance</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.medical_insurance || salaryData.mediclaim || 500}
-                                    onChange={(e) => setSalaryData({ ...salaryData, medical_insurance: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex gap-3">
-                              <button
-                                type="button"
-                                onClick={submitSalaryMaster}
-                                disabled={salaryLoading}
-                                className="flex-1 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={saveCalculatedSalary}
-                                disabled={salaryLoading}
-                                className="flex-1 px-6 py-3 border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Save Calculated
-                              </button>
-                            </div>
-
-                            {/* Status Messages */}
-                            {(salaryError || salarySuccess) && (
-                              <div className="space-y-2">
-                                {salaryError && (
-                                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                                    <p className="text-sm text-red-700 font-medium">{salaryError}</p>
-                                  </div>
-                                )}
-                                {salarySuccess && (
-                                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                                    <p className="text-sm text-emerald-700 font-medium flex items-center gap-2">
-                                      <CheckCircleIcon className="h-5 w-5" />
-                                      {salarySuccess}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Right Column - Live Summary (1/3 width) */}
-                          <div className="xl:col-span-1">
-                            <div className="bg-white rounded-xl border-2 border-emerald-200 shadow-lg sticky top-6">
-                              {/* Header */}
-                              <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-4 rounded-t-xl">
-                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Live Summary</h3>
-                              </div>
-                              
-                              <div className="p-5 space-y-4">
-                                {/* In-Hand Salary */}
-                                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-4 border-2 border-emerald-200">
-                                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">In-Hand Salary</p>
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-sm text-emerald-600">₹</span>
-                                    <input
-                                      type="number"
-                                      value={salaryData.in_hand_salary || ''}
-                                      onChange={(e) => setSalaryField('in_hand_salary', e.target.value)}
-                                      className="w-full text-3xl font-bold text-emerald-700 bg-transparent border-0 p-0 focus:ring-0 text-right"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Employee CTC */}
-                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-4 border-2 border-orange-200">
-                                  <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">Employee CTC</p>
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-sm text-orange-600">₹</span>
-                                    <input
-                                      type="number"
-                                      value={salaryData.employee_ctc || salaryData.ctc || ''}
-                                      onChange={(e) => setSalaryField('employee_ctc', e.target.value)}
-                                      className="w-full text-3xl font-bold text-orange-700 bg-transparent border-0 p-0 focus:ring-0 text-right"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Breakdown */}
-                                <div className="border-t-2 border-gray-200 pt-4 space-y-3">
-                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Breakdown</h4>
-                                  
-                                  <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Gross Salary:</span>
-                                      <span className="font-semibold text-gray-900">₹{(salaryData.gross_salary || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Adjusted Gross:</span>
-                                      <span className="font-semibold text-gray-900">₹{(salaryData.adjusted_gross || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Leave Deduction:</span>
-                                      <span className="font-semibold text-red-600">-₹{(salaryData.leave_deduction || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">OT Pay:</span>
-                                      <span className="font-semibold text-emerald-600">+₹{(salaryData.ot_pay || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Employee PF:</span>
-                                      <span className="font-semibold text-red-600">-₹{(salaryData.employee_pf || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Total Deductions:</span>
-                                      <span className="font-semibold text-red-600">
-                                        ₹{((parseFloat(salaryData.employee_pf || 0) + parseFloat(salaryData.employee_pt || salaryData.professional_tax || 200) + parseFloat(salaryData.retention_amount || 0) + parseFloat(salaryData.mlwf_employee || 5) + parseFloat(salaryData.other_deductions || 0))).toLocaleString('en-IN')}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Employer Contrib:</span>
-                                      <span className="font-semibold text-indigo-600">
-                                        ₹{((parseFloat(salaryData.employer_pf || 0) + parseFloat(salaryData.bonus || 0) + parseFloat(salaryData.mlwf_company || salaryData.mlwf_employer || 13) + parseFloat(salaryData.medical_insurance || salaryData.mediclaim || 500))).toLocaleString('en-IN')}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Attendance Summary */}
-                                <div className="border-t-2 border-gray-200 pt-4 space-y-3">
-                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Attendance</h4>
-                                  
-                                  <div className="grid grid-cols-2 gap-3 text-sm">
-                                    <div className="text-center p-2 bg-blue-50 rounded-lg">
-                                      <p className="text-xs text-gray-600 mb-1">Working Days</p>
-                                      <p className="text-lg font-bold text-blue-600">{salaryData.working_days || 0}</p>
-                                    </div>
-                                    <div className="text-center p-2 bg-emerald-50 rounded-lg">
-                                      <p className="text-xs text-gray-600 mb-1">Paid Days</p>
-                                      <p className="text-lg font-bold text-emerald-600">{salaryData.paid_days || 0}</p>
-                                    </div>
-                                    <div className="text-center p-2 bg-amber-50 rounded-lg">
-                                      <p className="text-xs text-gray-600 mb-1">Week Offs</p>
-                                      <p className="text-lg font-bold text-amber-600">{salaryData.week_offs || 0}</p>
-                                    </div>
-                                    <div className="text-center p-2 bg-red-50 rounded-lg">
-                                      <p className="text-xs text-gray-600 mb-1">Absent</p>
-                                      <p className="text-lg font-bold text-red-600">{salaryData.absent_days || 0}</p>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Quick Actions */}
-                                <div className="border-t-2 border-gray-200 pt-4 space-y-2">
-                                  <button
-                                    type="button"
-                                    onClick={submitSalaryMaster}
-                                    disabled={salaryLoading}
-                                    className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
-                                  >
-                                    {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update' : 'Save')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={saveCalculatedSalary}
-                                    disabled={salaryLoading}
-                                    className="w-full px-4 py-3 border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition-all disabled:opacity-50"
-                                  >
-                                    Save Calculated
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                       <div className="flex gap-3">
                         <button
@@ -2794,107 +1714,6 @@ export default function EmployeesPage() {
                   </form>
                 </div>
               </section>
-            </div>
-          )}
-
-          {activeTab === 'import' && (
-            <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">Import Employees</h3>
-              
-              {/* Instructions */}
-              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="text-sm font-semibold text-blue-900 mb-2">Import Instructions:</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Supported formats: CSV (.csv) and Excel (.xlsx, .xls)</li>
-                  <li>• Required columns: SR.NO, Employee Code, Full Name</li>
-                  <li>• Optional columns: Phone, Department, Position, Hire Date, Salary, Address, Notes</li>
-                  <li>• Full Name will be split into First Name and Last Name</li>
-                  <li>• Email will be auto-generated from the name</li>
-                  <li>• Maximum file size: 5MB</li>
-                </ul>
-              </div>
-
-              {/* Download Templates */}
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button
-                  onClick={() => downloadTemplate('csv')}
-                  className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <DocumentArrowDownIcon className="h-5 w-5 mr-2" />
-                  Download CSV Template
-                </button>
-                <button
-                  onClick={() => downloadTemplate('excel')}
-                  className="flex items-center justify-center px-4 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <DocumentArrowDownIcon className="h-5 w-5 mr-2" />
-                  Download Excel Template
-                </button>
-              </div>
-
-              {formErrors.general && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-red-600 text-sm font-medium">{formErrors.general}</p>
-                  {formErrors.details && formErrors.details.length > 0 && (
-                    <div className="mt-2 max-h-40 overflow-y-auto">
-                      <p className="text-red-600 text-xs font-medium mb-1">Validation Details:</p>
-                      <ul className="text-xs text-red-500 space-y-1">
-                        {formErrors.details.map((detail, index) => (
-                          <li key={index}>• {detail}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {importResults && (
-                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <h4 className="text-sm font-semibold text-green-900 mb-2">Import Results:</h4>
-                  <div className="text-sm text-green-800 space-y-1">
-                    <p>• Total processed: {importResults.total}</p>
-                    <p>• Successfully imported: {importResults.success}</p>
-                    <p>• Errors: {importResults.errors}</p>
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleImport} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select CSV File
-                  </label>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={(e) => setImportFile(e.target.files[0])}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                    required
-                  />
-                  {importFile && (
-                    <p className="text-sm text-gray-600 mt-2">
-                      Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('list')}
-                    className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading || !importFile}
-                    className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                  >
-                    {loading ? 'Importing...' : 'Import Employees'}
-                  </button>
-                </div>
-              </form>
             </div>
           )}
 
@@ -2993,15 +1812,20 @@ export default function EmployeesPage() {
                         { key: 'personal', label: 'Personal Information' },
                         { key: 'contact', label: 'Contact Information' },
                         { key: 'work', label: 'Work Details' },
+                        { key: 'salary', label: 'Salary Structure' },
                         { key: 'academic', label: 'Academic & Experience' },
                         { key: 'govt', label: 'Government IDs' },
                         { key: 'bank', label: 'Bank Details' },
                         { key: 'attendance', label: 'Attendance & Exit' },
-                        { key: 'salary', label: 'Salary Structure' },
                       ].map((t) => (
                         <button
                           key={t.key}
-                          onClick={() => setEditSubTab(t.key)}
+                          onClick={() => {
+                            setEditSubTab(t.key);
+                            if (t.key === 'salary' && selectedEmployee?.id) {
+                              fetchSalaryStructures(selectedEmployee.id);
+                            }
+                          }}
                           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                             editSubTab === t.key
                               ? 'border-purple-500 text-purple-600'
@@ -3204,16 +2028,1025 @@ export default function EmployeesPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-2">PF No</label>
                             <input type="text" value={formData.pf_no || ''} onChange={(e) => setFormData({ ...formData, pf_no: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                           </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Salary</label>
-                            <input type="number" min="0" step="0.01" value={formData.salary || ''} onChange={(e) => setFormData({ ...formData, salary: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                          </div>
                         </div>
                       </div>
                     )}
 
-                    {/* Statutory */}
+                    {/* Salary Structure Tab */}
+                    {editSubTab === 'salary' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-6">
+                          <h4 className="text-lg font-semibold text-gray-900">Salary Structure</h4>
+                          {!showSalaryForm && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingSalaryStructure(null);
+                                resetSalaryForm();
+                                setShowSalaryForm(true);
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#64126D] to-[#86288F] text-white rounded-lg hover:from-[#86288F] hover:to-[#64126D] transition-all"
+                            >
+                              <PlusIcon className="h-5 w-5" />
+                              New Salary Structure
+                            </button>
+                          )}
+                        </div>
 
+                        {salaryError && (
+                          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                            {salaryError}
+                          </div>
+                        )}
+
+                        {salaryLoading ? (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                            <span className="ml-3 text-gray-600">Loading salary structures...</span>
+                          </div>
+                        ) : showSalaryForm ? (
+                          /* Salary Structure Form */
+                          <div className="space-y-6">
+                            {/* Form Header */}
+                            <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+                              <div>
+                                <h5 className="text-lg font-semibold text-gray-900">
+                                  {editingSalaryStructure ? 'Edit Salary Structure' : 'New Salary Structure'}
+                                </h5>
+                                {editingSalaryStructure && (
+                                  <p className="text-sm text-gray-500 mt-1">
+                                    Editing Version {editingSalaryStructure.version} (Effective: {new Date(editingSalaryStructure.effective_from).toLocaleDateString('en-IN')})
+                                  </p>
+                                )}
+                              </div>
+                              {editingSalaryStructure && (
+                                <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                                  Editing
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Basic Info */}
+                            <div className="bg-gray-50 rounded-xl p-6">
+                              <h5 className="text-md font-semibold text-gray-800 mb-4">Basic Details</h5>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">Pay Type *</label>
+                                  <select
+                                    value={salaryFormData.pay_type}
+                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, pay_type: e.target.value })}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  >
+                                    <option value="monthly">Monthly</option>
+                                    <option value="hourly">Hourly</option>
+                                    <option value="daily">Daily</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">Effective From *</label>
+                                  <input
+                                    type="date"
+                                    value={salaryFormData.effective_from}
+                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, effective_from: e.target.value })}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">Standard Working Days</label>
+                                  <input
+                                    type="number"
+                                    value={salaryFormData.standard_working_days}
+                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, standard_working_days: e.target.value })}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Monthly Pay Fields */}
+                              {salaryFormData.pay_type === 'monthly' && (
+                                <div className="space-y-4 mt-4">
+                                  {/* Primary Input - Basic Salary */}
+                                  <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      <div className="md:col-span-2">
+                                        <label className="block text-sm font-semibold text-purple-800 mb-2">
+                                          Basic Salary (Monthly) * 
+                                          <span className="text-xs font-normal text-purple-600 ml-2">Enter to auto-calculate all</span>
+                                        </label>
+                                        <input
+                                          type="number"
+                                          value={salaryFormData.basic_salary}
+                                          onChange={(e) => handleSalaryFieldChange('basic_salary', e.target.value)}
+                                          placeholder="e.g., 25000"
+                                          className="w-full px-4 py-3 border-2 border-purple-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg font-semibold"
+                                        />
+                                        <p className="text-xs text-purple-600 mt-1">Basic = 50% of Gross Salary (Gross = Basic × 2)</p>
+                                      </div>
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">HRA %</label>
+                                        <input
+                                          type="number"
+                                          value={salaryPercentages.hra_percent}
+                                          onChange={(e) => handlePercentageChange('hra_percent', e.target.value)}
+                                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">% of Basic</p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Percentage Configuration */}
+                                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                                    <h6 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      </svg>
+                                      Salary Component Configuration
+                                    </h6>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employee PF %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.employee_pf_percent}
+                                          onChange={(e) => handlePercentageChange('employee_pf_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employer PF %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.employer_pf_percent}
+                                          onChange={(e) => handlePercentageChange('employer_pf_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employee ESIC %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.employee_esic_percent}
+                                          onChange={(e) => handlePercentageChange('employee_esic_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employer ESIC %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.employer_esic_percent}
+                                          onChange={(e) => handlePercentageChange('employer_esic_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Gratuity %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.gratuity_percent}
+                                          onChange={(e) => handlePercentageChange('gratuity_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">PF Admin %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.pf_admin_percent}
+                                          onChange={(e) => handlePercentageChange('pf_admin_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">EDLI %</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={salaryPercentages.edli_percent}
+                                          onChange={(e) => handlePercentageChange('edli_percent', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Conveyance ₹</label>
+                                        <input
+                                          type="number"
+                                          value={salaryPercentages.conveyance}
+                                          onChange={(e) => handlePercentageChange('conveyance', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Medical ₹</label>
+                                        <input
+                                          type="number"
+                                          value={salaryPercentages.medical}
+                                          onChange={(e) => handlePercentageChange('medical', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Auto-calculated Fields */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Gross Salary (Monthly)</label>
+                                      <input
+                                        type="number"
+                                        value={salaryFormData.gross_salary}
+                                        readOnly
+                                        placeholder="Auto-calculated (Basic × 2)"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
+                                      />
+                                      <p className="text-xs text-gray-500 mt-1">Gross = Basic + HRA + Allowances</p>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Annual CTC</label>
+                                      <input
+                                        type="number"
+                                        value={salaryFormData.ctc}
+                                        readOnly
+                                        placeholder="Auto-calculated"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
+                                      />
+                                      <p className="text-xs text-gray-500 mt-1">CTC = (Gross + Employer PF + ESI) × 12</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Hourly Pay Fields */}
+                              {salaryFormData.pay_type === 'hourly' && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Hourly Rate *</label>
+                                    <input
+                                      type="number"
+                                      value={salaryFormData.hourly_rate}
+                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, hourly_rate: e.target.value })}
+                                      placeholder="0.00"
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">OT Multiplier</label>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={salaryFormData.ot_multiplier}
+                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, ot_multiplier: e.target.value })}
+                                      placeholder="1.5"
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Hours Per Day</label>
+                                    <input
+                                      type="number"
+                                      value={salaryFormData.standard_hours_per_day}
+                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, standard_hours_per_day: e.target.value })}
+                                      placeholder="8"
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Daily Pay Fields */}
+                              {salaryFormData.pay_type === 'daily' && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Daily Rate *</label>
+                                    <input
+                                      type="number"
+                                      value={salaryFormData.daily_rate}
+                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, daily_rate: e.target.value })}
+                                      placeholder="0.00"
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">OT Multiplier</label>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={salaryFormData.ot_multiplier}
+                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, ot_multiplier: e.target.value })}
+                                      placeholder="1.5"
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Statutory Deductions */}
+                            <div className="bg-gray-50 rounded-xl p-6">
+                              <h5 className="text-md font-semibold text-gray-800 mb-4">Statutory Applicability</h5>
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={salaryFormData.pf_applicable}
+                                    onChange={(e) => handleSalaryFieldChange('pf_applicable', e.target.checked)}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-medium">PF</span>
+                                </label>
+                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={salaryFormData.esic_applicable}
+                                    onChange={(e) => handleSalaryFieldChange('esic_applicable', e.target.checked)}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-medium">ESIC</span>
+                                </label>
+                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={salaryFormData.pt_applicable}
+                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, pt_applicable: e.target.checked })}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-medium">PT</span>
+                                </label>
+                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={salaryFormData.mlwf_applicable}
+                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, mlwf_applicable: e.target.checked })}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-medium">MLWF</span>
+                                </label>
+                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={salaryFormData.tds_applicable}
+                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, tds_applicable: e.target.checked })}
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                  />
+                                  <span className="text-sm font-medium">TDS</span>
+                                </label>
+                                {salaryFormData.pf_applicable && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">PF Ceiling</label>
+                                    <select
+                                      value={salaryFormData.pf_wage_ceiling}
+                                      onChange={(e) => handleSalaryFieldChange('pf_wage_ceiling', e.target.value)}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    >
+                                      <option value="15000">₹15,000</option>
+                                      <option value="actual">Actual Basic</option>
+                                    </select>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Auto-Calculated Salary Breakdown */}
+                            {calculatedBreakdown && salaryFormData.pay_type === 'monthly' && (
+                              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+                                <h5 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+                                  <svg className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                  </svg>
+                                  Complete Salary Breakdown
+                                  <span className="ml-auto text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded-lg border">
+                                    PF: {calculatedBreakdown.percentages.employeePF}% | ESIC: {calculatedBreakdown.percentages.employeeESIC}% | HRA: {calculatedBreakdown.percentages.hra}%
+                                  </span>
+                                </h5>
+
+                                {/* Main Summary Cards */}
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                                  <div className="bg-white rounded-xl p-4 text-center border-2 border-gray-200 shadow-sm">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Basic Salary</p>
+                                    <p className="text-xl font-bold text-gray-800">₹{calculatedBreakdown.earnings.basic.toLocaleString('en-IN')}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 text-center border-2 border-gray-200 shadow-sm">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Gross Salary</p>
+                                    <p className="text-xl font-bold text-gray-800">₹{calculatedBreakdown.summary.grossSalary.toLocaleString('en-IN')}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 text-center border-2 border-red-200 shadow-sm">
+                                    <p className="text-xs text-red-600 uppercase tracking-wide font-medium">Deductions</p>
+                                    <p className="text-xl font-bold text-red-600">-₹{calculatedBreakdown.deductions.total.toLocaleString('en-IN')}</p>
+                                  </div>
+                                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 text-center border-2 border-green-300 shadow-sm">
+                                    <p className="text-xs text-green-700 uppercase tracking-wide font-medium">Net Salary</p>
+                                    <p className="text-2xl font-bold text-green-600">₹{calculatedBreakdown.summary.netSalary.toLocaleString('en-IN')}</p>
+                                  </div>
+                                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 text-center border-2 border-purple-300 shadow-sm">
+                                    <p className="text-xs text-purple-700 uppercase tracking-wide font-medium">Monthly CTC</p>
+                                    <p className="text-xl font-bold text-purple-600">₹{calculatedBreakdown.summary.totalCTC.toLocaleString('en-IN')}</p>
+                                  </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                  {/* LEFT COLUMN - Earnings & Deductions */}
+                                  <div className="space-y-4">
+                                    {/* Earnings Section */}
+                                    <div className="bg-white rounded-xl p-5 border border-green-200 shadow-sm">
+                                      <h6 className="text-sm font-bold text-green-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+                                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                                        Monthly Earnings (Gross Pay)
+                                      </h6>
+                                      <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                          <div>
+                                            <span className="text-gray-700 font-medium">Basic Salary</span>
+                                            <span className="text-xs text-gray-500 block">50% of Gross</span>
+                                          </div>
+                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.basic.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                          <div>
+                                            <span className="text-gray-700 font-medium">House Rent Allowance (HRA)</span>
+                                            <span className="text-xs text-gray-500 block">{salaryPercentages.hra_percent}% of Basic</span>
+                                          </div>
+                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.hra.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                          <div>
+                                            <span className="text-gray-700 font-medium">Conveyance Allowance</span>
+                                            <span className="text-xs text-gray-500 block">Fixed (max ₹{salaryPercentages.conveyance.toLocaleString('en-IN')})</span>
+                                          </div>
+                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.conveyance.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                          <div>
+                                            <span className="text-gray-700 font-medium">Medical Allowance</span>
+                                            <span className="text-xs text-gray-500 block">Fixed (max ₹{salaryPercentages.medical.toLocaleString('en-IN')})</span>
+                                          </div>
+                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.medical.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                          <div>
+                                            <span className="text-gray-700 font-medium">Special Allowance</span>
+                                            <span className="text-xs text-gray-500 block">Balancing Amount</span>
+                                          </div>
+                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.specialAllowance.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-3 border-t-2 border-green-300">
+                                          <span className="font-bold text-green-800 text-base">GROSS SALARY (A)</span>
+                                          <span className="font-bold text-green-800 text-lg">₹{calculatedBreakdown.earnings.total.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Deductions Section */}
+                                    <div className="bg-white rounded-xl p-5 border border-red-200 shadow-sm">
+                                      <h6 className="text-sm font-bold text-red-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+                                        <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                                        Monthly Deductions (Employee)
+                                      </h6>
+                                      <div className="space-y-3 text-sm">
+                                        {calculatedBreakdown.deductions.employeePF > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">Provident Fund (PF)</span>
+                                              <span className="text-xs text-gray-500 block">{salaryPercentages.employee_pf_percent}% of Basic (max ₹{calculatedBreakdown.pfDetails.wageBase.toLocaleString('en-IN')})</span>
+                                            </div>
+                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.employeePF.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        {calculatedBreakdown.deductions.employeeESIC > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">ESIC</span>
+                                              <span className="text-xs text-gray-500 block">{salaryPercentages.employee_esic_percent}% of Gross</span>
+                                            </div>
+                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.employeeESIC.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        {calculatedBreakdown.deductions.pt > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">Professional Tax (PT)</span>
+                                              <span className="text-xs text-gray-500 block">State Tax (Maharashtra)</span>
+                                            </div>
+                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.pt.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        {calculatedBreakdown.deductions.tds > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">TDS (Income Tax)</span>
+                                              <span className="text-xs text-gray-500 block">Tax Deducted at Source</span>
+                                            </div>
+                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.tds.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between items-center pt-3 border-t-2 border-red-300">
+                                          <span className="font-bold text-red-800 text-base">TOTAL DEDUCTIONS (B)</span>
+                                          <span className="font-bold text-red-800 text-lg">-₹{calculatedBreakdown.deductions.total.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Net Salary Calculation */}
+                                    <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-5 text-white shadow-lg">
+                                      <div className="flex justify-between items-center">
+                                        <div>
+                                          <span className="text-green-100 text-sm">NET SALARY (A - B)</span>
+                                          <p className="text-xs text-green-200 mt-1">Take Home Pay</p>
+                                        </div>
+                                        <span className="text-3xl font-bold">₹{calculatedBreakdown.summary.netSalary.toLocaleString('en-IN')}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* RIGHT COLUMN - Employer Cost & Annual Summary */}
+                                  <div className="space-y-4">
+                                    {/* Employer Contributions Section */}
+                                    <div className="bg-white rounded-xl p-5 border border-blue-200 shadow-sm">
+                                      <h6 className="text-sm font-bold text-blue-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+                                        <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                                        Employer Contributions (Monthly)
+                                      </h6>
+                                      <div className="space-y-3 text-sm">
+                                        {calculatedBreakdown.employer.pf > 0 && (
+                                          <>
+                                            <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                              <div>
+                                                <span className="text-gray-700 font-medium">Employer PF (EPF + EPS)</span>
+                                                <span className="text-xs text-gray-500 block">{salaryPercentages.employer_pf_percent}% of Basic</span>
+                                              </div>
+                                              <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.pf.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-1 pl-4 text-xs text-gray-500">
+                                              <span>↳ EPF (3.67% to PF A/c)</span>
+                                              <span>₹{calculatedBreakdown.employer.epf.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-1 pl-4 text-xs text-gray-500 border-b border-gray-100">
+                                              <span>↳ EPS (8.33% to Pension)</span>
+                                              <span>₹{calculatedBreakdown.employer.eps.toLocaleString('en-IN')}</span>
+                                            </div>
+                                          </>
+                                        )}
+                                        {calculatedBreakdown.employer.esic > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">Employer ESIC</span>
+                                              <span className="text-xs text-gray-500 block">{salaryPercentages.employer_esic_percent}% of Gross</span>
+                                            </div>
+                                            <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.esic.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        {calculatedBreakdown.employer.pfAdmin > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">PF Admin Charges</span>
+                                              <span className="text-xs text-gray-500 block">{salaryPercentages.pf_admin_percent}% of PF Wages</span>
+                                            </div>
+                                            <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.pfAdmin.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        {calculatedBreakdown.employer.edli > 0 && (
+                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                            <div>
+                                              <span className="text-gray-700 font-medium">EDLI (Insurance)</span>
+                                              <span className="text-xs text-gray-500 block">{salaryPercentages.edli_percent}% of PF Wages</span>
+                                            </div>
+                                            <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.edli.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                                          <div>
+                                            <span className="text-gray-700 font-medium">Gratuity Provision</span>
+                                            <span className="text-xs text-gray-500 block">{salaryPercentages.gratuity_percent}% of Basic</span>
+                                          </div>
+                                          <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.gratuity.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-3 border-t-2 border-blue-300">
+                                          <span className="font-bold text-blue-800 text-base">TOTAL EMPLOYER COST (C)</span>
+                                          <span className="font-bold text-blue-800 text-lg">₹{calculatedBreakdown.employer.total.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* CTC Calculation */}
+                                    <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-5 text-white shadow-lg">
+                                      <div className="space-y-3">
+                                        <div className="flex justify-between items-center text-purple-100 text-sm">
+                                          <span>Gross Salary (A)</span>
+                                          <span>₹{calculatedBreakdown.summary.grossSalary.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-purple-100 text-sm">
+                                          <span>+ Employer Cost (C)</span>
+                                          <span>₹{calculatedBreakdown.employer.total.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-2 border-t border-purple-400">
+                                          <span className="font-bold">MONTHLY CTC (A + C)</span>
+                                          <span className="text-2xl font-bold">₹{calculatedBreakdown.summary.totalCTC.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* PF Account Summary */}
+                                    {calculatedBreakdown.pfDetails.totalPF > 0 && (
+                                      <div className="bg-white rounded-xl p-5 border border-amber-200 shadow-sm">
+                                        <h6 className="text-sm font-bold text-amber-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+                                          <span className="w-3 h-3 bg-amber-500 rounded-full"></span>
+                                          PF Account Summary
+                                        </h6>
+                                        <div className="space-y-2 text-sm">
+                                          <div className="flex justify-between py-1">
+                                            <span className="text-gray-600">PF Wage Base</span>
+                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.wageBase.toLocaleString('en-IN')}</span>
+                                          </div>
+                                          <div className="flex justify-between py-1">
+                                            <span className="text-gray-600">Employee PF ({salaryPercentages.employee_pf_percent}%)</span>
+                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.employeeContribution.toLocaleString('en-IN')}</span>
+                                          </div>
+                                          <div className="flex justify-between py-1">
+                                            <span className="text-gray-600">Employer EPF (3.67%)</span>
+                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.employerEPF.toLocaleString('en-IN')}</span>
+                                          </div>
+                                          <div className="flex justify-between py-1">
+                                            <span className="text-gray-600">Employer EPS (8.33%)</span>
+                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.employerEPS.toLocaleString('en-IN')}</span>
+                                          </div>
+                                          <div className="flex justify-between py-2 border-t border-amber-200 font-semibold text-amber-800">
+                                            <span>Total Monthly PF</span>
+                                            <span>₹{calculatedBreakdown.pfDetails.totalPF.toLocaleString('en-IN')}</span>
+                                          </div>
+                                          <div className="flex justify-between py-1 text-amber-600">
+                                            <span>Annual PF Savings</span>
+                                            <span className="font-bold">₹{calculatedBreakdown.pfDetails.annualPF.toLocaleString('en-IN')}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Annual Summary Table */}
+                                <div className="mt-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
+                                  <h6 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wide">Annual Summary</h6>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                      <thead>
+                                        <tr className="border-b-2 border-gray-200">
+                                          <th className="text-left py-2 text-gray-600 font-medium">Component</th>
+                                          <th className="text-right py-2 text-gray-600 font-medium">Monthly</th>
+                                          <th className="text-right py-2 text-gray-600 font-medium">Annual</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        <tr className="border-b border-gray-100">
+                                          <td className="py-2 text-gray-700">Basic Salary</td>
+                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.earnings.basic.toLocaleString('en-IN')}</td>
+                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.summary.annualBasic.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                        <tr className="border-b border-gray-100">
+                                          <td className="py-2 text-gray-700">HRA</td>
+                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.earnings.hra.toLocaleString('en-IN')}</td>
+                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.summary.annualHRA.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                        <tr className="border-b border-gray-100 bg-green-50">
+                                          <td className="py-2 text-green-700 font-medium">Gross Salary</td>
+                                          <td className="py-2 text-right font-bold text-green-700">₹{calculatedBreakdown.summary.grossSalary.toLocaleString('en-IN')}</td>
+                                          <td className="py-2 text-right font-bold text-green-700">₹{calculatedBreakdown.summary.annualGross.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                        <tr className="border-b border-gray-100 bg-red-50">
+                                          <td className="py-2 text-red-700 font-medium">Total Deductions</td>
+                                          <td className="py-2 text-right font-bold text-red-700">-₹{calculatedBreakdown.summary.totalDeductions.toLocaleString('en-IN')}</td>
+                                          <td className="py-2 text-right font-bold text-red-700">-₹{calculatedBreakdown.summary.annualDeductions.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                        <tr className="border-b border-gray-100 bg-green-100">
+                                          <td className="py-3 text-green-800 font-bold">Net Salary (Take Home)</td>
+                                          <td className="py-3 text-right font-bold text-green-800 text-lg">₹{calculatedBreakdown.summary.netSalary.toLocaleString('en-IN')}</td>
+                                          <td className="py-3 text-right font-bold text-green-800 text-lg">₹{calculatedBreakdown.summary.annualNet.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                        <tr className="border-b border-gray-100 bg-blue-50">
+                                          <td className="py-2 text-blue-700 font-medium">Employer Contributions</td>
+                                          <td className="py-2 text-right font-bold text-blue-700">₹{calculatedBreakdown.employer.total.toLocaleString('en-IN')}</td>
+                                          <td className="py-2 text-right font-bold text-blue-700">₹{calculatedBreakdown.summary.annualEmployerCost.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                        <tr className="bg-purple-100">
+                                          <td className="py-3 text-purple-800 font-bold">Total CTC</td>
+                                          <td className="py-3 text-right font-bold text-purple-800 text-lg">₹{calculatedBreakdown.summary.totalCTC.toLocaleString('en-IN')}</td>
+                                          <td className="py-3 text-right font-bold text-purple-800 text-lg">₹{calculatedBreakdown.summary.annualCTC.toLocaleString('en-IN')}</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                {/* Info Notes */}
+                                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                  <p className="text-xs text-amber-800">
+                                    <strong>Note:</strong> This is an estimated breakdown. Actual values may vary based on:
+                                    • PF wage ceiling selection (₹15,000 or actual basic)
+                                    • ESIC eligibility (Gross ≤ ₹21,000/month)
+                                    • State-specific Professional Tax rates
+                                    • TDS calculation based on income tax regime
+                                    • LWF deductions (twice a year in some states)
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Salary Components */}
+                            <div className="bg-gray-50 rounded-xl p-6">
+                              <div className="flex items-center justify-between mb-4">
+                                <h5 className="text-md font-semibold text-gray-800">Salary Components (Optional)</h5>
+                                <button
+                                  type="button"
+                                  onClick={addSalaryComponent}
+                                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-white border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50"
+                                >
+                                  <PlusIcon className="h-4 w-4" />
+                                  Add Component
+                                </button>
+                              </div>
+
+                              {salaryComponents.length === 0 ? (
+                                <p className="text-sm text-gray-500 italic">No custom components added. Standard components (Basic, HRA, etc.) will be calculated automatically.</p>
+                              ) : (
+                                <div className="space-y-3">
+                                  {salaryComponents.map((comp, idx) => (
+                                    <div key={idx} className="bg-white p-4 rounded-lg border flex flex-wrap gap-3 items-end">
+                                      <div className="flex-1 min-w-[150px]">
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                                        <input
+                                          type="text"
+                                          value={comp.component_name}
+                                          onChange={(e) => updateSalaryComponent(idx, 'component_name', e.target.value)}
+                                          placeholder="e.g., Special Allowance"
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                      </div>
+                                      <div className="w-24">
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Code</label>
+                                        <input
+                                          type="text"
+                                          value={comp.component_code}
+                                          onChange={(e) => updateSalaryComponent(idx, 'component_code', e.target.value.toUpperCase())}
+                                          placeholder="SPA"
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                      </div>
+                                      <div className="w-32">
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                                        <select
+                                          value={comp.component_type}
+                                          onChange={(e) => updateSalaryComponent(idx, 'component_type', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        >
+                                          <option value="earning">Earning</option>
+                                          <option value="deduction">Deduction</option>
+                                        </select>
+                                      </div>
+                                      <div className="w-28">
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Calc Type</label>
+                                        <select
+                                          value={comp.calculation_type}
+                                          onChange={(e) => updateSalaryComponent(idx, 'calculation_type', e.target.value)}
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        >
+                                          <option value="fixed">Fixed</option>
+                                          <option value="percentage">Percentage</option>
+                                        </select>
+                                      </div>
+                                      {comp.calculation_type === 'fixed' ? (
+                                        <div className="w-28">
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
+                                          <input
+                                            type="number"
+                                            value={comp.fixed_amount}
+                                            onChange={(e) => updateSalaryComponent(idx, 'fixed_amount', e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="w-20">
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">%</label>
+                                            <input
+                                              type="number"
+                                              value={comp.percentage_value}
+                                              onChange={(e) => updateSalaryComponent(idx, 'percentage_value', e.target.value)}
+                                              placeholder="0"
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            />
+                                          </div>
+                                          <div className="w-24">
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">Of</label>
+                                            <select
+                                              value={comp.percentage_of}
+                                              onChange={(e) => updateSalaryComponent(idx, 'percentage_of', e.target.value)}
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            >
+                                              <option value="basic">Basic</option>
+                                              <option value="gross">Gross</option>
+                                              <option value="ctc">CTC</option>
+                                            </select>
+                                          </div>
+                                        </>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => removeSalaryComponent(idx)}
+                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                                      >
+                                        <TrashIcon className="h-5 w-5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Remarks */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
+                              <textarea
+                                rows={2}
+                                value={salaryFormData.remarks}
+                                onChange={(e) => setSalaryFormData({ ...salaryFormData, remarks: e.target.value })}
+                                placeholder="Any notes about this salary structure..."
+                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+
+                            {/* Form Actions */}
+                            <div className="flex justify-end gap-3 pt-4 border-t">
+                              <button
+                                type="button"
+                                onClick={handleCancelSalaryEdit}
+                                className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={editingSalaryStructure ? handleUpdateSalaryStructure : handleSaveSalaryStructure}
+                                disabled={salaryLoading}
+                                className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50"
+                              >
+                                {salaryLoading ? 'Saving...' : (editingSalaryStructure ? 'Update Salary Structure' : 'Save Salary Structure')}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Salary Structures List */
+                          <div>
+                            {/* Active Structure Card */}
+                            {activeSalaryStructure ? (
+                              <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
+                                <div className="flex items-start justify-between mb-4">
+                                  <div>
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      Active
+                                    </span>
+                                    <h5 className="text-lg font-semibold text-gray-900 mt-2">
+                                      {activeSalaryStructure.pay_type === 'monthly' ? 'Monthly Salary' : 
+                                       activeSalaryStructure.pay_type === 'hourly' ? 'Hourly Wage' : 'Daily Wage'}
+                                    </h5>
+                                    <p className="text-sm text-gray-600">
+                                      Effective from: {new Date(activeSalaryStructure.effective_from).toLocaleDateString('en-IN')}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-500 mr-2">Version {activeSalaryStructure.version}</span>
+                                    <button
+                                      onClick={() => handleEditSalaryStructure(activeSalaryStructure)}
+                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Edit"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteSalaryStructure(activeSalaryStructure.id)}
+                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Delete"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {activeSalaryStructure.pay_type === 'monthly' ? (
+                                    <>
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase">CTC</p>
+                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.ctc || 0).toLocaleString('en-IN')}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase">Gross</p>
+                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.gross_salary || 0).toLocaleString('en-IN')}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase">Basic</p>
+                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.basic_salary || 0).toLocaleString('en-IN')}</p>
+                                      </div>
+                                    </>
+                                  ) : activeSalaryStructure.pay_type === 'hourly' ? (
+                                    <>
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase">Hourly Rate</p>
+                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.hourly_rate || 0).toLocaleString('en-IN')}/hr</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase">OT Multiplier</p>
+                                        <p className="text-lg font-semibold text-gray-900">{activeSalaryStructure.ot_multiplier}x</p>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div>
+                                      <p className="text-xs text-gray-500 uppercase">Daily Rate</p>
+                                      <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.daily_rate || 0).toLocaleString('en-IN')}/day</p>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase">Working Days</p>
+                                    <p className="text-lg font-semibold text-gray-900">{activeSalaryStructure.standard_working_days}</p>
+                                  </div>
+                                </div>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  {activeSalaryStructure.pf_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">PF</span>}
+                                  {activeSalaryStructure.esic_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">ESIC</span>}
+                                  {activeSalaryStructure.pt_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">PT</span>}
+                                  {activeSalaryStructure.mlwf_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">MLWF</span>}
+                                  {activeSalaryStructure.tds_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">TDS</span>}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mb-6 p-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 text-center">
+                                <p className="text-gray-500">No active salary structure found.</p>
+                                <p className="text-sm text-gray-400 mt-1">Click &quot;New Salary Structure&quot; to create one.</p>
+                              </div>
+                            )}
+
+                            {/* Previous Versions */}
+                            {salaryStructures.length > 1 && (
+                              <div>
+                                <h5 className="text-sm font-semibold text-gray-700 mb-3">Previous Versions</h5>
+                                <div className="space-y-2">
+                                  {salaryStructures
+                                    .filter(s => s.id !== activeSalaryStructure?.id)
+                                    .map((structure) => (
+                                      <div key={structure.id} className="p-4 bg-gray-50 rounded-lg border flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <span className="text-sm font-medium text-gray-700">Version {structure.version}</span>
+                                          <span className="mx-2 text-gray-400">•</span>
+                                          <span className="text-sm text-gray-500">
+                                            {new Date(structure.effective_from).toLocaleDateString('en-IN')}
+                                            {structure.effective_to && ` - ${new Date(structure.effective_to).toLocaleDateString('en-IN')}`}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          <span className="text-sm text-gray-600">
+                                            {structure.pay_type === 'monthly' 
+                                              ? `₹${Number(structure.gross_salary || 0).toLocaleString('en-IN')}/mo` 
+                                              : structure.pay_type === 'hourly'
+                                              ? `₹${Number(structure.hourly_rate || 0).toLocaleString('en-IN')}/hr`
+                                              : `₹${Number(structure.daily_rate || 0).toLocaleString('en-IN')}/day`}
+                                          </span>
+                                          <button
+                                            onClick={() => handleEditSalaryStructure(structure)}
+                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                            title="Edit"
+                                          >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                          </button>
+                                          <button
+                                            onClick={() => handleDeleteSalaryStructure(structure.id)}
+                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                            title="Delete"
+                                          >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Academic & Experience */}
                     {editSubTab === 'academic' && (
@@ -3323,723 +3156,6 @@ export default function EmployeesPage() {
                       </div>
                     )}
 
-                    {/* Salary Structure */}
-                    {editSubTab === 'salary' && (
-                      <div>
-                        {/* Salary Structure Selection */}
-                        <div className="bg-white rounded-xl border border-purple-200 shadow-sm p-4 mb-6">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h5 className="text-sm font-semibold text-gray-900">Select Salary Structure</h5>
-                              <p className="text-xs text-gray-500 mt-0.5">Choose a predefined structure from Salary Master</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <select
-                                value={selectedSalaryStructure}
-                                onChange={(e) => applySalaryStructure(e.target.value)}
-                                className="px-4 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] text-sm min-w-[200px]"
-                              >
-                                <option value="">-- Select Structure --</option>
-                                {salaryStructures.map(s => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.name} (₹{(s.gross_salary || 0).toLocaleString('en-IN')})
-                                  </option>
-                                ))}
-                              </select>
-                              <a
-                                href="/masters/salary"
-                                target="_blank"
-                                className="text-xs text-[#7F2487] hover:underline"
-                              >
-                                Manage Structures →
-                              </a>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Header with Info Banner */}
-                        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-xl p-6 border border-emerald-200 shadow-sm mb-6">
-                          <div className="flex items-start gap-4">
-                            <div className="flex-shrink-0 bg-emerald-100 p-3 rounded-lg">
-                              <CurrencyDollarIcon className="h-8 w-8 text-emerald-600" />
-                            </div>
-                            <div className="flex-1">
-                              <h4 className="text-2xl font-bold text-gray-900 mb-2">Salary Structure & Calculations</h4>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                  <span className="text-gray-700">Annual Leave: <strong>21 days</strong></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                  <span className="text-gray-700">Financial Year: <strong>April - March</strong></span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                                  <span className="text-gray-700">Work Week: <strong>Sun Off | Sat 1st, 3rd</strong></span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* DB Salary Preview */}
-                        {salaryRows && salaryRows.length > 0 && (
-                          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
-                            <div className="flex items-center justify-between mb-3">
-                              <div>
-                                <h5 className="text-sm font-semibold text-gray-900">Current Salary Record</h5>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  Effective from: {salaryRows[0].effective_from ? new Date(salaryRows[0].effective_from).toLocaleDateString() : '—'}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500">Gross Salary</p>
-                                <p className="text-lg font-bold text-emerald-600">₹{(salaryRows[0].gross_salary ?? salaryRows[0].gross ?? 0).toLocaleString('en-IN')}</p>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => loadSalaryRows(selectedEmployee?.id)}
-                                className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
-                              >
-                                Reload from DB
-                              </button>
-                              {salaryRows[0].id && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const row = salaryRows[0];
-                                      setSalaryData(prev => ({
-                                        ...prev,
-                                        gross_salary: row.gross_salary ?? row.gross ?? prev.gross_salary,
-                                        basic_da: row.basic_da ?? row.da ?? prev.basic_da,
-                                        hra: row.hra ?? prev.hra,
-                                        conveyance_allowance: row.conveyance_allowance ?? row.conveyance ?? prev.conveyance_allowance,
-                                        other_allowance: row.other_allowance ?? prev.other_allowance,
-                                        employee_pf: row.employee_pf ?? row.pf ?? prev.employee_pf,
-                                        employee_pt: row.employee_pt ?? row.pt ?? prev.employee_pt,
-                                        pl_used: row.pl_used ?? prev.pl_used,
-                                        pl_balance: row.pl_balance ?? prev.pl_balance
-                                      }));
-                                      setEditingSalaryId(row.id);
-                                    }}
-                                    className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                                  >
-                                    Edit Record
-                                  </button>
-                                  {editingSalaryId && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingSalaryId(null);
-                                        setSalarySuccess('');
-                                        setSalaryError('');
-                                      }}
-                                      className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
-                                    >
-                                      Cancel Edit
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Main Content: Form + Live Preview */}
-                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                          {/* Left Column - Input Forms (2/3 width) */}
-                          <div className="xl:col-span-2 space-y-6">
-                            
-                            {/* Employee Info Card */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <UserGroupIcon className="h-5 w-5 text-blue-600" />
-                                  Employee Information
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Full Name</label>
-                                  <input
-                                    type="text"
-                                    value={`${formData.first_name || ''} ${formData.last_name || ''}`.trim()}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Designation</label>
-                                  <input
-                                    type="text"
-                                    value={formData.position || ''}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Leave Management */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 border-b border-amber-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CalendarDaysIcon className="h-5 w-5 text-amber-600" />
-                                  Leave Management
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Annual Leaves</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.annual_leaves || 21}
-                                    onChange={(e) => setSalaryField('annual_leaves', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">PL Used</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.pl_used || ''}
-                                    onChange={(e) => setSalaryField('pl_used', e.target.value, false)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">PL Balance</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.pl_balance || ''}
-                                    disabled
-                                    placeholder="Auto-calculated"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Attendance Details */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-purple-50 to-pink-50 px-4 py-3 border-b border-purple-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CalendarDaysIcon className="h-5 w-5 text-purple-600" />
-                                  Attendance & Working Days
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Month Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.month_days || ''}
-                                    onChange={(e) => setSalaryField('month_days', e.target.value)}
-                                    placeholder="e.g., 30"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Working Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.working_days || ''}
-                                    onChange={(e) => setSalaryField('working_days', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Week Offs</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.week_offs || ''}
-                                    onChange={(e) => setSalaryField('week_offs', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Absent Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.absent_days || ''}
-                                    onChange={(e) => setSalaryField('absent_days', e.target.value)}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Paid Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.paid_days || ''}
-                                    onChange={(e) => setSalaryField('paid_days', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Holiday Work Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.holiday_working_days || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, holiday_working_days: e.target.value })}
-                                    placeholder="From master"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Overtime */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-cyan-50 to-sky-50 px-4 py-3 border-b border-cyan-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <ClockIcon className="h-5 w-5 text-cyan-600" />
-                                  Overtime (OT)
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Hours</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.ot_hours || ''}
-                                    onChange={(e) => setSalaryField('ot_hours', e.target.value)}
-                                    step="0.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Rate Multiplier</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.ot_rate || ''}
-                                    onChange={(e) => setSalaryField('ot_rate', e.target.value)}
-                                    step="0.1"
-                                    placeholder="e.g., 1.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Salary Breakdown */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 border-b border-emerald-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CurrencyDollarIcon className="h-5 w-5 text-emerald-600" />
-                                  Salary Components
-                                </h5>
-                              </div>
-                              <div className="p-4 space-y-4">
-                                {/* Gross Salary */}
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                    Gross Salary <span className="text-emerald-600">(Primary Input)</span>
-                                  </label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.gross_salary || ''}
-                                    onChange={(e) => setSalaryField('gross_salary', e.target.value)}
-                                    className="w-full px-4 py-2.5 text-base font-semibold border-2 border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {/* Basic + DA */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      Basic + DA {salaryData.manual_overrides?.basic_da && <span className="text-amber-600">(Manual)</span>}
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">60% of (Adjusted Gross − Other Allow.)</p>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="number"
-                                        value={salaryData.basic_da || ''}
-                                        onChange={(e) => setSalaryField('basic_da', e.target.value)}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                      />
-                                      {salaryData.manual_overrides?.basic_da && (
-                                        <button
-                                          type="button"
-                                          onClick={() => resetFormula('basic_da')}
-                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
-                                        >
-                                          Reset
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* HRA */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      HRA {salaryData.manual_overrides?.hra && <span className="text-amber-600">(Manual)</span>}
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">20% of (Adjusted Gross − Other Allow.)</p>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="number"
-                                        value={salaryData.hra || ''}
-                                        onChange={(e) => setSalaryField('hra', e.target.value)}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                      />
-                                      {salaryData.manual_overrides?.hra && (
-                                        <button
-                                          type="button"
-                                          onClick={() => resetFormula('hra')}
-                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
-                                        >
-                                          Reset
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Conveyance */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      Conveyance Allowance {salaryData.manual_overrides?.conveyance_allowance && <span className="text-amber-600">(Manual)</span>}
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">10% of (Adjusted Gross − Other Allow.)</p>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="number"
-                                        value={salaryData.conveyance_allowance || ''}
-                                        onChange={(e) => setSalaryField('conveyance_allowance', e.target.value)}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                      />
-                                      {salaryData.manual_overrides?.conveyance_allowance && (
-                                        <button
-                                          type="button"
-                                          onClick={() => resetFormula('conveyance_allowance')}
-                                          className="px-2 text-xs text-amber-600 hover:text-amber-700"
-                                        >
-                                          Reset
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Call Allowance */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Call Allowance</label>
-                                    <input
-                                      type="number"
-                                      value={salaryData.call_allowance || ''}
-                                      onChange={(e) => setSalaryData({ ...salaryData, call_allowance: e.target.value })}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                    />
-                                  </div>
-
-                                  {/* Other Allowance */}
-                                  <div className="md:col-span-2">
-                                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                                      Other Allowance
-                                    </label>
-                                    <p className="text-[10px] text-gray-500 mb-1">Additive to CTC; excluded from base split when &gt; 0</p>
-                                    <input
-                                      type="number"
-                                      value={salaryData.other_allowance || ''}
-                                      onChange={(e) => setSalaryField('other_allowance', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Other Income */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 px-4 py-3 border-b border-teal-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <ArrowTrendingUpIcon className="h-5 w-5 text-teal-600" />
-                                  Additional Income
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Holiday Work (Hrs)</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.holiday_working_hours || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, holiday_working_hours: e.target.value })}
-                                    step="0.5"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Weekly Off Work</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.weekly_off_working || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, weekly_off_working: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">OT Charges</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.ot_charges || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, ot_charges: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Deductions - Employee */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-red-50 to-pink-50 px-4 py-3 border-b border-red-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <ArrowTrendingDownIcon className="h-5 w-5 text-red-600" />
-                                  Employee Deductions
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee PF</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employee_pf || ''}
-                                    onChange={(e) => setSalaryField('employee_pf', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                  <p className="text-[10px] text-gray-500 mt-1">12% of Basic+DA (Max ₹1800)</p>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Professional Tax</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employee_pt || salaryData.professional_tax || 200}
-                                    onChange={(e) => setSalaryData({ ...salaryData, employee_pt: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Retention Amount</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.retention_amount || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, retention_amount: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">MLWF</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.mlwf_employee || 5}
-                                    onChange={(e) => setSalaryData({ ...salaryData, mlwf_employee: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div className="md:col-span-2">
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Other Deductions</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.other_deductions || ''}
-                                    onChange={(e) => setSalaryData({ ...salaryData, other_deductions: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Employer Contributions */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 border-b border-indigo-100">
-                                <h5 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                  <CurrencyDollarIcon className="h-5 w-5 text-indigo-600" />
-                                  Employer Contributions
-                                </h5>
-                              </div>
-                              <div className="p-4 grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employer PF</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.employer_pf || ''}
-                                    onChange={(e) => setSalaryField('employer_pf', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                  <p className="text-[10px] text-gray-500 mt-1">13% of Basic+DA (Max ₹1950)</p>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Bonus</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.bonus || ''}
-                                    onChange={(e) => setSalaryField('bonus', e.target.value)}
-                                    placeholder="Auto-calc"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50"
-                                  />
-                                  <p className="text-[10px] text-gray-500 mt-1">8.33% of Basic+DA</p>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">MLWF Company</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.mlwf_company || salaryData.mlwf_employer || 13}
-                                    onChange={(e) => setSalaryData({ ...salaryData, mlwf_company: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Medical/PA Insurance</label>
-                                  <input
-                                    type="number"
-                                    value={salaryData.medical_insurance || salaryData.mediclaim || 500}
-                                    onChange={(e) => setSalaryData({ ...salaryData, medical_insurance: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex gap-3">
-                              <button
-                                type="button"
-                                onClick={submitSalaryMaster}
-                                disabled={salaryLoading}
-                                className="flex-1 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {salaryLoading ? 'Saving...' : (editingSalaryId ? 'Update Salary' : 'Save Salary')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={saveCalculatedSalary}
-                                disabled={salaryLoading}
-                                className="flex-1 px-6 py-3 border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                Save Calculated
-                              </button>
-                            </div>
-
-                            {/* Status Messages */}
-                            {(salaryError || salarySuccess) && (
-                              <div className="space-y-2">
-                                {salaryError && (
-                                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                                    <p className="text-sm text-red-700 font-medium">{salaryError}</p>
-                                  </div>
-                                )}
-                                {salarySuccess && (
-                                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
-                                    <p className="text-sm text-emerald-700 font-medium flex items-center gap-2">
-                                      <CheckCircleIcon className="h-5 w-5" />
-                                      {salarySuccess}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Right Column - Live Summary (1/3 width) */}
-                          <div className="xl:col-span-1">
-                            <div className="bg-white rounded-xl border-2 border-emerald-200 shadow-lg sticky top-6">
-                              {/* Header */}
-                              <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-4 rounded-t-xl">
-                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Live Summary</h3>
-                              </div>
-                              
-                              <div className="p-5 space-y-4">
-                                {/* In-Hand Salary */}
-                                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-4 border-2 border-emerald-200">
-                                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">In-Hand Salary</p>
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-sm text-emerald-600">₹</span>
-                                    <input
-                                      type="number"
-                                      value={salaryData.in_hand_salary || ''}
-                                      onChange={(e) => setSalaryField('in_hand_salary', e.target.value)}
-                                      className="w-full text-3xl font-bold text-emerald-700 bg-transparent border-0 p-0 focus:ring-0 text-right"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Employee CTC */}
-                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-4 border-2 border-orange-200">
-                                  <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide mb-2">Employee CTC</p>
-                                  <div className="flex items-baseline gap-1">
-                                    <span className="text-sm text-orange-600">₹</span>
-                                    <input
-                                      type="number"
-                                      value={salaryData.employee_ctc || salaryData.ctc || ''}
-                                      onChange={(e) => setSalaryField('employee_ctc', e.target.value)}
-                                      className="w-full text-3xl font-bold text-orange-700 bg-transparent border-0 p-0 focus:ring-0 text-right"
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Breakdown */}
-                                <div className="border-t-2 border-gray-200 pt-4 space-y-3">
-                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Breakdown</h4>
-                                  
-                                  <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Gross Salary:</span>
-                                      <span className="font-semibold text-gray-900">₹{(salaryData.gross_salary || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Adjusted Gross:</span>
-                                      <span className="font-semibold text-gray-900">₹{(salaryData.adjusted_gross || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Basic+DA:</span>
-                                      <span className="font-semibold text-gray-900">₹{(salaryData.basic_da || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">HRA:</span>
-                                      <span className="font-semibold text-gray-900">₹{(salaryData.hra || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Total Deductions:</span>
-                                      <span className="font-semibold text-red-600">-₹{(salaryData.total_deductions || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                      <span className="text-gray-600">Employer Cost:</span>
-                                      <span className="font-semibold text-purple-600">₹{(salaryData.employer_cost || 0).toLocaleString('en-IN')}</span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Attendance Summary */}
-                                <div className="border-t-2 border-gray-200 pt-4 space-y-2">
-                                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Attendance</h4>
-                                  
-                                  <div className="space-y-1.5 text-xs">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Working Days:</span>
-                                      <span className="font-medium">{salaryData.working_days || 0}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Paid Days:</span>
-                                      <span className="font-medium text-green-600">{salaryData.paid_days || 0}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Absent:</span>
-                                      <span className="font-medium text-red-600">{salaryData.absent_days || 0}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Navigation Buttons */}
                     <div className="flex justify-between items-center pt-6 border-t border-gray-200">
                       <button
@@ -4058,430 +3174,39 @@ export default function EmployeesPage() {
                       </button>
 
                       <div className="flex space-x-4">
-                        <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
-                        <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Updating...' : 'Update Employee'}</button>
+                        {editSubTabOrder.indexOf(editSubTab) === editSubTabOrder.length - 1 ? (
+                          <>
+                            <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
+                            <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Updating...' : 'Update Employee'}</button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const currentIndex = editSubTabOrder.indexOf(editSubTab);
+                              if (currentIndex < editSubTabOrder.length - 1) {
+                                setEditSubTab(editSubTabOrder[currentIndex + 1]);
+                              }
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#64126D] to-[#86288F] rounded-lg hover:from-[#86288F] hover:to-[#64126D]"
+                          >
+                            Next
+                            <ChevronRightIcon className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentIndex = editSubTabOrder.indexOf(editSubTab);
-                          if (currentIndex < editSubTabOrder.length - 1) {
-                            setEditSubTab(editSubTabOrder[currentIndex + 1]);
-                          }
-                        }}
-                        disabled={editSubTabOrder.indexOf(editSubTab) === editSubTabOrder.length - 1}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                      >
-                        Next
-                        <ChevronRightIcon className="h-4 w-4" />
-                      </button>
                     </div>
-
                   </form>
                   </div>
                 </div>
               </section>
             </div>
           )}
-
-          {activeTab === 'view' && selectedEmployee && (
-            <div className="bg-white shadow-lg rounded-2xl border border-gray-200 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
-              {/* Top header */}
-              <div className="px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-gray-50">
-                <div className="flex items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <Avatar src={selectedEmployee.profile_photo_url} firstName={selectedEmployee.first_name} lastName={selectedEmployee.last_name} size={72} />
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-2xl font-semibold text-gray-900">{selectedEmployee.first_name} {selectedEmployee.last_name}</h3>
-                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${
-                          selectedEmployee.status === 'active'
-                            ? 'bg-green-300 text-black'
-                            : selectedEmployee.status === 'inactive'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {selectedEmployee.status || 'active'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1">Employee ID • <span className="text-[#64126D] font-medium">{selectedEmployee.employee_id}</span></p>
-                      <p className="text-sm text-gray-500">{selectedEmployee.department || '—'} {selectedEmployee.position ? `• ${selectedEmployee.position}` : ''}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => openEditForm_safe(selectedEmployee)}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#64126D] text-white hover:bg-[#5a0f62] shadow-sm transition-colors"
-                    >
-                      <PencilIcon className="h-4 w-4" />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('list')}
-                      className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      Back to List
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="p-8 space-y-8">
-                {/* Basic Info */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Basic Information</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Employee ID</p>
-                      <p className="mt-1 font-medium text-[#64126D]">{selectedEmployee.employee_id}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Full Name</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.first_name} {selectedEmployee.last_name}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Email</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.email || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Phone</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.phone || '—'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Work Info */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Work Information</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Department</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.department || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Position</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.position || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Hire Date</p>
-                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.hire_date)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Salary</p>
-                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.salary)}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Contact Details & Misc (always shown) */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Contact & Location</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Address</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.address || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">City</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.city || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">State</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.state || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Country</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.country || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">PIN / ZIP</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.pin || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Phone</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.phone || selectedEmployee.mobile || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Personal Email</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.personal_email || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Emergency Contact</p>
-                      <p className="mt-1 font-medium text-black">{(selectedEmployee.emergency_contact_name ? `${selectedEmployee.emergency_contact_name}${selectedEmployee.emergency_contact_phone ? ' • ' + selectedEmployee.emergency_contact_phone : ''}` : '—')}</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Notes</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.notes || '—'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Personal & Government IDs */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Personal & Government IDs</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">DOB</p>
-                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.dob)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Marital Status</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.marital_status || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">PAN</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.pan || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Aadhar / National ID</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.aadhar || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">UAN</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.uan || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">ESI No</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.esi_no || '—'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Bank & Salary Details */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Bank & Salary</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Bank Name</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.bank_name || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Account Holder</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.account_holder_name || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Account No</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.bank_account_no || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">IFSC / Branch</p>
-                      <p className="mt-1 font-medium text-black">{(selectedEmployee.bank_ifsc || selectedEmployee.bank_branch) || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Gross Salary</p>
-                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.gross_salary || selectedEmployee.salary)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Net Salary</p>
-                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.net_salary)}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Statutory & Flags */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Statutory & Flags</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Bonus Eligible</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.bonus_eligible ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">PF Applicable</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_pf ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">MLWF</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_mlwf ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Professional Tax</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_pt ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">ESIC</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_esic ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">TDS</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.stat_tds ? 'Yes' : 'No'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Education & Experience */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Education & Experience</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Qualification</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.qualification || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Institute</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.institute || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Passing Year</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.passing_year || '—'}</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Work Experience</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.work_experience || '—'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Attendance / Exit */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Attendance & Exit</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Attendance ID</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.attendance_id || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Biometric Code</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.biometric_code || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Exit Date</p>
-                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.exit_date)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Exit Reason</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.exit_reason || '—'}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* System & Role Info */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">System & Role</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Username</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.username || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Role</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.role || selectedEmployee.system_role_name || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Created At</p>
-                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.created_at)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Updated At</p>
-                      <p className="mt-1 font-medium text-black">{formatDate(selectedEmployee.updated_at)}</p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Additional / HR Fields */}
-                <section className="rounded-xl border border-gray-200 bg-white">
-                  <div className="px-6 py-4 border-b border-gray-200">
-                    <h4 className="text-lg font-semibold text-gray-900">Additional HR Fields</h4>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Middle Name</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.middle_name || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Employee Type</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.employee_type || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Grade</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.grade || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Workplace</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.workplace || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Level</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.level || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Reporting To</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.reporting_to || selectedEmployee.manager_name || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">PF No</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.pf_no || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Leave Structure</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.leave_structure || '—'}</p>
-                    </div>
-                    {/* Formatted salary structure (human friendly) */}
-                    {renderSalaryStructure(selectedEmployee.salary_structure)}
-
-                    <div className="md:col-span-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Salary Structure (raw)</p>
-                      <pre className="mt-1 p-3 bg-gray-50 rounded text-xs text-gray-700 overflow-auto" style={{ maxHeight: 160 }}>
-                        {(() => {
-                          try {
-                            const raw = selectedEmployee.salary_structure;
-                            if (!raw) return '—';
-                            const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                            return JSON.stringify(obj, null, 2);
-                          } catch { return String(selectedEmployee.salary_structure).slice(0, 1000) || '—'; }
-                        })()}
-                      </pre>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Total Deductions</p>
-                      <p className="mt-1 font-medium text-black">{formatCurrency(selectedEmployee.total_deductions)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Gratuity No</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.gratuity_no || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Manager ID</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.manager_id || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-gray-500">Personal Mobile</p>
-                      <p className="mt-1 font-medium text-black">{selectedEmployee.mobile || '—'}</p>
-                    </div>
-                  </div>
-                </section>
-
-              </div>
-            </div>
-          )}
-          </div>
-
         </div>
       </div>
     </div>
-    </div>
-    </AccessGuard>
-  );
+  </div>
+</div>
+</AccessGuard>
+);
 }

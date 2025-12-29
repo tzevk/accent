@@ -94,10 +94,6 @@ function validateEmployeeData(employee, rowIndex) {
         department: safeString(getColumnValue(employee, ['Department', 'Dept'])) || null,
         position: safeString(getColumnValue(employee, ['Position', 'Designation', 'Role'])) || null,
         hire_date: safeString(getColumnValue(employee, ['Hire Date', 'HireDate', 'Joining Date', 'Date of Joining'])) || null,
-        salary: (() => {
-          const salaryValue = getColumnValue(employee, ['Salary', 'Pay', 'Compensation']);
-          return salaryValue ? parseFloat(salaryValue) : null;
-        })(),
         status: 'active',
         address: safeString(getColumnValue(employee, ['Address', 'Location'])) || null,
         notes: safeString(getColumnValue(employee, ['Notes', 'Remarks', 'Comments'])) || null
@@ -241,8 +237,8 @@ export async function POST(request) {
           await connection.execute(
             `INSERT INTO employees (
               employee_id, first_name, last_name, email, phone, department, 
-              position, hire_date, salary, status, address, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              position, hire_date, status, address, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               employee.employee_id,
               employee.first_name,
@@ -252,7 +248,6 @@ export async function POST(request) {
               employee.department,
               employee.position,
               employee.hire_date,
-              employee.salary,
               employee.status,
               employee.address,
               employee.notes
@@ -298,9 +293,9 @@ export async function GET(request) {
     if (format === 'excel' || format === 'xlsx') {
       // Create Excel template using ExcelJS
       const templateData = [
-        ['SR.NO', 'Employee Code', 'Full Name', 'Phone', 'Department', 'Position', 'Hire Date', 'Salary', 'Address', 'Notes'],
-        [1, 'EMP001', 'John Doe', '+1-555-0123', 'Engineering', 'Senior Developer', '2023-01-15', 85000, '123 Main St', 'Sample employee'],
-        [2, 'EMP002', 'Jane Smith', '+1-555-0124', 'Sales', 'Sales Manager', '2023-02-01', 75000, '456 Oak Ave', 'Sample employee']
+        ['SR.NO', 'Employee Code', 'Full Name', 'Phone', 'Department', 'Position', 'Hire Date', 'Address', 'Notes'],
+        [1, 'EMP001', 'John Doe', '+1-555-0123', 'Engineering', 'Senior Developer', '2023-01-15', '123 Main St', 'Sample employee'],
+        [2, 'EMP002', 'Jane Smith', '+1-555-0124', 'Sales', 'Sales Manager', '2023-02-01', '456 Oak Ave', 'Sample employee']
       ];
 
       const workbook = new ExcelJS.Workbook();
@@ -317,9 +312,9 @@ export async function GET(request) {
       });
     } else {
       // CSV template
-      const csvTemplate = `SR.NO,Employee Code,Full Name,Phone,Department,Position,Hire Date,Salary,Address,Notes
-1,EMP001,John Doe,+1-555-0123,Engineering,Senior Developer,2023-01-15,85000,123 Main St,Sample employee
-2,EMP002,Jane Smith,+1-555-0124,Sales,Sales Manager,2023-02-01,75000,456 Oak Ave,Sample employee`;
+      const csvTemplate = `SR.NO,Employee Code,Full Name,Phone,Department,Position,Hire Date,Address,Notes
+1,EMP001,John Doe,+1-555-0123,Engineering,Senior Developer,2023-01-15,123 Main St,Sample employee
+2,EMP002,Jane Smith,+1-555-0124,Sales,Sales Manager,2023-02-01,456 Oak Ave,Sample employee`;
 
       return new Response(csvTemplate, {
         headers: {

@@ -13,7 +13,8 @@ import {
   LockClosedIcon,
   XMarkIcon,
   ChevronRightIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  KeyIcon
 } from '@heroicons/react/24/outline';
 
 // Tab configuration
@@ -146,6 +147,8 @@ function UsersTabContent() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [selectedUserForReset, setSelectedUserForReset] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -365,13 +368,26 @@ function UsersTabContent() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button 
-                          onClick={() => goToPermissions(user.id)}
-                          className="text-[#64126D] hover:text-[#4a0d52] font-medium inline-flex items-center gap-1"
-                        >
-                          Manage Permissions
-                          <ChevronRightIcon className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          <button 
+                            onClick={() => {
+                              setSelectedUserForReset(user);
+                              setShowResetPasswordModal(true);
+                            }}
+                            className="text-amber-600 hover:text-amber-700 font-medium inline-flex items-center gap-1"
+                            title="Reset Password"
+                          >
+                            <KeyIcon className="h-4 w-4" />
+                            Reset Password
+                          </button>
+                          <button 
+                            onClick={() => goToPermissions(user.id)}
+                            className="text-[#64126D] hover:text-[#4a0d52] font-medium inline-flex items-center gap-1"
+                          >
+                            Manage Permissions
+                            <ChevronRightIcon className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -397,6 +413,22 @@ function UsersTabContent() {
           onSuccess={() => {
             setShowCreateModal(false);
             setSelectedEmployee(null);
+            fetchData();
+          }}
+        />
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetPasswordModal && selectedUserForReset && (
+        <ResetPasswordModal
+          user={selectedUserForReset}
+          onClose={() => {
+            setShowResetPasswordModal(false);
+            setSelectedUserForReset(null);
+          }}
+          onSuccess={() => {
+            setShowResetPasswordModal(false);
+            setSelectedUserForReset(null);
             fetchData();
           }}
         />
@@ -842,6 +874,165 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
                 </>
               ) : (
                 'Create & Set Permissions'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Reset Password Modal
+function ResetPasswordModal({ user, onClose, onSuccess }) {
+  const [formData, setFormData] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!formData.newPassword) {
+      setError('New password is required');
+      return;
+    }
+
+    if (formData.newPassword.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    if (formData.newPassword !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          new_password: formData.newPassword
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setSuccess(data.message || 'Password reset successfully');
+        setTimeout(() => {
+          onSuccess();
+        }, 1500);
+      } else {
+        setError(data.error || 'Failed to reset password');
+      }
+    } catch {
+      setError('Failed to reset password');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fullName = user.full_name || user.username;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between rounded-t-xl">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Reset Password</h3>
+            <p className="text-sm text-gray-500 mt-0.5">For user: {fullName}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <XMarkIcon className="h-6 w-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+            <div className="flex gap-2">
+              <KeyIcon className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-700">
+                This will reset the password for <strong>{user.username}</strong>. The user will need to use the new password on their next login.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              New Password <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="password"
+              value={formData.newPassword}
+              onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+              placeholder="Enter new password"
+              minLength={6}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Confirm Password <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="password"
+              value={formData.confirmPassword}
+              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
+              placeholder="Confirm new password"
+            />
+          </div>
+
+          {/* Success Message */}
+          {success && (
+            <div className="bg-green-50 text-green-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {success}
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || success}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <KeyIcon className="h-4 w-4" />
+                  Reset Password
+                </>
               )}
             </button>
           </div>

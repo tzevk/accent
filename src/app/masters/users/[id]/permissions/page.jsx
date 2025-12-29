@@ -24,6 +24,7 @@ const MODULE_FIELDS = {
   leads: {
     name: 'Leads',
     description: 'Lead management and tracking',
+    category: 'module',
     sections: {
       basic: {
         name: 'Basic Information',
@@ -64,6 +65,7 @@ const MODULE_FIELDS = {
   projects: {
     name: 'Projects',
     description: 'Project management',
+    category: 'module',
     sections: {
       basic: {
         name: 'Basic Information',
@@ -108,6 +110,7 @@ const MODULE_FIELDS = {
   employees: {
     name: 'Employees',
     description: 'Employee records management',
+    category: 'module',
     sections: {
       personal: {
         name: 'Personal Details',
@@ -154,20 +157,6 @@ const MODULE_FIELDS = {
           employment_status: { label: 'Employment Status', type: 'select' },
           status: { label: 'Status', type: 'select' },
           workplace: { label: 'Workplace', type: 'text' }
-        }
-      },
-      salary: {
-        name: 'Salary & Compensation',
-        fields: {
-          salary: { label: 'Salary', type: 'currency', sensitive: true },
-          basic_salary: { label: 'Basic Salary', type: 'currency', sensitive: true },
-          hra: { label: 'HRA', type: 'currency', sensitive: true },
-          conveyance: { label: 'Conveyance', type: 'currency', sensitive: true },
-          medical_allowance: { label: 'Medical Allowance', type: 'currency', sensitive: true },
-          special_allowance: { label: 'Special Allowance', type: 'currency', sensitive: true },
-          incentives: { label: 'Incentives', type: 'currency', sensitive: true },
-          deductions: { label: 'Deductions', type: 'currency', sensitive: true },
-          bonus_eligible: { label: 'Bonus Eligible', type: 'boolean' }
         }
       },
       statutory: {
@@ -292,6 +281,7 @@ const MODULE_FIELDS = {
   proposals: {
     name: 'Proposals',
     description: 'Proposal creation and management',
+    category: 'module',
     sections: {
       basic: {
         name: 'Basic Information',
@@ -328,6 +318,7 @@ const MODULE_FIELDS = {
   users: {
     name: 'Users',
     description: 'User account management',
+    category: 'module',
     sections: {
       basic: {
         name: 'Basic Information',
@@ -352,6 +343,7 @@ const MODULE_FIELDS = {
   dashboard: {
     name: 'Dashboard',
     description: 'Main dashboard and analytics',
+    category: 'module',
     sections: {
       widgets: {
         name: 'Dashboard Widgets',
@@ -370,6 +362,7 @@ const MODULE_FIELDS = {
   reports: {
     name: 'Reports',
     description: 'Reports and analytics',
+    category: 'module',
     sections: {
       types: {
         name: 'Report Types',
@@ -1120,7 +1113,7 @@ export default function UserPermissionsPage() {
                   <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     Main Modules
                   </div>
-                  {Object.keys(MODULE_FIELDS).filter(m => !MODULE_FIELDS[m].category || MODULE_FIELDS[m].category === 'module').filter(m => !['activities', 'software', 'documents', 'roles'].includes(m)).map(module => {
+                  {Object.keys(MODULE_FIELDS).filter(m => MODULE_FIELDS[m].category === 'module').map(module => {
                     const moduleDef = MODULE_FIELDS[module];
                     const fieldCounts = getFieldPermCount(module);
                     const moduleCount = getModulePermCount(module);
@@ -1161,7 +1154,7 @@ export default function UserPermissionsPage() {
                   <div className="px-3 py-1.5 text-xs font-semibold text-purple-600 uppercase tracking-wide bg-purple-50 rounded">
                     Masters
                   </div>
-                  {Object.keys(MODULE_FIELDS).filter(m => MODULE_FIELDS[m].category === 'master' || ['activities', 'software', 'documents', 'roles'].includes(m)).map(module => {
+                  {Object.keys(MODULE_FIELDS).filter(m => MODULE_FIELDS[m].category === 'master').map(module => {
                     const moduleDef = MODULE_FIELDS[module];
                     const fieldCounts = getFieldPermCount(module);
                     const moduleCount = getModulePermCount(module);

@@ -58,11 +58,6 @@ async function ensureEmployeesTable(connection) {
     ['institute', "VARCHAR(150)"],
     ['passing_year', "VARCHAR(4)"],
     ['work_experience', "TEXT"],
-    ['leave_structure', "TEXT"],
-    ['salary_structure', "TEXT"],
-    ['gross_salary', "DECIMAL(12,2)"],
-    ['total_deductions', "DECIMAL(12,2)"],
-    ['net_salary', "DECIMAL(12,2)"],
     ['bank_account_no', "VARCHAR(50)"],
     ['bank_ifsc', "VARCHAR(20)"],
     ['bank_name', "VARCHAR(100)"],
@@ -106,7 +101,6 @@ async function ensureBaseEmployeesTable(connection) {
       department VARCHAR(50),
       position VARCHAR(100),
       hire_date DATE,
-      salary DECIMAL(10, 2),
       status ENUM('active', 'inactive', 'terminated') DEFAULT 'active',
       manager_id INT,
       address TEXT,
@@ -298,12 +292,12 @@ export async function POST(request) {
     // Dynamic insert for provided fields
     const allowedFields = [
       'employee_id','first_name','middle_name','last_name','username','email','personal_email','phone','mobile',
-      'department','position','hire_date','joining_date','salary','status','employment_status','manager_id','reporting_to',
+      'department','position','hire_date','joining_date','status','employment_status','manager_id','reporting_to',
       'address','present_address','city','pin','state','country','gender','employee_type','grade','workplace','level',
       'pf_no','dob','marital_status','role','profile_photo_url','emergency_contact_name','emergency_contact_phone','notes',
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
-      'qualification','institute','passing_year','work_experience','leave_structure','salary_structure',
-      'gross_salary','total_deductions','net_salary','bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
+      'qualification','institute','passing_year','work_experience',
+      'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
       'attendance_id','biometric_code','exit_date','exit_reason'
     ];
     // Only include columns that actually exist in DB
@@ -447,12 +441,12 @@ export async function PUT(request) {
 
     const allowedFields = [
       'employee_id','first_name','middle_name','last_name','username','email','personal_email','phone','mobile',
-      'department','position','hire_date','joining_date','salary','status','employment_status','manager_id','reporting_to',
+      'department','position','hire_date','joining_date','status','employment_status','manager_id','reporting_to',
       'address','present_address','city','pin','state','country','gender','employee_type','grade','workplace','level',
       'pf_no','dob','marital_status','role','profile_photo_url','emergency_contact_name','emergency_contact_phone','notes',
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
-      'qualification','institute','passing_year','work_experience','leave_structure','salary_structure',
-      'gross_salary','total_deductions','net_salary','bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
+      'qualification','institute','passing_year','work_experience',
+      'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
       'attendance_id','biometric_code','exit_date','exit_reason'
     ];
     const existingCols = await getExistingColumns(connection);
