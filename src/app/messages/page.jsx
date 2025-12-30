@@ -895,8 +895,8 @@ export default function MessagesPage() {
             /* Compose View */
             <div className="flex flex-col h-full">
               {/* Compose Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h2 className="text-lg font-semibold text-gray-900">New Message</h2>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+                <h2 className="text-base font-semibold text-gray-900">New Message</h2>
                 <button
                   onClick={() => setShowCompose(false)}
                   className="p-2 hover:bg-gray-200 rounded-lg text-gray-500"
@@ -906,9 +906,9 @@ export default function MessagesPage() {
               </div>
               
               {/* Compose Form */}
-              <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+              <div className="flex-1 flex flex-col min-h-0">
                 {/* To Field */}
-                <div className="flex items-start border-b border-gray-100 px-6 py-3 relative">
+                <div className="flex items-start border-b border-gray-100 px-4 py-2 relative flex-shrink-0">
                   <label className="w-16 text-sm text-gray-500 pt-2">To:</label>
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2 min-h-[36px]">
@@ -954,7 +954,7 @@ export default function MessagesPage() {
                 </div>
                 
                 {/* Subject Field */}
-                <div className="flex items-center border-b border-gray-100 px-6 py-3">
+                <div className="flex items-center border-b border-gray-100 px-4 py-2 flex-shrink-0">
                   <label className="w-16 text-sm text-gray-500">Subject:</label>
                   <input
                     type="text"
@@ -966,7 +966,7 @@ export default function MessagesPage() {
                 </div>
                 
                 {/* Formatting Toolbar - Outlook Style */}
-                <div className="flex items-center gap-0.5 px-4 py-2 border-b border-gray-100 bg-gray-50 overflow-x-auto flex-nowrap">
+                <div className="flex items-center gap-0.5 px-4 py-1.5 border-b border-gray-100 bg-gray-50 overflow-x-auto flex-nowrap flex-shrink-0">
                   {/* Font Family */}
                   <div className="relative" data-dropdown>
                     <button 
@@ -1170,7 +1170,7 @@ export default function MessagesPage() {
                 </div>
                 
                 {/* Message Body - Rich Text Editor */}
-                <div className="px-4 py-3">
+                <div className="flex-1 px-4 py-2 min-h-0">
                   <div
                     ref={composeEditorRef}
                     contentEditable
@@ -1178,7 +1178,7 @@ export default function MessagesPage() {
                     onMouseUp={updateActiveFormats}
                     onKeyUp={updateActiveFormats}
                     onKeyDown={handleEditorKeyDown}
-                    className="w-full text-[15px] leading-relaxed text-gray-700 focus:outline-none min-h-[120px] max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg p-4"
+                    className="w-full h-full text-[15px] leading-relaxed text-gray-700 focus:outline-none overflow-y-auto border border-gray-200 rounded-lg p-4"
                     style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
                     data-placeholder="Write your message..."
                     suppressContentEditableWarning={true}
@@ -1187,7 +1187,7 @@ export default function MessagesPage() {
                 
                 {/* Attachments */}
                 {attachments.length > 0 && (
-                  <div className="px-4 py-3">
+                  <div className="px-4 py-2 flex-shrink-0">
                     <div className="flex flex-wrap gap-2">
                       {attachments.map((att, idx) => (
                         <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
@@ -1204,7 +1204,7 @@ export default function MessagesPage() {
               </div>
               
               {/* Compose Footer - Always visible */}
-              <div className="border-t border-gray-200 px-4 py-3 flex items-center justify-between bg-gray-50 flex-shrink-0">
+              <div className="border-t border-gray-200 px-4 py-2 flex items-center justify-between bg-gray-50 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={sendMessage}

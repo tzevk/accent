@@ -18,8 +18,13 @@ export default function Home() {
         const data = await res.json();
         
         if (data.authenticated && data.user) {
-          // User is logged in, redirect to dashboard
-          router.push('/dashboard');
+          // User is logged in, redirect based on role
+          // Super admin goes to admin productivity dashboard
+          if (data.user.is_super_admin) {
+            router.push('/admin/productivity');
+          } else {
+            router.push('/dashboard');
+          }
         } else {
           // User is not logged in, redirect to signin
           router.push('/signin');
