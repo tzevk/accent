@@ -175,9 +175,9 @@ export default function ActivityMasterPage() {
       return;
     }
 
-    // Parse activities - split by newline, bullet points, numbers, or commas
+    // Parse activities - split by newline
     const activityLines = bulkActivities
-      .split(/[\n,]/)
+      .split(/\n/)
       .map(line => line.trim())
       .map(line => line.replace(/^[\s•\-\*\d\.]+/, '').trim()) // Remove bullet points, numbers, dashes
       .filter(line => line.length > 0);
@@ -606,12 +606,12 @@ export default function ActivityMasterPage() {
                         <div className="flex items-start gap-3">
                           <div className="flex-1">
                             <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Activities (one per line or separated by commas)
+                              Activities (one per line)
                             </label>
                             <textarea
                               value={bulkActivities}
                               onChange={(e) => setBulkActivities(e.target.value)}
-                              placeholder={"• Activity 1\n• Activity 2\n• Activity 3\n\nOr: Activity 1, Activity 2, Activity 3"}
+                              placeholder={"• Activity 1\n• Activity 2\n• Activity 3"}
                               rows={5}
                               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent font-mono"
                             />
