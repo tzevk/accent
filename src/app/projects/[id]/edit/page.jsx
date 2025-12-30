@@ -413,7 +413,7 @@ function EditProjectForm() {
           console.log('[fetchProject] Project name:', project.name);
           console.log('[fetchProject] Project client:', project.client_name);
           setForm({
-            project_id: project.project_id || '',
+            project_id: project.project_code || project.project_id || '',
             name: project.name || '',
             client_name: project.client_name || '',
             client_contact_details: project.client_contact_details || '',

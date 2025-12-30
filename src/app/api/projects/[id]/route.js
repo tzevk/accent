@@ -504,6 +504,8 @@ export async function PUT(request, context) {
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS company_id INT');
+      // project_code stores the human-readable "Project Number" that can be edited
+      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code VARCHAR(100)');
 
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_id VARCHAR(100)');
       await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_contact_details TEXT');
@@ -596,9 +598,8 @@ export async function PUT(request, context) {
 
     const fieldValues = [
       ['name', name === undefined ? null : name],
-      // NOTE: project_id is the primary key and should NOT be updated here.
-      // Updating it would violate foreign key constraints (e.g., user_activity_assignments).
-      // The project_id is used to identify the record via the WHERE clause, not to be changed.
+      // project_code stores the human-readable "Project Number" that can be edited
+      ['project_code', project_id === undefined ? null : project_id],
       ['client_name', clientNameParam],
       ['client_contact_details', client_contact_details === undefined ? null : client_contact_details],
       ['project_location_country', project_location_country === undefined ? null : project_location_country],
@@ -802,7 +803,14 @@ export async function PUT(request, context) {
           for (const activity of activities) {
             if (activity.assigned_user && activity.assigned_user !== '') {
               const userId = parseInt(activity.assigned_user);
-              if (!isNaN(userId)) {
+              if (!isNaN(userId) && userId > 0) {
+                // Verify user exists before inserting
+                const [userCheck] = await db.execute('SELECT id FROM users WHERE id = ?', [userId]);
+                if (userCheck.length === 0) {
+                  console.warn(`Skipping activity assignment: user_id ${userId} does not exist`);
+                  continue;
+                }
+                
                 // Use activity_name (frontend field) with fallback to name
                 const activityName = activity.activity_name || activity.name || '';
                 const subActivityName = activity.sub_activity_name || '';

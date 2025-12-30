@@ -200,7 +200,6 @@ function AdminProjectsOverview() {
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Project</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Client</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600 w-28">Status</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-600 w-40">Progress</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600 w-28">Start Date</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600 w-28">Deadline</th>
               <th className="px-4 py-3 text-center font-semibold text-gray-600 w-20">Action</th>
@@ -209,7 +208,7 @@ function AdminProjectsOverview() {
           <tbody className="divide-y divide-gray-100">
             {filteredProjects.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
                   <FolderIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium">No projects found</p>
                   <p className="text-sm mt-1">Try adjusting your search or filters</p>
@@ -219,7 +218,6 @@ function AdminProjectsOverview() {
               filteredProjects.slice(0, 20).map((project, index) => {
                 const statusInfo = getStatusInfo(project.status);
                 const StatusIcon = statusInfo.icon;
-                const progress = calculateProgress(project);
                 
                 return (
                   <tr key={project.project_id} className="hover:bg-purple-50/40 transition-colors">
@@ -240,22 +238,6 @@ function AdminProjectsOverview() {
                         <StatusIcon className="h-3.5 w-3.5" />
                         {statusInfo.label}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-2 rounded-full transition-all ${
-                              progress >= 100 ? 'bg-green-500' : 
-                              progress >= 75 ? 'bg-blue-500' : 
-                              progress >= 50 ? 'bg-purple-500' : 
-                              progress >= 25 ? 'bg-yellow-500' : 'bg-gray-400'
-                            }`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-gray-600 w-10">{progress}%</span>
-                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 text-sm">{formatDate(project.start_date)}</td>
                     <td className="px-4 py-3 text-gray-600 text-sm">

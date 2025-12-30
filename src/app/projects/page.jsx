@@ -583,7 +583,7 @@ function ProjectsInner() {
                               .sort((a, b) => {
                                 const getVal = (p, field) => {
                                   switch (field) {
-                                    case 'project_id': return String(p.project_id || p.id || '');
+                                    case 'project_id': return String(p.project_code || p.project_id || p.id || '');
                                     case 'name': return String(p.name || '');
                                     case 'company_name': return String(p.company_name || '');
                                     case 'start_date': return toDateKey(p.start_date) || toDateKey(p.target_date) || '';
@@ -604,7 +604,7 @@ function ProjectsInner() {
                               >
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-sm font-mono text-gray-900">
-                                    {project.project_id || '-'}
+                                    {project.project_code || project.project_id || '-'}
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">

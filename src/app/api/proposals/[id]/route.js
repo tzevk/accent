@@ -502,6 +502,9 @@ export async function POST(request, { params }) {
   }
 }
 
+// Cache to track if schema migrations have been run this session
+let proposalsSchemaInitialized = false;
+
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
@@ -511,92 +514,100 @@ export async function PUT(request, { params }) {
     const { dbConnect } = await import('@/utils/database');
     const pool = await dbConnect();
     
-    // Ensure all required columns exist before updating
-    const alterStatements = [
-      // Quotation related fields
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_number VARCHAR(100)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_date DATE',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_number VARCHAR(100)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_date DATE',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_validity VARCHAR(255)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billing_payment_terms TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS other_terms TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS general_terms TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS additional_fields TEXT',
+    // Only run ALTER statements once per server session, not on every save
+    if (!proposalsSchemaInitialized) {
+      const alterStatements = [
+        // Quotation related fields
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_number VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_date DATE',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_number VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_date DATE',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS quotation_validity VARCHAR(255)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS billing_payment_terms TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS other_terms TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS general_terms TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS additional_fields TEXT',
+        
+        // Input documents & deliverables
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS input_document TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS documents_list JSON',
+        
+        // Software & schedule fields
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS software VARCHAR(255)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS software_items JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS duration VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS site_visit TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS mode_of_delivery VARCHAR(255)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS revision VARCHAR(255)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS exclusions TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_schedule TEXT',
+        
+        // Meetings
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS in_house_meeting TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS kickoff_meeting_date DATE',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_meeting_date DATE',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS next_internal_meeting DATE',
+        
+        // Disciplines & activities
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS disciplines JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS activities JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS discipline_descriptions JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planning_activities_list JSON',
+        
+        // Commercial items
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS commercial_items JSON',
+        
+        // Hours tracking
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_total DECIMAL(10,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_total DECIMAL(10,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_by_discipline JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_by_discipline JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_per_activity JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_per_activity JSON',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS hours_variance_total DECIMAL(10,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS hours_variance_percentage DECIMAL(5,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS productivity_index DECIMAL(5,2)',
+        
+        // Client & location
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS client_contact_details TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_country VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_city VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_site VARCHAR(255)',
+        
+        // Financial
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS budget DECIMAL(15,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS cost_to_company DECIMAL(15,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS profitability_estimate DECIMAL(5,2)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS major_risks TEXT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS mitigation_plans TEXT',
+        
+        // Schedule
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_start_date DATE',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_end_date DATE',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_duration_planned VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS target_date DATE',
+        
+        // Status & progress
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS progress INT DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_id INT',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_no VARCHAR(100)',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_type VARCHAR(50)',
+        
+        // Pricing fields based on project type
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS lumpsum_cost DECIMAL(15,2) DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_lines INT DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS per_line_charges DECIMAL(15,2) DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_line_cost DECIMAL(15,2) DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_manhours DECIMAL(10,2) DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS manhour_charges DECIMAL(15,2) DEFAULT 0',
+        'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS total_manhour_cost DECIMAL(15,2) DEFAULT 0',
+      ];
       
-      // Input documents & deliverables
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS input_document TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS documents_list JSON',
-      
-      // Software & schedule fields
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS software VARCHAR(255)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS software_items JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS duration VARCHAR(100)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS site_visit TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS mode_of_delivery VARCHAR(255)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS revision VARCHAR(255)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS exclusions TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_schedule TEXT',
-      
-      // Meetings
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS in_house_meeting TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS kickoff_meeting_date DATE',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS internal_meeting_date DATE',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS next_internal_meeting DATE',
-      
-      // Disciplines & activities
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS disciplines JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS activities JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS discipline_descriptions JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planning_activities_list JSON',
-      
-      // Commercial items
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS commercial_items JSON',
-      
-      // Hours tracking
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_total DECIMAL(10,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_total DECIMAL(10,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_by_discipline JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_by_discipline JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_hours_per_activity JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS actual_hours_per_activity JSON',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS hours_variance_total DECIMAL(10,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS hours_variance_percentage DECIMAL(5,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS productivity_index DECIMAL(5,2)',
-      
-      // Client & location
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS client_contact_details TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_country VARCHAR(100)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_city VARCHAR(100)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_location_site VARCHAR(255)',
-      
-      // Financial
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS budget DECIMAL(15,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS cost_to_company DECIMAL(15,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS profitability_estimate DECIMAL(5,2)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS major_risks TEXT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS mitigation_plans TEXT',
-      
-      // Schedule
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_start_date DATE',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS planned_end_date DATE',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_duration_planned VARCHAR(100)',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS target_date DATE',
-      
-      // Status & progress
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS progress INT DEFAULT 0',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_id INT',
-      'ALTER TABLE proposals ADD COLUMN IF NOT EXISTS enquiry_no VARCHAR(100)',
-    ];
-    
-    for (const stmt of alterStatements) {
-      try {
-        await pool.execute(stmt);
-      } catch (e) {
-        // Ignore errors - column might already exist or syntax not supported
-      }
+      // Run all ALTER statements in parallel for faster execution
+      await Promise.allSettled(alterStatements.map(stmt => pool.execute(stmt).catch(() => {})));
+      proposalsSchemaInitialized = true;
     }
     
     // Build the UPDATE dynamically so we only try to set columns that actually exist
@@ -647,7 +658,16 @@ export async function PUT(request, { params }) {
     pushIf('company_id', body.company_id ?? null);
     pushIf('industry', body.industry ?? null);
     pushIf('contract_type', body.contract_type ?? null);
-    pushIf('currency', body.currency ?? null);
+    pushIf('project_type', body.project_type ?? null);
+    
+    // Pricing fields based on project type
+    pushIf('lumpsum_cost', body.lumpsum_cost ?? null);
+    pushIf('total_lines', body.total_lines ?? null);
+    pushIf('per_line_charges', body.per_line_charges ?? null);
+    pushIf('total_line_cost', body.total_line_cost ?? null);
+    pushIf('total_manhours', body.total_manhours ?? null);
+    pushIf('manhour_charges', body.manhour_charges ?? null);
+    pushIf('total_manhour_cost', body.total_manhour_cost ?? null);
     
     // Schedule fields
     pushIf('planned_start_date', body.planned_start_date ?? null);

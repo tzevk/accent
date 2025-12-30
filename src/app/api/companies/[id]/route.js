@@ -58,7 +58,12 @@ export async function PUT(request, { params }) {
       description,
       founded_year,
       revenue,
-      notes
+      notes,
+      location,
+      contact_person,
+      designation,
+      mobile_number,
+      sector
     } = data;
 
     const db = await dbConnect();
@@ -82,12 +87,18 @@ export async function PUT(request, { params }) {
         founded_year = COALESCE(?, founded_year),
         revenue = COALESCE(?, revenue),
         notes = COALESCE(?, notes),
+        location = COALESCE(?, location),
+        contact_person = COALESCE(?, contact_person),
+        designation = COALESCE(?, designation),
+        mobile_number = COALESCE(?, mobile_number),
+        sector = COALESCE(?, sector),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
         company_id, company_name, industry, company_size, website, phone, email,
         address, city, state, country, postal_code, description,
-        founded_year, revenue, notes, companyId
+        founded_year, revenue, notes, location, contact_person, designation,
+        mobile_number, sector, companyId
       ]
     );
     

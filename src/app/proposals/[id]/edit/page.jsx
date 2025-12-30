@@ -19,6 +19,15 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
+  IdentificationIcon,
+  UserGroupIcon,
+  TagIcon,
+  AdjustmentsHorizontalIcon,
+  DocumentDuplicateIcon,
+  InformationCircleIcon,
+  ClipboardDocumentListIcon,
+  CreditCardIcon,
+  ComputerDesktopIcon,
 } from '@heroicons/react/24/outline';
 
 export default function EditProposalPage() {
@@ -39,8 +48,17 @@ export default function EditProposalPage() {
     client_name: '',
     industry: '',
     contract_type: '',
+    project_type: '',
     proposal_value: 0,
-    currency: 'INR',
+    
+    // Pricing fields based on project type
+    lumpsum_cost: 0,
+    total_lines: 0,
+    per_line_charges: 0,
+    total_line_cost: 0,
+    total_manhours: 0,
+    manhour_charges: 0,
+    total_manhour_cost: 0,
 
     // Schedule (minimal here; notes are in Scope)
     planned_start_date: '',
@@ -200,8 +218,18 @@ Dispute Resolution
             
             industry: p.industry ?? '',
             contract_type: p.contract_type ?? '',
+            project_type: p.project_type ?? '',
             proposal_value: p.proposal_value ?? p.value ?? 0,
-            currency: p.currency ?? prev.currency,
+            
+            // Pricing fields based on project type
+            lumpsum_cost: p.lumpsum_cost ?? 0,
+            total_lines: p.total_lines ?? 0,
+            per_line_charges: p.per_line_charges ?? 0,
+            total_line_cost: p.total_line_cost ?? 0,
+            total_manhours: p.total_manhours ?? 0,
+            manhour_charges: p.manhour_charges ?? 0,
+            total_manhour_cost: p.total_manhour_cost ?? 0,
+            
             payment_terms: p.payment_terms ?? '',
             planned_start_date: p.planned_start_date ?? '',
             planned_end_date: p.planned_end_date ?? '',
@@ -574,70 +602,205 @@ function fieldSetter(setter) {
     }));
 }
 
-/* -------------------------- Forms -------------------------- */
-
 function BasicInfoForm({ proposalData, setProposalData }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
 
+  const CardHeader = ({ icon: Icon, title, subtitle, color }) => (
+    <div className={`flex items-center gap-3 pb-4 mb-4 border-b border-${color}-200`}>
+      <div className={`p-2 rounded-lg bg-${color}-100`}>
+        <Icon className={`h-5 w-5 text-${color}-600`} />
+      </div>
+      <div>
+        <h3 className="font-semibold text-gray-900">{title}</h3>
+        <p className="text-xs text-gray-500">{subtitle}</p>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-8">
-      <Section title="Identification" subtitle="Basic proposal information" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-4">
-          <ProposalIdField label="Proposal ID *" value={proposalData.proposal_id} onChange={v => set('proposal_id', v)} required />
-          <Text label="Proposal Title *" value={proposalData.proposal_title} onChange={v => set('proposal_title', v)} required />
-          <Textarea label="Description" rows={4} value={proposalData.description} onChange={v => set('description', v)} />
-          <Text label="Client Name" value={proposalData.client_name} onChange={v => set('client_name', v)} />
-          {/* Project Manager removed from proposal form */}
-          <Text label="Industry" placeholder="e.g., Oil & Gas, Petrochemical…" value={proposalData.industry} onChange={v => set('industry', v)} />
-          <Text label="Contract Type" placeholder="e.g., EPC, Consultancy, T&M…" value={proposalData.contract_type} onChange={v => set('contract_type', v)} />
+    <div>
+      {/* 4-Column Grid Layout with Equal Dimensions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        
+        {/* Column 1: Identification */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-purple-200">
+            <div className="p-2 rounded-lg bg-purple-100">
+              <IdentificationIcon className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Identification</h3>
+              <p className="text-xs text-gray-500">Basic proposal information</p>
+            </div>
+          </div>
+          <div className="space-y-4 flex-1">
+            <ProposalIdField label="Proposal ID *" value={proposalData.proposal_id} onChange={v => set('proposal_id', v)} required />
+            <Text label="Proposal Title *" value={proposalData.proposal_title} onChange={v => set('proposal_title', v)} required />
+            <Textarea label="Description" rows={4} value={proposalData.description} onChange={v => set('description', v)} />
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <Section title="Status & Control" />
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Status"
-              value={proposalData.status}
-              onChange={v => set('status', v)}
-              options={[
-                { value: 'DRAFT', label: 'Draft' },
-                { value: 'SUBMITTED', label: 'Submitted' },
-                { value: 'APPROVED', label: 'Approved' },
-                { value: 'REJECTED', label: 'Rejected' },
-              ]}
-            />
-            <Select
-              label="Priority"
-              value={proposalData.priority}
-              onChange={v => set('priority', v)}
-              options={[
-                { value: 'LOW', label: 'Low' },
-                { value: 'MEDIUM', label: 'Medium' },
-                { value: 'HIGH', label: 'High' },
-              ]}
-            />
+        {/* Column 2: Client Details */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-blue-200">
+            <div className="p-2 rounded-lg bg-blue-100">
+              <UserGroupIcon className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Client Details</h3>
+              <p className="text-xs text-gray-500">Client information</p>
+            </div>
           </div>
+          <div className="space-y-4 flex-1">
+            <Text label="Client Name" value={proposalData.client_name} onChange={v => set('client_name', v)} />
+            <Text label="Industry" placeholder="e.g., Oil & Gas, Petrochemical…" value={proposalData.industry} onChange={v => set('industry', v)} />
+          </div>
+        </div>
 
-          <Number label="Progress (%)" min={0} max={100} step={0.1} value={proposalData.progress} onChange={v => set('progress', v)} />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Number label="Proposal Value" min={0} step={0.01} value={proposalData.proposal_value} onChange={v => set('proposal_value', v)} />
+        {/* Column 3: Types */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-amber-200">
+            <div className="p-2 rounded-lg bg-amber-100">
+              <TagIcon className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Types</h3>
+              <p className="text-xs text-gray-500">Contract and project types</p>
+            </div>
+          </div>
+          <div className="space-y-4 flex-1">
+            <Text label="Contract Type" placeholder="e.g., EPC, Consultancy, T&M…" value={proposalData.contract_type} onChange={v => set('contract_type', v)} />
             <Select
-              label="Currency"
-              value={proposalData.currency}
-              onChange={v => set('currency', v)}
+              label="Type of Project"
+              value={proposalData.project_type}
+              onChange={v => set('project_type', v)}
               options={[
-                { value: 'INR', label: 'INR' },
-                { value: 'USD', label: 'USD' },
-                { value: 'EUR', label: 'EUR' },
-                { value: 'GBP', label: 'GBP' },
+                { value: '', label: 'Select Type' },
+                { value: 'lumpsum', label: 'Lumpsum' },
+                { value: 'manhours_basis', label: 'Manhours Basis' },
+                { value: 'line_wise', label: 'Line Wise' },
               ]}
             />
+            
+            {/* Conditional fields based on project type */}
+            {proposalData.project_type === 'lumpsum' && (
+              <div className="pt-3 border-t border-amber-100">
+                <Number 
+                  label="Lumpsum Cost" 
+                  min={0} 
+                  step={0.01} 
+                  value={proposalData.lumpsum_cost} 
+                  onChange={v => set('lumpsum_cost', v)} 
+                />
+              </div>
+            )}
+            
+            {proposalData.project_type === 'line_wise' && (
+              <div className="pt-3 border-t border-amber-100 space-y-3">
+                <Number 
+                  label="Total Lines" 
+                  min={0} 
+                  step={1} 
+                  value={proposalData.total_lines} 
+                  onChange={v => {
+                    set('total_lines', v);
+                    const totalCost = (v || 0) * (proposalData.per_line_charges || 0);
+                    set('total_line_cost', totalCost);
+                  }} 
+                />
+                <Number 
+                  label="Per Line Charges" 
+                  min={0} 
+                  step={0.01} 
+                  value={proposalData.per_line_charges} 
+                  onChange={v => {
+                    set('per_line_charges', v);
+                    const totalCost = (proposalData.total_lines || 0) * (v || 0);
+                    set('total_line_cost', totalCost);
+                  }} 
+                />
+                <div className="bg-amber-50 p-3 rounded-lg">
+                  <label className="block text-xs font-medium text-amber-700 mb-1">Total Cost (Auto-calculated)</label>
+                  <div className="text-lg font-semibold text-amber-900">₹ {(proposalData.total_line_cost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                </div>
+              </div>
+            )}
+            
+            {proposalData.project_type === 'manhours_basis' && (
+              <div className="pt-3 border-t border-amber-100 space-y-3">
+                <Number 
+                  label="Total Manhours" 
+                  min={0} 
+                  step={0.5} 
+                  value={proposalData.total_manhours} 
+                  onChange={v => {
+                    set('total_manhours', v);
+                    const totalCost = (v || 0) * (proposalData.manhour_charges || 0);
+                    set('total_manhour_cost', totalCost);
+                  }} 
+                />
+                <Number 
+                  label="Manhour Charges" 
+                  min={0} 
+                  step={0.01} 
+                  value={proposalData.manhour_charges} 
+                  onChange={v => {
+                    set('manhour_charges', v);
+                    const totalCost = (proposalData.total_manhours || 0) * (v || 0);
+                    set('total_manhour_cost', totalCost);
+                  }} 
+                />
+                <div className="bg-amber-50 p-3 rounded-lg">
+                  <label className="block text-xs font-medium text-amber-700 mb-1">Total Manhour Cost (Auto-calculated)</label>
+                  <div className="text-lg font-semibold text-amber-900">₹ {(proposalData.total_manhour_cost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                </div>
+              </div>
+            )}
           </div>
+        </div>
 
-          <Textarea label="Payment Terms" rows={3} value={proposalData.payment_terms} onChange={v => set('payment_terms', v)} />
-          <Textarea label="Notes" rows={4} value={proposalData.notes} onChange={v => set('notes', v)} />
+        {/* Column 4: Status & Control */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-green-200">
+            <div className="p-2 rounded-lg bg-green-100">
+              <AdjustmentsHorizontalIcon className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Status & Control</h3>
+              <p className="text-xs text-gray-500">Status and tracking</p>
+            </div>
+          </div>
+          <div className="space-y-4 flex-1">
+            <div className="grid grid-cols-2 gap-3">
+              <Select
+                label="Status"
+                value={proposalData.status}
+                onChange={v => set('status', v)}
+                options={[
+                  { value: 'DRAFT', label: 'Draft' },
+                  { value: 'SUBMITTED', label: 'Submitted' },
+                  { value: 'APPROVED', label: 'Approved' },
+                  { value: 'REJECTED', label: 'Rejected' },
+                ]}
+              />
+              <Select
+                label="Priority"
+                value={proposalData.priority}
+                onChange={v => set('priority', v)}
+                options={[
+                  { value: 'LOW', label: 'Low' },
+                  { value: 'MEDIUM', label: 'Medium' },
+                  { value: 'HIGH', label: 'High' },
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Number label="Progress (%)" min={0} max={100} step={0.1} value={proposalData.progress} onChange={v => set('progress', v)} />
+              <Number label="Proposal Value" min={0} step={0.01} value={proposalData.proposal_value} onChange={v => set('proposal_value', v)} />
+            </div>
+            <Textarea label="Payment Terms" rows={2} value={proposalData.payment_terms} onChange={v => set('payment_terms', v)} />
+            <Textarea label="Notes" rows={2} value={proposalData.notes} onChange={v => set('notes', v)} />
+          </div>
         </div>
       </div>
     </div>
@@ -1092,7 +1255,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
     Array.isArray(proposalData.commercial_items) && proposalData.commercial_items.length
       ? proposalData.commercial_items
       : [
-            {
+          {
             id: Date.now(),
             sr_no: 1,
             activities: '',
@@ -1102,35 +1265,28 @@ function CommercialsForm({ proposalData, setProposalData }) {
             total_amount: 0,
             discipline_id: '',
             activity_ids: [],
-            sub_activity_ids: [],
-            showSubPicker: false,
           },
         ]
   );
 
   const [disciplineOptions, setDisciplineOptions] = useState([]);
   const [activityOptions, setActivityOptions] = useState([]);
-  const [subActivityOptions, setSubActivityOptions] = useState([]);
 
   useEffect(() => {
-    // Fetch discipline/activity/subactivity master lists
     let mounted = true;
     (async () => {
       try {
-        const [discRes, actRes, subRes] = await Promise.all([
+        const [discRes, actRes] = await Promise.all([
           fetch('/api/activity-master'),
           fetch('/api/activity-master/activities'),
-          fetch('/api/activity-master/subactivities'),
         ]);
         const discJson = await discRes.json();
         const actJson = await actRes.json();
-        const subJson = await subRes.json();
 
         if (!mounted) return;
 
         if (discJson?.success && Array.isArray(discJson.data)) setDisciplineOptions(discJson.data);
         if (actJson?.success && Array.isArray(actJson.data)) setActivityOptions(actJson.data);
-        if (subJson?.success && Array.isArray(subJson.data)) setSubActivityOptions(subJson.data);
       } catch (e) {
         console.warn('Failed to load activity master data:', e);
       }
@@ -1138,61 +1294,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
     return () => { mounted = false; };
   }, []);
 
-  // Normalize legacy free-text activity entries into ids when possible
-  // Also normalize single `sub_activity_id` into `sub_activity_ids` for compatibility
   useEffect(() => {
-    if (!activityOptions.length || !items.some(i => i.activities && !(i.activity_ids && i.activity_ids.length))) return;
-    setItems(prev => prev.map(it => {
-      if ((it.activity_ids && it.activity_ids.length) || !it.activities) return it;
-      // try to find activity by name
-      const found = activityOptions.find(a => a.activity_name === it.activities);
-      if (found) return { ...it, activity_ids: [found.id], discipline_id: found.function_id };
-      return it;
-    }));
-  }, [activityOptions, items]);
-
-  // Normalize legacy single sub_activity_id into sub_activity_ids array
-  useEffect(() => {
-    if (!subActivityOptions.length || !items.some(i => i.sub_activity_id && !(i.sub_activity_ids && i.sub_activity_ids.length))) return;
-    setItems(prev => prev.map(it => {
-      if (!it.sub_activity_id || (it.sub_activity_ids && it.sub_activity_ids.length)) return it;
-      return { ...it, sub_activity_ids: [it.sub_activity_id] };
-    }));
-  }, [subActivityOptions, items]);
-
-  // When sub-activities load, for items that have an activity selected but no sub_activity_ids,
-  // default to selecting all sub-activities for that activity and populate defaults (manhours/rate)
-  useEffect(() => {
-    if (!subActivityOptions.length) return;
-
-    setItems(prev => {
-      let changed = false;
-      const next = prev.map(it => {
-        if (!it.activity_ids || !it.activity_ids.length) return it;
-        if (it.sub_activity_ids && it.sub_activity_ids.length) return it;
-        // find sub-activities for these activities
-        const subs = subActivityOptions.filter(s => (it.activity_ids || []).map(String).includes(String(s.activity_id)));
-        if (!subs.length) return it;
-        changed = true;
-        const updated = { ...it };
-        const ids = subs.map(s => s.id);
-        updated.sub_activity_ids = ids;
-        // sum default_manhours
-        const sumMan = subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
-        updated.man_hours = parseFloat(sumMan.toFixed(2));
-        // avg default_rate if present
-        const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
-        const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
-        if (avgRate > 0) updated.man_hour_rate = parseFloat(avgRate.toFixed(2));
-        updated.total_amount = parseFloat(((parseFloat(updated.man_hours || 0) || 0) * (parseFloat(updated.man_hour_rate || 0) || 0)).toFixed(2));
-        return updated;
-      });
-      return changed ? next : prev;
-    });
-  }, [subActivityOptions, items]);
-
-  useEffect(() => {
-    // Keep parent state in sync
     setProposalData(prev => ({ ...prev, commercial_items: items }));
   }, [items, setProposalData]);
 
@@ -1208,9 +1310,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
         man_hour_rate: 0,
         total_amount: 0,
         discipline_id: '',
-        activity_id: '',
-        sub_activity_ids: [],
-        showSubPicker: false,
+        activity_ids: [],
       },
     ]);
   };
@@ -1227,48 +1327,15 @@ function CommercialsForm({ proposalData, setProposalData }) {
     setItems(prev =>
       prev.map(i => {
         if (i.id !== id) return i;
-        // start with a shallow copy
         const updated = { ...i };
 
-        // set the changed field
         if (field === 'man_hours' || field === 'man_hour_rate') {
           updated[field] = parseFloat(value || 0);
         } else {
           updated[field] = value;
         }
 
-        // If the activity changed, default-select its sub-activities and compute defaults
-        if (field === 'activity_ids') {
-          const selectedActivityIds = Array.isArray(value) ? value : [];
-          // collect subs for all selected activities
-          const subs = subActivityOptions.filter(s => selectedActivityIds.map(String).includes(String(s.activity_id)));
-          const ids = subs.map(s => s.id);
-          if (ids.length) {
-            updated.sub_activity_ids = ids;
-            // sum default_manhours
-            const sumMan = subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
-            if (sumMan > 0 && (!updated.man_hours || parseFloat(updated.man_hours) === 0)) {
-              updated.man_hours = parseFloat(sumMan.toFixed(2));
-            }
-            // avg default_rate if present
-            const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
-            const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
-            if (avgRate > 0 && (!updated.man_hour_rate || parseFloat(updated.man_hour_rate) === 0)) {
-              updated.man_hour_rate = parseFloat(avgRate.toFixed(2));
-            }
-          }
-        }
-        if (field === 'sub_activity_ids') {
-          // when sub activities selection changes, compute man_hours and man_hour_rate
-          const subs = subActivityOptions.filter(s => (value || []).map(String).includes(String(s.id)));
-          const sumMan = subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
-          updated.man_hours = parseFloat(sumMan.toFixed(2));
-          const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
-          const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
-          if (avgRate > 0) updated.man_hour_rate = parseFloat(avgRate.toFixed(2));
-        }
-
-        // Recalculate total_amount = man_hours * man_hour_rate
+        // Recalculate total_amount
         const hours = parseFloat(updated.man_hours || 0);
         const rate = parseFloat(updated.man_hour_rate || 0);
         updated.total_amount = parseFloat((hours * rate).toFixed(2));
@@ -1287,260 +1354,211 @@ function CommercialsForm({ proposalData, setProposalData }) {
     [items]
   );
 
-    
-
   return (
-    <div className="space-y-8">
-      <Section title="Commercials" subtitle="Activity-wise commercial breakdown" />
-      <div className="flex justify-end">
+    <div>
+      {/* Header with Add Button */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-green-100">
+            <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Commercial Breakdown</h2>
+            <p className="text-sm text-gray-500">Activity-wise cost estimation</p>
+          </div>
+        </div>
         <button
           type="button"
           onClick={addItem}
-          className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm"
         >
-          + Add Item
+          <PlusIcon className="h-4 w-4" />
+          Add Item
         </button>
       </div>
 
-      <div className="overflow-x-auto border border-gray-200 rounded-lg">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-100 border-b-2 border-gray-300">
-              <Th>Sr no</Th>
-              <Th className="w-52">Discipline</Th>
-              <Th className="w-52">Activity</Th>
-              <Th>Sub-Activities</Th>
-              <Th className="w-32">Man-Hours</Th>
-              <Th className="w-36">Man-Hour Rate</Th>
-              <Th className="w-36">Total Amount</Th>
-              <Th className="w-24 text-center">Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(item => (
-              <tr key={item.id} className="border-b border-gray-200">
-                <Td className="text-center">{item.sr_no}</Td>
-                <Td>
+      {/* Commercial Items Cards */}
+      <div className="space-y-4 mb-6">
+        {items.map((item, index) => (
+          <div key={item.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+            {/* Card Header */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center text-sm font-bold">
+                  {item.sr_no}
+                </span>
+                <span className="font-medium text-gray-700">
+                  {item.activity_ids?.length 
+                    ? activityOptions.filter(a => item.activity_ids.map(String).includes(String(a.id))).map(a => a.activity_name).join(', ') || 'Commercial Item'
+                    : 'Commercial Item'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeItem(item.id)}
+                className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Card Body */}
+            <div className="p-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {/* Discipline */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Discipline</label>
                   <select
                     value={item.discipline_id ?? ''}
-                    onChange={e => updateItem(item.id, 'discipline_id', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                    onChange={e => {
+                      updateItem(item.id, 'discipline_id', e.target.value);
+                      updateItem(item.id, 'activity_ids', []);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   >
                     <option value="">Select discipline…</option>
                     {disciplineOptions.map(d => (
                       <option key={d.id} value={d.id}>{d.function_name || d.name || d.label || d.id}</option>
                     ))}
                   </select>
-                </Td>
-                <Td>
-                  <div className="max-h-48 overflow-y-auto space-y-2">
-                    {!item.discipline_id ? (
-                      <div className="text-sm text-gray-500">Select a discipline first to choose activities.</div>
-                    ) : activityOptions
-                        .filter(a => String(a.function_id) === String(item.discipline_id))
-                        .map(a => {
-                        const subsForAct = subActivityOptions.filter(s => String(s.activity_id) === String(a.id));
-                        const sumManForAct = subsForAct.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0);
-                        const ratesForAct = subsForAct.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r => r > 0);
-                        const avgRateForAct = ratesForAct.length ? (ratesForAct.reduce((a, b) => a + b, 0) / ratesForAct.length) : 0;
-                        return (
-                          <label key={a.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={(item.activity_ids || []).map(String).includes(String(a.id))}
-                              onChange={() => {
-                                const current = Array.isArray(item.activity_ids) ? [...item.activity_ids] : [];
-                                const strId = String(a.id);
-                                const exists = current.map(String).includes(strId);
-                                let next;
-                                if (exists) next = current.filter(cid => String(cid) !== strId);
-                                else next = [...current, a.id];
-                                updateItem(item.id, 'activity_ids', next);
-                              }}
-                            />
-                            <span className="flex-1">{a.activity_name}</span>
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{sumManForAct.toFixed(1)} hrs</span>
-                            <span className="text-xs text-gray-500 pl-2">{avgRateForAct > 0 ? `₹${avgRateForAct.toFixed(2)}` : '—'}</span>
-                          </label>
-                        );
-                      })}
+                </div>
 
-                    {/* free-text fallback if legacy value exists */}
-                    {item.activities && !activityOptions.find(a => a.activity_name === item.activities) && (
-                      <div className="mt-2 text-sm">
-                        <label className="block text-xs text-gray-600">Other activity</label>
-                        <input
-                          type="text"
-                          value={item.activities}
-                          onChange={e => updateItem(item.id, 'activities', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded mt-1"
-                        />
-                      </div>
-                    )}
-
-                    <div className="pt-1 text-xs text-gray-500">Select one or more activities</div>
-                  </div>
-                </Td>
-                <Td>
-                  <div className="w-full">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 text-sm text-gray-700">
-                        {item.sub_activity_ids && item.sub_activity_ids.length ? (
-                            // Group selected sub-activities by their parent activity for clarity
-                            (() => {
-                              const byActivity = {};
-                              (subActivityOptions || []).forEach(s => {
-                                if (!item.sub_activity_ids.map(String).includes(String(s.id))) return;
-                                const aid = String(s.activity_id || '');
-                                if (!byActivity[aid]) byActivity[aid] = [];
-                                byActivity[aid].push(s);
-                              });
-                              const groups = Object.keys(byActivity).map(aid => ({ activity: activityOptions.find(a => String(a.id) === aid) || { id: aid, activity_name: 'Other' }, subs: byActivity[aid] }));
-                              return (
-                                <div className="space-y-2">
-                                  {groups.map(g => (
-                                    <div key={g.activity.id}>
-                                      <div className="text-sm font-medium text-gray-700">{g.activity.activity_name || g.activity.name || 'Other'}</div>
-                                      <ul className="list-none pl-3 space-y-1">
-                                        {g.subs.map(s => (
-                                          <li key={s.id} className="text-sm text-gray-700 flex items-center justify-between">
-                                            <span>{s.subactivity_name || s.name || s.id}</span>
-                                            <span className="text-xs text-gray-500">{(parseFloat(s.default_manhours || s.defaultManhours || 0) || 0).toFixed(1)} hrs • {((parseFloat(s.default_rate || s.defaultRate || 0) || 0) > 0 ? `₹${(parseFloat(s.default_rate || s.defaultRate || 0)).toFixed(2)}` : '—')}</span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <div className="text-gray-400">No sub-activities selected</div>
-                          )}
-                      </div>
-                      <div className="flex-shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => updateItem(item.id, 'showSubPicker', !item.showSubPicker)}
-                          className="px-2 py-1 text-xs bg-gray-100 rounded"
-                        >
-                          {item.showSubPicker ? 'Close' : 'Select'}
-                        </button>
-                      </div>
+                {/* Activity */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Activity</label>
+                  {!item.discipline_id ? (
+                    <div className="px-3 py-2.5 border border-dashed border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-400 text-center">
+                      <span>Select discipline first</span>
                     </div>
-                      {item.showSubPicker && (
-                        <div className="mt-2 border rounded p-2 max-h-56 overflow-y-auto bg-white">
-                          {/* Group subs by activity inside the picker for easier scanning */}
-                          {(
-                            (item.activity_ids && item.activity_ids.length)
-                              ? activityOptions.filter(a => (item.activity_ids || []).map(String).includes(String(a.id)))
-                              : (item.discipline_id ? activityOptions.filter(a => String(a.function_id) === String(item.discipline_id)) : [])
-                          ).map(a => {
-                          const subs = (subActivityOptions || []).filter(s => String(s.activity_id) === String(a.id));
-                          if (!subs.length) return null;
-                          const allSelected = subs.every(s => (item.sub_activity_ids || []).map(String).includes(String(s.id)));
-                          return (
-                            <div key={a.id} className="mb-2">
-                              <label className="flex items-center justify-between text-sm font-medium">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    onChange={() => {
-                                      const current = Array.isArray(item.sub_activity_ids) ? [...item.sub_activity_ids] : [];
-                                      const subIds = subs.map(s => s.id);
-                                      let next;
-                                      if (allSelected) next = current.filter(cid => !subIds.map(String).includes(String(cid)));
-                                      else next = Array.from(new Set([...current, ...subIds]));
-                                      updateItem(item.id, 'sub_activity_ids', next);
-                                    }}
-                                  />
-                                  <span>{a.activity_name || a.name || a.id}</span>
-                                </div>
-                                <div className="text-xs text-gray-500">{subs.reduce((s, sub) => s + (parseFloat(sub.default_manhours || sub.defaultManhours || 0) || 0), 0).toFixed(1)} hrs • {(() => { const rates = subs.map(sub => parseFloat(sub.default_rate || sub.defaultRate || 0) || 0).filter(r=>r>0); return rates.length ? `₹${(rates.reduce((a,b)=>a+b,0)/rates.length).toFixed(2)}` : '—'; })()}</div>
-                              </label>
-                              <div className="pl-6 mt-1 space-y-1">
-                                {subs.map(s => (
-                                  <label key={s.id} className="flex items-center gap-2 text-sm">
-                                    <input
-                                      type="checkbox"
-                                      checked={(item.sub_activity_ids || []).map(String).includes(String(s.id))}
-                                      onChange={() => {
-                                        const current = Array.isArray(item.sub_activity_ids) ? [...item.sub_activity_ids] : [];
-                                        const strId = String(s.id);
-                                        const exists = current.map(String).includes(strId);
-                                        let next;
-                                        if (exists) next = current.filter(cid => String(cid) !== strId);
-                                        else next = [...current, s.id];
-                                        updateItem(item.id, 'sub_activity_ids', next);
-                                      }}
-                                    />
-                                    <span className="flex-1">{s.subactivity_name || s.name || s.id}</span>
-                                    <span className="text-xs text-gray-500">{(parseFloat(s.default_manhours || s.defaultManhours || 0) || 0).toFixed(1)} hrs • {((parseFloat(s.default_rate || s.defaultRate || 0) || 0) > 0 ? `₹${(parseFloat(s.default_rate || s.defaultRate || 0)).toFixed(2)}` : '—')}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </Td>
-                <Td>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Selected Activities Display */}
+                      {item.activity_ids?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {activityOptions
+                            .filter(a => (item.activity_ids || []).map(String).includes(String(a.id)))
+                            .map(a => (
+                              <span key={a.id} className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                                {a.activity_name}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = (item.activity_ids || []).filter(cid => String(cid) !== String(a.id));
+                                    updateItem(item.id, 'activity_ids', next);
+                                  }}
+                                  className="hover:bg-green-200 rounded-full p-0.5"
+                                >
+                                  <XMarkIcon className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                        </div>
+                      )}
+                      {/* Dropdown to Add Activities */}
+                      <select
+                        value=""
+                        onChange={e => {
+                          if (!e.target.value) return;
+                          const current = Array.isArray(item.activity_ids) ? [...item.activity_ids] : [];
+                          if (!current.map(String).includes(String(e.target.value))) {
+                            updateItem(item.id, 'activity_ids', [...current, e.target.value]);
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      >
+                        <option value="">{item.activity_ids?.length ? '+ Add more activities…' : 'Select activities…'}</option>
+                        {activityOptions
+                          .filter(a => String(a.function_id) === String(item.discipline_id))
+                          .filter(a => !(item.activity_ids || []).map(String).includes(String(a.id)))
+                          .map(a => (
+                            <option key={a.id} value={a.id}>{a.activity_name}</option>
+                          ))}
+                      </select>
+                      {activityOptions.filter(a => String(a.function_id) === String(item.discipline_id)).length === 0 && (
+                        <div className="text-xs text-gray-500 text-center py-1">No activities available</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Man-Hours */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Man-Hours</label>
                   <input
                     type="number"
                     min="0"
-                    step="0.1"
+                    step="0.5"
                     value={item.man_hours}
                     onChange={e => updateItem(item.id, 'man_hours', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   />
-                </Td>
-                <Td>
+                </div>
+
+                {/* Man-Hour Rate */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Rate (₹/hr)</label>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     value={item.man_hour_rate}
                     onChange={e => updateItem(item.id, 'man_hour_rate', e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   />
-                </Td>
-                <Td>
-                  <input
-                    type="number"
-                    readOnly
-                    value={(parseFloat(item.total_amount) || 0).toFixed(2)}
-                    className="w-full px-2 py-1 border border-gray-300 rounded bg-gray-50"
-                  />
-                </Td>
-                <Td className="text-center">
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    className="px-2 py-1 text-xs rounded-md bg-red-100 text-red-700 hover:bg-red-200"
-                  >
-                    ✕
-                  </button>
-                </Td>
-              </tr>
-            ))}
-            <tr className="bg-green-50 border-t-2 border-green-300 font-semibold">
-              <Td colSpan={4}>Total</Td>
-              <Td>{totalManHours.toFixed(1)}</Td>
-              <Td>—</Td>
-              <Td>{totalAmount.toFixed(2)}</Td>
-              <Td />
-            </tr>
-          </tbody>
-        </table>
+                </div>
+              </div>
+
+              {/* Total Amount Display */}
+              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-end">
+                <div className="bg-green-50 px-4 py-2 rounded-lg">
+                  <span className="text-sm text-gray-600 mr-2">Total:</span>
+                  <span className="text-lg font-bold text-green-700">
+                    ₹ {(parseFloat(item.total_amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <StatCard title="Total Items" value={items.length} />
-        <StatCard title="Total Man-Hours" value={totalManHours.toFixed(1)} />
-        <StatCard title={`Total Amount (${proposalData.currency || 'INR'})`} value={totalAmount.toFixed(2)} />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-100">
+              <ClipboardDocumentListIcon className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Items</p>
+              <p className="text-2xl font-bold text-gray-900">{items.length}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100">
+              <ClockIcon className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Man-Hours</p>
+              <p className="text-2xl font-bold text-gray-900">{totalManHours.toFixed(1)}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-100">
+              <CurrencyDollarIcon className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Amount</p>
+              <p className="text-2xl font-bold text-green-700">₹ {totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1552,147 +1570,236 @@ function QuotationForm({ proposalData, setProposalData }) {
   const [scopeTab, setScopeTab] = useState('schedule');
 
   return (
-    <div className="space-y-8">
-      <Section title="Quotation Details" subtitle="Quotation and enquiry information" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Text label="Quotation No." value={proposalData.quotation_number} onChange={v => set('quotation_number', v)} />
-          <DateField label="Date of Quotation" value={proposalData.quotation_date} onChange={v => set('quotation_date', v)} />
-          <Text label="Enquiry No." value={proposalData.enquiry_number} onChange={v => set('enquiry_number', v)} />
-          <DateField label="Date of Enquiry" value={proposalData.enquiry_date} onChange={v => set('enquiry_date', v)} />
-  <Text label="Duration" placeholder="e.g., 6 months, 120 days…" value={proposalData.duration} onChange={v => set('duration', v)} />
-        <DateField label="Target Date" value={proposalData.target_date} onChange={v => set('target_date', v)} />
-        <Text label="Lead ID (read-only if converted)" value={String(proposalData.lead_id ?? '')} onChange={v => set('lead_id', v)} readOnly />
+    <div>
+      {/* 4-Column Grid Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+        
+        {/* Column 1: Quotation Info */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-indigo-200">
+            <div className="p-2 rounded-lg bg-indigo-100">
+              <DocumentDuplicateIcon className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Quotation Info</h3>
+              <p className="text-xs text-gray-500">Quotation details</p>
+            </div>
+          </div>
+          <div className="space-y-4 flex-1">
+            <Text label="Quotation No." value={proposalData.quotation_number} onChange={v => set('quotation_number', v)} />
+            <DateField label="Date of Quotation" value={proposalData.quotation_date} onChange={v => set('quotation_date', v)} />
+            <Text label="Enquiry No." value={proposalData.enquiry_number} onChange={v => set('enquiry_number', v)} />
+            <DateField label="Date of Enquiry" value={proposalData.enquiry_date} onChange={v => set('enquiry_date', v)} />
+          </div>
+        </div>
 
-        {/* Display fields from Scope tab */}
-        <div className="lg:col-span-2">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Scope of Work</label>
+        {/* Column 2: Schedule */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-cyan-200">
+            <div className="p-2 rounded-lg bg-cyan-100">
+              <CalendarIcon className="h-5 w-5 text-cyan-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Schedule</h3>
+              <p className="text-xs text-gray-500">Timeline details</p>
+            </div>
+          </div>
+          <div className="space-y-4 flex-1">
+            <Text label="Duration" placeholder="e.g., 6 months, 120 days…" value={proposalData.duration} onChange={v => set('duration', v)} />
+            <DateField label="Target Date" value={proposalData.target_date} onChange={v => set('target_date', v)} />
+            <Text label="Lead ID" value={String(proposalData.lead_id ?? '')} onChange={v => set('lead_id', v)} readOnly />
+          </div>
+        </div>
 
-              <div className="flex items-center gap-2 mb-3">
+        {/* Column 3: Quotation Meta */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-rose-200">
+            <div className="p-2 rounded-lg bg-rose-100">
+              <InformationCircleIcon className="h-5 w-5 text-rose-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Quotation Meta</h3>
+              <p className="text-xs text-gray-500">Additional info</p>
+            </div>
+          </div>
+          <div className="space-y-4 flex-1">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Site Visit</label>
+              <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" rows={2} value={proposalData.site_visit || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Validity</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.quotation_validity || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Delivery</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.mode_of_delivery || ''} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Revision</label>
+              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.revision || ''} />
+            </div>
+          </div>
+        </div>
+
+        {/* Column 4: Software */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-violet-200">
+            <div className="p-2 rounded-lg bg-violet-100">
+              <ComputerDesktopIcon className="h-5 w-5 text-violet-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Software</h3>
+              <p className="text-xs text-gray-500">Software details</p>
+            </div>
+          </div>
+          <div className="space-y-3 flex-1 overflow-y-auto max-h-[280px]">
+            {Array.isArray(proposalData.software_items) && proposalData.software_items.length ? (
+              proposalData.software_items.map((s, i) => (
+                <div key={i} className="p-3 border border-gray-100 rounded-lg bg-gray-50">
+                  <div className="text-sm font-semibold text-gray-900">{s.name || 'Untitled'}</div>
+                  <div className="text-xs text-gray-600 mt-1">Provider: {s.provider || '—'}</div>
+                  <div className="text-xs text-gray-500">Version: {s.current_version || '—'}</div>
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">No software items</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Second Row - Scope & Exclusions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+        {/* Scope of Work */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-emerald-200">
+            <div className="p-2 rounded-lg bg-emerald-100">
+              <ClipboardDocumentListIcon className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Scope of Work</h3>
+              <p className="text-xs text-gray-500">Documents and deliverables</p>
+            </div>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-3">
               <button
                 type="button"
                 onClick={() => setScopeTab('documents')}
-                className={`px-3 py-1 text-sm rounded ${scopeTab === 'documents' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${scopeTab === 'documents' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 Input Documents
               </button>
               <button
                 type="button"
                 onClick={() => setScopeTab('deliverables')}
-                className={`px-3 py-1 text-sm rounded ${scopeTab === 'deliverables' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${scopeTab === 'deliverables' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 Deliverables
               </button>
             </div>
-
-            <div className="w-full px-3 py-3 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800">
-              {scopeTab === 'documents' && (
-                <div>{renderTextList(proposalData.input_document)}</div>
-              )}
-              {scopeTab === 'deliverables' && (
-                <div>{renderTextList(proposalData.list_of_deliverables)}</div>
-              )}
+            <div className="w-full px-3 py-3 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-800 min-h-[120px]">
+              {scopeTab === 'documents' && renderTextList(proposalData.input_document)}
+              {scopeTab === 'deliverables' && renderTextList(proposalData.list_of_deliverables)}
             </div>
           </div>
         </div>
 
-  {/* Quotation-specific editable fields */}
-
-        {/* Quotation meta: display these fields read-only inside the Quotation Details tab */}
-        <div className="lg:col-span-2">
-          <Section title="Quotation Meta" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Site Visit</label>
-              <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.site_visit || ''} />
+        {/* Exclusions */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-orange-200">
+            <div className="p-2 rounded-lg bg-orange-100">
+              <XMarkIcon className="h-5 w-5 text-orange-600" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Scheduled</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.duration || ''} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Validity</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.quotation_validity || ''} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Delivery</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.mode_of_delivery || ''} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Revision</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" value={proposalData.revision || ''} />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Exclusions</label>
-              <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-sm" rows={4} value={proposalData.exclusions || ''} />
+              <h3 className="font-semibold text-gray-900">Exclusions</h3>
+              <p className="text-xs text-gray-500">Items not included</p>
             </div>
           </div>
-
-          {/* Custom / additional fields (structured) */}
-          <div className="mt-4">
-            <h4 className="text-sm font-semibold">Custom fields</h4>
-            <p className="text-xs text-gray-500">Add arbitrary key/value fields to the quotation. These are saved as structured additional fields.</p>
-            <CustomFieldsEditor proposalData={proposalData} setProposalData={setProposalData} />
-          </div>
-        </div>
-
-        {/* Display software items in quotation view as a read-only list */}
-        <div className="lg:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Software</label>
-          <div className="w-full px-3 py-3 border border-gray-200 rounded bg-gray-50 text-sm text-gray-800">
-            {Array.isArray(proposalData.software_items) && proposalData.software_items.length ? (
-              <ul className="list-none space-y-2">
-                {proposalData.software_items.map((s, i) => (
-                  <li key={i} className="p-2 border rounded bg-white">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="text-sm font-semibold">{s.name || 'Untitled'} {s.id ? <span className="text-xs text-gray-500">(ID: {s.id})</span> : null}</div>
-                        <div className="text-xs text-gray-600">Provider: {s.provider || '—'}</div>
-                      </div>
-                      <div className="text-right text-sm text-gray-700">
-                        <div>Current: {s.current_version || '—'}</div>
-                        <div className="text-xs text-gray-500">Versions: {(Array.isArray(s.versions) ? s.versions.join(', ') : String(s.versions || '—'))}</div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-gray-500">—</div>
-            )}
+          <div className="flex-1">
+            <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm min-h-[150px]" value={proposalData.exclusions || ''} />
           </div>
         </div>
       </div>
-      <div className="pt-4 space-y-6">
-        <div>
-          <h4 className="text-sm font-semibold">Billing & Payment terms</h4>
-          <div className="mt-2">
+
+      {/* Third Row - Terms & Conditions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+        {/* Billing & Payment Terms */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-teal-200">
+            <div className="p-2 rounded-lg bg-teal-100">
+              <CreditCardIcon className="h-5 w-5 text-teal-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Billing & Payment Terms</h3>
+              <p className="text-xs text-gray-500">Payment conditions</p>
+            </div>
+          </div>
+          <div className="flex-1">
             <Textarea label="" rows={6} value={proposalData.billing_payment_terms} onChange={v => set('billing_payment_terms', v)} />
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold">Other Terms & Conditions</h4>
-            <button type="button" onClick={() => setTermsOpen(o => !o)} className="text-sm text-indigo-600 hover:underline">
-              {termsOpen ? 'Hide' : 'Show'}
-            </button>
+        {/* Other Terms & Conditions */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-slate-200">
+            <div className="p-2 rounded-lg bg-slate-100">
+              <DocumentTextIcon className="h-5 w-5 text-slate-600" />
+            </div>
+            <div className="flex-1 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-900">Other Terms & Conditions</h3>
+                <p className="text-xs text-gray-500">Additional terms</p>
+              </div>
+              <button type="button" onClick={() => setTermsOpen(o => !o)} className="text-sm text-indigo-600 hover:underline font-medium">
+                {termsOpen ? 'Hide' : 'Edit'}
+              </button>
+            </div>
           </div>
-          <div className="mt-3">
+          <div className="flex-1">
             {termsOpen ? (
-              <Textarea label="" rows={8} value={proposalData.other_terms} onChange={v => set('other_terms', v)} />
+              <Textarea label="" rows={6} value={proposalData.other_terms} onChange={v => set('other_terms', v)} />
             ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded p-3 text-sm text-gray-700 whitespace-pre-line">
-                {proposalData.other_terms}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 whitespace-pre-line min-h-[150px]">
+                {proposalData.other_terms || <span className="text-gray-400">No terms specified</span>}
               </div>
             )}
           </div>
         </div>
+      </div>
 
-        <div>
-          <h4 className="text-sm font-semibold">Additional fields</h4>
-          <div className="mt-2">
-            <Textarea label="" rows={4} value={proposalData.additional_fields} onChange={v => set('additional_fields', v)} placeholder="Add any additional items or notes here…" />
+      {/* Fourth Row - Custom Fields & Additional */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Custom Fields */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-pink-200">
+            <div className="p-2 rounded-lg bg-pink-100">
+              <PlusIcon className="h-5 w-5 text-pink-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Custom Fields</h3>
+              <p className="text-xs text-gray-500">Add key/value pairs</p>
+            </div>
+          </div>
+          <div className="flex-1">
+            <CustomFieldsEditor proposalData={proposalData} setProposalData={setProposalData} />
+          </div>
+        </div>
+
+        {/* Additional Fields */}
+        <div className="flex flex-col p-5 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-200">
+            <div className="p-2 rounded-lg bg-gray-100">
+              <PencilIcon className="h-5 w-5 text-gray-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Additional Fields</h3>
+              <p className="text-xs text-gray-500">Extra notes or items</p>
+            </div>
+          </div>
+          <div className="flex-1">
+            <Textarea label="" rows={6} value={proposalData.additional_fields} onChange={v => set('additional_fields', v)} placeholder="Add any additional items or notes here…" />
           </div>
         </div>
       </div>

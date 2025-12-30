@@ -12,7 +12,8 @@ import {
   FolderIcon,
   ClipboardDocumentListIcon,
   ChevronRightIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  Squares2X2Icon
 } from '@heroicons/react/24/outline';
 
 export default function ActivityMasterPage() {
@@ -590,13 +591,17 @@ export default function ActivityMasterPage() {
                       <button
                         type="button"
                         onClick={() => setBulkMode(!bulkMode)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                        className={`flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg font-semibold transition-all shadow-sm ${
                           bulkMode 
-                            ? 'bg-[#4472C4] text-white' 
-                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                            ? 'bg-[#4472C4] text-white shadow-blue-200' 
+                            : 'bg-[#7F2387] text-white hover:bg-[#64126D] shadow-purple-200'
                         }`}
                       >
-                        {bulkMode ? 'Bulk Mode ON' : 'Bulk Add'}
+                        {bulkMode ? (
+                          <><CheckIcon className="h-4 w-4" /> Bulk Mode ON</>
+                        ) : (
+                          <><Squares2X2Icon className="h-4 w-4" /> Bulk Add</>
+                        )}
                       </button>
                     </div>
 
