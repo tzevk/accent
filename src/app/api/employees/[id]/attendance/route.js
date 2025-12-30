@@ -72,7 +72,7 @@ export async function GET(request, { params }) {
     const daysDetail = {};
 
     records.forEach(record => {
-      const dateKey = record.attendance_date.toISOString().split('T')[0];
+      const dateKey = new Date(record.attendance_date).toISOString().split('T')[0];
       daysDetail[dateKey] = {
         status: record.status,
         overtime_hours: parseFloat(record.overtime_hours || 0),

@@ -301,8 +301,9 @@ export default function EmployeesPage() {
   const [salaryError, setSalaryError] = useState('');
   const [showSalaryForm, setShowSalaryForm] = useState(false);
   const [calculatedBreakdown, setCalculatedBreakdown] = useState(null);
+  const [manualOverride, setManualOverride] = useState(false); // Toggle for manual salary entry
   
-  // Salary calculation percentages (editable)
+  // Salary calculation percentages (editable) - used in auto mode
   const [salaryPercentages, setSalaryPercentages] = useState({
     hra_percent: 50,           // HRA % of Basic
     conveyance: 1600,          // Fixed conveyance
@@ -314,6 +315,20 @@ export default function EmployeesPage() {
     gratuity_percent: 4.81,    // Gratuity %
     pf_admin_percent: 0.5,     // PF Admin %
     edli_percent: 0.5,         // EDLI %
+  });
+
+  // Manual salary values (used when manualOverride is true)
+  const [manualSalaryValues, setManualSalaryValues] = useState({
+    hra: '',
+    conveyance: '',
+    medical: '',
+    special_allowance: '',
+    employee_pf: '',
+    employer_pf: '',
+    employee_esic: '',
+    employer_esic: '',
+    gratuity: '',
+    pt: '',
   });
 
   const [salaryFormData, setSalaryFormData] = useState({
@@ -438,6 +453,19 @@ export default function EmployeesPage() {
     });
     setSalaryComponents([]);
     setCalculatedBreakdown(null);
+    setManualOverride(false);
+    setManualSalaryValues({
+      hra: '',
+      conveyance: '',
+      medical: '',
+      special_allowance: '',
+      employee_pf: '',
+      employer_pf: '',
+      employee_esic: '',
+      employer_esic: '',
+      gratuity: '',
+      pt: '',
+    });
   };
 
   // State for editing salary structure
@@ -764,7 +792,16 @@ export default function EmployeesPage() {
     const newFormData = { ...salaryFormData, [field]: value };
     setSalaryFormData(newFormData);
 
-    // Recalculate breakdown when relevant fields change
+    // Skip auto-calculation in manual mode
+    if (manualOverride) {
+      // In manual mode, calculate gross and CTC from manual values
+      if (field === 'basic_salary') {
+        recalculateManualTotals(value);
+      }
+      return;
+    }
+
+    // Recalculate breakdown when relevant fields change (auto mode)
     if (['basic_salary', 'pf_applicable', 'esic_applicable', 'pf_wage_ceiling'].includes(field)) {
       const breakdown = calculateSalaryBreakdown(
         field === 'basic_salary' ? value : newFormData.basic_salary,
@@ -780,6 +817,138 @@ export default function EmployeesPage() {
         setSalaryFormData(prev => ({
           ...prev,
           basic_salary: value,
+          gross_salary: breakdown.summary.grossSalary.toString(),
+          ctc: breakdown.summary.annualCTC.toString()
+        }));
+      }
+    }
+  };
+
+  // Handle manual salary value changes
+  const handleManualValueChange = (field, value) => {
+    const newValues = { ...manualSalaryValues, [field]: value };
+    setManualSalaryValues(newValues);
+    recalculateManualTotals(salaryFormData.basic_salary, newValues);
+  };
+
+  // Recalculate totals in manual mode
+  const recalculateManualTotals = (basicSalary, values = manualSalaryValues) => {
+    const basic = parseFloat(basicSalary) || 0;
+    const hra = parseFloat(values.hra) || 0;
+    const conveyance = parseFloat(values.conveyance) || 0;
+    const medical = parseFloat(values.medical) || 0;
+    const specialAllowance = parseFloat(values.special_allowance) || 0;
+    const employeePf = parseFloat(values.employee_pf) || 0;
+    const employerPf = parseFloat(values.employer_pf) || 0;
+    const employeeEsic = parseFloat(values.employee_esic) || 0;
+    const employerEsic = parseFloat(values.employer_esic) || 0;
+    const gratuity = parseFloat(values.gratuity) || 0;
+    const pt = parseFloat(values.pt) || 0;
+
+    const grossSalary = basic + hra + conveyance + medical + specialAllowance;
+    const totalDeductions = employeePf + employeeEsic + pt;
+    const employerContributions = employerPf + employerEsic + gratuity;
+    const netSalary = grossSalary - totalDeductions;
+    const monthlyCTC = grossSalary + employerContributions;
+    const annualCTC = monthlyCTC * 12;
+
+    setSalaryFormData(prev => ({
+      ...prev,
+      gross_salary: grossSalary.toString(),
+      ctc: annualCTC.toString()
+    }));
+
+    // Set calculated breakdown for display
+    setCalculatedBreakdown({
+      earnings: {
+        basic: basic,
+        hra: hra,
+        hraPercent: basic > 0 ? `${((hra / basic) * 100).toFixed(1)}%` : '0%',
+        conveyance: conveyance,
+        medical: medical,
+        specialAllowance: specialAllowance,
+        total: grossSalary
+      },
+      deductions: {
+        employeePF: employeePf,
+        employeePFPercent: basic > 0 ? ((employeePf / basic) * 100).toFixed(2) : 0,
+        employeeEPF: employeePf,
+        employeeESIC: employeeEsic,
+        employeeESICPercent: grossSalary > 0 ? ((employeeEsic / grossSalary) * 100).toFixed(2) : 0,
+        pt: pt,
+        lwf: 0,
+        tds: 0,
+        total: totalDeductions
+      },
+      employer: {
+        pf: employerPf,
+        pfPercent: basic > 0 ? ((employerPf / basic) * 100).toFixed(2) : 0,
+        epf: Math.round(employerPf * 0.3058),
+        eps: Math.round(employerPf * 0.6942),
+        esic: employerEsic,
+        esicPercent: grossSalary > 0 ? ((employerEsic / grossSalary) * 100).toFixed(2) : 0,
+        pfAdmin: 0,
+        edli: 0,
+        edliAdmin: 0,
+        gratuity: gratuity,
+        gratuityPercent: basic > 0 ? ((gratuity / basic) * 100).toFixed(2) : 0,
+        total: employerContributions
+      },
+      summary: {
+        grossSalary: grossSalary,
+        totalDeductions: totalDeductions,
+        netSalary: netSalary,
+        employerCost: employerContributions,
+        totalCTC: monthlyCTC,
+        annualBasic: basic * 12,
+        annualHRA: hra * 12,
+        annualGross: grossSalary * 12,
+        annualDeductions: totalDeductions * 12,
+        annualNet: netSalary * 12,
+        annualEmployerCost: employerContributions * 12,
+        annualCTC: annualCTC
+      },
+      flags: {
+        pfApplicable: salaryFormData.pf_applicable,
+        esicApplicable: salaryFormData.esic_applicable,
+        esicEligible: salaryFormData.esic_applicable && grossSalary <= 21000,
+        manualMode: true
+      }
+    });
+  };
+
+  // Toggle manual override mode
+  const toggleManualOverride = () => {
+    const newManualMode = !manualOverride;
+    setManualOverride(newManualMode);
+    
+    if (newManualMode && calculatedBreakdown) {
+      // When switching to manual, populate fields with calculated values
+      setManualSalaryValues({
+        hra: calculatedBreakdown.earnings?.hra?.toString() || '',
+        conveyance: calculatedBreakdown.earnings?.conveyance?.toString() || '',
+        medical: calculatedBreakdown.earnings?.medical?.toString() || '',
+        special_allowance: calculatedBreakdown.earnings?.specialAllowance?.toString() || '',
+        employee_pf: calculatedBreakdown.deductions?.employeePF?.toString() || '',
+        employer_pf: calculatedBreakdown.employer?.pf?.toString() || '',
+        employee_esic: calculatedBreakdown.deductions?.employeeESIC?.toString() || '',
+        employer_esic: calculatedBreakdown.employer?.esic?.toString() || '',
+        gratuity: calculatedBreakdown.employer?.gratuity?.toString() || '',
+        pt: calculatedBreakdown.deductions?.pt?.toString() || '',
+      });
+    } else if (!newManualMode && salaryFormData.basic_salary) {
+      // When switching back to auto, recalculate from percentages
+      const breakdown = calculateSalaryBreakdown(
+        salaryFormData.basic_salary,
+        salaryFormData.pf_applicable,
+        salaryFormData.esic_applicable,
+        salaryFormData.pf_wage_ceiling,
+        salaryPercentages
+      );
+      setCalculatedBreakdown(breakdown);
+      if (breakdown) {
+        setSalaryFormData(prev => ({
+          ...prev,
           gross_salary: breakdown.summary.grossSalary.toString(),
           ctc: breakdown.summary.annualCTC.toString()
         }));
@@ -2088,7 +2257,38 @@ export default function EmployeesPage() {
 
                             {/* Basic Info */}
                             <div className="bg-gray-50 rounded-xl p-6">
-                              <h5 className="text-md font-semibold text-gray-800 mb-4">Basic Details</h5>
+                              <div className="flex items-center justify-between mb-4">
+                                <h5 className="text-md font-semibold text-gray-800">Basic Details</h5>
+                                
+                                {/* Manual Override Toggle - Always visible */}
+                                <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl">
+                                  <div className={`p-2 rounded-lg ${manualOverride ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                                    <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </div>
+                                  <div className="mr-3">
+                                    <h6 className="text-sm font-semibold text-gray-800">Manual Mode</h6>
+                                    <p className="text-xs text-gray-600">
+                                      {manualOverride ? 'Values ₹' : 'Auto %'}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={toggleManualOverride}
+                                    className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
+                                      manualOverride ? 'bg-amber-500' : 'bg-gray-300'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
+                                        manualOverride ? 'translate-x-7' : 'translate-x-1'
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+                              
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-2">Pay Type *</label>
@@ -2131,7 +2331,9 @@ export default function EmployeesPage() {
                                       <div className="md:col-span-2">
                                         <label className="block text-sm font-semibold text-purple-800 mb-2">
                                           Basic Salary (Monthly) * 
-                                          <span className="text-xs font-normal text-purple-600 ml-2">Enter to auto-calculate all</span>
+                                          <span className="text-xs font-normal text-purple-600 ml-2">
+                                            {manualOverride ? 'Enter basic salary' : 'Enter to auto-calculate all'}
+                                          </span>
                                         </label>
                                         <input
                                           type="number"
@@ -2140,8 +2342,11 @@ export default function EmployeesPage() {
                                           placeholder="e.g., 25000"
                                           className="w-full px-4 py-3 border-2 border-purple-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg font-semibold"
                                         />
-                                        <p className="text-xs text-purple-600 mt-1">Basic = 50% of Gross Salary (Gross = Basic × 2)</p>
+                                        <p className="text-xs text-purple-600 mt-1">
+                                          {manualOverride ? 'Enter the basic salary amount' : 'Basic = 50% of Gross Salary (Gross = Basic × 2)'}
+                                        </p>
                                       </div>
+                                      {!manualOverride && (
                                       <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">HRA %</label>
                                         <input
@@ -2152,17 +2357,19 @@ export default function EmployeesPage() {
                                         />
                                         <p className="text-xs text-gray-500 mt-1">% of Basic</p>
                                       </div>
+                                      )}
                                     </div>
                                   </div>
 
-                                  {/* Percentage Configuration */}
+                                  {/* Percentage Configuration - Only shown in Auto mode */}
+                                  {!manualOverride && (
                                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                                     <h6 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
                                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                       </svg>
-                                      Salary Component Configuration
+                                      Salary Component Configuration (Percentages)
                                     </h6>
                                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
                                       <div>
@@ -2255,6 +2462,140 @@ export default function EmployeesPage() {
                                       </div>
                                     </div>
                                   </div>
+                                  )}
+
+                                  {/* Manual Value Inputs - Only shown in Manual mode */}
+                                  {manualOverride && (
+                                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                    <h6 className="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                      Manual Component Values (₹)
+                                    </h6>
+                                    
+                                    {/* Earnings Section */}
+                                    <div className="mb-4">
+                                      <p className="text-xs font-semibold text-green-700 mb-2 uppercase tracking-wide">Earnings / Allowances</p>
+                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">HRA ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.hra}
+                                            onChange={(e) => handleManualValueChange('hra', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Conveyance ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.conveyance}
+                                            onChange={(e) => handleManualValueChange('conveyance', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Medical ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.medical}
+                                            onChange={(e) => handleManualValueChange('medical', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Special Allowance ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.special_allowance}
+                                            onChange={(e) => handleManualValueChange('special_allowance', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Deductions Section */}
+                                    <div className="mb-4">
+                                      <p className="text-xs font-semibold text-red-700 mb-2 uppercase tracking-wide">Employee Deductions</p>
+                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employee PF ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.employee_pf}
+                                            onChange={(e) => handleManualValueChange('employee_pf', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employee ESIC ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.employee_esic}
+                                            onChange={(e) => handleManualValueChange('employee_esic', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Prof. Tax ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.pt}
+                                            onChange={(e) => handleManualValueChange('pt', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Employer Contributions Section */}
+                                    <div>
+                                      <p className="text-xs font-semibold text-blue-700 mb-2 uppercase tracking-wide">Employer Contributions</p>
+                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employer PF ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.employer_pf}
+                                            onChange={(e) => handleManualValueChange('employer_pf', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employer ESIC ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.employer_esic}
+                                            onChange={(e) => handleManualValueChange('employer_esic', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-600 mb-1">Gratuity ₹</label>
+                                          <input
+                                            type="number"
+                                            value={manualSalaryValues.gratuity}
+                                            onChange={(e) => handleManualValueChange('gratuity', e.target.value)}
+                                            placeholder="0"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  )}
 
                                   {/* Auto-calculated Fields */}
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -69,19 +69,30 @@ export default function SignIn() {
         await new Promise(resolve => setTimeout(resolve, 300));
         
         // Verify session is actually established before redirecting
-        try {
-          const sessionCheck = await fetch('/api/session', { 
-            credentials: 'include',
-            cache: 'no-store'
-          });
-          const sessionData = await sessionCheck.json();
-          
-          if (!sessionData.authenticated) {
-            // Session not established yet, wait a bit more
-            await new Promise(resolve => setTimeout(resolve, 500));
+        // Keep checking until we get authenticated or timeout
+        let sessionVerified = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            const sessionCheck = await fetch('/api/session', { 
+              credentials: 'include',
+              cache: 'no-store',
+              headers: { 'Cache-Control': 'no-cache, no-store' }
+            });
+            const sessionData = await sessionCheck.json();
+            
+            if (sessionData.authenticated && sessionData.user) {
+              sessionVerified = true;
+              break;
+            }
+          } catch (err) {
+            console.warn('Session check attempt failed:', err);
           }
-        } catch (err) {
-          console.warn('Session check failed, proceeding with redirect:', err);
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        if (!sessionVerified) {
+          console.warn('Session verification incomplete, proceeding with redirect anyway');
         }
         
         // If redirected here from a protected page, go back there

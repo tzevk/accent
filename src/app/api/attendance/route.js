@@ -70,7 +70,7 @@ export async function GET(request) {
         };
       }
       
-      const dateKey = record.attendance_date.toISOString().split('T')[0];
+      const dateKey = new Date(record.attendance_date).toISOString().split('T')[0];
       employeeSummary[record.employee_id].days[dateKey] = {
         status: record.status,
         overtime_hours: record.overtime_hours,

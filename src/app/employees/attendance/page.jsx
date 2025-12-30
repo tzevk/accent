@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { 
@@ -10,7 +9,9 @@ import {
   UserGroupIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  XMarkIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 
 export default function EmployeeAttendancePage() {
@@ -19,6 +20,18 @@ export default function EmployeeAttendancePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [modalData, setModalData] = useState({
+    attendanceType: 'P',
+    startDate: '',
+    endDate: '',
+    inTime: '09:00',
+    outTime: '18:00',
+    reason: ''
+  });
   
   // Current month/year for calendar
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -126,16 +139,60 @@ export default function EmployeeAttendancePage() {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  // Toggle attendance status for a specific employee and day
-  const toggleAttendance = (employeeId, fullDate, currentStatus) => {
-    const statusCycle = ['P', 'A', 'PL', 'OT', 'WO']; // Present, Absent, Privileged Leave, Overtime, Weekly Off
-    const currentIndex = statusCycle.indexOf(currentStatus);
-    const nextStatus = statusCycle[(currentIndex + 1) % statusCycle.length];
+  // Open modal for attendance
+  const openAttendanceModal = (employeeId, fullDate, currentStatus, employeeName) => {
+    setSelectedCell({ employeeId, fullDate, currentStatus, employeeName });
+    setModalData({
+      attendanceType: currentStatus || 'P',
+      startDate: fullDate,
+      endDate: fullDate,
+      inTime: '09:00',
+      outTime: '18:00',
+      reason: ''
+    });
+    setShowModal(true);
+  };
+
+  // Close modal
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedCell(null);
+  };
+
+  // Handle modal form submission
+  const handleModalSubmit = () => {
+    if (!selectedCell) return;
     
+    const { employeeId } = selectedCell;
+    const { attendanceType, startDate, endDate, inTime, outTime, reason } = modalData;
+    
+    // Apply attendance to date range
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateKey = d.toISOString().split('T')[0];
+      // Only update if the date is in the current month
+      if (daysInMonth.some(day => day.fullDate === dateKey)) {
+        updateAttendanceStatus(employeeId, dateKey, attendanceType, { inTime, outTime, reason });
+      }
+    }
+    
+    closeModal();
+    setSuccess(`Attendance updated for ${selectedCell.employeeName}`);
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  // Update attendance status (shared function)
+  const updateAttendanceStatus = (employeeId, fullDate, newStatus, extraData = {}) => {
     setAttendanceData(prev => {
       const empData = { ...prev[employeeId] };
       const oldStatus = empData.days[fullDate];
-      empData.days[fullDate] = nextStatus;
+      empData.days[fullDate] = newStatus;
+      
+      // Store extra data if provided
+      if (!empData.dayDetails) empData.dayDetails = {};
+      empData.dayDetails[fullDate] = { ...empData.dayDetails[fullDate], ...extraData, status: newStatus };
       
       // Update counts
       if (oldStatus === 'P') empData.present--;
@@ -144,10 +201,10 @@ export default function EmployeeAttendancePage() {
       if (oldStatus === 'OT') empData.overtime--;
       if (oldStatus === 'WO') empData.weeklyOff--;
       
-      if (nextStatus === 'P') empData.present++;
-      if (nextStatus === 'A') empData.absent++;
-      if (nextStatus === 'PL') empData.privilegedLeave++;
-      if (nextStatus === 'OT') empData.overtime++;
+      if (newStatus === 'P') empData.present++;
+      if (newStatus === 'A') empData.absent++;
+      if (newStatus === 'PL') empData.privilegedLeave++;
+      if (newStatus === 'OT') empData.overtime++;
       if (nextStatus === 'WO') empData.weeklyOff++;
       
       return { ...prev, [employeeId]: empData };
@@ -455,13 +512,14 @@ export default function EmployeeAttendancePage() {
                       {daysInMonth.map(day => {
                         const status = empData.days[day.fullDate] || '-';
                         const style = getStatusStyle(status);
+                        const employeeName = `${empData.first_name || ''} ${empData.last_name || ''}`.trim().toUpperCase() || 'EMPLOYEE';
                         return (
                           <td
                             key={day.fullDate}
                             className={`px-1 py-2 text-center ${day.isSunday ? 'bg-red-50/30' : day.isSaturday ? 'bg-amber-50/30' : ''}`}
                           >
                             <button
-                              onClick={() => toggleAttendance(empData.id, day.fullDate, status)}
+                              onClick={() => openAttendanceModal(empData.id, day.fullDate, status, employeeName)}
                               className={`w-8 h-8 rounded-lg text-xs font-semibold ${style.bg} ${style.text} hover:ring-2 hover:ring-purple-300 transition-all`}
                             >
                               {style.label}
@@ -522,6 +580,148 @@ export default function EmployeeAttendancePage() {
           )}
         </div>
       </div>
+
+      {/* Mark Attendance Modal */}
+      {showModal && selectedCell && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/50 transition-opacity"
+              onClick={closeModal}
+            ></div>
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg transform transition-all">
+              {/* Header */}
+              <div className="bg-[#1a8a9b] px-6 py-4 rounded-t-xl flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">
+                  Mark Attendance - {selectedCell.employeeName}
+                </h3>
+                <button 
+                  onClick={closeModal}
+                  className="text-white/80 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              
+              {/* Body */}
+              <div className="p-6 space-y-5">
+                {/* Attendance Type */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Attendance Type<span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={modalData.attendanceType}
+                    onChange={(e) => setModalData({ ...modalData, attendanceType: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a8a9b] focus:border-transparent text-gray-700"
+                  >
+                    <option value="P">Present</option>
+                    <option value="A">Absent</option>
+                    <option value="PL">Privileged Leave</option>
+                    <option value="OT">Overtime</option>
+                    <option value="WO">Weekly Off</option>
+                    <option value="HD">Half Day</option>
+                    <option value="CL">Casual Leave</option>
+                    <option value="SL">Sick Leave</option>
+                    <option value="LWP">Leave Without Pay</option>
+                  </select>
+                </div>
+
+                {/* Date Range */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Start Date<span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={modalData.startDate}
+                      onChange={(e) => setModalData({ ...modalData, startDate: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a8a9b] focus:border-transparent text-gray-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      End Date<span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={modalData.endDate}
+                      onChange={(e) => setModalData({ ...modalData, endDate: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a8a9b] focus:border-transparent text-gray-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Time Range */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      In-Time :
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="time"
+                        value={modalData.inTime}
+                        onChange={(e) => setModalData({ ...modalData, inTime: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a8a9b] focus:border-transparent text-gray-700"
+                      />
+                      <ClockIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Out-Time :
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="time"
+                        value={modalData.outTime}
+                        onChange={(e) => setModalData({ ...modalData, outTime: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a8a9b] focus:border-transparent text-gray-700"
+                      />
+                      <ClockIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reason */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Reason<span className="text-gray-400">(Optional)</span>
+                  </label>
+                  <textarea
+                    value={modalData.reason}
+                    onChange={(e) => setModalData({ ...modalData, reason: e.target.value })}
+                    rows={3}
+                    placeholder="Enter reason for attendance change..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a8a9b] focus:border-transparent text-gray-700 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={closeModal}
+                  className="px-6 py-2.5 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  CLOSE
+                </button>
+                <button
+                  onClick={handleModalSubmit}
+                  className="px-6 py-2.5 bg-[#1a8a9b] text-white font-medium rounded-lg hover:bg-[#157a8a] transition-colors"
+                >
+                  SAVE
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

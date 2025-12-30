@@ -28,8 +28,25 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, 
 export default function Dashboard() {
   const { user, loading: userLoading } = useSessionRBAC();
   
-  // Compute isMainAdmin early so useEffects can skip loading for non-admin users
-  const isMainAdmin = user?.email === 'admin@crmaccent.com' || user?.username === 'admin@crmaccent.com';
+  // Compute isMainAdmin - only check once user is actually loaded
+  const isMainAdmin = user && (user.email === 'admin@crmaccent.com' || user.username === 'admin@crmaccent.com');
+  
+  // Track if we've determined the dashboard type to prevent flickering
+  const [dashboardDetermined, setDashboardDetermined] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  
+  // Determine which dashboard to show only once user is loaded
+  useEffect(() => {
+    if (!userLoading && user) {
+      const isAdmin = user.email === 'admin@crmaccent.com' || user.username === 'admin@crmaccent.com';
+      setShowAdminDashboard(isAdmin);
+      setDashboardDetermined(true);
+    } else if (!userLoading && !user) {
+      // User not authenticated, show user dashboard (will redirect to login)
+      setShowAdminDashboard(false);
+      setDashboardDetermined(true);
+    }
+  }, [user, userLoading]);
   
   const [stats, setStats] = useState({
     leads: { total_leads: 0, under_discussion: 0, proposal_sent: 0, closed_won: 0 },
@@ -528,17 +545,19 @@ useEffect(() => {
   };
 
   // Wait for user to load before deciding which dashboard to show
-  if (userLoading) {
+  if (userLoading || !dashboardDetermined) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+          <div className="text-gray-500">Loading dashboard...</div>
+        </div>
       </div>
     );
   }
 
-  // Show user dashboard IMMEDIATELY for all non-admin users - no flash of admin dashboard
-  // isMainAdmin is computed at the top of the component
-  if (!isMainAdmin) {
+  // Show user dashboard for all non-admin users - no flash of admin dashboard
+  if (!showAdminDashboard) {
     return <UserDashboard />;
   }
 
