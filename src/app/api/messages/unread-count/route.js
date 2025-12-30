@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
 /**
  * GET /api/messages/unread-count
  * Get unread message count for the current user (for notification badge)
+ * Uses: messages.created_at > conversation_members.last_read_at
  */
 export async function GET(request) {
   let db;
@@ -26,11 +27,16 @@ export async function GET(request) {
       });
     }
 
+    // Count unread messages using last_read_at comparison
+    // Unread = messages in user's conversations, sent by others, after user's last_read_at
+    // Works for both direct and group chats (receivers determined by conversation_members)
     const [result] = await db.execute(`
       SELECT COUNT(*) as unread_count
-      FROM messages
-      WHERE receiver_id = ? AND read_status = FALSE AND is_deleted_by_receiver = FALSE
-    `, [currentUser.id]);
+      FROM messages m
+      JOIN conversation_members cm ON m.conversation_id = cm.conversation_id AND cm.user_id = ?
+      WHERE m.sender_id != ?
+        AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+    `, [currentUser.id, currentUser.id]);
 
     await db.end();
 

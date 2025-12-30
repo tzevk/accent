@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 
 /**
- * GET /api/messages/thread/[userId]
- * Fetch conversation thread between current user and another user
- * Now uses conversation_id for grouping instead of sender/receiver pairs
+ * GET /api/messages/conversation/[conversationId]
+ * Fetch messages for a specific conversation
+ * Works for direct, group, and project conversations
  */
 export async function GET(request, { params }) {
   let db;
@@ -15,11 +15,11 @@ export async function GET(request, { params }) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { userId } = await params;
-    const otherUserId = parseInt(userId);
+    const { conversationId } = await params;
+    const convId = parseInt(conversationId);
 
-    if (otherUserId === currentUser.id) {
-      return NextResponse.json({ success: false, error: 'Invalid user' }, { status: 400 });
+    if (!convId || isNaN(convId)) {
+      return NextResponse.json({ success: false, error: 'Invalid conversation ID' }, { status: 400 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -29,53 +29,48 @@ export async function GET(request, { params }) {
 
     db = await dbConnect();
 
-    // Verify other user exists
-    const [otherUser] = await db.execute(
-      'SELECT id, full_name, email FROM users WHERE id = ?',
-      [otherUserId]
+    // Verify user is a member of this conversation
+    const [participation] = await db.execute(
+      'SELECT id, is_archived, is_muted FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
+      [convId, currentUser.id]
     );
 
-    if (otherUser.length === 0) {
+    if (participation.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Access denied to this conversation' }, { status: 403 });
     }
 
-    // Find conversation_id for this user pair
-    const [lowerId, higherId] = [currentUser.id, otherUserId].sort((a, b) => a - b);
-    const [convResult] = await db.execute(`
-      SELECT c.id as conversation_id FROM conversations c
-      JOIN conversation_members cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
-      JOIN conversation_members cp2 ON c.id = cp2.conversation_id AND cp2.user_id = ?
-      WHERE c.type = 'direct'
-      LIMIT 1
-    `, [lowerId, higherId]);
+    // Get conversation details
+    const [convDetails] = await db.execute(
+      'SELECT id, type, related_module, related_id, title, created_at FROM conversations WHERE id = ?',
+      [convId]
+    );
 
-    // If no conversation exists, return empty
-    if (convResult.length === 0) {
+    if (convDetails.length === 0) {
       await db.end();
-      return NextResponse.json({
-        success: true,
-        data: {
-          other_user: otherUser[0],
-          conversation_id: null,
-          messages: [],
-          pagination: { page, limit, total: 0, totalPages: 0 }
-        }
-      });
+      return NextResponse.json({ success: false, error: 'Conversation not found' }, { status: 404 });
     }
 
-    const conversationId = convResult[0].conversation_id;
+    const conversation = convDetails[0];
 
-    // Get total count using conversation_id only
+    // Get all members
+    const [members] = await db.execute(`
+      SELECT cm.user_id, cm.joined_at, cm.last_read_at, cm.is_archived, cm.is_muted, u.full_name, u.email
+      FROM conversation_members cm
+      JOIN users u ON cm.user_id = u.id
+      WHERE cm.conversation_id = ?
+    `, [convId]);
+
+    // Get total message count using conversation_id only
     const [countResult] = await db.execute(`
       SELECT COUNT(*) as total
       FROM messages m
       WHERE m.conversation_id = ?
-    `, [conversationId]);
+    `, [convId]);
 
     const total = countResult[0].total;
 
-    // Get thread messages using conversation_id only (no sender/receiver filtering)
+    // Get messages using conversation_id only (no sender/receiver filtering)
     const [messages] = await db.execute(`
       SELECT 
         m.id,
@@ -90,13 +85,14 @@ export async function GET(request, { params }) {
         m.read_at,
         m.created_at,
         sender.full_name as sender_name,
+        sender.email as sender_email,
         (SELECT COUNT(*) FROM message_attachments WHERE message_id = m.id) as attachment_count
       FROM messages m
       LEFT JOIN users sender ON m.sender_id = sender.id
       WHERE m.conversation_id = ?
       ORDER BY m.created_at DESC
       LIMIT ? OFFSET ?
-    `, [conversationId, limit, offset]);
+    `, [convId, limit, offset]);
 
     // Get attachments for all messages
     const messageIds = messages.map(m => m.id);
@@ -118,7 +114,6 @@ export async function GET(request, { params }) {
         ORDER BY id ASC
       `, messageIds);
 
-      // Group attachments by message_id
       attachments.forEach(att => {
         if (!attachmentsMap[att.message_id]) {
           attachmentsMap[att.message_id] = [];
@@ -127,27 +122,28 @@ export async function GET(request, { params }) {
       });
     }
 
-    // Add attachments to each message
     const messagesWithAttachments = messages.map(msg => ({
       ...msg,
       attachments: attachmentsMap[msg.id] || []
     }));
 
-    // Mark conversation as read by updating last_read_at (single update, scales better)
+    // Mark conversation as read by updating last_read_at only (scales better)
     // No longer updating per-message read_status flags
     await db.execute(`
       UPDATE conversation_members 
       SET last_read_at = NOW() 
       WHERE conversation_id = ? AND user_id = ?
-    `, [conversationId, currentUser.id]);
+    `, [convId, currentUser.id]);
 
     await db.end();
 
     return NextResponse.json({
       success: true,
       data: {
-        other_user: otherUser[0],
-        conversation_id: conversationId,
+        conversation: {
+          ...conversation,
+          members
+        },
         messages: messagesWithAttachments.reverse(), // Return in chronological order
         pagination: {
           page,
@@ -159,11 +155,11 @@ export async function GET(request, { params }) {
     });
 
   } catch (error) {
-    console.error('Error fetching thread:', error);
+    console.error('Error fetching conversation:', error);
     if (db) try { await db.end(); } catch {}
     return NextResponse.json({ 
       success: false, 
-      error: 'Failed to fetch thread',
+      error: 'Failed to fetch conversation',
       details: error.message 
     }, { status: 500 });
   }

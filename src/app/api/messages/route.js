@@ -37,20 +37,23 @@ export async function GET(request) {
     let params = [];
 
     if (type === 'inbox') {
-      whereClause = 'm.receiver_id = ? AND m.is_deleted_by_receiver = FALSE';
-      params.push(currentUser.id);
+      // Use conversation_members to filter messages user can see
+      whereClause = 'm.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = ?) AND m.sender_id != ?';
+      params.push(currentUser.id, currentUser.id);
       if (unreadOnly) {
-        whereClause += ' AND m.read_status = FALSE';
+        // Filter using timestamp comparison instead of read_status flag
+        whereClause += ' AND m.created_at > COALESCE((SELECT last_read_at FROM conversation_members WHERE conversation_id = m.conversation_id AND user_id = ?), "1970-01-01")';
+        params.push(currentUser.id);
       }
     } else if (type === 'sent') {
-      whereClause = 'm.sender_id = ? AND m.is_deleted_by_sender = FALSE';
+      whereClause = 'm.sender_id = ?';
       params.push(currentUser.id);
     } else {
       return NextResponse.json({ success: false, error: 'Invalid type parameter' }, { status: 400 });
     }
 
     if (search) {
-      whereClause += ' AND (m.subject LIKE ? OR m.body LIKE ? OR u.full_name LIKE ?)';
+      whereClause += ' AND (m.subject LIKE ? OR m.body LIKE ? OR sender.full_name LIKE ?)';
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm, searchTerm);
     }
@@ -59,7 +62,7 @@ export async function GET(request) {
     const [countResult] = await db.execute(`
       SELECT COUNT(*) as total
       FROM messages m
-      LEFT JOIN users u ON ${type === 'inbox' ? 'm.sender_id' : 'm.receiver_id'} = u.id
+      LEFT JOIN users sender ON m.sender_id = sender.id
       WHERE ${whereClause}
     `, params);
 
@@ -71,6 +74,7 @@ export async function GET(request) {
         m.id,
         m.sender_id,
         m.receiver_id,
+        m.conversation_id,
         m.subject,
         SUBSTRING(m.body, 1, 150) as body_preview,
         m.related_module,
@@ -80,23 +84,23 @@ export async function GET(request) {
         m.created_at,
         sender.full_name as sender_name,
         sender.email as sender_email,
-        receiver.full_name as receiver_name,
-        receiver.email as receiver_email,
         (SELECT COUNT(*) FROM message_attachments WHERE message_id = m.id) as attachment_count
       FROM messages m
       LEFT JOIN users sender ON m.sender_id = sender.id
-      LEFT JOIN users receiver ON m.receiver_id = receiver.id
       WHERE ${whereClause}
       ORDER BY m.created_at DESC
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
 
-    // Get unread count for badge
+    // Get unread count using last_read_at comparison (scales better)
+    // Works for both direct and group chats
     const [unreadResult] = await db.execute(`
       SELECT COUNT(*) as unread_count
-      FROM messages
-      WHERE receiver_id = ? AND read_status = FALSE AND is_deleted_by_receiver = FALSE
-    `, [currentUser.id]);
+      FROM messages m
+      JOIN conversation_members cm ON m.conversation_id = cm.conversation_id AND cm.user_id = ?
+      WHERE m.sender_id != ?
+        AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+    `, [currentUser.id, currentUser.id]);
 
     await db.end();
 
@@ -139,7 +143,8 @@ export async function POST(request) {
 
     const body = await request.json();
     const { 
-      receiver_id, 
+      receiver_id,        // For direct messages (legacy support)
+      conversation_id,    // For group/project chats (preferred)
       subject, 
       body: messageBody, 
       related_module = 'none', 
@@ -147,11 +152,18 @@ export async function POST(request) {
       attachments = [] // Array of { file_name, original_name, file_path, file_type, file_size }
     } = body;
 
-    // Validation
-    if (!receiver_id || !subject) {
+    // Validation - need either receiver_id (direct) or conversation_id (group/project)
+    if (!receiver_id && !conversation_id) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Missing required fields: receiver_id, subject' 
+        error: 'Missing required field: receiver_id or conversation_id' 
+      }, { status: 400 });
+    }
+
+    if (!subject) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Missing required field: subject' 
       }, { status: 400 });
     }
 
@@ -163,37 +175,56 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    if (receiver_id === currentUser.id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Cannot send message to yourself' 
-      }, { status: 400 });
-    }
+    // Note: No longer blocking self-send for group chats (sender is also a member)
 
     db = await dbConnect();
 
     // Ensure tables exist
     await ensureTablesExist(db);
 
-    // Verify receiver exists
-    const [receiverExists] = await db.execute(
-      'SELECT id, full_name FROM users WHERE id = ?',
-      [receiver_id]
-    );
+    let finalConversationId;
+    let receiverName = null;
 
-    if (receiverExists.length === 0) {
-      await db.end();
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Receiver not found' 
-      }, { status: 404 });
+    if (conversation_id) {
+      // Group/project chat: verify sender is a member of this conversation
+      const [membership] = await db.execute(
+        'SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
+        [conversation_id, currentUser.id]
+      );
+
+      if (membership.length === 0) {
+        await db.end();
+        return NextResponse.json({ 
+          success: false, 
+          error: 'You are not a member of this conversation' 
+        }, { status: 403 });
+      }
+
+      finalConversationId = conversation_id;
+    } else {
+      // Direct message: verify receiver exists and get/create conversation
+      const [receiverExists] = await db.execute(
+        'SELECT id, full_name FROM users WHERE id = ?',
+        [receiver_id]
+      );
+
+      if (receiverExists.length === 0) {
+        await db.end();
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Receiver not found' 
+        }, { status: 404 });
+      }
+
+      receiverName = receiverExists[0].full_name;
+      finalConversationId = await getOrCreateDirectConversation(currentUser.id, receiver_id, db);
     }
 
-    // Insert message
+    // Insert message (no receiver_id for group chats - receivers come from conversation_members)
     const [result] = await db.execute(`
-      INSERT INTO messages (sender_id, receiver_id, subject, body, related_module, related_id)
+      INSERT INTO messages (sender_id, subject, body, related_module, related_id, conversation_id)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [currentUser.id, receiver_id, subject, messageBody, related_module, related_id]);
+    `, [currentUser.id, subject, messageBody, related_module, related_id, finalConversationId]);
 
     const messageId = result.insertId;
 
@@ -214,13 +245,8 @@ export async function POST(request) {
       }
     }
 
-    // Update or create thread
-    const [user1, user2] = [currentUser.id, receiver_id].sort((a, b) => a - b);
-    await db.execute(`
-      INSERT INTO message_threads (user1_id, user2_id, last_message_id, last_message_at)
-      VALUES (?, ?, ?, NOW())
-      ON DUPLICATE KEY UPDATE last_message_id = ?, last_message_at = NOW()
-    `, [user1, user2, messageId, messageId]);
+    // Update conversation last activity (optional: for sorting conversation list)
+    // Legacy thread table no longer needed - conversation_members handles this
 
     await db.end();
 
@@ -228,7 +254,8 @@ export async function POST(request) {
       success: true,
       data: {
         message_id: messageId,
-        receiver_name: receiverExists[0].full_name
+        conversation_id: finalConversationId,
+        receiver_name: receiverName // null for group chats
       },
       message: 'Message sent successfully'
     });
@@ -245,32 +272,65 @@ export async function POST(request) {
 }
 
 /**
+ * Helper function to get or create a direct conversation between two users
+ */
+async function getOrCreateDirectConversation(userA, userB, db) {
+  // Sort IDs to ensure order-independence
+  const [lowerId, higherId] = [userA, userB].sort((a, b) => a - b);
+  
+  // Check if conversation already exists between these two users
+  const [existing] = await db.execute(`
+    SELECT c.id FROM conversations c
+    JOIN conversation_members cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
+    JOIN conversation_members cp2 ON c.id = cp2.conversation_id AND cp2.user_id = ?
+    WHERE c.type = 'direct'
+    LIMIT 1
+  `, [lowerId, higherId]);
+  
+  if (existing.length > 0) {
+    return existing[0].id;
+  }
+  
+  // Create new conversation
+  const [result] = await db.execute(
+    `INSERT INTO conversations (type) VALUES ('direct')`
+  );
+  const conversationId = result.insertId;
+  
+  // Add both members
+  await db.execute(
+    `INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?), (?, ?)`,
+    [conversationId, lowerId, conversationId, higherId]
+  );
+  
+  return conversationId;
+}
+
+/**
  * Helper function to ensure tables exist
+ * Updated schema: receiver_id optional (for legacy), receivers determined by conversation_members
  */
 async function ensureTablesExist(db) {
   try {
     // Check if messages table exists
     const [tables] = await db.execute(`SHOW TABLES LIKE 'messages'`);
     if (tables.length === 0) {
-      // Create messages table
+      // Create messages table - receiver_id kept for legacy but nullable
+      // Receivers now determined by conversation_members table
       await db.execute(`
         CREATE TABLE IF NOT EXISTS messages (
           id INT AUTO_INCREMENT PRIMARY KEY,
           sender_id INT NOT NULL,
-          receiver_id INT NOT NULL,
+          receiver_id INT DEFAULT NULL,
+          conversation_id BIGINT NOT NULL,
           subject VARCHAR(255) NOT NULL,
-          body TEXT NOT NULL,
+          body TEXT,
           related_module ENUM('lead', 'client', 'project', 'employee', 'company', 'proposal', 'none') DEFAULT 'none',
           related_id INT DEFAULT NULL,
-          read_status BOOLEAN DEFAULT FALSE,
-          read_at DATETIME DEFAULT NULL,
-          is_deleted_by_sender BOOLEAN DEFAULT FALSE,
-          is_deleted_by_receiver BOOLEAN DEFAULT FALSE,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_sender (sender_id),
-          INDEX idx_receiver (receiver_id),
-          INDEX idx_read_status (read_status),
+          INDEX idx_conversation (conversation_id),
           INDEX idx_created_at (created_at)
         )
       `);
@@ -290,18 +350,33 @@ async function ensureTablesExist(db) {
         )
       `);
 
-      // Create message_threads table
+      // Create conversations table
       await db.execute(`
-        CREATE TABLE IF NOT EXISTS message_threads (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          user1_id INT NOT NULL,
-          user2_id INT NOT NULL,
-          last_message_id INT DEFAULT NULL,
-          last_message_at DATETIME DEFAULT NULL,
+        CREATE TABLE IF NOT EXISTS conversations (
+          id BIGINT AUTO_INCREMENT PRIMARY KEY,
+          type ENUM('direct', 'group', 'project') NOT NULL DEFAULT 'direct',
+          related_module VARCHAR(50) DEFAULT NULL,
+          related_id INT DEFAULT NULL,
+          title VARCHAR(255) DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE KEY unique_thread (user1_id, user2_id),
-          INDEX idx_user1 (user1_id),
-          INDEX idx_user2 (user2_id)
+          INDEX idx_type (type),
+          INDEX idx_related (related_module, related_id)
+        )
+      `);
+
+      // Create conversation_members table
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS conversation_members (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          conversation_id BIGINT NOT NULL,
+          user_id INT NOT NULL,
+          last_read_at DATETIME DEFAULT NULL,
+          is_archived BOOLEAN DEFAULT FALSE,
+          is_muted BOOLEAN DEFAULT FALSE,
+          joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_member (conversation_id, user_id),
+          INDEX idx_user_conversations (user_id, conversation_id),
+          FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         )
       `);
     }

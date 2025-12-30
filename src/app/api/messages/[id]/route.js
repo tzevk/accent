@@ -62,13 +62,13 @@ export async function GET(request, { params }) {
       WHERE message_id = ?
     `, [messageId]);
 
-    // Mark as read if receiver is viewing
-    if (message.receiver_id === currentUser.id && !message.read_status) {
+    // Mark conversation as read if receiver is viewing (update last_read_at instead of per-message flag)
+    if (message.receiver_id === currentUser.id && message.conversation_id) {
       await db.execute(`
-        UPDATE messages SET read_status = TRUE, read_at = NOW() WHERE id = ?
-      `, [messageId]);
-      message.read_status = true;
-      message.read_at = new Date();
+        UPDATE conversation_members 
+        SET last_read_at = NOW() 
+        WHERE conversation_id = ? AND user_id = ?
+      `, [message.conversation_id, currentUser.id]);
     }
 
     // Get related entity name if applicable

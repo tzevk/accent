@@ -8,6 +8,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
+import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
 
 const INITIAL_FORM = {
@@ -95,13 +96,13 @@ const TABS = [
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'project_schedule', label: 'Project Schedule' },
   { id: 'project_activity', label: 'Project Activity' },
-  { id: 'followups', label: 'Follow-ups' },
   { id: 'documents_issued', label: 'Documents Issued' },
   { id: 'project_handover', label: 'Project Handover' },
   { id: 'project_manhours', label: 'Project Manhours' },
   { id: 'query_log', label: 'Query Log' },
   { id: 'assumption', label: 'Assumption' },
-  { id: 'lessons_learnt', label: 'Lessons Learnt' }
+  { id: 'lessons_learnt', label: 'Lessons Learnt' },
+  { id: 'discussion', label: 'Discussion' }
 ];
 
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
@@ -134,6 +135,7 @@ function EditProjectForm() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id;
+  const { user: sessionUser } = useSession();
 
   const [activeTab, setActiveTab] = useState('general');
   const [companies, setCompanies] = useState([]);
@@ -4122,10 +4124,10 @@ function EditProjectForm() {
               </section>
             )}
 
-            {/* Follow-ups Tab */}
-            {activeTab === 'followups' && (
+            {/* Discussion Tab */}
+            {activeTab === 'discussion' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <ProjectFollowupsForm projectId={id} projectTeamMembers={projectTeamMembers} userMaster={userMaster} />
+                <ProjectFollowupsForm projectId={id} projectTeamMembers={projectTeamMembers} currentUser={sessionUser} />
               </section>
             )}
 
@@ -5289,76 +5291,67 @@ function EditProjectForm() {
   );
 }
 
-// Project Follow-ups Form Component - Tailored for Project Management
-function ProjectFollowupsForm({ projectId, projectTeamMembers = [], userMaster = [] }) {
-  const [followups, setFollowups] = useState([]);
+// Project Discussion Form Component - Compact Table-only Design
+function ProjectFollowupsForm({ projectId, projectTeamMembers = [], currentUser }) {
+  const [discussions, setDiscussions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingFollowup, setEditingFollowup] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     follow_up_date: new Date().toISOString().split('T')[0],
-    follow_up_type: 'Internal Review',
     description: '',
-    status: 'Scheduled',
-    priority: 'Medium',
-    milestone: '',
     responsible_person: '',
-    action_items: '',
-    outcome: '',
-    next_action: '',
-    next_follow_up_date: '',
-    blockers: '',
-    notes: ''
+    logged_by: currentUser?.full_name || currentUser?.username || ''
   });
 
-  const fetchFollowups = useCallback(async () => {
+  const fetchDiscussions = useCallback(async () => {
     if (!projectId) return;
     try {
       const res = await fetch(`/api/projects/${projectId}/followups`);
       const data = await res.json();
-      if (data?.success) setFollowups(data.data || []);
+      if (data?.success) setDiscussions(data.data || []);
     } catch (e) {
-      console.error('Error fetching followups:', e);
+      console.error('Error fetching discussions:', e);
     } finally {
       setLoading(false);
     }
   }, [projectId]);
 
   useEffect(() => {
-    fetchFollowups();
-  }, [fetchFollowups]);
+    fetchDiscussions();
+  }, [fetchDiscussions]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setFormData(prev => {
+        if (!prev.logged_by) {
+          return { ...prev, logged_by: currentUser.full_name || currentUser.username || '' };
+        }
+        return prev;
+      });
+    }
+  }, [currentUser]);
 
   const resetForm = () => {
     setFormData({
       follow_up_date: new Date().toISOString().split('T')[0],
-      follow_up_type: 'Internal Review',
       description: '',
-      status: 'Scheduled',
-      priority: 'Medium',
-      milestone: '',
       responsible_person: '',
-      action_items: '',
-      outcome: '',
-      next_action: '',
-      next_follow_up_date: '',
-      blockers: '',
-      notes: ''
+      logged_by: currentUser?.full_name || currentUser?.username || ''
     });
-    setEditingFollowup(null);
-    setShowForm(false);
+    setEditingId(null);
   };
 
   const handleSubmit = async () => {
-    if (!formData.follow_up_date || !formData.description) {
-      alert('Please fill in date and description');
+    if (!formData.follow_up_date || !formData.description.trim()) {
+      alert('Please fill in date and topic');
       return;
     }
 
     try {
       const url = `/api/projects/${projectId}/followups`;
-      const method = editingFollowup ? 'PUT' : 'POST';
-      const body = editingFollowup 
-        ? { id: editingFollowup.id, ...formData }
+      const method = editingId ? 'PUT' : 'POST';
+      const body = editingId 
+        ? { id: editingId, ...formData }
         : formData;
 
       const res = await fetch(url, {
@@ -5370,109 +5363,42 @@ function ProjectFollowupsForm({ projectId, projectTeamMembers = [], userMaster =
       
       if (data?.success) {
         resetForm();
-        fetchFollowups();
+        fetchDiscussions();
       } else {
-        alert(data?.error || 'Failed to save follow-up');
+        alert(data?.error || 'Failed to save discussion');
       }
     } catch (e) {
-      console.error('Error saving followup:', e);
-      alert('Failed to save follow-up');
+      console.error('Error saving discussion:', e);
+      alert('Failed to save discussion');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this follow-up?')) return;
+    if (!confirm('Delete this discussion?')) return;
     try {
       const res = await fetch(`/api/projects/${projectId}/followups?followup_id=${id}`, {
         method: 'DELETE'
       });
       const data = await res.json();
       if (data?.success) {
-        fetchFollowups();
+        fetchDiscussions();
       } else {
         alert(data?.error || 'Failed to delete');
       }
     } catch (e) {
-      console.error('Error deleting followup:', e);
-      alert('Failed to delete follow-up');
+      console.error('Error deleting discussion:', e);
+      alert('Failed to delete discussion');
     }
   };
 
-  const handleEdit = (fu) => {
+  const handleEdit = (item) => {
     setFormData({
-      follow_up_date: fu.follow_up_date?.split('T')[0] || '',
-      follow_up_type: fu.follow_up_type || 'Internal Review',
-      description: fu.description || '',
-      status: fu.status || 'Scheduled',
-      priority: fu.priority || 'Medium',
-      milestone: fu.milestone || '',
-      responsible_person: fu.responsible_person || '',
-      action_items: fu.action_items || '',
-      outcome: fu.outcome || '',
-      next_action: fu.next_action || '',
-      next_follow_up_date: fu.next_follow_up_date?.split('T')[0] || '',
-      blockers: fu.blockers || '',
-      notes: fu.notes || ''
+      follow_up_date: item.follow_up_date?.split('T')[0] || '',
+      description: item.description || '',
+      responsible_person: item.responsible_person || '',
+      logged_by: item.logged_by || item.created_by || ''
     });
-    setEditingFollowup(fu);
-    setShowForm(true);
-  };
-
-  const markComplete = async (fu) => {
-    try {
-      const res = await fetch(`/api/projects/${projectId}/followups`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: fu.id, status: 'Completed' })
-      });
-      const data = await res.json();
-      if (data?.success) fetchFollowups();
-    } catch (e) {
-      console.error('Error marking complete:', e);
-    }
-  };
-
-  const getPriorityBadge = (priority) => {
-    switch (priority) {
-      case 'Critical': return 'bg-red-100 text-red-700 border-red-200';
-      case 'High': return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'Medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-      case 'Low': return 'bg-green-100 text-green-700 border-green-200';
-      default: return 'bg-gray-100 text-gray-700 border-gray-200';
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-700';
-      case 'In Progress': return 'bg-blue-100 text-blue-700';
-      case 'Blocked': return 'bg-red-100 text-red-700';
-      case 'Cancelled': return 'bg-gray-200 text-gray-600';
-      default: return 'bg-yellow-100 text-yellow-700';
-    }
-  };
-
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case 'Client Meeting': return <UserIcon className="h-4 w-4 text-blue-500" />;
-      case 'Internal Review': return <ClockIcon className="h-4 w-4 text-purple-500" />;
-      case 'Status Update': return <DocumentIcon className="h-4 w-4 text-green-500" />;
-      case 'Milestone Review': return <CheckCircleIcon className="h-4 w-4 text-amber-500" />;
-      case 'Risk Assessment': return <XMarkIcon className="h-4 w-4 text-red-500" />;
-      case 'Design Review': return <DocumentIcon className="h-4 w-4 text-indigo-500" />;
-      case 'Site Visit': return <ArrowLeftIcon className="h-4 w-4 text-orange-500" />;
-      case 'Other': return <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-500" />;
-      default: return <CalendarIcon className="h-4 w-4 text-gray-400" />;
-    }
-  };
-
-  // Summary stats
-  const stats = {
-    total: followups.length,
-    scheduled: followups.filter(f => f.status === 'Scheduled').length,
-    inProgress: followups.filter(f => f.status === 'In Progress').length,
-    completed: followups.filter(f => f.status === 'Completed').length,
-    blocked: followups.filter(f => f.status === 'Blocked').length
+    setEditingId(item.id);
   };
 
   if (loading) {
@@ -5486,323 +5412,115 @@ function ProjectFollowupsForm({ projectId, projectTeamMembers = [], userMaster =
   return (
     <div className="p-4">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <ChatBubbleLeftRightIcon className="h-5 w-5 text-purple-600" />
-            Project Follow-ups
-          </h3>
-          <p className="text-sm text-gray-500 mt-0.5">Track reviews, milestones, and action items</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Mini Stats */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded">{stats.scheduled} scheduled</span>
-            <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded">{stats.inProgress} in progress</span>
-            <span className="px-2 py-1 bg-green-50 text-green-700 rounded">{stats.completed} done</span>
-            {stats.blocked > 0 && <span className="px-2 py-1 bg-red-50 text-red-700 rounded">{stats.blocked} blocked</span>}
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 flex items-center gap-1"
-          >
-            <PlusIcon className="h-4 w-4" />
-            Add Follow-up
-          </button>
-        </div>
+      <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <ChatBubbleLeftRightIcon className="h-5 w-5 text-purple-600" />
+          Discussion
+        </h3>
+        <span className="text-sm text-gray-500">{discussions.length} entries</span>
       </div>
 
-      {/* Quick Add Form */}
-      {showForm && (
-        <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-purple-800 flex items-center gap-1">
-              {editingFollowup ? <><DocumentIcon className="h-4 w-4" /> Edit Follow-up</> : <><PlusIcon className="h-4 w-4" /> New Follow-up</>}
-            </span>
-            <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Row 1: Essential fields */}
-          <div className="grid grid-cols-12 gap-3 mb-3">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
-              <input
-                type="date"
-                value={formData.follow_up_date}
-                onChange={(e) => setFormData(prev => ({ ...prev, follow_up_date: e.target.value }))}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-              <select
-                value={formData.follow_up_type}
-                onChange={(e) => setFormData(prev => ({ ...prev, follow_up_type: e.target.value }))}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              >
-                <option value="Internal Review">Internal Review</option>
-                <option value="Client Meeting">Client Meeting</option>
-                <option value="Status Update">Status Update</option>
-                <option value="Milestone Review">Milestone Review</option>
-                <option value="Design Review">Design Review</option>
-                <option value="Risk Assessment">Risk Assessment</option>
-                <option value="Site Visit">Site Visit</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
-              <select
-                value={formData.priority}
-                onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value }))}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              >
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              >
-                <option value="Scheduled">Scheduled</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="Blocked">Blocked</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Responsible Person</label>
-              <select
-                value={formData.responsible_person}
-                onChange={(e) => setFormData(prev => ({ ...prev, responsible_person: e.target.value }))}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              >
-                <option value="">Select team member...</option>
-                {(projectTeamMembers.length > 0 ? projectTeamMembers : userMaster).map(member => (
-                  <option key={member.id || member.user_id} value={member.full_name || member.employee_name || member.username}>
-                    {member.full_name || member.employee_name || member.username}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Row 2: Description & Milestone */}
-          <div className="grid grid-cols-12 gap-3 mb-3">
-            <div className="col-span-8">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Description *</label>
-              <input
-                type="text"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="What needs to be reviewed/discussed..."
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Milestone / Phase</label>
-              <input
-                type="text"
-                value={formData.milestone}
-                onChange={(e) => setFormData(prev => ({ ...prev, milestone: e.target.value }))}
-                placeholder="e.g., Design Phase, Phase 1 Delivery"
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Row 3: Action Items & Next Steps */}
-          <div className="grid grid-cols-12 gap-3 mb-3">
-            <div className="col-span-6">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Action Items</label>
-              <input
-                type="text"
-                value={formData.action_items}
-                onChange={(e) => setFormData(prev => ({ ...prev, action_items: e.target.value }))}
-                placeholder="List key action items..."
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Next Date</label>
-              <input
-                type="date"
-                value={formData.next_follow_up_date}
-                onChange={(e) => setFormData(prev => ({ ...prev, next_follow_up_date: e.target.value }))}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Next Action</label>
-              <input
-                type="text"
-                value={formData.next_action}
-                onChange={(e) => setFormData(prev => ({ ...prev, next_action: e.target.value }))}
-                placeholder="What's the next step..."
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Row 4: Outcome, Blockers, Notes */}
-          <div className="grid grid-cols-12 gap-3 mb-3">
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Outcome / Result</label>
-              <input
-                type="text"
-                value={formData.outcome}
-                onChange={(e) => setFormData(prev => ({ ...prev, outcome: e.target.value }))}
-                placeholder="What was decided..."
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Blockers / Issues</label>
-              <input
-                type="text"
-                value={formData.blockers}
-                onChange={(e) => setFormData(prev => ({ ...prev, blockers: e.target.value }))}
-                placeholder="Any blockers or concerns..."
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-            <div className="col-span-4">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-              <input
-                type="text"
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Additional notes..."
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-3 border-t border-purple-200">
-            <button
-              onClick={resetForm}
-              className="px-4 py-1.5 text-gray-600 hover:text-gray-800 text-sm border border-gray-300 rounded bg-white"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              className="px-4 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
-            >
-              {editingFollowup ? 'Update' : 'Save Follow-up'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Follow-ups Table */}
-      {followups.length === 0 && !showForm ? (
-        <div className="mt-6 text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-          <ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 font-medium">No follow-ups scheduled yet</p>
-          <p className="text-sm text-gray-400 mt-1">Track project reviews, meetings, and milestones</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700"
-          >
-            Create First Follow-up
-          </button>
-        </div>
-      ) : followups.length > 0 && (
-        <div className="mt-4 overflow-x-auto border border-gray-200 rounded-lg">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-10">#</th>
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-24">Date</th>
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Type</th>
-                <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-20">Priority</th>
-                <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-24">Status</th>
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Responsible</th>
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Milestone</th>
-                <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-24">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {followups.map((fu, index) => (
-                <tr 
-                  key={fu.id} 
-                  className={`hover:bg-gray-50 ${
-                    fu.status === 'Completed' ? 'bg-green-50/50' :
-                    fu.status === 'Cancelled' ? 'bg-gray-100 opacity-60' :
-                    fu.status === 'Blocked' ? 'bg-red-50/50' :
-                    fu.status === 'In Progress' ? 'bg-blue-50/30' : ''
-                  }`}
+      {/* Table with Add Row */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-12">S.No</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Date</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Topic</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-40">Participants</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-32">Logged By</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-24">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {/* Add/Edit Input Row */}
+            <tr className="bg-purple-50 border-b-2 border-purple-200">
+              <td className="px-3 py-2 text-gray-400 text-xs">{editingId ? '#' : 'New'}</td>
+              <td className="px-3 py-2">
+                <input
+                  type="date"
+                  value={formData.follow_up_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, follow_up_date: e.target.value }))}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+                />
+              </td>
+              <td className="px-3 py-2">
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Discussion topic..."
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+                />
+              </td>
+              <td className="px-3 py-2">
+                <select
+                  value={formData.responsible_person}
+                  onChange={(e) => setFormData(prev => ({ ...prev, responsible_person: e.target.value }))}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
                 >
+                  <option value="">Select...</option>
+                  {projectTeamMembers.map(member => (
+                    <option key={member.id} value={member.name}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td className="px-3 py-2">
+                <input
+                  type="text"
+                  value={formData.logged_by}
+                  onChange={(e) => setFormData(prev => ({ ...prev, logged_by: e.target.value }))}
+                  placeholder="Your name"
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500 bg-gray-50"
+                />
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex items-center justify-center gap-1">
+                  {editingId && (
+                    <button
+                      onClick={resetForm}
+                      className="px-2 py-1 text-gray-600 hover:bg-gray-200 rounded text-xs"
+                      title="Cancel"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSubmit}
+                    className="px-3 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700"
+                  >
+                    {editingId ? 'Update' : 'Add'}
+                  </button>
+                </div>
+              </td>
+            </tr>
+
+            {/* Data Rows */}
+            {discussions.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-3 py-8 text-center text-gray-400">
+                  No discussions yet. Add one above.
+                </td>
+              </tr>
+            ) : (
+              discussions.map((item, index) => (
+                <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2.5 text-gray-500 font-medium">{index + 1}</td>
                   <td className="px-3 py-2.5 text-gray-900">
-                    {fu.follow_up_date ? new Date(fu.follow_up_date).toLocaleDateString('en-IN', { 
-                      day: '2-digit', month: 'short'
+                    {item.follow_up_date ? new Date(item.follow_up_date).toLocaleDateString('en-IN', { 
+                      day: '2-digit', month: 'short', year: 'numeric'
                     }) : '—'}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <span className="flex items-center gap-1.5">
-                      <span>{getTypeIcon(fu.follow_up_type)}</span>
-                      <span className="text-gray-700 text-xs">{fu.follow_up_type}</span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getPriorityBadge(fu.priority)}`}>
-                      {fu.priority}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(fu.status)}`}>
-                      {fu.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-gray-700">
-                    <div className="max-w-xs">
-                      <div className="truncate font-medium" title={fu.description}>{fu.description}</div>
-                      {fu.action_items && (
-                        <div className="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1" title={fu.action_items}>
-                          <DocumentIcon className="h-3 w-3" /> {fu.action_items}
-                        </div>
-                      )}
-                      {fu.blockers && (
-                        <div className="text-xs text-red-500 truncate mt-0.5 flex items-center gap-1" title={fu.blockers}>
-                          <XMarkIcon className="h-3 w-3" /> {fu.blockers}
-                        </div>
-                      )}
-                      {fu.next_action && (
-                        <div className="text-xs text-blue-600 truncate mt-0.5">→ {fu.next_action}</div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-gray-700 text-xs">{fu.responsible_person || '—'}</td>
-                  <td className="px-3 py-2.5 text-gray-600 text-xs">
-                    {fu.milestone && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">{fu.milestone}</span>}
-                    {!fu.milestone && '—'}
-                  </td>
+                  <td className="px-3 py-2.5 text-gray-700">{item.description || '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-700 text-sm">{item.responsible_person || '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-600 text-sm">{item.logged_by || item.created_by || '—'}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-center gap-1">
-                      {fu.status !== 'Completed' && fu.status !== 'Cancelled' && (
-                        <button
-                          onClick={() => markComplete(fu)}
-                          className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors"
-                          title="Mark Complete"
-                        >
-                          <CheckIcon className="h-4 w-4" />
-                        </button>
-                      )}
                       <button
-                        onClick={() => handleEdit(fu)}
+                        onClick={() => handleEdit(item)}
                         className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
                         title="Edit"
                       >
@@ -5811,7 +5529,7 @@ function ProjectFollowupsForm({ projectId, projectTeamMembers = [], userMaster =
                         </svg>
                       </button>
                       <button
-                        onClick={() => handleDelete(fu.id)}
+                        onClick={() => handleDelete(item.id)}
                         className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
                         title="Delete"
                       >
@@ -5820,11 +5538,11 @@ function ProjectFollowupsForm({ projectId, projectTeamMembers = [], userMaster =
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

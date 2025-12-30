@@ -97,6 +97,24 @@ textarea::placeholder {
   opacity: 1;
 }
 
+/* ContentEditable placeholder styling */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af; /* gray-400 */
+  pointer-events: none;
+  position: absolute;
+}
+
+[contenteditable][data-placeholder]:empty:focus::before {
+  content: attr(data-placeholder);
+}
+
+/* Ensure contentEditable has proper text color */
+[contenteditable] {
+  color: #374151; /* gray-700 */
+  min-height: 1em;
+}
+
 /* Simple, tasteful animations */
 @keyframes fade-in {
   from { opacity: 0 }

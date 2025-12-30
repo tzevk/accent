@@ -30,6 +30,7 @@ export async function GET(request, { params }) {
         next_follow_up_date DATE,
         blockers TEXT,
         notes TEXT,
+        logged_by VARCHAR(255),
         created_by VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -38,6 +39,12 @@ export async function GET(request, { params }) {
         INDEX idx_status (status)
       )
     `);
+    
+    // Add logged_by column if it doesn't exist
+    await db.execute(`
+      ALTER TABLE project_followups 
+      ADD COLUMN IF NOT EXISTS logged_by VARCHAR(255) AFTER notes
+    `).catch(() => {});
 
     // Get follow-ups for this project
     const [rows] = await db.execute(
@@ -81,6 +88,7 @@ export async function POST(request, { params }) {
       next_follow_up_date,
       blockers,
       notes,
+      logged_by,
       created_by
     } = data;
 
@@ -93,8 +101,8 @@ export async function POST(request, { params }) {
     const [result] = await db.execute(
       `INSERT INTO project_followups 
         (project_id, follow_up_date, follow_up_type, description, status, priority, milestone, 
-         responsible_person, action_items, outcome, next_action, next_follow_up_date, blockers, notes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         responsible_person, action_items, outcome, next_action, next_follow_up_date, blockers, notes, logged_by, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         follow_up_date,
@@ -110,6 +118,7 @@ export async function POST(request, { params }) {
         next_follow_up_date || null,
         blockers || null,
         notes || null,
+        logged_by || null,
         created_by || null
       ]
     );
@@ -150,7 +159,7 @@ export async function PUT(request, { params }) {
     const allowedFields = [
       'follow_up_date', 'follow_up_type', 'description', 'status', 'priority',
       'milestone', 'responsible_person', 'action_items', 'outcome', 
-      'next_action', 'next_follow_up_date', 'blockers', 'notes'
+      'next_action', 'next_follow_up_date', 'blockers', 'notes', 'logged_by'
     ];
     
     const updates = [];

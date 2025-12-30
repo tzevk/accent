@@ -25,14 +25,16 @@ export function middleware(req: NextRequest) {
 
   // allow public routes
   if (isPublicPath(pathname)) {
-    // If user is already authenticated and tries to access /signin, redirect to dashboard
+    // If user is already authenticated and tries to access /signin, redirect to appropriate dashboard
     if (pathname === '/signin') {
       const authToken = req.cookies.get('auth')?.value
       const userId = req.cookies.get('user_id')?.value
+      const isSuperAdmin = req.cookies.get('is_super_admin')?.value
       // Only redirect if BOTH cookies are present (full session)
       if (authToken && userId) {
         const url = req.nextUrl.clone()
-        url.pathname = '/dashboard'
+        // Super admin goes to admin dashboard
+        url.pathname = isSuperAdmin === '1' ? '/admin/productivity' : '/dashboard'
         return NextResponse.redirect(url)
       }
     }

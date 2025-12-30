@@ -95,6 +95,12 @@ export default function SignIn() {
           console.warn('Session verification incomplete, proceeding with redirect anyway');
         }
         
+        // Super admin goes to admin dashboard
+        if (data.is_super_admin) {
+          router.push('/admin/productivity');
+          return;
+        }
+        
         // If redirected here from a protected page, go back there
         const params = new URLSearchParams(window.location.search);
         const from = params.get('from');

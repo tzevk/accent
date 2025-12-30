@@ -89,7 +89,12 @@ export async function POST(req) {
     if (rows.length > 0) {
       // Minimal auth: set an httpOnly cookie to mark authenticated session
       // Note: For production, sign this value (HMAC/JWT). This is a simple presence check.
-      const res = NextResponse.json({ success: true, message: 'Login successful' })
+      const user = rows[0];
+      const res = NextResponse.json({ 
+        success: true, 
+        message: 'Login successful',
+        is_super_admin: user.is_super_admin === 1 || user.is_super_admin === true
+      })
       const isProd = process.env.NODE_ENV === 'production'
       
       // Set cookies with immediate effect
@@ -105,6 +110,17 @@ export async function POST(req) {
       // Also set user_id for server-side RBAC resolution
       const userId = rows[0].id
       res.cookies.set('user_id', String(userId), {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/',
+        maxAge: 60 * 60 * 8,
+        priority: 'high'
+      })
+      
+      // Set is_super_admin cookie for middleware routing
+      const isSuperAdmin = user.is_super_admin === 1 || user.is_super_admin === true;
+      res.cookies.set('is_super_admin', isSuperAdmin ? '1' : '0', {
         httpOnly: true,
         sameSite: 'lax',
         secure: isProd,
