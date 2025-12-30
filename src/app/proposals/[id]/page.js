@@ -13,7 +13,14 @@ import {
   ArrowRightIcon,
   PlusIcon,
   TrashIcon,
-  DocumentArrowDownIcon
+  DocumentArrowDownIcon,
+  PhoneIcon,
+  EnvelopeIcon,
+  CalendarIcon,
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/outline';
 
 export default function ProposalPage() {
@@ -45,6 +52,23 @@ export default function ProposalPage() {
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
+
+  // Follow-ups state
+  const [followups, setFollowups] = useState([]);
+  const [showFollowupForm, setShowFollowupForm] = useState(false);
+  const [editingFollowup, setEditingFollowup] = useState(null);
+  const [followupsExpanded, setFollowupsExpanded] = useState(true);
+  const [newFollowup, setNewFollowup] = useState({
+    follow_up_date: new Date().toISOString().split('T')[0],
+    follow_up_type: 'Call',
+    description: '',
+    status: 'Scheduled',
+    outcome: '',
+    next_action: '',
+    next_follow_up_date: '',
+    contacted_person: '',
+    notes: ''
+  });
 
   // Convert confirmation modal state
   const [showConvertConfirm, setShowConvertConfirm] = useState(false);
@@ -545,6 +569,86 @@ export default function ProposalPage() {
       if (j?.success) setApprovals(j.data || []);
     } catch (e) { console.error('approvals fetch', e); }
   }, [proposal]);
+
+  const fetchFollowups = useCallback(async () => {
+    if (!proposal?.id) return;
+    try {
+      const j = await fetchJSON(`/api/proposals/${proposal.id}/followups`);
+      if (j?.success) setFollowups(j.data || []);
+    } catch (e) { console.error('followups fetch', e); }
+  }, [proposal]);
+
+  const addFollowup = async () => {
+    if (!proposal?.id || !newFollowup.follow_up_date || !newFollowup.description) {
+      alert('Please fill in date and description');
+      return;
+    }
+    try {
+      const res = await fetchJSON(`/api/proposals/${proposal.id}/followups`, {
+        method: 'POST',
+        body: JSON.stringify(newFollowup)
+      });
+      if (res?.success) {
+        setNewFollowup({
+          follow_up_date: new Date().toISOString().split('T')[0],
+          follow_up_type: 'Call',
+          description: '',
+          status: 'Scheduled',
+          outcome: '',
+          next_action: '',
+          next_follow_up_date: '',
+          contacted_person: '',
+          notes: ''
+        });
+        setShowFollowupForm(false);
+        fetchFollowups();
+      } else {
+        alert(res?.error || 'Failed to add follow-up');
+      }
+    } catch (e) {
+      console.error('add followup error', e);
+      alert('Failed to add follow-up');
+    }
+  };
+
+  const updateFollowup = async (followupId, updates) => {
+    try {
+      const res = await fetchJSON(`/api/proposals/${proposal.id}/followups`, {
+        method: 'PUT',
+        body: JSON.stringify({ id: followupId, ...updates })
+      });
+      if (res?.success) {
+        setEditingFollowup(null);
+        fetchFollowups();
+      } else {
+        alert(res?.error || 'Failed to update follow-up');
+      }
+    } catch (e) {
+      console.error('update followup error', e);
+      alert('Failed to update follow-up');
+    }
+  };
+
+  const deleteFollowup = async (followupId) => {
+    if (!confirm('Delete this follow-up?')) return;
+    try {
+      const res = await fetchJSON(`/api/proposals/${proposal.id}/followups?id=${followupId}`, {
+        method: 'DELETE'
+      });
+      if (res?.success) {
+        fetchFollowups();
+      } else {
+        alert(res?.error || 'Failed to delete follow-up');
+      }
+    } catch (e) {
+      console.error('delete followup error', e);
+      alert('Failed to delete follow-up');
+    }
+  };
+
+  const markFollowupComplete = async (followup) => {
+    await updateFollowup(followup.id, { status: 'Completed' });
+  };
 
   // Parse complex JSON fields from proposal for rendering in view
 
@@ -1273,6 +1377,297 @@ export default function ProposalPage() {
                     <p><strong>City:</strong> {proposal.project_location_city || '—'}</p>
                     <p><strong>Site:</strong> {proposal.project_location_site || '—'}</p>
                   </div>
+                </div>
+
+                {/* Follow-ups Section */}
+                <div className="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      onClick={() => setFollowupsExpanded(!followupsExpanded)}
+                      className="flex items-center gap-2 text-lg font-semibold text-gray-900 hover:text-accent-primary"
+                    >
+                      <ChatBubbleLeftRightIcon className="h-5 w-5" />
+                      Follow-ups ({followups.length})
+                      {followupsExpanded ? (
+                        <ChevronUpIcon className="h-4 w-4" />
+                      ) : (
+                        <ChevronDownIcon className="h-4 w-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowFollowupForm(true)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent-primary text-white rounded-lg text-sm hover:bg-accent-primary/90 transition-colors"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                      Add Follow-up
+                    </button>
+                  </div>
+
+                  {followupsExpanded && (
+                    <div className="space-y-4">
+                      {/* Add Follow-up Form */}
+                      {showFollowupForm && (
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                          <h4 className="font-medium text-gray-900 mb-3">New Follow-up</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
+                              <input
+                                type="date"
+                                value={newFollowup.follow_up_date}
+                                onChange={(e) => setNewFollowup(prev => ({ ...prev, follow_up_date: e.target.value }))}
+                                className="w-full px-3 py-2 border rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                              <select
+                                value={newFollowup.follow_up_type}
+                                onChange={(e) => setNewFollowup(prev => ({ ...prev, follow_up_type: e.target.value }))}
+                                className="w-full px-3 py-2 border rounded-lg text-sm"
+                              >
+                                <option value="Call">📞 Call</option>
+                                <option value="Email">📧 Email</option>
+                                <option value="Meeting">📅 Meeting</option>
+                                <option value="Site Visit">🏢 Site Visit</option>
+                                <option value="Other">📝 Other</option>
+                              </select>
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Description *</label>
+                              <textarea
+                                value={newFollowup.description}
+                                onChange={(e) => setNewFollowup(prev => ({ ...prev, description: e.target.value }))}
+                                placeholder="What needs to be discussed/done..."
+                                rows={2}
+                                className="w-full px-3 py-2 border rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Contact Person</label>
+                              <input
+                                type="text"
+                                value={newFollowup.contacted_person}
+                                onChange={(e) => setNewFollowup(prev => ({ ...prev, contacted_person: e.target.value }))}
+                                placeholder="Name of person to contact"
+                                className="w-full px-3 py-2 border rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                              <select
+                                value={newFollowup.status}
+                                onChange={(e) => setNewFollowup(prev => ({ ...prev, status: e.target.value }))}
+                                className="w-full px-3 py-2 border rounded-lg text-sm"
+                              >
+                                <option value="Scheduled">Scheduled</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                              <textarea
+                                value={newFollowup.notes}
+                                onChange={(e) => setNewFollowup(prev => ({ ...prev, notes: e.target.value }))}
+                                placeholder="Additional notes..."
+                                rows={2}
+                                className="w-full px-3 py-2 border rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 mt-3">
+                            <button
+                              onClick={() => setShowFollowupForm(false)}
+                              className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={addFollowup}
+                              className="px-4 py-1.5 bg-accent-primary text-white rounded-lg text-sm hover:bg-accent-primary/90"
+                            >
+                              Save Follow-up
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Follow-ups List */}
+                      {followups.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                          <p className="text-sm">No follow-ups scheduled yet</p>
+                          <p className="text-xs text-gray-400 mt-1">Click &quot;Add Follow-up&quot; to schedule one</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {followups.map(fu => (
+                            <div
+                              key={fu.id}
+                              className={`border rounded-lg p-4 transition-colors ${
+                                fu.status === 'Completed' ? 'bg-green-50 border-green-200' :
+                                fu.status === 'Cancelled' ? 'bg-gray-50 border-gray-200 opacity-60' :
+                                fu.status === 'In Progress' ? 'bg-blue-50 border-blue-200' :
+                                'bg-white border-gray-200 hover:border-accent-primary/50'
+                              }`}
+                            >
+                              {editingFollowup?.id === fu.id ? (
+                                /* Editing Mode */
+                                <div className="space-y-3">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <input
+                                      type="date"
+                                      value={editingFollowup.follow_up_date?.split('T')[0] || ''}
+                                      onChange={(e) => setEditingFollowup(prev => ({ ...prev, follow_up_date: e.target.value }))}
+                                      className="px-3 py-2 border rounded-lg text-sm"
+                                    />
+                                    <select
+                                      value={editingFollowup.follow_up_type}
+                                      onChange={(e) => setEditingFollowup(prev => ({ ...prev, follow_up_type: e.target.value }))}
+                                      className="px-3 py-2 border rounded-lg text-sm"
+                                    >
+                                      <option value="Call">📞 Call</option>
+                                      <option value="Email">📧 Email</option>
+                                      <option value="Meeting">📅 Meeting</option>
+                                      <option value="Site Visit">🏢 Site Visit</option>
+                                      <option value="Other">📝 Other</option>
+                                    </select>
+                                    <textarea
+                                      value={editingFollowup.description}
+                                      onChange={(e) => setEditingFollowup(prev => ({ ...prev, description: e.target.value }))}
+                                      className="md:col-span-2 px-3 py-2 border rounded-lg text-sm"
+                                      rows={2}
+                                    />
+                                    <input
+                                      type="text"
+                                      value={editingFollowup.contacted_person || ''}
+                                      onChange={(e) => setEditingFollowup(prev => ({ ...prev, contacted_person: e.target.value }))}
+                                      placeholder="Contact person"
+                                      className="px-3 py-2 border rounded-lg text-sm"
+                                    />
+                                    <select
+                                      value={editingFollowup.status}
+                                      onChange={(e) => setEditingFollowup(prev => ({ ...prev, status: e.target.value }))}
+                                      className="px-3 py-2 border rounded-lg text-sm"
+                                    >
+                                      <option value="Scheduled">Scheduled</option>
+                                      <option value="In Progress">In Progress</option>
+                                      <option value="Completed">Completed</option>
+                                      <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                    <textarea
+                                      value={editingFollowup.outcome || ''}
+                                      onChange={(e) => setEditingFollowup(prev => ({ ...prev, outcome: e.target.value }))}
+                                      placeholder="Outcome / Result"
+                                      className="md:col-span-2 px-3 py-2 border rounded-lg text-sm"
+                                      rows={2}
+                                    />
+                                  </div>
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => setEditingFollowup(null)}
+                                      className="px-3 py-1 text-gray-600 hover:text-gray-800 text-sm"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={() => updateFollowup(fu.id, editingFollowup)}
+                                      className="px-4 py-1 bg-accent-primary text-white rounded text-sm"
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* View Mode */
+                                <div>
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <div className="flex-shrink-0">
+                                        {fu.follow_up_type === 'Call' && <PhoneIcon className="h-5 w-5 text-blue-500" />}
+                                        {fu.follow_up_type === 'Email' && <EnvelopeIcon className="h-5 w-5 text-green-500" />}
+                                        {fu.follow_up_type === 'Meeting' && <CalendarIcon className="h-5 w-5 text-purple-500" />}
+                                        {fu.follow_up_type === 'Site Visit' && <CalendarIcon className="h-5 w-5 text-orange-500" />}
+                                        {fu.follow_up_type === 'Other' && <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-500" />}
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium text-gray-900">{fu.follow_up_type}</span>
+                                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                            fu.status === 'Completed' ? 'bg-green-100 text-green-700' :
+                                            fu.status === 'Cancelled' ? 'bg-gray-100 text-gray-600' :
+                                            fu.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-yellow-100 text-yellow-700'
+                                          }`}>
+                                            {fu.status}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                                          <ClockIcon className="h-3.5 w-3.5" />
+                                          {fu.follow_up_date ? new Date(fu.follow_up_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                          {fu.contacted_person && (
+                                            <span className="ml-2">• Contact: {fu.contacted_person}</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      {fu.status !== 'Completed' && fu.status !== 'Cancelled' && (
+                                        <button
+                                          onClick={() => markFollowupComplete(fu)}
+                                          className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                                          title="Mark Complete"
+                                        >
+                                          <CheckIcon className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => setEditingFollowup({ ...fu })}
+                                        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded"
+                                        title="Edit"
+                                      >
+                                        <PencilIcon className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => deleteFollowup(fu.id)}
+                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                        title="Delete"
+                                      >
+                                        <TrashIcon className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {fu.description && (
+                                    <p className="mt-2 text-sm text-gray-700 pl-8">{fu.description}</p>
+                                  )}
+                                  {fu.outcome && (
+                                    <div className="mt-2 pl-8 text-sm">
+                                      <span className="text-gray-500">Outcome:</span>{' '}
+                                      <span className="text-gray-700">{fu.outcome}</span>
+                                    </div>
+                                  )}
+                                  {fu.notes && (
+                                    <div className="mt-1 pl-8 text-xs text-gray-500 italic">{fu.notes}</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick Stats */}
+                      {followups.length > 0 && (
+                        <div className="flex gap-4 pt-3 border-t border-gray-100 text-xs text-gray-500">
+                          <span>Total: {followups.length}</span>
+                          <span>Scheduled: {followups.filter(f => f.status === 'Scheduled').length}</span>
+                          <span>Completed: {followups.filter(f => f.status === 'Completed').length}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Versions */}

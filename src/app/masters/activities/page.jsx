@@ -30,6 +30,11 @@ export default function ActivityMasterPage() {
   const [newActivityName, setNewActivityName] = useState('');
   const [newActivityManhours, setNewActivityManhours] = useState('');
   
+  // Bulk add mode
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkActivities, setBulkActivities] = useState('');
+  const [bulkManhours, setBulkManhours] = useState('');
+  
   // Edit states
   const [editingDiscipline, setEditingDiscipline] = useState(null);
   const [editingActivity, setEditingActivity] = useState(null);
@@ -157,6 +162,81 @@ export default function ActivityMasterPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Add Activities in Bulk
+  const handleBulkAddActivities = async () => {
+    if (!bulkActivities.trim()) {
+      setError('Please enter at least one activity');
+      return;
+    }
+    if (!selectedDisciplineId) {
+      setError('Please select a discipline first');
+      return;
+    }
+
+    // Parse activities - split by newline, bullet points, numbers, or commas
+    const activityLines = bulkActivities
+      .split(/[\n,]/)
+      .map(line => line.trim())
+      .map(line => line.replace(/^[\s•\-\*\d\.]+/, '').trim()) // Remove bullet points, numbers, dashes
+      .filter(line => line.length > 0);
+
+    if (activityLines.length === 0) {
+      setError('No valid activities found');
+      return;
+    }
+
+    // Calculate manhours per activity
+    const totalManhours = parseFloat(bulkManhours) || 0;
+    const activityCount = activityLines.length;
+    const manhoursPerActivity = totalManhours > 0 && activityCount > 0
+      ? Math.round((totalManhours / activityCount) * 100) / 100 
+      : 0;
+
+    console.log('Bulk add:', { totalManhours, activityCount, manhoursPerActivity, activityLines });
+
+    setLoading(true);
+    setError(null);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const activityName of activityLines) {
+      try {
+        console.log('Adding activity:', { activityName, manhoursPerActivity });
+        const res = await fetch('/api/activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            function_id: selectedDisciplineId, 
+            activity_name: activityName,
+            default_manhours: Number(manhoursPerActivity)
+          }),
+        });
+        
+        if (res.ok) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        failCount++;
+      }
+    }
+
+    await fetchData();
+    setBulkActivities('');
+    setBulkManhours('');
+    setBulkMode(false);
+    
+    if (failCount === 0) {
+      showSuccess(`${successCount} activities added successfully (${manhoursPerActivity}h each)`);
+    } else {
+      showSuccess(`${successCount} added, ${failCount} failed`);
+    }
+    
+    setLoading(false);
   };
 
   // Delete Discipline
@@ -502,37 +582,134 @@ export default function ActivityMasterPage() {
               <div className={`p-4 border-b border-gray-200 ${selectedDisciplineId ? 'bg-blue-50/50' : 'bg-gray-50'}`}>
                 {selectedDisciplineId ? (
                   <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newActivityName}
-                        onChange={(e) => setNewActivityName(e.target.value)}
-                        placeholder="Enter new activity name..."
-                        className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
-                      />
-                      <input
-                        type="number"
-                        value={newActivityManhours}
-                        onChange={(e) => setNewActivityManhours(e.target.value)}
-                        placeholder="Hours"
-                        min="0"
-                        step="0.5"
-                        className="w-24 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
-                      />
+                    {/* Mode Toggle */}
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-500">
+                        Adding to: <span className="font-medium text-[#7F2487]">{selectedDiscipline?.function_name}</span>
+                      </p>
                       <button
-                        onClick={handleAddActivity}
-                        disabled={loading || !newActivityName.trim()}
-                        className="px-4 py-2.5 bg-[#4472C4] text-white rounded-lg text-sm font-medium hover:bg-[#3961a8] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors whitespace-nowrap"
+                        type="button"
+                        onClick={() => setBulkMode(!bulkMode)}
+                        className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                          bulkMode 
+                            ? 'bg-[#4472C4] text-white' 
+                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                        }`}
                       >
-                        <PlusIcon className="w-4 h-4" />
-                        Add
+                        {bulkMode ? 'Bulk Mode ON' : 'Bulk Add'}
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500">
-                      Adding to: <span className="font-medium text-[#7F2487]">{selectedDiscipline?.function_name}</span>
-                    </p>
+
+                    {bulkMode ? (
+                      /* Bulk Add Form */
+                      <div className="space-y-3 bg-white p-4 rounded-lg border border-blue-200">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Activities (one per line or separated by commas)
+                            </label>
+                            <textarea
+                              value={bulkActivities}
+                              onChange={(e) => setBulkActivities(e.target.value)}
+                              placeholder={"• Activity 1\n• Activity 2\n• Activity 3\n\nOr: Activity 1, Activity 2, Activity 3"}
+                              rows={5}
+                              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent font-mono"
+                            />
+                          </div>
+                          <div className="w-32">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Total Hours
+                            </label>
+                            <input
+                              type="number"
+                              value={bulkManhours}
+                              onChange={(e) => setBulkManhours(e.target.value)}
+                              placeholder="0"
+                              min="0"
+                              step="0.5"
+                              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Distributed equally</p>
+                          </div>
+                        </div>
+                        
+                        {/* Preview */}
+                        {bulkActivities.trim() && (
+                          <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                            <p className="text-xs font-medium text-gray-600 mb-2">Preview:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {bulkActivities
+                                .split(/[\n,]/)
+                                .map(line => line.trim())
+                                .map(line => line.replace(/^[\s•\-\*\d\.]+/, '').trim())
+                                .filter(line => line.length > 0)
+                                .map((activity, idx) => (
+                                  <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                    <span className="font-medium">{idx + 1}.</span> {activity}
+                                    {bulkManhours && (
+                                      <span className="text-blue-500">
+                                        ({Math.round((parseFloat(bulkManhours) / bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length) * 100) / 100}h)
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">
+                              {bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length} activities
+                              {bulkManhours && ` × ${Math.round((parseFloat(bulkManhours) / bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length) * 100) / 100}h each = ${bulkManhours}h total`}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-2">
+                          <button
+                            type="button"
+                            onClick={() => { setBulkMode(false); setBulkActivities(''); setBulkManhours(''); }}
+                            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleBulkAddActivities}
+                            disabled={loading || !bulkActivities.trim()}
+                            className="px-4 py-2.5 bg-[#4472C4] text-white rounded-lg text-sm font-medium hover:bg-[#3961a8] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                          >
+                            <PlusIcon className="w-4 h-4" />
+                            Add All Activities
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Single Add Form */
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newActivityName}
+                          onChange={(e) => setNewActivityName(e.target.value)}
+                          placeholder="Enter new activity name..."
+                          className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
+                        />
+                        <input
+                          type="number"
+                          value={newActivityManhours}
+                          onChange={(e) => setNewActivityManhours(e.target.value)}
+                          placeholder="Hours"
+                          min="0"
+                          step="0.5"
+                          className="w-24 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
+                        />
+                        <button
+                          onClick={handleAddActivity}
+                          disabled={loading || !newActivityName.trim()}
+                          className="px-4 py-2.5 bg-[#4472C4] text-white rounded-lg text-sm font-medium hover:bg-[#3961a8] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors whitespace-nowrap"
+                        >
+                          <PlusIcon className="w-4 h-4" />
+                          Add
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-2 text-sm text-gray-500">

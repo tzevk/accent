@@ -3,10 +3,10 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { Suspense, useEffect, useMemo, useState, Fragment, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useState, Fragment, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import Image from 'next/image';
 
@@ -95,6 +95,7 @@ const TABS = [
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'project_schedule', label: 'Project Schedule' },
   { id: 'project_activity', label: 'Project Activity' },
+  { id: 'followups', label: 'Follow-ups' },
   { id: 'documents_issued', label: 'Documents Issued' },
   { id: 'project_handover', label: 'Project Handover' },
   { id: 'project_manhours', label: 'Project Manhours' },
@@ -386,6 +387,18 @@ function EditProjectForm() {
       return;
     }
 
+    // Helper to format date for input[type="date"] (YYYY-MM-DD)
+    const formatDateForInput = (dateValue) => {
+      if (!dateValue) return '';
+      try {
+        const date = new Date(dateValue);
+        if (isNaN(date.getTime())) return '';
+        return date.toISOString().split('T')[0];
+      } catch {
+        return '';
+      }
+    };
+
     const fetchProject = async () => {
       try {
         console.log('[fetchProject] Fetching project data for ID:', id);
@@ -409,9 +422,9 @@ function EditProjectForm() {
             contract_type: project.contract_type || project.type || '',
             company_id: project.company_id || '',
             project_manager: project.project_manager || '',
-            start_date: project.start_date || '',
-            end_date: project.end_date || '',
-            target_date: project.target_date || '',
+            start_date: formatDateForInput(project.start_date),
+            end_date: formatDateForInput(project.end_date),
+            target_date: formatDateForInput(project.target_date),
             project_duration_planned: project.project_duration_planned || '',
             project_duration_actual: project.project_duration_actual || '',
             status: project.status || 'Ongoing',
@@ -433,7 +446,7 @@ function EditProjectForm() {
             procurement_status: project.procurement_status || '',
             material_delivery_schedule: project.material_delivery_schedule || '',
             vendor_management: project.vendor_management || '',
-            mobilization_date: project.mobilization_date || '',
+            mobilization_date: formatDateForInput(project.mobilization_date),
             site_readiness: project.site_readiness || '',
             construction_progress: project.construction_progress || '',
             major_risks: project.major_risks || '',
@@ -3859,341 +3872,260 @@ function EditProjectForm() {
 
             {/* Project Activity / Daily Activity Tab */}
             {activeTab === 'project_activity' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-100 rounded-lg">
-                        <DocumentIcon className="h-5 w-5 text-[#7F2487]" />
-                      </div>
-                      <div>
-                        <h2 className="text-base font-bold text-gray-900">Project Activities</h2>
-                        <p className="text-xs text-gray-500 mt-0.5">Track project activities with planned and actual hours</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full font-medium">
-                        {projectActivities.length} Activities
-                      </span>
-                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded-full font-medium">
-                        {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)} Planned Hrs
-                      </span>
-                      <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-full font-medium">
-                        {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)} Actual Hrs
-                      </span>
-                    </div>
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Project Activities</h2>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-gray-500">{projectActivities.length} items</span>
+                    <span className="text-blue-600 font-medium">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h planned</span>
+                    <span className="text-amber-600 font-medium">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h actual</span>
                   </div>
                 </div>
 
-                <div className="px-6 py-5 space-y-5">
-                  {/* Add Activity Section - Simplified */}
-                  <div className="bg-gradient-to-br from-purple-50 via-white to-purple-50 rounded-xl p-5 border border-purple-100 shadow-sm">
-                    <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      <PlusIcon className="h-4 w-4 text-[#7F2487]" />
-                      Add New Activity
-                    </h4>
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Manual Activity Input */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-gray-600">Manual Entry</label>
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            value={newScopeActivityName} 
-                            onChange={(e) => setNewScopeActivityName(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && addScopeActivity()}
-                            placeholder="Type activity name..." 
-                            className="flex-1 px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] bg-white" 
-                          />
-                          <button 
-                            type="button" 
-                            onClick={addScopeActivity}
-                            disabled={!newScopeActivityName.trim()}
-                            className="px-4 py-2.5 bg-[#7F2487] text-white rounded-lg text-sm font-semibold hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                          >
-                            <PlusIcon className="h-4 w-4" />
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {/* Activity Master Dropdown */}
-                      {functions.length > 0 && (
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-gray-600">Select from Activity Master</label>
-                          <select
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              if (value) {
-                                const [funcId, actId, type] = value.split('|');
-                                const func = functions.find(f => String(f.id) === funcId);
-                                
-                                if (type === 'activity') {
-                                  const activity = func?.activities?.find(a => String(a.id) === actId);
-                                  if (activity) {
-                                    const exists = projectActivities.find(pa => pa.id === activity.id && pa.type === 'activity');
-                                    if (!exists) {
-                                      setProjectActivities(prev => [...prev, {
-                                        id: activity.id,
-                                        type: 'activity',
-                                        source: 'master',
-                                        name: activity.activity_name,
-                                        discipline: func.function_name,
-                                        activity_name: activity.activity_name,
-                                        sub_activity_name: '',
-                                        planned_hours: 0,
-                                        actual_hours: 0,
-                                        assigned_user: '',
-                                        due_date: '',
-                                        priority: 'MEDIUM',
-                                        function_id: funcId,
-                                        function_name: func.function_name
-                                      }]);
-                                    }
-                                  }
-                                } else if (type === 'subactivity') {
-                                  const activity = func?.activities?.find(a => a.subActivities?.some(sa => String(sa.id) === actId));
-                                  const subActivity = activity?.subActivities?.find(sa => String(sa.id) === actId);
-                                  if (subActivity) {
-                                    const exists = projectActivities.find(pa => pa.id === subActivity.id && pa.type === 'subactivity');
-                                    if (!exists) {
-                                      setProjectActivities(prev => [...prev, {
-                                        id: subActivity.id,
-                                        type: 'subactivity',
-                                        source: 'master',
-                                        name: subActivity.name,
-                                        discipline: func.function_name,
-                                        activity_name: activity.activity_name,
-                                        sub_activity_name: subActivity.name,
-                                        planned_hours: subActivity.default_manhours || 0,
-                                        actual_hours: 0,
-                                        assigned_user: '',
-                                        due_date: '',
-                                        priority: 'MEDIUM',
-                                        function_id: funcId,
-                                        function_name: func.function_name,
-                                        activity_id: activity.id
-                                      }]);
-                                    }
-                                  }
-                                }
-                                e.target.value = '';
-                              }
-                            }}
-                            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] bg-white"
-                          >
-                            <option value="">Select discipline / activity / sub-activity...</option>
-                            {functions.map(func => (
-                              <optgroup key={func.id} label={`📁 ${func.function_name}`}>
-                                {(func.activities || []).map(activity => (
-                                  <Fragment key={activity.id}>
-                                    <option 
-                                      value={`${func.id}|${activity.id}|activity`}
-                                      disabled={projectActivities.some(pa => pa.id === activity.id && pa.type === 'activity')}
-                                    >
-                                      📄 {activity.activity_name}
-                                    </option>
-                                    {(activity.subActivities || []).map(subActivity => (
-                                      <option 
-                                        key={subActivity.id}
-                                        value={`${func.id}|${subActivity.id}|subactivity`}
-                                        disabled={projectActivities.some(pa => pa.id === subActivity.id && pa.type === 'subactivity')}
-                                      >
-                                        &nbsp;&nbsp;&nbsp;↳ {subActivity.name} {subActivity.default_manhours ? `(${subActivity.default_manhours} hrs)` : ''}
-                                      </option>
-                                    ))}
-                                  </Fragment>
-                                ))}
-                              </optgroup>
+                <div className="p-4 space-y-4">
+                  {/* Quick Add - From Master Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="text" 
+                      value={newScopeActivityName} 
+                      onChange={(e) => setNewScopeActivityName(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && addScopeActivity()}
+                      placeholder="Add manual activity..." 
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={addScopeActivity}
+                      disabled={!newScopeActivityName.trim()}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                    {functions.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (!value) return;
+                          
+                          // Format: act|functionId|activityId
+                          const [, funcId, actId] = value.split('|');
+                          const func = functions.find(f => String(f.id) === funcId);
+                          const activity = func?.activities?.find(a => String(a.id) === actId);
+                          
+                          if (activity && func) {
+                            const exists = projectActivities.some(pa => String(pa.id) === actId && pa.type === 'activity');
+                            if (!exists) {
+                              setProjectActivities(prev => [...prev, {
+                                id: activity.id,
+                                type: 'activity',
+                                source: 'master',
+                                name: activity.activity_name,
+                                discipline: func.function_name,
+                                discipline_id: func.id,
+                                activity_name: activity.activity_name,
+                                planned_hours: activity.default_manhours || 0,
+                                actual_hours: 0,
+                                assigned_user: '',
+                                due_date: '',
+                                priority: 'MEDIUM',
+                                status: 'Not Started',
+                                function_name: func.function_name
+                              }]);
+                            }
+                          }
+                          e.target.value = '';
+                        }}
+                        className="w-64 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      >
+                        <option value="">Select from Master...</option>
+                        {functions.map(func => (
+                          <optgroup key={func.id} label={`📁 ${func.function_name}`}>
+                            {(func.activities || []).map(activity => (
+                              <option 
+                                key={activity.id}
+                                value={`act|${func.id}|${activity.id}`}
+                                disabled={projectActivities.some(pa => String(pa.id) === String(activity.id) && pa.type === 'activity')}
+                              >
+                                {activity.activity_name} {activity.default_manhours ? `(${activity.default_manhours}h)` : ''}
+                              </option>
                             ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
+                          </optgroup>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
-                  {/* Simplified Activity Table - Grouped by Discipline */}
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
-                            <th className="text-left py-3 px-4 font-bold text-gray-700">Activity</th>
-                            <th className="text-left py-3 px-4 font-bold text-gray-700">Sub Activity</th>
-                            <th className="text-left py-3 px-4 font-bold text-gray-700 w-40">Assigned To</th>
-                            <th className="text-left py-3 px-4 font-bold text-gray-700 w-36">Due Date</th>
-                            <th className="text-left py-3 px-4 font-bold text-gray-700 w-28">Priority</th>
-                            <th className="text-center py-3 px-4 font-bold text-gray-700 w-28">Planned Hrs</th>
-                            <th className="text-center py-3 px-4 font-bold text-gray-700 w-28">Actual Hrs</th>
-                            <th className="text-center py-3 px-4 font-bold text-gray-700 w-20">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {projectActivities.length === 0 ? (
-                            <tr>
-                              <td colSpan={8} className="text-center py-12">
-                                <div className="flex flex-col items-center">
-                                  <DocumentIcon className="h-12 w-12 text-gray-300 mb-3" />
-                                  <p className="text-gray-500 font-medium">No activities added yet</p>
-                                  <p className="text-xs text-gray-400 mt-1">Add activities manually or select from Activity Master above</p>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : (
-                            // Group activities by discipline
-                            (() => {
-                              const grouped = projectActivities.reduce((acc, act) => {
-                                const discipline = act.function_name || act.discipline || 'Manual Entry';
-                                if (!acc[discipline]) acc[discipline] = [];
-                                acc[discipline].push(act);
-                                return acc;
-                              }, {});
-                              
-                              return Object.entries(grouped).map(([discipline, activities]) => {
-                                const disciplinePlanned = activities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0);
-                                const disciplineActual = activities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0);
-                                
-                                return (
-                                  <Fragment key={discipline}>
-                                    {/* Discipline Header Row */}
-                                    <tr className="bg-gradient-to-r from-purple-50 to-purple-100/50 border-t-2 border-purple-200">
-                                      <td colSpan={8} className="py-3 px-4">
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-3">
-                                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-bold bg-purple-600 text-white shadow-sm">
-                                              📁 {discipline}
-                                            </span>
-                                            <span className="text-xs text-gray-500">
-                                              {activities.length} {activities.length === 1 ? 'activity' : 'activities'}
-                                            </span>
-                                          </div>
-                                          <div className="flex items-center gap-4 text-xs">
-                                            <span className="flex items-center gap-1 text-blue-700">
-                                              <span className="font-medium">Planned:</span>
-                                              <span className="px-2 py-0.5 bg-blue-100 rounded font-bold">{disciplinePlanned.toFixed(1)} hrs</span>
-                                            </span>
-                                            <span className="flex items-center gap-1 text-amber-700">
-                                              <span className="font-medium">Actual:</span>
-                                              <span className="px-2 py-0.5 bg-amber-100 rounded font-bold">{disciplineActual.toFixed(1)} hrs</span>
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                    {/* Activity Rows */}
-                                    {activities.map((act) => (
-                                      <tr key={`${act.id}-${act.type}`} className="hover:bg-purple-50/30 transition-colors">
-                                        <td className="py-3 px-4">
-                                          <input 
-                                            type="text" 
-                                            value={act.activity_name || act.name || ''} 
-                                            onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
-                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]" 
-                                            placeholder="Activity name"
-                                          />
-                                        </td>
-                                        <td className="py-3 px-4">
-                                          <input 
-                                            type="text" 
-                                            value={act.sub_activity_name || (act.type === 'subactivity' ? act.name : '') || ''} 
-                                            onChange={(e) => updateScopeActivity(act.id, 'sub_activity_name', e.target.value)} 
-                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]" 
-                                            placeholder="Sub-activity (optional)"
-                                          />
-                                        </td>
-                                        <td className="py-3 px-4">
-                                          <select
-                                            value={act.assigned_user || ''}
-                                            onChange={(e) => updateScopeActivity(act.id, 'assigned_user', e.target.value)}
-                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
-                                          >
-                                            <option value="">Select user...</option>
-                                            {userMaster.map(user => (
-                                              <option key={user.id} value={user.id}>
-                                                {user.full_name || user.employee_name || user.username}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </td>
-                                        <td className="py-3 px-4">
-                                          <input 
-                                            type="date" 
-                                            value={act.due_date || ''} 
-                                            onChange={(e) => updateScopeActivity(act.id, 'due_date', e.target.value)} 
-                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]" 
-                                          />
-                                        </td>
-                                        <td className="py-3 px-4">
-                                          <select 
-                                            value={act.priority || 'MEDIUM'} 
-                                            onChange={(e) => updateScopeActivity(act.id, 'priority', e.target.value)} 
-                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
-                                          >
-                                            <option value="LOW">🟢 Low</option>
-                                            <option value="MEDIUM">🟡 Medium</option>
-                                            <option value="HIGH">🟠 High</option>
-                                            <option value="URGENT">🔴 Urgent</option>
-                                          </select>
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                          <div className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium text-sm min-w-[60px]">
-                                            {act.planned_hours || 0}
-                                          </div>
-                                        </td>
-                                        <td className="py-3 px-4">
-                                          <input 
-                                            type="number" 
-                                            value={act.actual_hours || ''} 
-                                            onChange={(e) => updateScopeActivity(act.id, 'actual_hours', e.target.value)} 
-                                            placeholder="0"
-                                            min="0"
-                                            step="0.5"
-                                            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487] text-center" 
-                                          />
-                                        </td>
-                                        <td className="py-3 px-4 text-center">
-                                          <button 
-                                            type="button" 
-                                            onClick={() => removeScopeActivity(act.id)} 
-                                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Remove activity"
-                                          >
-                                            <TrashIcon className="h-4 w-4" />
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </Fragment>
-                                );
-                              });
-                            })()
-                          )}
-                        </tbody>
-                        {projectActivities.length > 0 && (
-                          <tfoot>
-                            <tr className="bg-gradient-to-r from-gray-100 to-gray-200 border-t-2 border-gray-300">
-                              <td colSpan={5} className="py-3 px-4 text-right font-bold text-gray-800">
-                                Grand Totals ({Object.keys(projectActivities.reduce((acc, act) => { acc[act.function_name || act.discipline || 'Manual Entry'] = true; return acc; }, {})).length} disciplines):
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-flex items-center justify-center px-3 py-1.5 bg-blue-200 text-blue-900 rounded-lg font-bold text-sm">
-                                  {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)} hrs
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-flex items-center justify-center px-3 py-1.5 bg-amber-200 text-amber-900 rounded-lg font-bold text-sm">
-                                  {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)} hrs
-                                </span>
-                              </td>
-                              <td></td>
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
+                  {/* Activities Grouped by Discipline */}
+                  {projectActivities.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <DocumentIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>No activities yet</p>
+                      <p className="text-sm mt-1">Select from master or add manually</p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Group activities by discipline */}
+                      {(() => {
+                        const grouped = projectActivities.reduce((acc, act) => {
+                          const discipline = act.discipline || act.function_name || 'Manual Entry';
+                          if (!acc[discipline]) acc[discipline] = [];
+                          acc[discipline].push(act);
+                          return acc;
+                        }, {});
+
+                        return Object.entries(grouped).map(([discipline, acts]) => (
+                          <div key={discipline} className="border border-gray-200 rounded-lg overflow-hidden">
+                            {/* Discipline Header */}
+                            <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <DocumentIcon className="h-4 w-4 text-purple-600" />
+                                <span className="font-semibold text-purple-800">{discipline}</span>
+                                <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                                  {acts.length} {acts.length === 1 ? 'activity' : 'activities'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs">
+                                <span className="text-blue-600 font-medium">
+                                  {acts.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h plan
+                                </span>
+                                <span className="text-amber-600 font-medium">
+                                  {acts.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h actual
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Activities Table */}
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50 text-gray-600">
+                                <tr>
+                                  <th className="text-left py-2 px-3 font-medium w-8">#</th>
+                                  <th className="text-left py-2 px-3 font-medium">Activity Name</th>
+                                  <th className="text-left py-2 px-3 font-medium w-32">Assigned To</th>
+                                  <th className="text-left py-2 px-3 font-medium w-28">Due Date</th>
+                                  <th className="text-left py-2 px-3 font-medium w-28">Status</th>
+                                  <th className="text-center py-2 px-3 font-medium w-20">Plan (h)</th>
+                                  <th className="text-center py-2 px-3 font-medium w-20">Actual (h)</th>
+                                  <th className="w-10"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {acts.map((act, idx) => (
+                                  <tr key={`${act.id}-${act.type}-${idx}`} className="hover:bg-gray-50">
+                                    <td className="py-2 px-3 text-gray-400">{idx + 1}</td>
+                                    <td className="py-2 px-3">
+                                      <input 
+                                        type="text" 
+                                        value={act.activity_name || act.name || ''} 
+                                        onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
+                                        className="w-full px-2 py-1 border border-transparent hover:border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-gray-800" 
+                                        placeholder="Activity name"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <select
+                                        value={act.assigned_user || ''}
+                                        onChange={(e) => updateScopeActivity(act.id, 'assigned_user', e.target.value)}
+                                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:border-purple-500"
+                                      >
+                                        <option value="">Select...</option>
+                                        {userMaster.map(user => (
+                                          <option key={user.id} value={user.id}>
+                                            {user.full_name || user.employee_name || user.username}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input 
+                                        type="date" 
+                                        value={act.due_date || ''} 
+                                        onChange={(e) => updateScopeActivity(act.id, 'due_date', e.target.value)} 
+                                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:border-purple-500" 
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <select
+                                        value={act.status || 'Not Started'}
+                                        onChange={(e) => updateScopeActivity(act.id, 'status', e.target.value)}
+                                        className={`w-full px-2 py-1 text-xs border rounded font-medium ${
+                                          act.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
+                                          act.status === 'In Progress' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                          act.status === 'On Hold' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                          'bg-gray-50 text-gray-600 border-gray-200'
+                                        }`}
+                                      >
+                                        <option value="Not Started">Not Started</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="On Hold">On Hold</option>
+                                      </select>
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input 
+                                        type="number" 
+                                        value={act.planned_hours || ''} 
+                                        onChange={(e) => updateScopeActivity(act.id, 'planned_hours', e.target.value)} 
+                                        placeholder="0"
+                                        min="0"
+                                        step="0.5"
+                                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded text-center focus:border-purple-500 bg-blue-50 text-blue-700 font-medium" 
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input 
+                                        type="number" 
+                                        value={act.actual_hours || ''} 
+                                        onChange={(e) => updateScopeActivity(act.id, 'actual_hours', e.target.value)} 
+                                        placeholder="0"
+                                        min="0"
+                                        step="0.5"
+                                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded text-center focus:border-purple-500 bg-amber-50 text-amber-700 font-medium" 
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <button 
+                                        type="button" 
+                                        onClick={() => removeScopeActivity(act.id)} 
+                                        className="p-1 text-gray-400 hover:text-red-500"
+                                      >
+                                        <TrashIcon className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ));
+                      })()}
+
+                      {/* Summary Footer */}
+                      <div className="bg-gray-100 rounded-lg p-3 flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">
+                          Total: {projectActivities.length} activities across {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines
+                        </span>
+                        <div className="flex items-center gap-4">
+                          <span className="flex items-center gap-1">
+                            <span className="text-gray-500">Planned:</span>
+                            <span className="font-bold text-blue-600">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h</span>
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-gray-500">Actual:</span>
+                            <span className="font-bold text-amber-600">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </section>
+            )}
+
+            {/* Follow-ups Tab */}
+            {activeTab === 'followups' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <ProjectFollowupsForm projectId={id} projectTeamMembers={projectTeamMembers} userMaster={userMaster} />
               </section>
             )}
 
@@ -5353,6 +5285,546 @@ function EditProjectForm() {
           </form>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Project Follow-ups Form Component - Tailored for Project Management
+function ProjectFollowupsForm({ projectId, projectTeamMembers = [], userMaster = [] }) {
+  const [followups, setFollowups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingFollowup, setEditingFollowup] = useState(null);
+  const [formData, setFormData] = useState({
+    follow_up_date: new Date().toISOString().split('T')[0],
+    follow_up_type: 'Internal Review',
+    description: '',
+    status: 'Scheduled',
+    priority: 'Medium',
+    milestone: '',
+    responsible_person: '',
+    action_items: '',
+    outcome: '',
+    next_action: '',
+    next_follow_up_date: '',
+    blockers: '',
+    notes: ''
+  });
+
+  const fetchFollowups = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/followups`);
+      const data = await res.json();
+      if (data?.success) setFollowups(data.data || []);
+    } catch (e) {
+      console.error('Error fetching followups:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchFollowups();
+  }, [fetchFollowups]);
+
+  const resetForm = () => {
+    setFormData({
+      follow_up_date: new Date().toISOString().split('T')[0],
+      follow_up_type: 'Internal Review',
+      description: '',
+      status: 'Scheduled',
+      priority: 'Medium',
+      milestone: '',
+      responsible_person: '',
+      action_items: '',
+      outcome: '',
+      next_action: '',
+      next_follow_up_date: '',
+      blockers: '',
+      notes: ''
+    });
+    setEditingFollowup(null);
+    setShowForm(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.follow_up_date || !formData.description) {
+      alert('Please fill in date and description');
+      return;
+    }
+
+    try {
+      const url = `/api/projects/${projectId}/followups`;
+      const method = editingFollowup ? 'PUT' : 'POST';
+      const body = editingFollowup 
+        ? { id: editingFollowup.id, ...formData }
+        : formData;
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      
+      if (data?.success) {
+        resetForm();
+        fetchFollowups();
+      } else {
+        alert(data?.error || 'Failed to save follow-up');
+      }
+    } catch (e) {
+      console.error('Error saving followup:', e);
+      alert('Failed to save follow-up');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this follow-up?')) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/followups?followup_id=${id}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data?.success) {
+        fetchFollowups();
+      } else {
+        alert(data?.error || 'Failed to delete');
+      }
+    } catch (e) {
+      console.error('Error deleting followup:', e);
+      alert('Failed to delete follow-up');
+    }
+  };
+
+  const handleEdit = (fu) => {
+    setFormData({
+      follow_up_date: fu.follow_up_date?.split('T')[0] || '',
+      follow_up_type: fu.follow_up_type || 'Internal Review',
+      description: fu.description || '',
+      status: fu.status || 'Scheduled',
+      priority: fu.priority || 'Medium',
+      milestone: fu.milestone || '',
+      responsible_person: fu.responsible_person || '',
+      action_items: fu.action_items || '',
+      outcome: fu.outcome || '',
+      next_action: fu.next_action || '',
+      next_follow_up_date: fu.next_follow_up_date?.split('T')[0] || '',
+      blockers: fu.blockers || '',
+      notes: fu.notes || ''
+    });
+    setEditingFollowup(fu);
+    setShowForm(true);
+  };
+
+  const markComplete = async (fu) => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/followups`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: fu.id, status: 'Completed' })
+      });
+      const data = await res.json();
+      if (data?.success) fetchFollowups();
+    } catch (e) {
+      console.error('Error marking complete:', e);
+    }
+  };
+
+  const getPriorityBadge = (priority) => {
+    switch (priority) {
+      case 'Critical': return 'bg-red-100 text-red-700 border-red-200';
+      case 'High': return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'Medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'Low': return 'bg-green-100 text-green-700 border-green-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'Completed': return 'bg-green-100 text-green-700';
+      case 'In Progress': return 'bg-blue-100 text-blue-700';
+      case 'Blocked': return 'bg-red-100 text-red-700';
+      case 'Cancelled': return 'bg-gray-200 text-gray-600';
+      default: return 'bg-yellow-100 text-yellow-700';
+    }
+  };
+
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'Client Meeting': return <UserIcon className="h-4 w-4 text-blue-500" />;
+      case 'Internal Review': return <ClockIcon className="h-4 w-4 text-purple-500" />;
+      case 'Status Update': return <DocumentIcon className="h-4 w-4 text-green-500" />;
+      case 'Milestone Review': return <CheckCircleIcon className="h-4 w-4 text-amber-500" />;
+      case 'Risk Assessment': return <XMarkIcon className="h-4 w-4 text-red-500" />;
+      case 'Design Review': return <DocumentIcon className="h-4 w-4 text-indigo-500" />;
+      case 'Site Visit': return <ArrowLeftIcon className="h-4 w-4 text-orange-500" />;
+      case 'Other': return <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-500" />;
+      default: return <CalendarIcon className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  // Summary stats
+  const stats = {
+    total: followups.length,
+    scheduled: followups.filter(f => f.status === 'Scheduled').length,
+    inProgress: followups.filter(f => f.status === 'In Progress').length,
+    completed: followups.filter(f => f.status === 'Completed').length,
+    blocked: followups.filter(f => f.status === 'Blocked').length
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <ChatBubbleLeftRightIcon className="h-5 w-5 text-purple-600" />
+            Project Follow-ups
+          </h3>
+          <p className="text-sm text-gray-500 mt-0.5">Track reviews, milestones, and action items</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Mini Stats */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2 py-1 bg-yellow-50 text-yellow-700 rounded">{stats.scheduled} scheduled</span>
+            <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded">{stats.inProgress} in progress</span>
+            <span className="px-2 py-1 bg-green-50 text-green-700 rounded">{stats.completed} done</span>
+            {stats.blocked > 0 && <span className="px-2 py-1 bg-red-50 text-red-700 rounded">{stats.blocked} blocked</span>}
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 flex items-center gap-1"
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add Follow-up
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Add Form */}
+      {showForm && (
+        <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-purple-800 flex items-center gap-1">
+              {editingFollowup ? <><DocumentIcon className="h-4 w-4" /> Edit Follow-up</> : <><PlusIcon className="h-4 w-4" /> New Follow-up</>}
+            </span>
+            <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Row 1: Essential fields */}
+          <div className="grid grid-cols-12 gap-3 mb-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
+              <input
+                type="date"
+                value={formData.follow_up_date}
+                onChange={(e) => setFormData(prev => ({ ...prev, follow_up_date: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+              <select
+                value={formData.follow_up_type}
+                onChange={(e) => setFormData(prev => ({ ...prev, follow_up_type: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              >
+                <option value="Internal Review">Internal Review</option>
+                <option value="Client Meeting">Client Meeting</option>
+                <option value="Status Update">Status Update</option>
+                <option value="Milestone Review">Milestone Review</option>
+                <option value="Design Review">Design Review</option>
+                <option value="Risk Assessment">Risk Assessment</option>
+                <option value="Site Visit">Site Visit</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
+              <select
+                value={formData.priority}
+                onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              >
+                <option value="Scheduled">Scheduled</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Blocked">Blocked</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Responsible Person</label>
+              <select
+                value={formData.responsible_person}
+                onChange={(e) => setFormData(prev => ({ ...prev, responsible_person: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              >
+                <option value="">Select team member...</option>
+                {(projectTeamMembers.length > 0 ? projectTeamMembers : userMaster).map(member => (
+                  <option key={member.id || member.user_id} value={member.full_name || member.employee_name || member.username}>
+                    {member.full_name || member.employee_name || member.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: Description & Milestone */}
+          <div className="grid grid-cols-12 gap-3 mb-3">
+            <div className="col-span-8">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Description *</label>
+              <input
+                type="text"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="What needs to be reviewed/discussed..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Milestone / Phase</label>
+              <input
+                type="text"
+                value={formData.milestone}
+                onChange={(e) => setFormData(prev => ({ ...prev, milestone: e.target.value }))}
+                placeholder="e.g., Design Phase, Phase 1 Delivery"
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+          </div>
+
+          {/* Row 3: Action Items & Next Steps */}
+          <div className="grid grid-cols-12 gap-3 mb-3">
+            <div className="col-span-6">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Action Items</label>
+              <input
+                type="text"
+                value={formData.action_items}
+                onChange={(e) => setFormData(prev => ({ ...prev, action_items: e.target.value }))}
+                placeholder="List key action items..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Next Date</label>
+              <input
+                type="date"
+                value={formData.next_follow_up_date}
+                onChange={(e) => setFormData(prev => ({ ...prev, next_follow_up_date: e.target.value }))}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Next Action</label>
+              <input
+                type="text"
+                value={formData.next_action}
+                onChange={(e) => setFormData(prev => ({ ...prev, next_action: e.target.value }))}
+                placeholder="What's the next step..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+          </div>
+
+          {/* Row 4: Outcome, Blockers, Notes */}
+          <div className="grid grid-cols-12 gap-3 mb-3">
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Outcome / Result</label>
+              <input
+                type="text"
+                value={formData.outcome}
+                onChange={(e) => setFormData(prev => ({ ...prev, outcome: e.target.value }))}
+                placeholder="What was decided..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Blockers / Issues</label>
+              <input
+                type="text"
+                value={formData.blockers}
+                onChange={(e) => setFormData(prev => ({ ...prev, blockers: e.target.value }))}
+                placeholder="Any blockers or concerns..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+              <input
+                type="text"
+                value={formData.notes}
+                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Additional notes..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-purple-500 focus:border-purple-500"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-3 border-t border-purple-200">
+            <button
+              onClick={resetForm}
+              className="px-4 py-1.5 text-gray-600 hover:text-gray-800 text-sm border border-gray-300 rounded bg-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
+            >
+              {editingFollowup ? 'Update' : 'Save Follow-up'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Follow-ups Table */}
+      {followups.length === 0 && !showForm ? (
+        <div className="mt-6 text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+          <p className="text-gray-500 font-medium">No follow-ups scheduled yet</p>
+          <p className="text-sm text-gray-400 mt-1">Track project reviews, meetings, and milestones</p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700"
+          >
+            Create First Follow-up
+          </button>
+        </div>
+      ) : followups.length > 0 && (
+        <div className="mt-4 overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-10">#</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-24">Date</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Type</th>
+                <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-20">Priority</th>
+                <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-24">Status</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Responsible</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase w-28">Milestone</th>
+                <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-600 uppercase w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {followups.map((fu, index) => (
+                <tr 
+                  key={fu.id} 
+                  className={`hover:bg-gray-50 ${
+                    fu.status === 'Completed' ? 'bg-green-50/50' :
+                    fu.status === 'Cancelled' ? 'bg-gray-100 opacity-60' :
+                    fu.status === 'Blocked' ? 'bg-red-50/50' :
+                    fu.status === 'In Progress' ? 'bg-blue-50/30' : ''
+                  }`}
+                >
+                  <td className="px-3 py-2.5 text-gray-500 font-medium">{index + 1}</td>
+                  <td className="px-3 py-2.5 text-gray-900">
+                    {fu.follow_up_date ? new Date(fu.follow_up_date).toLocaleDateString('en-IN', { 
+                      day: '2-digit', month: 'short'
+                    }) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="flex items-center gap-1.5">
+                      <span>{getTypeIcon(fu.follow_up_type)}</span>
+                      <span className="text-gray-700 text-xs">{fu.follow_up_type}</span>
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium border ${getPriorityBadge(fu.priority)}`}>
+                      {fu.priority}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(fu.status)}`}>
+                      {fu.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-700">
+                    <div className="max-w-xs">
+                      <div className="truncate font-medium" title={fu.description}>{fu.description}</div>
+                      {fu.action_items && (
+                        <div className="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1" title={fu.action_items}>
+                          <DocumentIcon className="h-3 w-3" /> {fu.action_items}
+                        </div>
+                      )}
+                      {fu.blockers && (
+                        <div className="text-xs text-red-500 truncate mt-0.5 flex items-center gap-1" title={fu.blockers}>
+                          <XMarkIcon className="h-3 w-3" /> {fu.blockers}
+                        </div>
+                      )}
+                      {fu.next_action && (
+                        <div className="text-xs text-blue-600 truncate mt-0.5">→ {fu.next_action}</div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-700 text-xs">{fu.responsible_person || '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-600 text-xs">
+                    {fu.milestone && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-xs">{fu.milestone}</span>}
+                    {!fu.milestone && '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-center gap-1">
+                      {fu.status !== 'Completed' && fu.status !== 'Cancelled' && (
+                        <button
+                          onClick={() => markComplete(fu)}
+                          className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors"
+                          title="Mark Complete"
+                        >
+                          <CheckIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleEdit(fu)}
+                        className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                        title="Edit"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(fu.id)}
+                        className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
+                        title="Delete"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

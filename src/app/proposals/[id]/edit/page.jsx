@@ -9,6 +9,16 @@ import {
   ChartBarIcon,
   Cog6ToothIcon,
   ArrowLeftIcon,
+  ChatBubbleLeftRightIcon,
+  PhoneIcon,
+  EnvelopeIcon,
+  CalendarIcon,
+  ClockIcon,
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  CheckIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 export default function EditProposalPage() {
@@ -371,6 +381,19 @@ Dispute Resolution
 
             <div className="flex items-center gap-3">
               <button
+                onClick={() => {
+                  setActiveTab('followups');
+                  // Small delay to ensure tab switch before triggering form
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('openFollowupForm'));
+                  }, 100);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700"
+              >
+                <PlusIcon className="h-4 w-4" />
+                Add Follow-up
+              </button>
+              <button
                 onClick={handleSave}
                 className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
               >
@@ -401,6 +424,7 @@ Dispute Resolution
             {/* Keep remaining tabs after the primary sequence so we don't remove any functionality */}
             <Tab label="Commercials" id="commercials" activeTab={activeTab} setActiveTab={setActiveTab} icon={CurrencyDollarIcon} />
             <Tab label="Quotation details" id="quotation" activeTab={activeTab} setActiveTab={setActiveTab} icon={ChartBarIcon} />
+            <Tab label="Follow-ups" id="followups" activeTab={activeTab} setActiveTab={setActiveTab} icon={ChatBubbleLeftRightIcon} />
           </div>
         </div>
       </div>
@@ -461,6 +485,9 @@ Dispute Resolution
             )}
             {activeTab === 'location' && (
               <ClientLocationForm proposalData={proposalData} setProposalData={setProposalData} />
+            )}
+            {activeTab === 'followups' && (
+              <FollowupsForm proposalId={proposalId} />
             )}
           </div>
         </div>
@@ -1866,6 +1893,455 @@ function ClientLocationForm({ proposalData, setProposalData }) {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/* -------------------------- Follow-ups Form -------------------------- */
+
+function FollowupsForm({ proposalId }) {
+  const [followups, setFollowups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingFollowup, setEditingFollowup] = useState(null);
+  const [formData, setFormData] = useState({
+    follow_up_date: new Date().toISOString().split('T')[0],
+    follow_up_type: 'Call',
+    description: '',
+    status: 'Scheduled',
+    outcome: '',
+    next_action: '',
+    next_follow_up_date: '',
+    contacted_person: '',
+    notes: ''
+  });
+
+  const fetchFollowups = useCallback(async () => {
+    if (!proposalId) return;
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}/followups`);
+      const data = await res.json();
+      if (data?.success) setFollowups(data.data || []);
+    } catch (e) {
+      console.error('Error fetching followups:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [proposalId]);
+
+  useEffect(() => {
+    fetchFollowups();
+  }, [fetchFollowups]);
+
+  // Listen for external trigger to open form (from header button)
+  useEffect(() => {
+    const handleOpenForm = () => {
+      setShowForm(true);
+      setEditingFollowup(null);
+      setFormData({
+        follow_up_date: new Date().toISOString().split('T')[0],
+        follow_up_type: 'Call',
+        description: '',
+        status: 'Scheduled',
+        outcome: '',
+        next_action: '',
+        next_follow_up_date: '',
+        contacted_person: '',
+        notes: ''
+      });
+    };
+    window.addEventListener('openFollowupForm', handleOpenForm);
+    return () => window.removeEventListener('openFollowupForm', handleOpenForm);
+  }, []);
+
+  const resetForm = () => {
+    setFormData({
+      follow_up_date: new Date().toISOString().split('T')[0],
+      follow_up_type: 'Call',
+      description: '',
+      status: 'Scheduled',
+      outcome: '',
+      next_action: '',
+      next_follow_up_date: '',
+      contacted_person: '',
+      notes: ''
+    });
+    setEditingFollowup(null);
+    setShowForm(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.follow_up_date || !formData.description) {
+      alert('Please fill in date and description');
+      return;
+    }
+
+    try {
+      const url = `/api/proposals/${proposalId}/followups`;
+      const method = editingFollowup ? 'PUT' : 'POST';
+      const body = editingFollowup 
+        ? { id: editingFollowup.id, ...formData }
+        : formData;
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      
+      if (data?.success) {
+        resetForm();
+        fetchFollowups();
+      } else {
+        alert(data?.error || 'Failed to save follow-up');
+      }
+    } catch (e) {
+      console.error('Error saving followup:', e);
+      alert('Failed to save follow-up');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this follow-up?')) return;
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}/followups?followup_id=${id}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data?.success) {
+        fetchFollowups();
+      } else {
+        alert(data?.error || 'Failed to delete');
+      }
+    } catch (e) {
+      console.error('Error deleting followup:', e);
+      alert('Failed to delete follow-up');
+    }
+  };
+
+  const handleEdit = (fu) => {
+    setFormData({
+      follow_up_date: fu.follow_up_date?.split('T')[0] || '',
+      follow_up_type: fu.follow_up_type || 'Call',
+      description: fu.description || '',
+      status: fu.status || 'Scheduled',
+      outcome: fu.outcome || '',
+      next_action: fu.next_action || '',
+      next_follow_up_date: fu.next_follow_up_date?.split('T')[0] || '',
+      contacted_person: fu.contacted_person || '',
+      notes: fu.notes || ''
+    });
+    setEditingFollowup(fu);
+    setShowForm(true);
+  };
+
+  const markComplete = async (fu) => {
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}/followups`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: fu.id, status: 'Completed' })
+      });
+      const data = await res.json();
+      if (data?.success) fetchFollowups();
+    } catch (e) {
+      console.error('Error marking complete:', e);
+    }
+  };
+
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'Call': return <PhoneIcon className="h-5 w-5 text-blue-500" />;
+      case 'Email': return <EnvelopeIcon className="h-5 w-5 text-green-500" />;
+      case 'Meeting': return <CalendarIcon className="h-5 w-5 text-purple-500" />;
+      case 'Site Visit': return <CalendarIcon className="h-5 w-5 text-orange-500" />;
+      default: return <ChatBubbleLeftRightIcon className="h-5 w-5 text-gray-500" />;
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Completed': return 'bg-green-100 text-green-700';
+      case 'Cancelled': return 'bg-gray-100 text-gray-600';
+      case 'In Progress': return 'bg-blue-100 text-blue-700';
+      default: return 'bg-yellow-100 text-yellow-700';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="pb-3 border-b border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <ChatBubbleLeftRightIcon className="h-5 w-5" />
+          Follow-ups ({followups.length})
+        </h3>
+        <p className="text-sm text-gray-600 mt-1">Track all follow-up activities for this proposal</p>
+      </div>
+
+      {/* Quick Header Form */}
+      {showForm && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-medium text-purple-800">
+              {editingFollowup ? 'Edit Follow-up' : 'New Follow-up'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-shrink-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
+              <input
+                type="date"
+                value={formData.follow_up_date}
+                onChange={(e) => setFormData(prev => ({ ...prev, follow_up_date: e.target.value }))}
+                className="px-2 py-1.5 border border-gray-300 rounded text-sm w-36"
+              />
+            </div>
+            <div className="flex-shrink-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+              <select
+                value={formData.follow_up_type}
+                onChange={(e) => setFormData(prev => ({ ...prev, follow_up_type: e.target.value }))}
+                className="px-2 py-1.5 border border-gray-300 rounded text-sm w-32"
+              >
+                <option value="Call">📞 Call</option>
+                <option value="Email">📧 Email</option>
+                <option value="Meeting">📅 Meeting</option>
+                <option value="Site Visit">🏢 Site Visit</option>
+                <option value="Other">📝 Other</option>
+              </select>
+            </div>
+            <div className="flex-shrink-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                className="px-2 py-1.5 border border-gray-300 rounded text-sm w-32"
+              >
+                <option value="Scheduled">Scheduled</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div className="flex-shrink-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Contact Person</label>
+              <input
+                type="text"
+                value={formData.contacted_person}
+                onChange={(e) => setFormData(prev => ({ ...prev, contacted_person: e.target.value }))}
+                placeholder="Name"
+                className="px-2 py-1.5 border border-gray-300 rounded text-sm w-36"
+              />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Description *</label>
+              <input
+                type="text"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="What needs to be discussed/done..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={resetForm}
+                className="px-3 py-1.5 text-gray-600 hover:text-gray-800 text-sm border border-gray-300 rounded bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="px-4 py-1.5 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
+              >
+                {editingFollowup ? 'Update' : 'Save'}
+              </button>
+            </div>
+          </div>
+          {/* Additional fields row */}
+          <div className="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-purple-200">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Outcome / Result</label>
+              <input
+                type="text"
+                value={formData.outcome}
+                onChange={(e) => setFormData(prev => ({ ...prev, outcome: e.target.value }))}
+                placeholder="What was the result..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              />
+            </div>
+            <div className="flex-shrink-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Next Follow-up</label>
+              <input
+                type="date"
+                value={formData.next_follow_up_date}
+                onChange={(e) => setFormData(prev => ({ ...prev, next_follow_up_date: e.target.value }))}
+                className="px-2 py-1.5 border border-gray-300 rounded text-sm w-36"
+              />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Next Action</label>
+              <input
+                type="text"
+                value={formData.next_action}
+                onChange={(e) => setFormData(prev => ({ ...prev, next_action: e.target.value }))}
+                placeholder="What to do next..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+              <input
+                type="text"
+                value={formData.notes}
+                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="Additional notes..."
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Follow-ups Table */}
+      {followups.length === 0 && !showForm ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+          <p className="text-gray-500">No follow-ups scheduled yet</p>
+          <p className="text-sm text-gray-400 mt-1">Click &quot;Add Follow-up&quot; to create one</p>
+        </div>
+      ) : followups.length > 0 && (
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-12">Sr.</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-28">Date</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">Type</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-28">Status</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-32">Contact</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Description</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Outcome</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-28">Next Date</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider w-28">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {followups.map((fu, index) => (
+                <tr 
+                  key={fu.id} 
+                  className={`hover:bg-gray-50 ${
+                    fu.status === 'Completed' ? 'bg-green-50' :
+                    fu.status === 'Cancelled' ? 'bg-gray-100 opacity-60' :
+                    fu.status === 'In Progress' ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <td className="px-3 py-3 text-sm text-gray-500 font-medium">{index + 1}</td>
+                  <td className="px-3 py-3 text-sm text-gray-900">
+                    {fu.follow_up_date ? new Date(fu.follow_up_date).toLocaleDateString('en-IN', { 
+                      day: '2-digit', month: 'short', year: 'numeric' 
+                    }) : '—'}
+                  </td>
+                  <td className="px-3 py-3 text-sm">
+                    <span className="flex items-center gap-1">
+                      {fu.follow_up_type === 'Call' && '📞'}
+                      {fu.follow_up_type === 'Email' && '📧'}
+                      {fu.follow_up_type === 'Meeting' && '📅'}
+                      {fu.follow_up_type === 'Site Visit' && '🏢'}
+                      {fu.follow_up_type === 'Other' && '📝'}
+                      <span className="text-gray-700">{fu.follow_up_type}</span>
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-sm">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(fu.status)}`}>
+                      {fu.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-sm text-gray-700">{fu.contacted_person || '—'}</td>
+                  <td className="px-3 py-3 text-sm text-gray-700 max-w-xs">
+                    <div className="truncate" title={fu.description}>{fu.description || '—'}</div>
+                    {fu.notes && (
+                      <div className="text-xs text-gray-400 italic truncate" title={fu.notes}>{fu.notes}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-sm text-gray-700 max-w-xs">
+                    <div className="truncate" title={fu.outcome}>{fu.outcome || '—'}</div>
+                    {fu.next_action && (
+                      <div className="text-xs text-blue-600 truncate" title={`Next: ${fu.next_action}`}>→ {fu.next_action}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-sm text-gray-700">
+                    {fu.next_follow_up_date ? new Date(fu.next_follow_up_date).toLocaleDateString('en-IN', { 
+                      day: '2-digit', month: 'short' 
+                    }) : '—'}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      {fu.status !== 'Completed' && fu.status !== 'Cancelled' && (
+                        <button
+                          onClick={() => markComplete(fu)}
+                          className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                          title="Mark Complete"
+                        >
+                          <CheckIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleEdit(fu)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                        title="Edit"
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(fu.id)}
+                        className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                        title="Delete"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Quick Stats */}
+      {followups.length > 0 && (
+        <div className="flex gap-6 pt-4 border-t border-gray-200 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">Total:</span>
+            <span className="font-medium">{followups.length}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+            <span className="text-gray-500">Scheduled:</span>
+            <span className="font-medium">{followups.filter(f => f.status === 'Scheduled').length}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+            <span className="text-gray-500">In Progress:</span>
+            <span className="font-medium">{followups.filter(f => f.status === 'In Progress').length}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+            <span className="text-gray-500">Completed:</span>
+            <span className="font-medium">{followups.filter(f => f.status === 'Completed').length}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
