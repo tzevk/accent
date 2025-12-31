@@ -80,6 +80,7 @@ export async function POST(request) {
 
     const id = randomUUID();
     const manhours = parseFloat(default_manhours) || 0;
+    console.log('Creating activity:', { id, function_id, activity_name, default_manhours, manhours });
     const db = await dbConnect();
     
     await db.execute(
@@ -91,7 +92,8 @@ export async function POST(request) {
     return NextResponse.json({ 
       success: true, 
       message: 'Activity created successfully',
-      id: id 
+      id: id,
+      default_manhours: manhours
     });
   } catch (error) {
     console.error('POST /api/activities error:', error);
@@ -123,8 +125,10 @@ export async function PUT(request) {
     }
     
     if (default_manhours !== undefined) {
+      const manhours = parseFloat(default_manhours) || 0;
       updates.push('default_manhours = ?');
-      values.push(parseFloat(default_manhours) || 0);
+      values.push(manhours);
+      console.log('Updating activity manhours:', { id, default_manhours, manhours });
     }
     
     if (updates.length === 0) {
@@ -133,6 +137,7 @@ export async function PUT(request) {
     }
     
     values.push(id);
+    console.log('Update query:', { updates: updates.join(', '), values });
     await db.execute(`UPDATE activities_master SET ${updates.join(', ')} WHERE id = ?`, values);
     await db.end();
 

@@ -46,6 +46,11 @@ export default function ActivityMasterPage() {
       const res = await fetch('/api/activity-master');
       const json = await res.json();
       if (json.success && json.data) {
+        console.log('Fetched activity master data:', json.data);
+        // Log a sample activity to verify manhours are present
+        if (json.data[0]?.activities?.[0]) {
+          console.log('Sample activity:', json.data[0].activities[0]);
+        }
         setDisciplines(json.data);
       }
     } catch (err) {
@@ -138,13 +143,15 @@ export default function ActivityMasterPage() {
     setError(null);
     
     try {
+      const manhours = newActivityManhours && newActivityManhours.trim() !== '' ? parseFloat(newActivityManhours) : 0;
+      console.log('Adding activity with manhours:', { newActivityManhours, manhours });
       const res = await fetch('/api/activities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           function_id: selectedDisciplineId, 
           activity_name: newActivityName.trim(),
-          default_manhours: newActivityManhours ? parseFloat(newActivityManhours) : 0
+          default_manhours: manhours
         }),
       });
       
@@ -310,13 +317,17 @@ export default function ActivityMasterPage() {
     
     setLoading(true);
     try {
+      const manhours = editingActivity.manhours !== undefined && editingActivity.manhours !== '' 
+        ? parseFloat(editingActivity.manhours) 
+        : 0;
+      console.log('Updating activity with manhours:', { editingActivity, manhours });
       const res = await fetch('/api/activities', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editingActivity.id,
           activity_name: editingActivity.name?.trim() || undefined,
-          default_manhours: editingActivity.manhours ? parseFloat(editingActivity.manhours) : 0
+          default_manhours: manhours
         })
       });
       

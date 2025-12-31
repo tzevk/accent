@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
+import PAYROLL_CONFIG from '@/utils/payroll-config';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -303,19 +304,22 @@ export default function EmployeesPage() {
   const [calculatedBreakdown, setCalculatedBreakdown] = useState(null);
   const [manualOverride, setManualOverride] = useState(false); // Toggle for manual salary entry
   
-  // Salary calculation percentages (editable) - used in auto mode
+  // Salary calculation percentages - now using centralized config
+  // These values are frozen in /src/utils/payroll-config.js
   const [salaryPercentages, setSalaryPercentages] = useState({
-    basic_percent: 60,         // Basic % of Gross
-    da_fixed: 2000,            // DA - Fixed amount (Dearness Allowance)
-    hra_percent: 20,           // HRA % of Gross
-    conveyance: 1600,          // Fixed conveyance
-    employee_pf_percent: 12,   // Employee PF %
-    employer_pf_percent: 12,   // Employer PF %
-    employee_esic_percent: 0.75, // Employee ESIC %
-    employer_esic_percent: 3.25, // Employer ESIC %
-    gratuity_percent: 4.81,    // Gratuity %
-    pf_admin_percent: 0.5,     // PF Admin %
-    edli_percent: 0.5,         // EDLI %
+    basic_percent: PAYROLL_CONFIG.BASIC_DA_PERCENT,     // 60% - Basic+DA % of Gross
+    da_fixed: PAYROLL_CONFIG.DA_FIXED_AMOUNT,           // 0 - DA Fixed amount (if any)
+    hra_percent: PAYROLL_CONFIG.HRA_PERCENT,            // 20% - HRA % of Gross
+    conveyance_percent: PAYROLL_CONFIG.CONVEYANCE_PERCENT,  // 10% - Conveyance % of Gross
+    conveyance: PAYROLL_CONFIG.CONVEYANCE_FIXED_AMOUNT, // 0 - Fixed conveyance (if any)
+    call_allowance_percent: PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT, // 10% - Call Allowance % of Gross
+    employee_pf_percent: PAYROLL_CONFIG.EMPLOYEE_PF_PERCENT,   // 12% - Employee PF
+    employer_pf_percent: PAYROLL_CONFIG.EMPLOYER_PF_PERCENT,   // 13% - Employer PF
+    employee_esic_percent: PAYROLL_CONFIG.EMPLOYEE_ESIC_PERCENT, // 0.75% - Employee ESIC
+    employer_esic_percent: PAYROLL_CONFIG.EMPLOYER_ESIC_PERCENT, // 3.25% - Employer ESIC
+    gratuity_percent: PAYROLL_CONFIG.GRATUITY_PERCENT,   // 4.81% - Gratuity
+    pf_admin_percent: PAYROLL_CONFIG.PF_ADMIN_PERCENT,   // 0.5% - PF Admin
+    edli_percent: PAYROLL_CONFIG.EDLI_PERCENT,           // 0.5% - EDLI
   });
 
   // Manual salary values (used when manualOverride is true)
