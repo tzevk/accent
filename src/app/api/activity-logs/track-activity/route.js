@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
-import { logActivity } from '@/utils/activity-logger';
+import { logActivity, updateScreenTime } from '@/utils/activity-logger';
 
 /**
  * POST - Track detailed user activity (screen time, interactions, etc.)
@@ -14,37 +14,17 @@ export async function POST(request) {
     }
 
     const data = await request.json();
-    const {
-      actionType,
-      resourceType,
-      description,
-      details,
-      timestamp
-    } = data;
-
-    // Validate required fields
-    if (!actionType || !resourceType) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'actionType and resourceType are required' 
-      }, { status: 400 });
+    
+    // Handle batched activities
+    if (data.batch && data.activities) {
+      for (const activity of data.activities) {
+        await processActivity(auth.user.id, activity, request);
+      }
+      return NextResponse.json({ success: true });
     }
 
-    // Log the activity
-    await logActivity({
-      userId: auth.user.id,
-      actionType,
-      resourceType,
-      description: description || `${actionType} on ${resourceType}`,
-      details: {
-        ...details,
-        clientTimestamp: timestamp,
-        userAgent: request.headers.get('user-agent'),
-        referer: request.headers.get('referer')
-      },
-      request,
-      status: 'success'
-    });
+    // Handle single activity
+    await processActivity(auth.user.id, data, request);
 
     return NextResponse.json({ success: true });
 
@@ -54,5 +34,46 @@ export async function POST(request) {
       success: false, 
       error: 'Failed to track activity' 
     }, { status: 500 });
+  }
+}
+
+async function processActivity(userId, data, request) {
+  const {
+    actionType,
+    resourceType,
+    description,
+    details,
+    timestamp
+  } = data;
+
+  // Validate required fields
+  if (!actionType || !resourceType) {
+    return;
+  }
+
+  // Log the activity
+  await logActivity({
+    userId,
+    actionType,
+    resourceType,
+    description: description || `${actionType} on ${resourceType}`,
+    details: {
+      ...details,
+      clientTimestamp: timestamp,
+      userAgent: request.headers.get('user-agent'),
+      referer: request.headers.get('referer')
+    },
+    request,
+    status: 'success'
+  });
+
+  // Update screen time for heartbeat events
+  if (resourceType === 'heartbeat' && details) {
+    await updateScreenTime(userId, {
+      activeTimeMs: details.activeTime || 0,
+      idleTimeMs: details.idleTime || 0,
+      sessionDurationMs: details.sessionDurationMs || 0,
+      currentPage: details.currentPage || null
+    });
   }
 }

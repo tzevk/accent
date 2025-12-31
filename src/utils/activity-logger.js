@@ -69,6 +69,72 @@ export async function logActivity({
 }
 
 /**
+ * Update screen time for a user
+ * @param {number} userId - User ID
+ * @param {Object} screenData - Screen time data from heartbeat
+ */
+export async function updateScreenTime(userId, screenData) {
+  let db;
+  try {
+    db = await dbConnect();
+
+    const {
+      activeTimeMs = 0,
+      idleTimeMs = 0,
+      sessionDurationMs = 0,
+      currentPage = null
+    } = screenData;
+
+    // Convert milliseconds to minutes
+    const activeMinutes = Math.floor(activeTimeMs / 60000);
+    const idleMinutes = Math.floor(idleTimeMs / 60000);
+    const totalMinutes = activeMinutes + idleMinutes;
+
+    // Ensure screen time table exists
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS user_screen_time (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        date DATE NOT NULL,
+        total_screen_time_minutes INT DEFAULT 0,
+        active_time_minutes INT DEFAULT 0,
+        idle_time_minutes INT DEFAULT 0,
+        total_clicks INT DEFAULT 0,
+        total_scrolls INT DEFAULT 0,
+        total_keypresses INT DEFAULT 0,
+        pages_visited INT DEFAULT 0,
+        unique_pages INT DEFAULT 0,
+        productivity_score DECIMAL(5,2) DEFAULT 0,
+        focus_score DECIMAL(5,2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_user_date (user_id, date),
+        INDEX idx_user (user_id),
+        INDEX idx_date (date)
+      )
+    `);
+
+    // Update or insert screen time record for today
+    await db.execute(
+      `INSERT INTO user_screen_time 
+       (user_id, date, total_screen_time_minutes, active_time_minutes, idle_time_minutes, updated_at)
+       VALUES (?, CURDATE(), ?, ?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE
+         total_screen_time_minutes = ?,
+         active_time_minutes = ?,
+         idle_time_minutes = ?,
+         updated_at = CURRENT_TIMESTAMP`,
+      [userId, totalMinutes, activeMinutes, idleMinutes, totalMinutes, activeMinutes, idleMinutes]
+    );
+
+  } catch (error) {
+    console.error('Error updating screen time:', error);
+  } finally {
+    if (db) await db.end();
+  }
+}
+
+/**
  * Update active work session
  */
 async function updateWorkSession(userId, actionType) {

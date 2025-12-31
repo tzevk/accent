@@ -282,6 +282,34 @@ export default function ActivityMasterPage() {
     }
   };
 
+  // Delete All Activities for selected discipline
+  const handleDeleteAllActivities = async () => {
+    if (!selectedDisciplineId) return;
+    const activityCount = selectedDiscipline?.activities?.length || 0;
+    if (activityCount === 0) {
+      setError('No activities to delete');
+      return;
+    }
+    if (!confirm(`Delete all ${activityCount} activities from "${selectedDiscipline?.function_name}"? This action cannot be undone.`)) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/activities?function_id=${selectedDisciplineId}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchData();
+        showSuccess(`${activityCount} activities deleted`);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to delete activities');
+      }
+    } catch (err) {
+      console.error('Failed to delete all activities', err);
+      setError('Failed to delete all activities');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Update Discipline
   const handleUpdateDiscipline = async () => {
     if (!editingDiscipline || !editingDiscipline.name.trim()) return;
@@ -612,21 +640,33 @@ export default function ActivityMasterPage() {
                       <p className="text-xs text-gray-500">
                         Adding to: <span className="font-medium text-[#7F2487]">{selectedDiscipline?.function_name}</span>
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setBulkMode(!bulkMode)}
-                        className={`flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg font-semibold transition-all shadow-sm ${
-                          bulkMode 
-                            ? 'bg-[#4472C4] text-white shadow-blue-200' 
-                            : 'bg-[#7F2387] text-white hover:bg-[#64126D] shadow-purple-200'
-                        }`}
-                      >
-                        {bulkMode ? (
-                          <><CheckIcon className="h-4 w-4" /> Bulk Mode ON</>
-                        ) : (
-                          <><Squares2X2Icon className="h-4 w-4" /> Bulk Add</>
+                      <div className="flex items-center gap-2">
+                        {(selectedDiscipline?.activities?.length || 0) > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteAllActivities}
+                            disabled={loading}
+                            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-semibold transition-all bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50"
+                          >
+                            <TrashIcon className="h-4 w-4" /> Delete All
+                          </button>
                         )}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setBulkMode(!bulkMode)}
+                          className={`flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg font-semibold transition-all shadow-sm ${
+                            bulkMode 
+                              ? 'bg-[#4472C4] text-white shadow-blue-200' 
+                              : 'bg-[#7F2387] text-white hover:bg-[#64126D] shadow-purple-200'
+                          }`}
+                        >
+                          {bulkMode ? (
+                            <><CheckIcon className="h-4 w-4" /> Bulk Mode ON</>
+                          ) : (
+                            <><Squares2X2Icon className="h-4 w-4" /> Bulk Add</>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
                     {bulkMode ? (
@@ -682,7 +722,7 @@ export default function ActivityMasterPage() {
                                     <span className="font-medium">{idx + 1}.</span> {activity}
                                     {bulkManhours && (
                                       <span className="text-blue-500">
-                                        ({Math.round((parseFloat(bulkManhours) / bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length) * 100) / 100}h)
+                                        ({(parseFloat(bulkManhours) / bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length).toFixed(2)}h)
                                       </span>
                                     )}
                                   </span>
@@ -690,7 +730,7 @@ export default function ActivityMasterPage() {
                             </div>
                             <p className="text-xs text-gray-500 mt-2">
                               {bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length} activities
-                              {bulkManhours && ` × ${Math.round((parseFloat(bulkManhours) / bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length) * 100) / 100}h each = ${bulkManhours}h total`}
+                              {bulkManhours && ` × ${(parseFloat(bulkManhours) / bulkActivities.split(/[\n,]/).map(l => l.trim()).map(l => l.replace(/^[\s•\-\*\d\.]+/, '').trim()).filter(l => l.length > 0).length).toFixed(2)}h each = ${parseFloat(bulkManhours).toFixed(2)}h total`}
                             </p>
                           </div>
                         )}
@@ -836,7 +876,7 @@ export default function ActivityMasterPage() {
                               />
                             ) : (
                               <span className="text-sm font-medium text-gray-700">
-                                {activity.default_manhours ? `${activity.default_manhours} hrs` : '—'}
+                                {activity.default_manhours ? `${parseFloat(activity.default_manhours).toFixed(2)} hrs` : '—'}
                               </span>
                             )}
                           </td>

@@ -166,22 +166,40 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const functionId = searchParams.get('function_id');
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Activity ID is required' }, { status: 400 });
+    if (!id && !functionId) {
+      return NextResponse.json({ success: false, error: 'Activity ID or Function ID is required' }, { status: 400 });
     }
 
     const db = await dbConnect();
     
-    // First delete all sub-activities that belong to this activity
-    await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
-    
-    // Then delete the activity itself
-    await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
-    
-    await db.end();
-
-    return NextResponse.json({ success: true, message: 'Activity and its sub-activities deleted successfully' });
+    if (functionId) {
+      // Bulk delete all activities for a function/discipline
+      // First get all activity IDs for this function
+      const [activities] = await db.execute('SELECT id FROM activities_master WHERE function_id = ?', [functionId]);
+      
+      // Delete sub-activities for all these activities
+      for (const activity of activities) {
+        await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [activity.id]);
+      }
+      
+      // Delete all activities for this function
+      const [result] = await db.execute('DELETE FROM activities_master WHERE function_id = ?', [functionId]);
+      
+      await db.end();
+      return NextResponse.json({ success: true, message: `${result.affectedRows} activities deleted successfully` });
+    } else {
+      // Single activity delete
+      // First delete all sub-activities that belong to this activity
+      await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
+      
+      // Then delete the activity itself
+      await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
+      
+      await db.end();
+      return NextResponse.json({ success: true, message: 'Activity and its sub-activities deleted successfully' });
+    }
   } catch (error) {
     console.error('DELETE /api/activities error:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete activity', details: error.message }, { status: 500 });
