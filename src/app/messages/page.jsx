@@ -88,6 +88,7 @@ export default function MessagesPage() {
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   
   const fileInputRef = useRef(null);
+  const replyFileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const replyInputRef = useRef(null);
   const composeEditorRef = useRef(null);
@@ -903,7 +904,7 @@ export default function MessagesPage() {
                 </div>
               ) : (
                 <div>
-                  {filteredConversations.map((conv, index) => {
+                  {filteredConversations.map((conv) => {
                     const isSentByMe = conv.lastMessage?.sender_id === user?.id;
                     const hasUnread = conv.unreadCount > 0;
                     const isSelected = selectedConversation?.id === conv.id;
@@ -919,6 +920,23 @@ export default function MessagesPage() {
                             : 'hover:bg-gray-50/80'
                         }`}
                       >
+                        {/* Star button on hover */}
+                        <button
+                          onClick={(e) => toggleFlag(e, conv.id)}
+                          className={`absolute right-2 top-2 p-1 rounded transition-all ${
+                            isStarred 
+                              ? 'opacity-100' 
+                              : 'opacity-0 group-hover:opacity-100'
+                          } hover:bg-gray-200`}
+                          title={isStarred ? 'Unstar' : 'Star'}
+                        >
+                          {isStarred ? (
+                            <StarIconSolid className="h-4 w-4 text-amber-400" />
+                          ) : (
+                            <StarIcon className="h-4 w-4 text-gray-400 hover:text-amber-400" />
+                          )}
+                        </button>
+                        
                         {/* Unread accent bar */}
                         {hasUnread && (
                           <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-[#7F2387] rounded-r-full" />
@@ -984,11 +1002,6 @@ export default function MessagesPage() {
                             }`}>
                               {getLastMessagePreview(conv)}
                             </p>
-                            
-                            {/* Star indicator (subtle, no badge) */}
-                            {isStarred && (
-                              <StarIconSolid className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
-                            )}
                           </div>
                         </div>
                       </div>
@@ -1605,7 +1618,7 @@ export default function MessagesPage() {
                     </div>
                   ) : (
                     <div className="space-y-3 max-w-4xl mx-auto">
-                      {messages.map((msg, idx) => {
+                      {messages.map((msg) => {
                         const isOwn = msg.sender_id === user?.id;
                         const isSelected = selectedMessage?.id === msg.id;
                         
@@ -2101,7 +2114,7 @@ export default function MessagesPage() {
                     
                     {/* Insert Image */}
                     <button 
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => replyFileInputRef.current?.click()}
                       className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                       title="Insert Picture"
                     >
@@ -2205,8 +2218,16 @@ export default function MessagesPage() {
                         Send
                       </button>
                       
+                      <input
+                        ref={replyFileInputRef}
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ppt,.pptx,.txt,.dwg,.dxf,.dgn,.rvt,.ifc,.plt,.jpg,.jpeg,.png,.webp,.heic,.tif,.tiff,.zip,.rar,.7z,.dat,.xml,.json,.mpp,.xer,.mp3,.wav,.mp4,.mov,.webm"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
                       <button
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => replyFileInputRef.current?.click()}
                         className="px-3 py-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors flex items-center gap-1.5 text-sm"
                         title="Attach file"
                       >
