@@ -16,17 +16,11 @@ import {
   PencilSquareIcon,
   UserGroupIcon,
   ChatBubbleLeftRightIcon,
-  EllipsisHorizontalIcon,
   InboxIcon,
   EnvelopeIcon,
   StarIcon,
   ArchiveBoxIcon,
-  BellSlashIcon,
-  BellIcon,
   LinkIcon,
-  PhoneIcon,
-  VideoCameraIcon,
-  InformationCircleIcon,
   ListBulletIcon,
   CodeBracketIcon,
   PhotoIcon,
@@ -35,7 +29,6 @@ import {
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { 
-  FlagIcon as FlagIconSolid, 
   ChatBubbleLeftRightIcon as ChatBubbleLeftRightIconSolid,
   InboxIcon as InboxIconSolid,
   EnvelopeIcon as EnvelopeIconSolid,
@@ -74,6 +67,9 @@ export default function MessagesPage() {
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [flaggedConversations, setFlaggedConversations] = useState(new Set());
+  const [archivedConversations, setArchivedConversations] = useState(new Set());
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showTablePicker, setShowTablePicker] = useState(false);
   
   // Rich text editor state
   const [activeFormats, setActiveFormats] = useState({
@@ -89,17 +85,38 @@ export default function MessagesPage() {
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [currentTextColor, setCurrentTextColor] = useState('#000000');
   const [currentHighlightColor, setCurrentHighlightColor] = useState('#ffff00');
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const replyInputRef = useRef(null);
   const composeEditorRef = useRef(null);
   const replyEditorRef = useRef(null);
+  const fontDropdownBtnRef = useRef(null);
+  const fontSizeDropdownBtnRef = useRef(null);
+  const colorPickerBtnRef = useRef(null);
+  const highlightPickerBtnRef = useRef(null);
 
   // Font options
   const fontOptions = ['Arial', 'Calibri', 'Georgia', 'Helvetica', 'Times New Roman', 'Verdana', 'Courier New'];
   const fontSizeOptions = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '36'];
   const colorOptions = ['#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#efefef', '#f3f3f3', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff'];
+  
+  // Emoji options
+  const emojiOptions = ['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😍', '🥰', '😘', '😋', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😔', '😢', '😭', '😤', '😠', '👍', '👎', '👏', '🙏', '🤝', '💪', '✨', '🎉', '🔥', '❤️', '💯'];
+
+  // Helper function to get dropdown position from button
+  const getDropdownPosition = (buttonRef, openAbove = false) => {
+    if (buttonRef?.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      return {
+        top: openAbove ? rect.top - 8 : rect.bottom + 4,
+        left: rect.left,
+        openAbove
+      };
+    }
+    return { top: 0, left: 0, openAbove };
+  };
 
   // Rich text formatting functions
   const execCommand = (command, value = null) => {
@@ -154,6 +171,25 @@ export default function MessagesPage() {
 
   const handleInsertList = (type) => {
     execCommand(type === 'bullet' ? 'insertUnorderedList' : 'insertOrderedList');
+  };
+
+  const handleInsertEmoji = (emoji) => {
+    execCommand('insertText', emoji);
+    setShowEmojiPicker(false);
+  };
+
+  const handleInsertTable = (rows, cols) => {
+    let tableHtml = '<table style="border-collapse: collapse; width: 100%; margin: 8px 0;">';
+    for (let i = 0; i < rows; i++) {
+      tableHtml += '<tr>';
+      for (let j = 0; j < cols; j++) {
+        tableHtml += '<td style="border: 1px solid #d1d5db; padding: 8px; min-width: 50px;">&nbsp;</td>';
+      }
+      tableHtml += '</tr>';
+    }
+    tableHtml += '</table>';
+    execCommand('insertHTML', tableHtml);
+    setShowTablePicker(false);
   };
 
   const getEditorContent = (editorRef) => {
@@ -211,6 +247,8 @@ export default function MessagesPage() {
         setShowFontSizeDropdown(false);
         setShowColorPicker(false);
         setShowHighlightPicker(false);
+        setShowEmojiPicker(false);
+        setShowTablePicker(false);
       }
     };
     document.addEventListener('click', handleClickOutside);
@@ -387,13 +425,29 @@ export default function MessagesPage() {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
+    // Allowed file extensions
+    const allowedExtensions = [
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.xlsm', '.csv',
+      '.ppt', '.pptx', '.txt', '.dwg', '.dxf', '.dgn', '.rvt',
+      '.ifc', '.plt', '.jpg', '.jpeg', '.png', '.webp', '.heic',
+      '.tif', '.tiff', '.zip', '.rar', '.7z', '.dat', '.xml',
+      '.json', '.mpp', '.xer', '.mp3', '.wav', '.mp4', '.mov', '.webm'
+    ];
+
     try {
       for (const file of files) {
+        // Check file extension
+        const fileExt = '.' + file.name.split('.').pop().toLowerCase();
+        if (!allowedExtensions.includes(fileExt)) {
+          alert(`File type not allowed: ${file.name}. Please upload files with these extensions: ${allowedExtensions.join(', ')}`);
+          continue;
+        }
+
         const formData = new FormData();
         formData.append('file', file);
         formData.append('type', 'message-attachment');
 
-        const response = await fetch('/api/messages/upload', {
+        const response = await fetch('/api/messages/attachments', {
           method: 'POST',
           body: formData,
         });
@@ -404,13 +458,15 @@ export default function MessagesPage() {
             name: file.name,
             size: file.size,
             type: file.type,
-            url: result.data.filePath,
-            file_name: result.data.fileName,
-            original_name: file.name,
-            file_path: result.data.filePath,
-            file_type: file.type,
-            file_size: file.size
+            url: result.data.file_path,
+            file_name: result.data.file_name,
+            original_name: result.data.original_name,
+            file_path: result.data.file_path,
+            file_type: result.data.file_type,
+            file_size: result.data.file_size
           }]);
+        } else {
+          alert(result.error || 'Failed to upload file');
         }
       }
     } catch (error) {
@@ -544,6 +600,62 @@ export default function MessagesPage() {
     });
   };
 
+  const toggleArchive = (e, convId) => {
+    e.stopPropagation();
+    setArchivedConversations(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(convId)) {
+        newSet.delete(convId);
+      } else {
+        newSet.add(convId);
+      }
+      return newSet;
+    });
+    // If archiving current conversation, deselect it
+    if (selectedConversation?.id === convId) {
+      setSelectedConversation(null);
+    }
+  };
+
+  const handleArchiveMessage = async (e, msgId) => {
+    e.stopPropagation();
+    try {
+      const res = await fetchJSON(`/api/messages/${msgId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'archive' })
+      });
+      if (res.success) {
+        // Refresh conversation
+        if (selectedConversation) {
+          fetchConversationMessages(selectedConversation);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to archive message:', error);
+    }
+  };
+
+  const handleDeleteMessage = async (e, msgId) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this message?')) return;
+    
+    try {
+      const res = await fetchJSON(`/api/messages/${msgId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'delete' })
+      });
+      if (res.success) {
+        // Refresh conversation
+        if (selectedConversation) {
+          fetchConversationMessages(selectedConversation);
+          fetchConversations();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+    }
+  };
+
   const formatTime = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -636,17 +748,20 @@ export default function MessagesPage() {
     // Category filters (Outlook-style folders acting as chat filters)
     switch (conversationFilter) {
       case 'unread':
+        if (archivedConversations.has(conv.id)) return false;
         if (conv.unreadCount === 0) return false;
         break;
       case 'flagged':
+        if (archivedConversations.has(conv.id)) return false;
         if (!flaggedConversations.has(conv.id)) return false;
         break;
       case 'archived':
-        // For now, archived is empty until we implement archive functionality
-        return false;
+        if (!archivedConversations.has(conv.id)) return false;
+        break;
       case 'all':
       default:
         // Show all non-archived conversations
+        if (archivedConversations.has(conv.id)) return false;
         break;
     }
     
@@ -671,14 +786,14 @@ export default function MessagesPage() {
       {/* Main Content Container with Dashboard-like dimensions */}
       <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16 h-full">
         {/* Three Pane Layout - Fixed height container */}
-        <div className="h-[calc(100vh-140px)] flex overflow-hidden relative bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="h-[calc(100vh-140px)] flex relative bg-white rounded-xl shadow-sm border border-gray-200">
         
         {/* LEFT PANE - Conversations (WhatsApp-style) */}
         {!leftPaneCollapsed && (
-          <div className="w-[360px] bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+          <div className="w-[280px] bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
             {/* Header */}
-            <div className="px-4 py-3 bg-[#7F2387] flex items-center justify-between">
-              <h1 className="text-lg font-semibold text-white">Chats</h1>
+            <div className="px-3 py-2 bg-[#7F2387] flex items-center justify-between">
+              <h1 className="text-base font-semibold text-white">Chats</h1>
               <div className="flex items-center gap-2">
                 <button
                   onClick={startNewMessage}
@@ -687,14 +802,18 @@ export default function MessagesPage() {
                 >
                   <PencilSquareIcon className="h-5 w-5" />
                 </button>
-                <button className="p-2 hover:bg-white/10 rounded-full text-white transition-colors">
-                  <EllipsisHorizontalIcon className="h-5 w-5" />
+                <button 
+                  onClick={() => fetchConversations()}
+                  className="p-2 hover:bg-white/10 rounded-full text-white transition-colors"
+                  title="Refresh"
+                >
+                  <ArrowPathIcon className="h-5 w-5" />
                 </button>
               </div>
             </div>
             
             {/* Search Bar */}
-            <div className="px-3 py-2 bg-gray-50">
+            <div className="px-2 py-1.5 bg-gray-50">
               <div className="relative">
                 <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -708,13 +827,13 @@ export default function MessagesPage() {
             </div>
             
             {/* Horizontal Icon-Only Filters */}
-            <div className="px-3 py-2 border-b border-gray-100">
+            <div className="px-2 py-1.5 border-b border-gray-100">
               <div className="flex items-center justify-around bg-gray-100 rounded-lg p-1">
                 {[
-                  { id: 'all', label: 'All Chats', icon: InboxIcon, iconSolid: InboxIconSolid, count: conversations.length },
+                  { id: 'all', label: 'All Chats', icon: InboxIcon, iconSolid: InboxIconSolid, count: conversations.filter(c => !archivedConversations.has(c.id)).length },
                   { id: 'unread', label: 'Unread', icon: EnvelopeIcon, iconSolid: EnvelopeIconSolid, count: unreadCount },
                   { id: 'flagged', label: 'Starred', icon: StarIcon, iconSolid: StarIconSolid, count: flaggedConversations.size },
-                  { id: 'archived', label: 'Archived', icon: ArchiveBoxIcon, iconSolid: ArchiveBoxIconSolid, count: 0 }
+                  { id: 'archived', label: 'Archived', icon: ArchiveBoxIcon, iconSolid: ArchiveBoxIconSolid, count: archivedConversations.size }
                 ].map(folder => {
                   const isActive = conversationFilter === folder.id;
                   const Icon = isActive ? folder.iconSolid : folder.icon;
@@ -794,7 +913,7 @@ export default function MessagesPage() {
                       <div
                         key={conv.id}
                         onClick={() => selectConversation(conv)}
-                        className={`group relative flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all duration-150 ${
+                        className={`group relative flex items-center gap-2 px-2 py-2 cursor-pointer transition-all duration-150 ${
                           isSelected 
                             ? 'bg-[#7F2387]/8' 
                             : 'hover:bg-gray-50/80'
@@ -813,7 +932,7 @@ export default function MessagesPage() {
                         {/* Avatar - slightly smaller for compact look */}
                         <div className="relative flex-shrink-0">
                           <div 
-                            className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-medium"
+                            className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-medium"
                             style={{ backgroundColor: getAvatarColor(conv.displayName) }}
                           >
                             {conv.participantCount > 2 ? (
@@ -832,7 +951,7 @@ export default function MessagesPage() {
                         <div className="flex-1 min-w-0 py-0.5">
                           {/* Top row: Name + Time */}
                           <div className="flex items-baseline justify-between gap-2">
-                            <h3 className={`truncate text-[14px] leading-tight ${
+                            <h3 className={`truncate text-[13px] leading-tight ${
                               hasUnread 
                                 ? 'font-semibold text-gray-900' 
                                 : 'font-medium text-gray-700'
@@ -885,14 +1004,14 @@ export default function MessagesPage() {
         <button
           onClick={() => setLeftPaneCollapsed(!leftPaneCollapsed)}
           className={`absolute top-1/2 -translate-y-1/2 z-10 bg-white border border-gray-200 rounded-r-lg p-1 shadow-sm hover:bg-gray-50 transition-all ${
-            leftPaneCollapsed ? 'left-0' : 'left-[359px]'
+            leftPaneCollapsed ? 'left-0' : 'left-[279px]'
           }`}
         >
           <ChevronLeftIcon className={`h-4 w-4 text-gray-500 transition-transform ${leftPaneCollapsed ? 'rotate-180' : ''}`} />
         </button>
 
         {/* CENTER/MAIN PANE - Message List / Compose */}
-        <div className="flex-1 flex flex-col bg-white min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-white min-w-0">
           {showCompose ? (
             /* Compose View */
             <div className="flex flex-col h-full">
@@ -967,28 +1086,51 @@ export default function MessagesPage() {
                   />
                 </div>
                 
-                {/* Formatting Toolbar - Outlook Style */}
-                <div className="flex items-center gap-0.5 px-4 py-1.5 border-b border-gray-100 bg-gray-50 overflow-x-auto flex-nowrap flex-shrink-0">
+                {/* Formatting Toolbar - Enhanced Style */}
+                <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white shadow-sm overflow-x-auto flex-nowrap flex-shrink-0 relative z-50" style={{ overflowY: 'visible' }}>
                   {/* Font Family */}
-                  <div className="relative" data-dropdown>
+                  <div className="relative z-[100]" data-dropdown>
                     <button 
-                      onClick={() => setShowFontDropdown(!showFontDropdown)}
-                      className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded transition-colors whitespace-nowrap"
-                      title="Font"
+                      ref={fontDropdownBtnRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pos = getDropdownPosition(fontDropdownBtnRef);
+                        setDropdownPosition(pos);
+                        setShowFontDropdown(!showFontDropdown);
+                        setShowFontSizeDropdown(false);
+                        setShowColorPicker(false);
+                        setShowHighlightPicker(false);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all whitespace-nowrap min-w-[100px] justify-between"
+                      title="Font Family"
                     >
-                      <span className="font-medium">{selectedFont}</span>
-                      <ChevronDownIcon className="h-3 w-3" />
+                      <span className="truncate">{selectedFont}</span>
+                      <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontDropdown ? 'rotate-180' : ''}`} />
                     </button>
                     {showFontDropdown && (
-                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[140px]">
+                      <div 
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 min-w-[160px] max-h-64 overflow-y-auto"
+                        style={{ 
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                          zIndex: 99999
+                        }}
+                      >
                         {fontOptions.map(font => (
                           <button
                             key={font}
                             onClick={() => handleFontChange(font)}
-                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                            className={`w-full px-3 py-2 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
+                              selectedFont === font ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
+                            }`}
                             style={{ fontFamily: font }}
                           >
-                            {font}
+                            <span>{font}</span>
+                            {selectedFont === font && (
+                              <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -996,36 +1138,63 @@ export default function MessagesPage() {
                   </div>
                   
                   {/* Font Size */}
-                  <div className="relative" data-dropdown>
+                  <div className="relative z-[100]" data-dropdown>
                     <button 
-                      onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
-                      className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                      ref={fontSizeDropdownBtnRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pos = getDropdownPosition(fontSizeDropdownBtnRef);
+                        setDropdownPosition(pos);
+                        setShowFontSizeDropdown(!showFontSizeDropdown);
+                        setShowFontDropdown(false);
+                        setShowColorPicker(false);
+                        setShowHighlightPicker(false);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all w-[70px] justify-between"
                       title="Font Size"
                     >
                       <span>{selectedFontSize}</span>
-                      <ChevronDownIcon className="h-3 w-3" />
+                      <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontSizeDropdown ? 'rotate-180' : ''}`} />
                     </button>
                     {showFontSizeDropdown && (
-                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
+                      <div 
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 max-h-56 overflow-y-auto min-w-[80px]"
+                        style={{ 
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                          zIndex: 99999
+                        }}
+                      >
                         {fontSizeOptions.map(size => (
                           <button
                             key={size}
                             onClick={() => handleFontSizeChange(size)}
-                            className="w-full px-3 py-1 text-left text-sm hover:bg-gray-100"
+                            className={`w-full px-3 py-1.5 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
+                              selectedFontSize === size ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
+                            }`}
                           >
-                            {size}
+                            <span>{size}px</span>
+                            {selectedFontSize === size && (
+                              <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
                   
-                  <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                   
                   {/* Bold */}
                   <button 
                     onClick={() => handleFormat('bold')}
-                    className={`p-1.5 rounded transition-colors flex-shrink-0 ${activeFormats.bold ? 'bg-gray-300 text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                    className={`p-2 rounded-md transition-all flex-shrink-0 ${
+                      activeFormats.bold 
+                        ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
+                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                    }`}
                     title="Bold (Ctrl+B)"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1036,7 +1205,11 @@ export default function MessagesPage() {
                   {/* Italic */}
                   <button 
                     onClick={() => handleFormat('italic')}
-                    className={`p-1.5 rounded transition-colors flex-shrink-0 ${activeFormats.italic ? 'bg-gray-300 text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                    className={`p-2 rounded-md transition-all flex-shrink-0 ${
+                      activeFormats.italic 
+                        ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
+                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                    }`}
                     title="Italic (Ctrl+I)"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1047,7 +1220,11 @@ export default function MessagesPage() {
                   {/* Underline */}
                   <button 
                     onClick={() => handleFormat('underline')}
-                    className={`p-1.5 rounded transition-colors flex-shrink-0 ${activeFormats.underline ? 'bg-gray-300 text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                    className={`p-2 rounded-md transition-all flex-shrink-0 ${
+                      activeFormats.underline 
+                        ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
+                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                    }`}
                     title="Underline (Ctrl+U)"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1055,66 +1232,110 @@ export default function MessagesPage() {
                     </svg>
                   </button>
                   
-                  <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                   
                   {/* Text Color */}
-                  <div className="relative" data-dropdown>
+                  <div className="relative z-[100]" data-dropdown>
                     <button 
-                      onClick={() => setShowColorPicker(!showColorPicker)}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors relative flex-shrink-0"
-                      title="Font Color"
+                      ref={colorPickerBtnRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pos = getDropdownPosition(colorPickerBtnRef);
+                        setDropdownPosition(pos);
+                        setShowColorPicker(!showColorPicker);
+                        setShowHighlightPicker(false);
+                        setShowFontDropdown(false);
+                        setShowFontSizeDropdown(false);
+                      }}
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
+                      title="Text Color"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M11 2L5.5 16h2.25l1.12-3h6.25l1.12 3h2.25L13 2h-2zm-1.38 9L12 4.67 14.38 11H9.62z"/>
                       </svg>
-                      <div className="absolute bottom-0 left-1 right-1 h-1 rounded-full" style={{ backgroundColor: currentTextColor }} />
+                      <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentTextColor }} />
                     </button>
                     {showColorPicker && (
-                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-2 grid grid-cols-5 gap-1">
-                        {colorOptions.map(color => (
-                          <button
-                            key={color}
-                            onClick={() => handleTextColor(color)}
-                            className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
-                            style={{ backgroundColor: color }}
-                          />
-                        ))}
+                      <div 
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                        style={{ 
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                          zIndex: 99999
+                        }}
+                      >
+                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Text Color</div>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {colorOptions.map(color => (
+                            <button
+                              key={color}
+                              onClick={() => handleTextColor(color)}
+                              className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
+                                currentTextColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
                   
                   {/* Highlight Color */}
-                  <div className="relative" data-dropdown>
+                  <div className="relative z-[100]" data-dropdown>
                     <button 
-                      onClick={() => setShowHighlightPicker(!showHighlightPicker)}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors relative flex-shrink-0"
+                      ref={highlightPickerBtnRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pos = getDropdownPosition(highlightPickerBtnRef);
+                        setDropdownPosition(pos);
+                        setShowHighlightPicker(!showHighlightPicker);
+                        setShowColorPicker(false);
+                        setShowFontDropdown(false);
+                        setShowFontSizeDropdown(false);
+                      }}
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
                       title="Highlight Color"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M15.24 2.86l3.89 3.89-1.41 1.41-3.89-3.89 1.41-1.41zM3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM5.92 19H5v-.92l9.06-9.06.92.92L5.92 19z"/>
                       </svg>
-                      <div className="absolute bottom-0 left-1 right-1 h-1 rounded-full" style={{ backgroundColor: currentHighlightColor }} />
+                      <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentHighlightColor }} />
                     </button>
                     {showHighlightPicker && (
-                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-2 grid grid-cols-5 gap-1">
-                        {colorOptions.map(color => (
-                          <button
-                            key={color}
-                            onClick={() => handleHighlightColor(color)}
-                            className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
-                            style={{ backgroundColor: color }}
-                          />
-                        ))}
+                      <div 
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                        style={{ 
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                          zIndex: 99999
+                        }}
+                      >
+                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Highlight Color</div>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {colorOptions.map(color => (
+                            <button
+                              key={color}
+                              onClick={() => handleHighlightColor(color)}
+                              className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
+                                currentHighlightColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
                   
-                  <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                   
                   {/* Bullet List */}
                   <button 
                     onClick={() => handleInsertList('bullet')}
-                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                     title="Bullet List"
                   >
                     <ListBulletIcon className="h-4 w-4" />
@@ -1123,7 +1344,7 @@ export default function MessagesPage() {
                   {/* Numbered List */}
                   <button 
                     onClick={() => handleInsertList('numbered')}
-                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                     title="Numbered List"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1131,12 +1352,12 @@ export default function MessagesPage() {
                     </svg>
                   </button>
                   
-                  <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                   
                   {/* Link */}
                   <button 
                     onClick={handleInsertLink}
-                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                     title="Insert Link (Ctrl+K)"
                   >
                     <LinkIcon className="h-4 w-4" />
@@ -1145,34 +1366,110 @@ export default function MessagesPage() {
                   {/* Code */}
                   <button 
                     onClick={() => execCommand('formatBlock', 'pre')}
-                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                     title="Code Block"
                   >
                     <CodeBracketIcon className="h-4 w-4" />
                   </button>
                   
+                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
+                  
                   {/* Insert Table */}
-                  <button className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0" title="Insert Table">
-                    <TableCellsIcon className="h-4 w-4" />
-                  </button>
+                  <div className="relative z-[100]" data-dropdown>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const btn = e.currentTarget;
+                        const rect = btn.getBoundingClientRect();
+                        setDropdownPosition({ top: rect.bottom + 4, left: rect.left, openAbove: false });
+                        setShowTablePicker(!showTablePicker);
+                        setShowEmojiPicker(false);
+                      }}
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
+                      title="Insert Table"
+                    >
+                      <TableCellsIcon className="h-4 w-4" />
+                    </button>
+                    {showTablePicker && (
+                      <div 
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                        style={{ 
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                          zIndex: 99999
+                        }}
+                      >
+                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Table</div>
+                        <div className="grid grid-cols-5 gap-1">
+                          {[1, 2, 3, 4, 5].map(rows => (
+                            [1, 2, 3, 4, 5].map(cols => (
+                              <button
+                                key={`${rows}-${cols}`}
+                                onClick={() => handleInsertTable(rows, cols)}
+                                className="w-6 h-6 border border-gray-300 hover:bg-[#7F2387]/20 hover:border-[#7F2387] transition-colors rounded"
+                                title={`${rows}×${cols} table`}
+                              />
+                            ))
+                          ))}
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-2 text-center">Click to insert table</div>
+                      </div>
+                    )}
+                  </div>
                   
                   {/* Insert Image */}
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                     title="Insert Picture"
                   >
                     <PhotoIcon className="h-4 w-4" />
                   </button>
                   
                   {/* Emoji */}
-                  <button className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0" title="Insert Emoji">
-                    <FaceSmileIcon className="h-4 w-4" />
-                  </button>
+                  <div className="relative z-[100]" data-dropdown>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const btn = e.currentTarget;
+                        const rect = btn.getBoundingClientRect();
+                        setDropdownPosition({ top: rect.bottom + 4, left: rect.left - 100, openAbove: false });
+                        setShowEmojiPicker(!showEmojiPicker);
+                        setShowTablePicker(false);
+                      }}
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
+                      title="Insert Emoji"
+                    >
+                      <FaceSmileIcon className="h-4 w-4" />
+                    </button>
+                    {showEmojiPicker && (
+                      <div 
+                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                        style={{ 
+                          top: dropdownPosition.top,
+                          left: dropdownPosition.left,
+                          zIndex: 99999
+                        }}
+                      >
+                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Emoji</div>
+                        <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
+                          {emojiOptions.map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleInsertEmoji(emoji)}
+                              className="w-7 h-7 hover:bg-gray-100 rounded text-lg flex items-center justify-center transition-colors"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Message Body - Rich Text Editor */}
-                <div className="flex-1 px-4 py-2 min-h-0">
+                <div className="flex-1 px-3 py-2 min-h-0 overflow-y-auto">
                   <div
                     ref={composeEditorRef}
                     contentEditable
@@ -1180,7 +1477,7 @@ export default function MessagesPage() {
                     onMouseUp={updateActiveFormats}
                     onKeyUp={updateActiveFormats}
                     onKeyDown={handleEditorKeyDown}
-                    className="w-full h-full text-[15px] leading-relaxed text-gray-700 focus:outline-none overflow-y-auto border border-gray-200 rounded-lg p-4"
+                    className="w-full h-full text-[14px] leading-relaxed text-gray-700 focus:outline-none border border-gray-200 rounded-lg p-3 overflow-y-auto"
                     style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
                     data-placeholder="Write your message..."
                     suppressContentEditableWarning={true}
@@ -1221,6 +1518,7 @@ export default function MessagesPage() {
                     ref={fileInputRef}
                     type="file"
                     multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ppt,.pptx,.txt,.dwg,.dxf,.dgn,.rvt,.ifc,.plt,.jpg,.jpeg,.png,.webp,.heic,.tif,.tiff,.zip,.rar,.7z,.dat,.xml,.json,.mpp,.xer,.mp3,.wav,.mp4,.mov,.webm"
                     onChange={handleFileUpload}
                     className="hidden"
                   />
@@ -1242,277 +1540,15 @@ export default function MessagesPage() {
               </div>
             </div>
           ) : selectedConversation ? (
-            /* Conversation View - Outlook 3-pane style */
+            /* Conversation View - 2-pane style (removed middle pane) */
             <div className="flex h-full">
-              {/* MIDDLE PANE - Message List (Outlook-style) */}
-              <div className="w-[340px] flex-shrink-0 border-r border-gray-200 flex flex-col bg-white">
-                {/* Conversation Header - Clean & Minimal */}
-                <div className="border-b border-gray-200 bg-white">
-                  {/* Main row */}
-                  <div className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {/* Back button (mobile) */}
-                      <button
-                        onClick={() => setSelectedConversation(null)}
-                        className="p-1 -ml-1 hover:bg-gray-100 rounded-lg lg:hidden"
-                      >
-                        <ChevronLeftIcon className="h-5 w-5 text-gray-500" />
-                      </button>
-                      
-                      {/* Avatar */}
-                      <div className="relative flex-shrink-0">
-                        <div 
-                          className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
-                          style={{ backgroundColor: getAvatarColor(selectedConversation.displayName) }}
-                        >
-                          {selectedConversation.participantCount > 2 ? (
-                            <UserGroupIcon className="h-5 w-5" />
-                          ) : (
-                            getInitials(selectedConversation.displayName)
-                          )}
-                        </div>
-                        {/* Online indicator for direct chats */}
-                        {selectedConversation.participantCount <= 2 && (
-                          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
-                        )}
-                      </div>
-                      
-                      {/* Name & Activity */}
-                      <div className="flex-1 min-w-0">
-                        <h2 className="font-semibold text-gray-900 text-[15px] truncate leading-tight">
-                          {selectedConversation.displayName}
-                        </h2>
-                        <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                          {selectedConversation.participantCount > 2 ? (
-                            <span>{selectedConversation.participantCount} participants</span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                              Active now
-                            </span>
-                          )}
-                          <span className="text-gray-300 mx-1">•</span>
-                          <span>{formatTime(selectedConversation.lastMessage?.created_at)}</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Quick Actions Row */}
-                  <div className="px-4 pb-2.5 flex items-center gap-1">
-                    {/* Star */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFlaggedConversations(prev => {
-                          const newSet = new Set(prev);
-                          if (newSet.has(selectedConversation.id)) {
-                            newSet.delete(selectedConversation.id);
-                          } else {
-                            newSet.add(selectedConversation.id);
-                          }
-                          return newSet;
-                        });
-                      }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                        flaggedConversations.has(selectedConversation.id)
-                          ? 'bg-amber-50 text-amber-600'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {flaggedConversations.has(selectedConversation.id) ? (
-                        <StarIconSolid className="h-3.5 w-3.5" />
-                      ) : (
-                        <StarIcon className="h-3.5 w-3.5" />
-                      )}
-                      <span>Star</span>
-                    </button>
-                    
-                    {/* Archive */}
-                    <button 
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                    >
-                      <ArchiveBoxIcon className="h-3.5 w-3.5" />
-                      <span>Archive</span>
-                    </button>
-                    
-                    {/* Mute */}
-                    <button 
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                    >
-                      <BellSlashIcon className="h-3.5 w-3.5" />
-                      <span>Mute</span>
-                    </button>
-                    
-                    {/* Link to Project */}
-                    <button 
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                    >
-                      <LinkIcon className="h-3.5 w-3.5" />
-                      <span>Link</span>
-                    </button>
-                    
-                    {/* More */}
-                    <button 
-                      className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors ml-auto"
-                    >
-                      <EllipsisHorizontalIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Message List - Outlook style */}
-                <div className="flex-1 overflow-y-auto">
-                  {messagesLoading ? (
-                    <div className="flex justify-center items-center h-32">
-                      <ArrowPathIcon className="h-5 w-5 animate-spin text-[#7F2387]" />
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-gray-400 p-4">
-                      <EnvelopeIcon className="h-8 w-8 mb-2 text-gray-300" />
-                      <p className="text-sm text-center">No messages in this conversation</p>
-                    </div>
-                  ) : (
-                    <div>
-                      {messages.map((msg, idx) => {
-                        const isOwn = msg.sender_id === user?.id;
-                        const isSelected = selectedMessage?.id === msg.id;
-                        const isUnread = !isOwn && !msg.read_status;
-                        
-                        return (
-                          <div
-                            key={msg.id}
-                            onClick={() => setSelectedMessage(msg)}
-                            className={`group relative px-4 py-3 cursor-pointer border-b border-gray-100 transition-colors ${
-                              isSelected 
-                                ? 'bg-[#7F2387]/8' 
-                                : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            {/* Unread indicator bar */}
-                            {isUnread && (
-                              <div className="absolute left-0 top-3 bottom-3 w-[3px] bg-[#7F2387] rounded-r-full" />
-                            )}
-                            
-                            {/* Selected indicator */}
-                            {isSelected && !isUnread && (
-                              <div className="absolute left-0 top-3 bottom-3 w-[3px] bg-[#7F2387]/40 rounded-r-full" />
-                            )}
-                            
-                            {/* Row 1: Sender + Time */}
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div 
-                                  className="h-6 w-6 rounded-full flex items-center justify-center text-white text-[10px] font-medium flex-shrink-0"
-                                  style={{ backgroundColor: getAvatarColor(msg.sender_name) }}
-                                >
-                                  {getInitials(msg.sender_name)}
-                                </div>
-                                <span className={`truncate text-[13px] ${
-                                  isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'
-                                }`}>
-                                  {isOwn ? 'You' : msg.sender_name?.split(' ')[0] || 'Unknown'}
-                                </span>
-                              </div>
-                              <span className={`text-[11px] tabular-nums flex-shrink-0 ${
-                                isUnread ? 'text-[#7F2387] font-medium' : 'text-gray-400'
-                              }`}>
-                                {formatTime(msg.created_at)}
-                              </span>
-                            </div>
-                            
-                            {/* Row 2: Subject */}
-                            <p className={`truncate text-[13px] leading-tight mb-0.5 ${
-                              isUnread ? 'font-semibold text-gray-800' : 'font-medium text-gray-600'
-                            }`}>
-                              {msg.subject || 'No Subject'}
-                            </p>
-                            
-                            {/* Row 3: Preview */}
-                            <p className={`truncate text-[12px] leading-tight ${
-                              isUnread ? 'text-gray-600' : 'text-gray-400'
-                            }`}>
-                              {msg.body?.substring(0, 80) || msg.body_preview || 'No content'}
-                            </p>
-                            
-                            {/* Row 4: Attachment indicator (if any) */}
-                            {msg.attachments && msg.attachments.length > 0 && (
-                              <div className="flex items-center gap-1 mt-1.5">
-                                <PaperClipIcon className="h-3 w-3 text-gray-400" />
-                                <span className="text-[11px] text-gray-400">
-                                  {msg.attachments.length} attachment{msg.attachments.length > 1 ? 's' : ''}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Quick Reply at bottom of message list */}
-                <div className="border-t border-gray-200 p-3 bg-gray-50">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      multiple
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="p-2 hover:bg-gray-200 rounded-lg text-gray-500 flex-shrink-0"
-                      title="Attach file"
-                    >
-                      <PaperClipIcon className="h-4 w-4" />
-                    </button>
-                    <input
-                      ref={replyInputRef}
-                      type="text"
-                      value={messageText}
-                      onChange={(e) => setMessageText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          sendReply();
-                        }
-                      }}
-                      placeholder="Type a reply..."
-                      className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#7F2387]/30"
-                    />
-                    <button
-                      onClick={sendReply}
-                      disabled={sending || (!messageText.trim() && attachments.length === 0)}
-                      className="p-2 bg-[#7F2387] text-white rounded-lg hover:bg-[#64126D] disabled:opacity-50 flex-shrink-0"
-                    >
-                      <PaperAirplaneIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {attachments.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {attachments.map((att, idx) => (
-                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-200 rounded text-xs text-gray-600">
-                          <PaperClipIcon className="h-3 w-3" />
-                          {att.name.substring(0, 15)}{att.name.length > 15 ? '...' : ''}
-                          <button onClick={() => removeAttachment(idx)} className="hover:text-gray-800">
-                            <XMarkIcon className="h-3 w-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              
               {/* RIGHT PANE - Reading Pane (Email-style Thread View) */}
               <div className="flex-1 flex flex-col bg-gray-100 min-w-0">
                 {/* Thread Header */}
-                <div className="border-b border-gray-200 bg-white px-6 py-4">
+                <div className="border-b border-gray-200 bg-white px-4 py-3">
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <h2 className="font-semibold text-gray-900 text-lg truncate">
+                      <h2 className="font-semibold text-gray-900 text-base truncate">
                         {selectedConversation.lastMessage?.subject || 'Conversation'}
                       </h2>
                       <p className="text-sm text-gray-500 mt-0.5">
@@ -1523,29 +1559,41 @@ export default function MessagesPage() {
                     {/* Thread Actions */}
                     <div className="flex items-center gap-1">
                       <button 
+                        onClick={() => {
+                          // Focus on reply editor
+                          if (replyEditorRef.current) {
+                            replyEditorRef.current.focus();
+                          }
+                        }}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                         title="Reply to thread"
                       >
                         <PaperAirplaneIcon className="h-5 w-5 text-gray-400 hover:text-gray-600 -rotate-45" />
                       </button>
                       <button 
+                        onClick={() => window.print()}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                         title="Print thread"
                       >
                         <DocumentIcon className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                       </button>
                       <button 
+                        onClick={() => {
+                          if (selectedConversation) {
+                            toggleArchive({ stopPropagation: () => {} }, selectedConversation.id);
+                          }
+                        }}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="More options"
+                        title="Archive conversation"
                       >
-                        <EllipsisHorizontalIcon className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                        <ArchiveBoxIcon className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                       </button>
                     </div>
                   </div>
                 </div>
                 
                 {/* Email Cards Stack */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-3">
                   {messagesLoading ? (
                     <div className="flex justify-center items-center h-32">
                       <ArrowPathIcon className="h-6 w-6 animate-spin text-[#7F2387]" />
@@ -1556,7 +1604,7 @@ export default function MessagesPage() {
                       <p className="text-sm">No messages in this conversation</p>
                     </div>
                   ) : (
-                    <div className="space-y-4 max-w-4xl mx-auto">
+                    <div className="space-y-3 max-w-4xl mx-auto">
                       {messages.map((msg, idx) => {
                         const isOwn = msg.sender_id === user?.id;
                         const isSelected = selectedMessage?.id === msg.id;
@@ -1572,11 +1620,11 @@ export default function MessagesPage() {
                             }`}
                           >
                             {/* Card Header */}
-                            <div className="px-5 py-4 border-b border-gray-100">
+                            <div className="px-4 py-3 border-b border-gray-100">
                               <div className="flex items-start gap-4">
                                 {/* Sender Avatar */}
                                 <div 
-                                  className="h-11 w-11 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+                                  className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
                                   style={{ backgroundColor: getAvatarColor(msg.sender_name) }}
                                 >
                                   {getInitials(msg.sender_name)}
@@ -1618,11 +1666,11 @@ export default function MessagesPage() {
                             </div>
                             
                             {/* Card Body - Enhanced Reading Area */}
-                            <div className="px-8 py-6 bg-gray-50/30">
+                            <div className="px-4 py-3 bg-gray-50/30">
                               <div 
-                                className="prose prose-gray max-w-none
+                                className="prose prose-sm prose-gray max-w-none
                                   prose-headings:text-gray-900 prose-headings:font-semibold
-                                  prose-p:text-gray-700 prose-p:leading-[1.75] prose-p:text-[15px]
+                                  prose-p:text-gray-700 prose-p:leading-[1.6] prose-p:text-[14px]
                                   prose-a:text-[#7F2387] prose-a:no-underline hover:prose-a:underline
                                   prose-strong:text-gray-900 prose-strong:font-semibold
                                   prose-code:text-[#7F2387] prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none
@@ -1691,7 +1739,7 @@ export default function MessagesPage() {
                               </button>
                               <span className="text-gray-300">•</span>
                               <button 
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) => toggleArchive(e, selectedConversation?.id)}
                                 className="text-xs text-gray-500 hover:text-[#7F2387] font-medium flex items-center gap-1"
                               >
                                 <ArchiveBoxIcon className="h-3.5 w-3.5" />
@@ -1699,7 +1747,7 @@ export default function MessagesPage() {
                               </button>
                               <span className="text-gray-300">•</span>
                               <button 
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) => handleDeleteMessage(e, msg.id)}
                                 className="text-xs text-gray-500 hover:text-red-500 font-medium"
                               >
                                 Delete
@@ -1715,28 +1763,52 @@ export default function MessagesPage() {
                 
                 {/* Reply Composer - Outlook Style Rich Text Editor */}
                 <div className="border-t border-gray-200 bg-white flex-shrink-0">
-                  {/* Formatting Toolbar - Full Width */}
-                  <div className="flex items-center gap-0.5 px-4 py-2 border-b border-gray-100 bg-gray-50 overflow-x-auto flex-nowrap">
+                  {/* Formatting Toolbar - Enhanced Style */}
+                  <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white shadow-sm overflow-x-auto flex-nowrap relative z-50" style={{ overflowY: 'visible' }}>
                     {/* Font Family */}
-                    <div className="relative" data-dropdown>
+                    <div className="relative z-[100]" data-dropdown>
                       <button 
-                        onClick={() => setShowFontDropdown(!showFontDropdown)}
-                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded transition-colors whitespace-nowrap"
-                        title="Font"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          const rect = btn.getBoundingClientRect();
+                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
+                          setShowFontDropdown(!showFontDropdown);
+                          setShowFontSizeDropdown(false);
+                          setShowColorPicker(false);
+                          setShowHighlightPicker(false);
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all whitespace-nowrap min-w-[100px] justify-between"
+                        title="Font Family"
                       >
-                        <span className="font-medium">{selectedFont}</span>
-                        <ChevronDownIcon className="h-3 w-3" />
+                        <span className="truncate">{selectedFont}</span>
+                        <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontDropdown ? 'rotate-180' : ''}`} />
                       </button>
                       {showFontDropdown && (
-                        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 min-w-[140px]">
+                        <div 
+                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 min-w-[160px] max-h-64 overflow-y-auto"
+                          style={{ 
+                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
+                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
+                            left: dropdownPosition.left,
+                            zIndex: 99999
+                          }}
+                        >
                           {fontOptions.map(font => (
                             <button
                               key={font}
                               onClick={() => handleFontChange(font)}
-                              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100"
+                              className={`w-full px-3 py-2 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
+                                selectedFont === font ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
+                              }`}
                               style={{ fontFamily: font }}
                             >
-                              {font}
+                              <span>{font}</span>
+                              {selectedFont === font && (
+                                <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
                             </button>
                           ))}
                         </div>
@@ -1744,36 +1816,64 @@ export default function MessagesPage() {
                     </div>
                     
                     {/* Font Size */}
-                    <div className="relative" data-dropdown>
+                    <div className="relative z-[100]" data-dropdown>
                       <button 
-                        onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
-                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          const rect = btn.getBoundingClientRect();
+                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
+                          setShowFontSizeDropdown(!showFontSizeDropdown);
+                          setShowFontDropdown(false);
+                          setShowColorPicker(false);
+                          setShowHighlightPicker(false);
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all w-[70px] justify-between"
                         title="Font Size"
                       >
                         <span>{selectedFontSize}</span>
-                        <ChevronDownIcon className="h-3 w-3" />
+                        <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontSizeDropdown ? 'rotate-180' : ''}`} />
                       </button>
                       {showFontSizeDropdown && (
-                        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
+                        <div 
+                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 max-h-56 overflow-y-auto min-w-[80px]"
+                          style={{ 
+                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
+                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
+                            left: dropdownPosition.left,
+                            zIndex: 99999
+                          }}
+                        >
                           {fontSizeOptions.map(size => (
                             <button
                               key={size}
                               onClick={() => handleFontSizeChange(size)}
-                              className="w-full px-3 py-1 text-left text-sm hover:bg-gray-100"
+                              className={`w-full px-3 py-1.5 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
+                                selectedFontSize === size ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
+                              }`}
                             >
-                              {size}
+                              <span>{size}px</span>
+                              {selectedFontSize === size && (
+                                <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
                     
-                    <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                     
                     {/* Bold */}
                     <button 
                       onClick={() => handleFormat('bold')}
-                      className={`p-1.5 rounded transition-colors flex-shrink-0 ${activeFormats.bold ? 'bg-gray-300 text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                      className={`p-2 rounded-md transition-all flex-shrink-0 ${
+                        activeFormats.bold 
+                          ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
+                          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                      }`}
                       title="Bold (Ctrl+B)"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1784,7 +1884,11 @@ export default function MessagesPage() {
                     {/* Italic */}
                     <button 
                       onClick={() => handleFormat('italic')}
-                      className={`p-1.5 rounded transition-colors flex-shrink-0 ${activeFormats.italic ? 'bg-gray-300 text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                      className={`p-2 rounded-md transition-all flex-shrink-0 ${
+                        activeFormats.italic 
+                          ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
+                          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                      }`}
                       title="Italic (Ctrl+I)"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1795,7 +1899,11 @@ export default function MessagesPage() {
                     {/* Underline */}
                     <button 
                       onClick={() => handleFormat('underline')}
-                      className={`p-1.5 rounded transition-colors flex-shrink-0 ${activeFormats.underline ? 'bg-gray-300 text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                      className={`p-2 rounded-md transition-all flex-shrink-0 ${
+                        activeFormats.underline 
+                          ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
+                          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                      }`}
                       title="Underline (Ctrl+U)"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1803,66 +1911,112 @@ export default function MessagesPage() {
                       </svg>
                     </button>
                     
-                    <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                     
                     {/* Text Color */}
-                    <div className="relative" data-dropdown>
+                    <div className="relative z-[100]" data-dropdown>
                       <button 
-                        onClick={() => setShowColorPicker(!showColorPicker)}
-                        className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors relative flex-shrink-0"
-                        title="Font Color"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          const rect = btn.getBoundingClientRect();
+                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
+                          setShowColorPicker(!showColorPicker);
+                          setShowHighlightPicker(false);
+                          setShowFontDropdown(false);
+                          setShowFontSizeDropdown(false);
+                        }}
+                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
+                        title="Text Color"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M11 2L5.5 16h2.25l1.12-3h6.25l1.12 3h2.25L13 2h-2zm-1.38 9L12 4.67 14.38 11H9.62z"/>
                         </svg>
-                        <div className="absolute bottom-0 left-1 right-1 h-1 rounded-full" style={{ backgroundColor: currentTextColor }} />
+                        <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentTextColor }} />
                       </button>
                       {showColorPicker && (
-                        <div className="absolute bottom-full left-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-2 grid grid-cols-5 gap-1">
-                          {colorOptions.map(color => (
-                            <button
-                              key={color}
-                              onClick={() => handleTextColor(color)}
-                              className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
-                              style={{ backgroundColor: color }}
-                            />
-                          ))}
+                        <div 
+                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                          style={{ 
+                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
+                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
+                            left: dropdownPosition.left,
+                            zIndex: 99999
+                          }}
+                        >
+                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Text Color</div>
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {colorOptions.map(color => (
+                              <button
+                                key={color}
+                                onClick={() => handleTextColor(color)}
+                                className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
+                                  currentTextColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
+                                }`}
+                                style={{ backgroundColor: color }}
+                                title={color}
+                              />
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
                     
                     {/* Highlight Color */}
-                    <div className="relative" data-dropdown>
+                    <div className="relative z-[100]" data-dropdown>
                       <button 
-                        onClick={() => setShowHighlightPicker(!showHighlightPicker)}
-                        className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors relative flex-shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          const rect = btn.getBoundingClientRect();
+                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
+                          setShowHighlightPicker(!showHighlightPicker);
+                          setShowColorPicker(false);
+                          setShowFontDropdown(false);
+                          setShowFontSizeDropdown(false);
+                        }}
+                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
                         title="Highlight Color"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M15.24 2.86l3.89 3.89-1.41 1.41-3.89-3.89 1.41-1.41zM3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM5.92 19H5v-.92l9.06-9.06.92.92L5.92 19z"/>
                         </svg>
-                        <div className="absolute bottom-0 left-1 right-1 h-1 rounded-full" style={{ backgroundColor: currentHighlightColor }} />
+                        <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentHighlightColor }} />
                       </button>
                       {showHighlightPicker && (
-                        <div className="absolute bottom-full left-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-2 grid grid-cols-5 gap-1">
-                          {colorOptions.map(color => (
-                            <button
-                              key={color}
-                              onClick={() => handleHighlightColor(color)}
-                              className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
-                              style={{ backgroundColor: color }}
-                            />
-                          ))}
+                        <div 
+                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                          style={{ 
+                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
+                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
+                            left: dropdownPosition.left,
+                            zIndex: 99999
+                          }}
+                        >
+                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Highlight Color</div>
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {colorOptions.map(color => (
+                              <button
+                                key={color}
+                                onClick={() => handleHighlightColor(color)}
+                                className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
+                                  currentHighlightColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
+                                }`}
+                                style={{ backgroundColor: color }}
+                                title={color}
+                              />
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
                     
-                    <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                     
                     {/* Bullet List */}
                     <button 
                       onClick={() => handleInsertList('bullet')}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                       title="Bullet List"
                     >
                       <ListBulletIcon className="h-4 w-4" />
@@ -1871,7 +2025,7 @@ export default function MessagesPage() {
                     {/* Numbered List */}
                     <button 
                       onClick={() => handleInsertList('numbered')}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                       title="Numbered List"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -1879,12 +2033,12 @@ export default function MessagesPage() {
                       </svg>
                     </button>
                     
-                    <div className="w-px h-5 bg-gray-300 mx-1 flex-shrink-0" />
+                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
                     
                     {/* Link */}
                     <button 
                       onClick={handleInsertLink}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                       title="Insert Link (Ctrl+K)"
                     >
                       <LinkIcon className="h-4 w-4" />
@@ -1893,30 +2047,108 @@ export default function MessagesPage() {
                     {/* Code */}
                     <button 
                       onClick={() => execCommand('formatBlock', 'pre')}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                       title="Code Block"
                     >
                       <CodeBracketIcon className="h-4 w-4" />
                     </button>
                     
+                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
+                    
                     {/* Insert Table */}
-                    <button className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0" title="Insert Table">
-                      <TableCellsIcon className="h-4 w-4" />
-                    </button>
+                    <div className="relative z-[100]" data-dropdown>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          const rect = btn.getBoundingClientRect();
+                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
+                          setShowTablePicker(!showTablePicker);
+                          setShowEmojiPicker(false);
+                        }}
+                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
+                        title="Insert Table"
+                      >
+                        <TableCellsIcon className="h-4 w-4" />
+                      </button>
+                      {showTablePicker && (
+                        <div 
+                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                          style={{ 
+                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
+                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
+                            left: dropdownPosition.left,
+                            zIndex: 99999
+                          }}
+                        >
+                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Table</div>
+                          <div className="grid grid-cols-5 gap-1">
+                            {[1, 2, 3, 4, 5].map(rows => (
+                              [1, 2, 3, 4, 5].map(cols => (
+                                <button
+                                  key={`${rows}-${cols}`}
+                                  onClick={() => handleInsertTable(rows, cols)}
+                                  className="w-6 h-6 border border-gray-300 hover:bg-[#7F2387]/20 hover:border-[#7F2387] transition-colors rounded"
+                                  title={`${rows}×${cols} table`}
+                                />
+                              ))
+                            ))}
+                          </div>
+                          <div className="text-[10px] text-gray-400 mt-2 text-center">Click to insert table</div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Insert Image */}
                     <button 
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
                       title="Insert Picture"
                     >
                       <PhotoIcon className="h-4 w-4" />
                     </button>
                     
                     {/* Emoji */}
-                    <button className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors flex-shrink-0" title="Insert Emoji">
-                      <FaceSmileIcon className="h-4 w-4" />
-                    </button>
+                    <div className="relative z-[100]" data-dropdown>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const btn = e.currentTarget;
+                          const rect = btn.getBoundingClientRect();
+                          setDropdownPosition({ top: rect.top - 8, left: rect.left - 100, openAbove: true });
+                          setShowEmojiPicker(!showEmojiPicker);
+                          setShowTablePicker(false);
+                        }}
+                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
+                        title="Insert Emoji"
+                      >
+                        <FaceSmileIcon className="h-4 w-4" />
+                      </button>
+                      {showEmojiPicker && (
+                        <div 
+                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
+                          style={{ 
+                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
+                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
+                            left: dropdownPosition.left,
+                            zIndex: 99999
+                          }}
+                        >
+                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Emoji</div>
+                          <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
+                            {emojiOptions.map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={() => handleInsertEmoji(emoji)}
+                                className="w-7 h-7 hover:bg-gray-100 rounded text-lg flex items-center justify-center transition-colors"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   {/* Attachments Preview */}
@@ -1935,7 +2167,7 @@ export default function MessagesPage() {
                   )}
                   
                   {/* Rich Text Editor Area */}
-                  <div className="px-4 py-3">
+                  <div className="px-3 py-2">
                     <div
                       ref={replyEditorRef}
                       contentEditable
@@ -1954,7 +2186,7 @@ export default function MessagesPage() {
                           }
                         }
                       }}
-                      className="w-full text-[15px] leading-relaxed text-gray-700 focus:outline-none min-h-[60px] max-h-[120px] overflow-y-auto border border-gray-200 rounded-lg p-3"
+                      className="w-full text-[14px] leading-relaxed text-gray-700 focus:outline-none min-h-[50px] max-h-[100px] overflow-y-auto border border-gray-200 rounded-lg p-2.5"
                       style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
                       data-placeholder="Write your reply here..."
                       suppressContentEditableWarning={true}
@@ -1962,7 +2194,7 @@ export default function MessagesPage() {
                   </div>
                   
                   {/* Bottom Actions */}
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
+                  <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={sendReply}
@@ -1984,10 +2216,26 @@ export default function MessagesPage() {
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors" title="Save as draft">
+                      <button 
+                        onClick={() => {
+                          // Save draft - just show alert for now
+                          alert('Draft saved!');
+                        }}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors" 
+                        title="Save as draft"
+                      >
                         <DocumentIcon className="h-4 w-4" />
                       </button>
-                      <button className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-200 rounded transition-colors" title="Discard">
+                      <button 
+                        onClick={() => {
+                          if (confirm('Are you sure you want to discard this reply?')) {
+                            clearEditor(replyEditorRef);
+                            setAttachments([]);
+                          }
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-200 rounded transition-colors" 
+                        title="Discard"
+                      >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
                     </div>

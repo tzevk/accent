@@ -143,8 +143,10 @@ export default function ActivityMasterPage() {
     setError(null);
     
     try {
-      const manhours = newActivityManhours && newActivityManhours.trim() !== '' ? parseFloat(newActivityManhours) : 0;
-      console.log('Adding activity with manhours:', { newActivityManhours, manhours });
+      // Parse as float - preserve exact decimal values
+      const parsed = newActivityManhours && newActivityManhours.trim() !== '' ? parseFloat(newActivityManhours) : 0;
+      const manhours = isNaN(parsed) ? 0 : parsed;
+      console.log('Adding activity with manhours:', { newActivityManhours, parsed, manhours });
       const res = await fetch('/api/activities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -317,18 +319,29 @@ export default function ActivityMasterPage() {
     
     setLoading(true);
     try {
-      const manhours = editingActivity.manhours !== undefined && editingActivity.manhours !== '' 
-        ? parseFloat(editingActivity.manhours) 
-        : 0;
-      console.log('Updating activity with manhours:', { editingActivity, manhours });
+      // Parse manhours - preserve exact decimal values
+      const rawValue = editingActivity.manhours;
+      const parsed = parseFloat(rawValue);
+      const manhours = (rawValue === '' || rawValue === undefined || isNaN(parsed)) ? 0 : parsed;
+      
+      const payload = {
+        id: editingActivity.id,
+        activity_name: editingActivity.name?.trim() || undefined,
+        default_manhours: manhours
+      };
+      
+      console.log('Updating activity:', { 
+        editingActivity, 
+        rawValue,
+        parsed,
+        manhours,
+        payload: JSON.stringify(payload)
+      });
+      
       const res = await fetch('/api/activities', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingActivity.id,
-          activity_name: editingActivity.name?.trim() || undefined,
-          default_manhours: manhours
-        })
+        body: JSON.stringify(payload)
       });
       
       if (res.ok) {
@@ -637,12 +650,17 @@ export default function ActivityMasterPage() {
                               Total Hours
                             </label>
                             <input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               value={bulkManhours}
-                              onChange={(e) => setBulkManhours(e.target.value)}
+                              onChange={(e) => {
+                                // Allow only numbers and decimal point
+                                const val = e.target.value;
+                                if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                  setBulkManhours(val);
+                                }
+                              }}
                               placeholder="0"
-                              min="0"
-                              step="0.01"
                               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
                             />
                             <p className="text-xs text-gray-400 mt-1">Distributed equally</p>
@@ -707,12 +725,17 @@ export default function ActivityMasterPage() {
                           onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
                         />
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={newActivityManhours}
-                          onChange={(e) => setNewActivityManhours(e.target.value)}
+                          onChange={(e) => {
+                            // Allow only numbers and decimal point
+                            const val = e.target.value;
+                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                              setNewActivityManhours(val);
+                            }
+                          }}
                           placeholder="Hours"
-                          min="0"
-                          step="0.01"
                           className="w-24 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
                           onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
                         />
@@ -795,12 +818,17 @@ export default function ActivityMasterPage() {
                           <td className="px-4 py-3 text-right">
                             {editingActivity?.id === activity.id ? (
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 value={editingActivity.manhours}
-                                onChange={(e) => setEditingActivity({ ...editingActivity, manhours: e.target.value })}
+                                onChange={(e) => {
+                                  // Allow only numbers and decimal point
+                                  const val = e.target.value;
+                                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                    setEditingActivity({ ...editingActivity, manhours: val });
+                                  }
+                                }}
                                 className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#4472C4] focus:border-transparent text-right"
-                                min="0"
-                                step="0.01"
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') handleUpdateActivity();
                                   if (e.key === 'Escape') setEditingActivity(null);

@@ -79,7 +79,9 @@ export async function POST(request) {
     }
 
     const id = randomUUID();
-    const manhours = parseFloat(default_manhours) || 0;
+    // Parse as float - preserve exact decimal values
+    const parsed = parseFloat(default_manhours);
+    const manhours = isNaN(parsed) ? 0 : parsed;
     console.log('Creating activity:', { id, function_id, activity_name, default_manhours, manhours });
     const db = await dbConnect();
     
@@ -107,7 +109,10 @@ export async function PUT(request) {
   if (authResult.authorized === false) return authResult.response;
 
   try {
-    const { id, activity_name, default_manhours } = await request.json();
+    const body = await request.json();
+    const { id, activity_name, default_manhours } = body;
+    
+    console.log('PUT /api/activities - Received body:', JSON.stringify(body));
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Activity ID is required' }, { status: 400 });
@@ -119,16 +124,18 @@ export async function PUT(request) {
     const updates = [];
     const values = [];
     
-    if (activity_name !== undefined) {
+    if (activity_name !== undefined && activity_name !== null) {
       updates.push('activity_name = ?');
       values.push(activity_name);
     }
     
+    // Always update manhours if it's provided (including 0)
     if (default_manhours !== undefined) {
-      const manhours = parseFloat(default_manhours) || 0;
+      const manhours = parseFloat(default_manhours);
+      const finalManhours = isNaN(manhours) ? 0 : manhours;
       updates.push('default_manhours = ?');
-      values.push(manhours);
-      console.log('Updating activity manhours:', { id, default_manhours, manhours });
+      values.push(finalManhours);
+      console.log('Updating manhours:', { default_manhours, manhours, finalManhours });
     }
     
     if (updates.length === 0) {
@@ -137,8 +144,11 @@ export async function PUT(request) {
     }
     
     values.push(id);
-    console.log('Update query:', { updates: updates.join(', '), values });
-    await db.execute(`UPDATE activities_master SET ${updates.join(', ')} WHERE id = ?`, values);
+    const query = `UPDATE activities_master SET ${updates.join(', ')} WHERE id = ?`;
+    console.log('Executing query:', query, 'with values:', values);
+    
+    const [result] = await db.execute(query, values);
+    console.log('Update result:', result);
     await db.end();
 
     return NextResponse.json({ success: true, message: 'Activity updated successfully' });

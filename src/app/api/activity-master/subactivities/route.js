@@ -66,8 +66,19 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-  const { id, name, default_duration, default_manhours, default_rate, activity_id } = body;
+    const { id, name, default_duration, default_manhours, default_rate, activity_id } = body;
     if (!id) return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
+
+    // Parse numeric values - preserve exact decimal values
+    const parseDecimal = (val) => {
+      if (val === undefined || val === null) return null;
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? null : parsed;
+    };
+    
+    const parsedDuration = parseDecimal(default_duration);
+    const parsedManhours = parseDecimal(default_manhours);
+    const parsedRate = parseDecimal(default_rate);
 
     const db = await dbConnect();
     await db.execute(
@@ -78,7 +89,7 @@ export async function PUT(request) {
          default_rate = COALESCE(?, default_rate),
          activity_id = COALESCE(?, activity_id)
        WHERE id = ?`,
-      [name ?? null, default_duration ?? null, default_manhours ?? null, default_rate ?? null, activity_id ?? null, id]
+      [name ?? null, parsedDuration, parsedManhours, parsedRate, activity_id ?? null, id]
     );
     await db.end();
 
