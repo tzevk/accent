@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import pool from '@/utils/database';
+import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // POST /api/payroll/salary-profile - Create/Update employee salary profile
 export async function POST(request) {
+  let db;
   try {
     // Check permission
     await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE);
@@ -27,19 +28,19 @@ export async function POST(request) {
       );
     }
 
-    const connection = await pool.getConnection();
+    db = await dbConnect();
     
     try {
-      await connection.beginTransaction();
+      await db.beginTransaction();
 
       // Check if employee exists
-      const [empRows] = await connection.query(
+      const [empRows] = await db.query(
         'SELECT id FROM employees WHERE id = ?',
         [employee_id]
       );
 
       if (empRows.length === 0) {
-        await connection.rollback();
+        await db.rollback();
         return NextResponse.json(
           { success: false, error: 'Employee not found' },
           { status: 404 }
@@ -47,14 +48,14 @@ export async function POST(request) {
       }
 
       // Insert new salary profile record
-      const [result] = await connection.query(
+      const [result] = await db.query(
         `INSERT INTO employee_salary_profile 
          (employee_id, gross_salary, other_allowances, effective_from, da_year, pf_applicable, esic_applicable) 
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [employee_id, gross_salary, other_allowances, effective_from, da_year, pf_applicable, esic_applicable]
       );
 
-      await connection.commit();
+      await db.commit();
 
       return NextResponse.json({
         success: true,
@@ -72,10 +73,10 @@ export async function POST(request) {
       });
 
     } catch (err) {
-      await connection.rollback();
+      await db.rollback();
       throw err;
     } finally {
-      connection.release();
+      if (db) await db.end();
     }
 
   } catch (error) {
@@ -89,6 +90,7 @@ export async function POST(request) {
 
 // GET /api/payroll/salary-profile?employee_id=X - Get employee's salary profile history
 export async function GET(request) {
+  let db;
   try {
     await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
 
@@ -102,11 +104,11 @@ export async function GET(request) {
       );
     }
 
-    const connection = await pool.getConnection();
+    db = await dbConnect();
     
     try {
       // Get all salary profiles for this employee, ordered by effective_from descending
-      const [profiles] = await connection.query(
+      const [profiles] = await db.query(
         `SELECT 
           id, 
           employee_id, 
@@ -129,7 +131,7 @@ export async function GET(request) {
       });
 
     } finally {
-      connection.release();
+      if (db) await db.end();
     }
 
   } catch (error) {
