@@ -1,5 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 async function ensureRolesTable(db) {
   await db.execute(`
@@ -14,7 +15,11 @@ async function ensureRolesTable(db) {
   `);
 }
 
-export async function GET() {
+export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const db = await dbConnect();
     await ensureRolesTable(db);
@@ -29,6 +34,10 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   let db;
   try {
     const data = await request.json();
@@ -58,6 +67,10 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+  // RBAC check
+  const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPut.authorized === false) return authResultPut.response;
+
   try {
     const data = await request.json();
     if (!data.id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
@@ -94,6 +107,10 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+  // RBAC check
+  const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
+  if (authResultDel.authorized === false) return authResultDel.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
-export async function GET() {
+export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const db = await dbConnect();
     await db.execute(`CREATE TABLE IF NOT EXISTS software_versions (
@@ -25,6 +30,10 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   try {
     const body = await request.json();
     const { software_id, name, release_date, notes } = body;
@@ -52,6 +61,10 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+  // RBAC check
+  const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPut.authorized === false) return authResultPut.response;
+
   try {
     const body = await request.json();
     const { id, name, release_date, notes, software_id } = body;
@@ -68,6 +81,10 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+  // RBAC check
+  const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
+  if (authResultDel.authorized === false) return authResultDel.response;
+
   let db;
   try {
     const { searchParams } = new URL(request.url);

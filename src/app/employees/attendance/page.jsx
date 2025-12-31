@@ -205,7 +205,7 @@ export default function EmployeeAttendancePage() {
       if (newStatus === 'A') empData.absent++;
       if (newStatus === 'PL') empData.privilegedLeave++;
       if (newStatus === 'OT') empData.overtime++;
-      if (nextStatus === 'WO') empData.weeklyOff++;
+      if (newStatus === 'WO') empData.weeklyOff++;
       
       return { ...prev, [employeeId]: empData };
     });
@@ -248,6 +248,9 @@ export default function EmployeeAttendancePage() {
       
       Object.values(attendanceData).forEach(empData => {
         Object.entries(empData.days).forEach(([dateKey, status]) => {
+          // Skip empty or undefined statuses
+          if (!status || status === '-') return;
+          
           attendance_records.push({
             employee_id: empData.id,
             attendance_date: dateKey,
@@ -258,6 +261,14 @@ export default function EmployeeAttendancePage() {
         });
       });
 
+      console.log('Saving attendance records:', attendance_records.length);
+
+      if (attendance_records.length === 0) {
+        setError('No attendance records to save. Please mark attendance first.');
+        setSaving(false);
+        return;
+      }
+
       const res = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -265,11 +276,14 @@ export default function EmployeeAttendancePage() {
       });
       
       const data = await res.json();
+      console.log('Save response:', data);
+      
       if (!res.ok) throw new Error(data.error || 'Failed to save attendance');
       
       setSuccess(`Attendance saved successfully! ${data.successCount} records updated.`);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
+      console.error('Error saving attendance:', err);
       setError(err.message);
     } finally {
       setSaving(false);
@@ -329,13 +343,13 @@ export default function EmployeeAttendancePage() {
   }, [employees.length, currentMonth, currentYear, loadSavedAttendance]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen overflow-hidden bg-gray-50">
       <Navbar />
       
       {/* Main Content Area with proper spacing for navbar */}
-      <div className="pt-16">
+      <div className="h-full pt-16 flex flex-col">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
+        <div className="bg-white border-b border-gray-200 flex-shrink-0">
           <div className="px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -402,18 +416,18 @@ export default function EmployeeAttendancePage() {
 
         {/* Status Messages */}
         {error && (
-          <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex-shrink-0">
             {error}
           </div>
         )}
         {success && (
-          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 flex-shrink-0">
             {success}
           </div>
         )}
 
         {/* Legend */}
-        <div className="px-6 py-4">
+        <div className="px-6 py-4 flex-shrink-0">
           <div className="flex items-center gap-6 text-sm">
             <span className="text-gray-600 font-medium">Legend:</span>
             <div className="flex items-center gap-2">
@@ -441,7 +455,7 @@ export default function EmployeeAttendancePage() {
         </div>
 
         {/* Main Content */}
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 flex-1 overflow-auto min-h-0">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600"></div>

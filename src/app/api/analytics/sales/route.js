@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // Simple in-memory cache (per server instance) to reduce repeated aggregation cost
 // Keyed by period; stores both count and value payloads so metric switches are instant.
@@ -25,6 +26,10 @@ function getWindow(period) {
 }
 
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   const { searchParams } = new URL(request.url);
   const period = searchParams.get('period') || 'Weekly';
   const metric = (searchParams.get('metric') || 'count').toLowerCase(); // 'count' | 'value'

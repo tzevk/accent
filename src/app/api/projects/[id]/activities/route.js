@@ -1,8 +1,13 @@
 import { dbConnect } from '@/utils/database';
 import { randomUUID } from 'crypto';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET - Fetch all activities for a project
 export async function GET(request, { params }) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { id } = await params;
     const projectId = parseInt(id);

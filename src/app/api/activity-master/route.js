@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
-export async function GET() {
+export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const db = await dbConnect();
     // Ensure base tables exist
@@ -75,6 +80,10 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   try {
     const body = await request.json();
     const { function_name, status = 'active', description = '' } = body;

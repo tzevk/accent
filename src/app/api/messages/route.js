@@ -221,10 +221,18 @@ export async function POST(request) {
     }
 
     // Insert message (no receiver_id for group chats - receivers come from conversation_members)
-    const [result] = await db.execute(`
-      INSERT INTO messages (sender_id, subject, body, related_module, related_id, conversation_id)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, [currentUser.id, subject, messageBody, related_module, related_id, finalConversationId]);
+    // For direct messages, include receiver_id for legacy compatibility
+    const insertQuery = receiver_id 
+      ? `INSERT INTO messages (sender_id, receiver_id, subject, body, related_module, related_id, conversation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      : `INSERT INTO messages (sender_id, receiver_id, subject, body, related_module, related_id, conversation_id)
+         VALUES (?, NULL, ?, ?, ?, ?, ?)`;
+    
+    const insertParams = receiver_id
+      ? [currentUser.id, receiver_id, subject, messageBody, related_module, related_id, finalConversationId]
+      : [currentUser.id, subject, messageBody, related_module, related_id, finalConversationId];
+
+    const [result] = await db.execute(insertQuery, insertParams);
 
     const messageId = result.insertId;
 
@@ -334,6 +342,15 @@ async function ensureTablesExist(db) {
           INDEX idx_created_at (created_at)
         )
       `);
+    } else {
+      // Table exists - ensure receiver_id is nullable for group chats
+      try {
+        await db.execute(`ALTER TABLE messages MODIFY COLUMN receiver_id INT DEFAULT NULL`);
+      } catch (alterErr) {
+        // Column might already be nullable or other constraint issue
+        console.log('Could not alter receiver_id column:', alterErr.message);
+      }
+    }
 
       // Create message_attachments table
       await db.execute(`
@@ -380,7 +397,8 @@ async function ensureTablesExist(db) {
         )
       `);
     }
-  } catch (err) {
-    console.log('Table creation check:', err.message);
+  catch (error) {
+    console.error('Error ensuring message tables exist:', error);
+    throw error;
   }
-}
+} 

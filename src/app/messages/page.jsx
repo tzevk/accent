@@ -665,11 +665,13 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      {/* Main Content - Three Pane Layout */}
-      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+      {/* Main Content Container with Dashboard-like dimensions */}
+      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16 h-full">
+        {/* Three Pane Layout - Fixed height container */}
+        <div className="h-[calc(100vh-140px)] flex overflow-hidden relative bg-white rounded-xl shadow-sm border border-gray-200">
         
         {/* LEFT PANE - Conversations (WhatsApp-style) */}
         {!leftPaneCollapsed && (
@@ -2012,6 +2014,7 @@ export default function MessagesPage() {
               </button>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

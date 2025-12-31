@@ -1,8 +1,13 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET specific company
 export async function GET(request, { params }) {
   try {
+    // RBAC: read companies
+    const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const companyId = parseInt(id);
     
@@ -38,6 +43,10 @@ export async function GET(request, { params }) {
 // PUT - Update company
 export async function PUT(request, { params }) {
   try {
+    // RBAC: update companies
+    const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.UPDATE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const companyId = parseInt(id);
     const data = await request.json();
@@ -127,6 +136,10 @@ export async function PUT(request, { params }) {
 // DELETE company
 export async function DELETE(request, { params }) {
   try {
+    // RBAC: delete companies
+    const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.DELETE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const companyId = parseInt(id);
     

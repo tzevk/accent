@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // Helper to ensure all required columns exist in proposals table
 async function ensureProposalColumns(pool) {
@@ -92,8 +93,12 @@ async function ensureProposalColumns(pool) {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
+    // RBAC: read proposals
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const pool = await dbConnect();
     
     // Ensure all columns exist before fetching
@@ -118,6 +123,10 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    // RBAC: create proposals
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.CREATE);
+    if (auth instanceof Response) return auth;
+    
     const data = await request.json();
     
     // Extract fields matching new database schema

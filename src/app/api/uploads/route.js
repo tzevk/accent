@@ -1,8 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 export async function POST(request) {
+  // RBAC check - require at least projects:update for uploading files
+  const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const data = await request.json();
   const { filename, b64 } = data;

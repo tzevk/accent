@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // project-docs API: manages concrete documents attached to individual projects
 // Table schema (created lazily): project_documents
@@ -41,6 +42,10 @@ async function ensureTable(db) {
 }
 
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('project_id');
@@ -73,6 +78,10 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   try {
     const body = await request.json();
     const { project_id, name, file_url = null, thumb_url = null, description = '', status = 'active', doc_master_id = null, metadata = null } = body;
@@ -104,6 +113,10 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+  // RBAC check
+  const authResultPut = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  if (authResultPut.authorized === false) return authResultPut.response;
+
   try {
     const body = await request.json();
     const { id, name, description, status, metadata } = body;
@@ -130,6 +143,10 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+  // RBAC check
+  const authResultDel = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
+  if (authResultDel.authorized === false) return authResultDel.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

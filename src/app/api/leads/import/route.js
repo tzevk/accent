@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // ✅ Helper: Format date for MySQL (supports multiple formats)
 function formatDateForMySQL(dateString) {
@@ -75,6 +76,10 @@ function normalizeText(text, maxLength = 255) {
 
 // ✅ Main POST route
 export async function POST(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.CREATE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const formData = await request.formData();
     const file = formData.get('file');

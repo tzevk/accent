@@ -1,7 +1,12 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET specific follow-up by ID
 export async function GET(request, { params }) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   let db;
   try {
     const { id } = params;
@@ -35,6 +40,10 @@ export async function GET(request, { params }) {
 
 // PUT - Update follow-up
 export async function PUT(request, { params }) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.UPDATE);
+  if (authResult.authorized === false) return authResult.response;
+
   let db;
   try {
     const { id } = params;
@@ -112,6 +121,10 @@ export async function PUT(request, { params }) {
 
 // DELETE - Delete follow-up
 export async function DELETE(request, { params }) {
+  // RBAC check
+  const authResultDel = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.DELETE);
+  if (authResultDel.authorized === false) return authResultDel.response;
+
   let db;
   try {
     const { id } = params;

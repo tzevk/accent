@@ -1,9 +1,14 @@
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET all leads with pagination and filtering
 export async function GET(request) {
   try {
+    // RBAC: read leads
+    const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -149,6 +154,10 @@ export async function GET(request) {
 
 // POST new lead
 export async function POST(request) {
+  // RBAC: create leads
+  const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.CREATE);
+  if (auth instanceof Response) return auth;
+  
   // Helper: basic email validation
   const isValidEmail = (email) => {
     if (!email) return false;

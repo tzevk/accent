@@ -1,8 +1,13 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET - list all active roles
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const department = searchParams.get('department');
@@ -52,6 +57,10 @@ export async function GET(request) {
 
 // POST - create new role
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   try {
     const data = await request.json();
     const { role_code, role_name, role_hierarchy, department, permissions, description } = data;
@@ -101,6 +110,10 @@ export async function POST(request) {
 
 // PUT - update role
 export async function PUT(request) {
+  // RBAC check
+  const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPut.authorized === false) return authResultPut.response;
+
   try {
     const data = await request.json();
     const { id, role_code, role_name, role_hierarchy, department, permissions, description, status } = data;

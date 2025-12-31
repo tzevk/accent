@@ -119,7 +119,10 @@ async function ensureBaseEmployeesTable(connection) {
 export async function GET(request) {
   let connection;
   try {
-    // Note: viewing employees is open (like before). Mutations remain RBAC-protected.
+    // RBAC: read employees
+    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const department = searchParams.get('department') || '';

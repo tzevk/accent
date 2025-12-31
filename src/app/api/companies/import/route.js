@@ -1,7 +1,12 @@
 import { dbConnect } from '@/utils/database';
 import ExcelJS from 'exceljs';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 export async function POST(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.CREATE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const contentType = request.headers.get('content-type');
     

@@ -1,6 +1,10 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
-export async function GET() {
+export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.VENDORS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
   let db;
   try {
     db = await dbConnect();
@@ -122,6 +126,10 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.VENDORS, PERMISSIONS.CREATE);
+  if (authResult.authorized === false) return authResult.response;
+
   let db;
   try {
     db = await dbConnect();

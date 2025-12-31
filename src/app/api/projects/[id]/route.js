@@ -1,7 +1,12 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET specific project
 export async function GET(request, { params }) {
+  // RBAC: read projects
+  const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  if (auth instanceof Response) return auth;
+  
   const { id } = await params;
   // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
   // Treat that as a missing id and return a 400 early to avoid spurious schema lookups.
@@ -312,6 +317,10 @@ export async function GET(request, { params }) {
 
 // PUT - Update project
 export async function PUT(request, context) {
+  // RBAC: update projects
+  const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  if (auth instanceof Response) return auth;
+  
   let db = null;
   let retries = 0;
   const maxRetries = 2;
@@ -938,6 +947,10 @@ export async function PUT(request, context) {
 // DELETE project
 export async function DELETE(request, { params }) {
   try {
+    // RBAC: delete projects
+    const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const projectId = parseInt(id);
     

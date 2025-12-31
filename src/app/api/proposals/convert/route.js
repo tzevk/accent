@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 export async function POST(request) {
+  // RBAC check - converting proposal to project requires proposals:approve
+  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.APPROVE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const body = await request.json();
     const proposalIdentifier = body.proposalId || body.id || null;

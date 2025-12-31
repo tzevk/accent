@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { randomUUID } from 'crypto';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
-export async function GET() {
+export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const db = await dbConnect();
     // Ensure tables exist
@@ -62,6 +67,10 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   try {
     const { function_id, activity_name, default_manhours } = await request.json();
 
@@ -91,6 +100,10 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { id, activity_name, default_manhours } = await request.json();
 
@@ -131,6 +144,10 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

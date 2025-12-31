@@ -1,8 +1,13 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET - Fetch all employees from employee master
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit')) || 1000; // Default high limit for master data

@@ -1,7 +1,12 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET follow-ups (optionally filtered by lead_id)
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   let db;
   try {
     const url = new URL(request.url);
@@ -85,6 +90,10 @@ export async function GET(request) {
 
 // POST - Create new follow-up
 export async function POST(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.UPDATE);
+  if (authResult.authorized === false) return authResult.response;
+
   let db;
   try {
     const data = await request.json();

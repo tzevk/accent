@@ -305,9 +305,10 @@ export default function EmployeesPage() {
   
   // Salary calculation percentages (editable) - used in auto mode
   const [salaryPercentages, setSalaryPercentages] = useState({
-    hra_percent: 50,           // HRA % of Basic
+    basic_percent: 60,         // Basic % of Gross
+    da_fixed: 2000,            // DA - Fixed amount (Dearness Allowance)
+    hra_percent: 20,           // HRA % of Gross
     conveyance: 1600,          // Fixed conveyance
-    medical: 1250,             // Fixed medical
     employee_pf_percent: 12,   // Employee PF %
     employer_pf_percent: 12,   // Employer PF %
     employee_esic_percent: 0.75, // Employee ESIC %
@@ -578,18 +579,41 @@ export default function EmployeesPage() {
     resetSalaryForm();
   };
 
+  // Calculate breakdown from Gross Salary (reverse calculation)
+  const calculateFromGrossSalary = useCallback((grossSalary, pfApplicable, esicApplicable, pfCeiling, percentages) => {
+    const monthlyGross = parseFloat(grossSalary) || 0;
+
+    if (monthlyGross === 0) return null;
+
+    // Get percentages with defaults
+    const {
+      basic_percent = 60,
+      da_fixed = 2000,
+    } = percentages || {};
+
+    // Basic = 60% of Gross
+    const monthlyBasic = Math.round(monthlyGross * (basic_percent / 100));
+    
+    // DA = Fixed amount
+    const monthlyDA = da_fixed;
+
+    // Now use the standard calculation with the derived basic and DA
+    return calculateSalaryBreakdown(monthlyBasic, monthlyDA, pfApplicable, esicApplicable, pfCeiling, percentages);
+  }, []);
+
   // Auto-calculate Indian Payroll Salary Breakdown - Complete Breakdown
-  // Based on: Basic Pay is 50% of Gross (Gross = Basic × 2)
-  const calculateSalaryBreakdown = useCallback((basicSalary, pfApplicable, esicApplicable, pfCeiling, percentages) => {
+  // Based on: Gross = Basic (60%) + DA (Fixed) + HRA (20%) + Conveyance
+  const calculateSalaryBreakdown = useCallback((basicSalary, daSalary, pfApplicable, esicApplicable, pfCeiling, percentages) => {
     const monthlyBasic = parseFloat(basicSalary) || 0;
+    const monthlyDA = parseFloat(daSalary) || 0;
 
     if (monthlyBasic === 0) return null;
 
     // Get percentages with defaults
     const {
-      hra_percent = 50,
+      basic_percent = 60,
+      hra_percent = 20,
       conveyance: conveyanceFixed = 1600,
-      medical: medicalFixed = 1250,
       employee_pf_percent = 12,
       employer_pf_percent = 12,
       employee_esic_percent = 0.75,
@@ -599,29 +623,25 @@ export default function EmployeesPage() {
       edli_percent = 0.5,
     } = percentages || {};
 
-    // ═══════════════════════════════════════════════════════════════════
-    // GROSS PAY CALCULATION
-    // Basic Pay is 50% of Gross, so Gross = Basic × 2
-    // ═══════════════════════════════════════════════════════════════════
-    const monthlyGross = Math.round(monthlyBasic * 2);
+    // Calculate Gross from Basic (Basic = 60% of Gross, so Gross = Basic / 0.6)
+    const calculatedGross = Math.round(monthlyBasic / (basic_percent / 100));
 
-    // ═══════════════════════════════════════════════════════════════════
-    // EARNINGS / ALLOWANCES (Components of Gross Pay)
-    // ═══════════════════════════════════════════════════════════════════
-    
-    // HRA: Fixed 50% of Basic
-    const hra = Math.round(monthlyBasic * (hra_percent / 100));
+    // HRA: 20% of Gross
+    const hra = Math.round(calculatedGross * (hra_percent / 100));
     
     // Conveyance Allowance (Transport Allowance) - Fixed amount
-    const conveyance = Math.min(conveyanceFixed, Math.round(monthlyGross * 0.04));
+    const conveyance = conveyanceFixed;
     
-    // Medical Allowance - Fixed amount
-    const medical = Math.min(medicalFixed, Math.round(monthlyGross * 0.03));
+    // Medical Allowance - Removed (set to 0)
+    const medical = 0;
     
-    // Special Allowance (Balancing figure to match Gross)
-    const specialAllowance = Math.max(0, monthlyGross - monthlyBasic - hra - conveyance - medical);
+    // Calculate gross from components: Gross = Basic + DA + HRA + Conveyance
+    const monthlyGross = monthlyBasic + monthlyDA + hra + conveyance;
+    
+    // Special Allowance - No longer needed as we're not balancing
+    const specialAllowance = 0;
 
-    const totalEarnings = monthlyBasic + hra + conveyance + medical + specialAllowance;
+    const totalEarnings = monthlyGross;
 
     // ═══════════════════════════════════════════════════════════════════
     // EMPLOYEE DEDUCTIONS
@@ -704,6 +724,7 @@ export default function EmployeesPage() {
       // Monthly Earnings
       earnings: {
         basic: monthlyBasic,
+        da: monthlyDA,
         hra: hra,
         hraPercent: `${hra_percent}%`,
         conveyance: conveyance,
@@ -795,16 +816,20 @@ export default function EmployeesPage() {
     // Skip auto-calculation in manual mode
     if (manualOverride) {
       // In manual mode, calculate gross and CTC from manual values
-      if (field === 'basic_salary') {
-        recalculateManualTotals(value);
+      if (field === 'gross_salary') {
+        // Derive basic from gross in manual mode
+        const gross = parseFloat(value) || 0;
+        const basic = Math.round(gross / 2);
+        setSalaryFormData(prev => ({ ...prev, gross_salary: value, basic_salary: basic.toString() }));
+        recalculateManualTotals(basic.toString());
       }
       return;
     }
 
     // Recalculate breakdown when relevant fields change (auto mode)
-    if (['basic_salary', 'pf_applicable', 'esic_applicable', 'pf_wage_ceiling'].includes(field)) {
-      const breakdown = calculateSalaryBreakdown(
-        field === 'basic_salary' ? value : newFormData.basic_salary,
+    if (['gross_salary', 'pf_applicable', 'esic_applicable', 'pf_wage_ceiling'].includes(field)) {
+      const breakdown = calculateFromGrossSalary(
+        field === 'gross_salary' ? value : newFormData.gross_salary,
         field === 'pf_applicable' ? value : newFormData.pf_applicable,
         field === 'esic_applicable' ? value : newFormData.esic_applicable,
         field === 'pf_wage_ceiling' ? value : newFormData.pf_wage_ceiling,
@@ -812,12 +837,12 @@ export default function EmployeesPage() {
       );
       setCalculatedBreakdown(breakdown);
       
-      // Auto-fill gross from basic
-      if (field === 'basic_salary' && breakdown) {
+      // Auto-fill basic and CTC from gross
+      if (field === 'gross_salary' && breakdown) {
         setSalaryFormData(prev => ({
           ...prev,
-          basic_salary: value,
-          gross_salary: breakdown.summary.grossSalary.toString(),
+          gross_salary: value,
+          basic_salary: breakdown.earnings.basic.toString(),
           ctc: breakdown.summary.annualCTC.toString()
         }));
       }
@@ -908,6 +933,26 @@ export default function EmployeesPage() {
         annualEmployerCost: employerContributions * 12,
         annualCTC: annualCTC
       },
+      percentages: {
+        hra: basic > 0 ? ((hra / basic) * 100).toFixed(1) : 0,
+        employeePF: basic > 0 ? ((employeePf / basic) * 100).toFixed(2) : 0,
+        employerPF: basic > 0 ? ((employerPf / basic) * 100).toFixed(2) : 0,
+        employeeESIC: grossSalary > 0 ? ((employeeEsic / grossSalary) * 100).toFixed(2) : 0,
+        employerESIC: grossSalary > 0 ? ((employerEsic / grossSalary) * 100).toFixed(2) : 0,
+        gratuity: basic > 0 ? ((gratuity / basic) * 100).toFixed(2) : 0,
+        pfAdmin: 0,
+        edli: 0
+      },
+      pfDetails: {
+        wageBase: Math.min(basic, 15000),
+        employeeContribution: employeePf,
+        employeePercent: basic > 0 ? ((employeePf / basic) * 100).toFixed(2) : 0,
+        employerEPF: Math.round(employerPf * 0.3058),
+        employerEPS: Math.round(employerPf * 0.6942),
+        employerPercent: basic > 0 ? ((employerPf / basic) * 100).toFixed(2) : 0,
+        totalPF: employeePf + employerPf,
+        annualPF: (employeePf + employerPf) * 12
+      },
       flags: {
         pfApplicable: salaryFormData.pf_applicable,
         esicApplicable: salaryFormData.esic_applicable,
@@ -962,9 +1007,9 @@ export default function EmployeesPage() {
     setSalaryPercentages(newPercentages);
     
     // Recalculate breakdown with new percentages
-    if (salaryFormData.basic_salary) {
-      const breakdown = calculateSalaryBreakdown(
-        salaryFormData.basic_salary,
+    if (salaryFormData.gross_salary) {
+      const breakdown = calculateFromGrossSalary(
+        salaryFormData.gross_salary,
         salaryFormData.pf_applicable,
         salaryFormData.esic_applicable,
         salaryFormData.pf_wage_ceiling,
@@ -1981,7 +2026,6 @@ export default function EmployeesPage() {
                         { key: 'personal', label: 'Personal Information' },
                         { key: 'contact', label: 'Contact Information' },
                         { key: 'work', label: 'Work Details' },
-                        { key: 'salary', label: 'Salary Structure' },
                         { key: 'academic', label: 'Academic & Experience' },
                         { key: 'govt', label: 'Government IDs' },
                         { key: 'bank', label: 'Bank Details' },
@@ -2201,1193 +2245,6 @@ export default function EmployeesPage() {
                       </div>
                     )}
 
-                    {/* Salary Structure Tab */}
-                    {editSubTab === 'salary' && (
-                      <div>
-                        <div className="flex items-center justify-between mb-6">
-                          <h4 className="text-lg font-semibold text-gray-900">Salary Structure</h4>
-                          {!showSalaryForm && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingSalaryStructure(null);
-                                resetSalaryForm();
-                                setShowSalaryForm(true);
-                              }}
-                              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#64126D] to-[#86288F] text-white rounded-lg hover:from-[#86288F] hover:to-[#64126D] transition-all"
-                            >
-                              <PlusIcon className="h-5 w-5" />
-                              New Salary Structure
-                            </button>
-                          )}
-                        </div>
-
-                        {salaryError && (
-                          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-                            {salaryError}
-                          </div>
-                        )}
-
-                        {salaryLoading ? (
-                          <div className="flex items-center justify-center py-12">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-                            <span className="ml-3 text-gray-600">Loading salary structures...</span>
-                          </div>
-                        ) : showSalaryForm ? (
-                          /* Salary Structure Form */
-                          <div className="space-y-6">
-                            {/* Form Header */}
-                            <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-                              <div>
-                                <h5 className="text-lg font-semibold text-gray-900">
-                                  {editingSalaryStructure ? 'Edit Salary Structure' : 'New Salary Structure'}
-                                </h5>
-                                {editingSalaryStructure && (
-                                  <p className="text-sm text-gray-500 mt-1">
-                                    Editing Version {editingSalaryStructure.version} (Effective: {new Date(editingSalaryStructure.effective_from).toLocaleDateString('en-IN')})
-                                  </p>
-                                )}
-                              </div>
-                              {editingSalaryStructure && (
-                                <span className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
-                                  Editing
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Basic Info */}
-                            <div className="bg-gray-50 rounded-xl p-6">
-                              <div className="flex items-center justify-between mb-4">
-                                <h5 className="text-md font-semibold text-gray-800">Basic Details</h5>
-                                
-                                {/* Manual Override Toggle - Always visible */}
-                                <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl">
-                                  <div className={`p-2 rounded-lg ${manualOverride ? 'bg-amber-500' : 'bg-gray-300'}`}>
-                                    <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                    </svg>
-                                  </div>
-                                  <div className="mr-3">
-                                    <h6 className="text-sm font-semibold text-gray-800">Manual Mode</h6>
-                                    <p className="text-xs text-gray-600">
-                                      {manualOverride ? 'Values ₹' : 'Auto %'}
-                                    </p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={toggleManualOverride}
-                                    className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
-                                      manualOverride ? 'bg-amber-500' : 'bg-gray-300'
-                                    }`}
-                                  >
-                                    <span
-                                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
-                                        manualOverride ? 'translate-x-7' : 'translate-x-1'
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              </div>
-                              
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">Pay Type *</label>
-                                  <select
-                                    value={salaryFormData.pay_type}
-                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, pay_type: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                  >
-                                    <option value="monthly">Monthly</option>
-                                    <option value="hourly">Hourly</option>
-                                    <option value="daily">Daily</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">Effective From *</label>
-                                  <input
-                                    type="date"
-                                    value={salaryFormData.effective_from}
-                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, effective_from: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">Standard Working Days</label>
-                                  <input
-                                    type="number"
-                                    value={salaryFormData.standard_working_days}
-                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, standard_working_days: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Monthly Pay Fields */}
-                              {salaryFormData.pay_type === 'monthly' && (
-                                <div className="space-y-4 mt-4">
-                                  {/* Primary Input - Basic Salary */}
-                                  <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                      <div className="md:col-span-2">
-                                        <label className="block text-sm font-semibold text-purple-800 mb-2">
-                                          Basic Salary (Monthly) * 
-                                          <span className="text-xs font-normal text-purple-600 ml-2">
-                                            {manualOverride ? 'Enter basic salary' : 'Enter to auto-calculate all'}
-                                          </span>
-                                        </label>
-                                        <input
-                                          type="number"
-                                          value={salaryFormData.basic_salary}
-                                          onChange={(e) => handleSalaryFieldChange('basic_salary', e.target.value)}
-                                          placeholder="e.g., 25000"
-                                          className="w-full px-4 py-3 border-2 border-purple-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg font-semibold"
-                                        />
-                                        <p className="text-xs text-purple-600 mt-1">
-                                          {manualOverride ? 'Enter the basic salary amount' : 'Basic = 50% of Gross Salary (Gross = Basic × 2)'}
-                                        </p>
-                                      </div>
-                                      {!manualOverride && (
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">HRA %</label>
-                                        <input
-                                          type="number"
-                                          value={salaryPercentages.hra_percent}
-                                          onChange={(e) => handlePercentageChange('hra_percent', e.target.value)}
-                                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">% of Basic</p>
-                                      </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Percentage Configuration - Only shown in Auto mode */}
-                                  {!manualOverride && (
-                                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                                    <h6 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
-                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                      </svg>
-                                      Salary Component Configuration (Percentages)
-                                    </h6>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employee PF %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.employee_pf_percent}
-                                          onChange={(e) => handlePercentageChange('employee_pf_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employer PF %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.employer_pf_percent}
-                                          onChange={(e) => handlePercentageChange('employer_pf_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employee ESIC %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.employee_esic_percent}
-                                          onChange={(e) => handlePercentageChange('employee_esic_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Employer ESIC %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.employer_esic_percent}
-                                          onChange={(e) => handlePercentageChange('employer_esic_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Gratuity %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.gratuity_percent}
-                                          onChange={(e) => handlePercentageChange('gratuity_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">PF Admin %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.pf_admin_percent}
-                                          onChange={(e) => handlePercentageChange('pf_admin_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">EDLI %</label>
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={salaryPercentages.edli_percent}
-                                          onChange={(e) => handlePercentageChange('edli_percent', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Conveyance ₹</label>
-                                        <input
-                                          type="number"
-                                          value={salaryPercentages.conveyance}
-                                          onChange={(e) => handlePercentageChange('conveyance', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Medical ₹</label>
-                                        <input
-                                          type="number"
-                                          value={salaryPercentages.medical}
-                                          onChange={(e) => handlePercentageChange('medical', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                  )}
-
-                                  {/* Manual Value Inputs - Only shown in Manual mode */}
-                                  {manualOverride && (
-                                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                    <h6 className="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                      </svg>
-                                      Manual Component Values (₹)
-                                    </h6>
-                                    
-                                    {/* Earnings Section */}
-                                    <div className="mb-4">
-                                      <p className="text-xs font-semibold text-green-700 mb-2 uppercase tracking-wide">Earnings / Allowances</p>
-                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">HRA ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.hra}
-                                            onChange={(e) => handleManualValueChange('hra', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Conveyance ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.conveyance}
-                                            onChange={(e) => handleManualValueChange('conveyance', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Medical ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.medical}
-                                            onChange={(e) => handleManualValueChange('medical', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Special Allowance ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.special_allowance}
-                                            onChange={(e) => handleManualValueChange('special_allowance', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Deductions Section */}
-                                    <div className="mb-4">
-                                      <p className="text-xs font-semibold text-red-700 mb-2 uppercase tracking-wide">Employee Deductions</p>
-                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employee PF ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.employee_pf}
-                                            onChange={(e) => handleManualValueChange('employee_pf', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employee ESIC ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.employee_esic}
-                                            onChange={(e) => handleManualValueChange('employee_esic', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Prof. Tax ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.pt}
-                                            onChange={(e) => handleManualValueChange('pt', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Employer Contributions Section */}
-                                    <div>
-                                      <p className="text-xs font-semibold text-blue-700 mb-2 uppercase tracking-wide">Employer Contributions</p>
-                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employer PF ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.employer_pf}
-                                            onChange={(e) => handleManualValueChange('employer_pf', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Employer ESIC ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.employer_esic}
-                                            onChange={(e) => handleManualValueChange('employer_esic', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Gratuity ₹</label>
-                                          <input
-                                            type="number"
-                                            value={manualSalaryValues.gratuity}
-                                            onChange={(e) => handleManualValueChange('gratuity', e.target.value)}
-                                            placeholder="0"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  )}
-
-                                  {/* Auto-calculated Fields */}
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Gross Salary (Monthly)</label>
-                                      <input
-                                        type="number"
-                                        value={salaryFormData.gross_salary}
-                                        readOnly
-                                        placeholder="Auto-calculated (Basic × 2)"
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
-                                      />
-                                      <p className="text-xs text-gray-500 mt-1">Gross = Basic + HRA + Allowances</p>
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Annual CTC</label>
-                                      <input
-                                        type="number"
-                                        value={salaryFormData.ctc}
-                                        readOnly
-                                        placeholder="Auto-calculated"
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 text-gray-700 cursor-not-allowed"
-                                      />
-                                      <p className="text-xs text-gray-500 mt-1">CTC = (Gross + Employer PF + ESI) × 12</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Hourly Pay Fields */}
-                              {salaryFormData.pay_type === 'hourly' && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Hourly Rate *</label>
-                                    <input
-                                      type="number"
-                                      value={salaryFormData.hourly_rate}
-                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, hourly_rate: e.target.value })}
-                                      placeholder="0.00"
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">OT Multiplier</label>
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      value={salaryFormData.ot_multiplier}
-                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, ot_multiplier: e.target.value })}
-                                      placeholder="1.5"
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Hours Per Day</label>
-                                    <input
-                                      type="number"
-                                      value={salaryFormData.standard_hours_per_day}
-                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, standard_hours_per_day: e.target.value })}
-                                      placeholder="8"
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Daily Pay Fields */}
-                              {salaryFormData.pay_type === 'daily' && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Daily Rate *</label>
-                                    <input
-                                      type="number"
-                                      value={salaryFormData.daily_rate}
-                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, daily_rate: e.target.value })}
-                                      placeholder="0.00"
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">OT Multiplier</label>
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      value={salaryFormData.ot_multiplier}
-                                      onChange={(e) => setSalaryFormData({ ...salaryFormData, ot_multiplier: e.target.value })}
-                                      placeholder="1.5"
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Statutory Deductions */}
-                            <div className="bg-gray-50 rounded-xl p-6">
-                              <h5 className="text-md font-semibold text-gray-800 mb-4">Statutory Applicability</h5>
-                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
-                                  <input
-                                    type="checkbox"
-                                    checked={salaryFormData.pf_applicable}
-                                    onChange={(e) => handleSalaryFieldChange('pf_applicable', e.target.checked)}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                                  />
-                                  <span className="text-sm font-medium">PF</span>
-                                </label>
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
-                                  <input
-                                    type="checkbox"
-                                    checked={salaryFormData.esic_applicable}
-                                    onChange={(e) => handleSalaryFieldChange('esic_applicable', e.target.checked)}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                                  />
-                                  <span className="text-sm font-medium">ESIC</span>
-                                </label>
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
-                                  <input
-                                    type="checkbox"
-                                    checked={salaryFormData.pt_applicable}
-                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, pt_applicable: e.target.checked })}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                                  />
-                                  <span className="text-sm font-medium">PT</span>
-                                </label>
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
-                                  <input
-                                    type="checkbox"
-                                    checked={salaryFormData.mlwf_applicable}
-                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, mlwf_applicable: e.target.checked })}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                                  />
-                                  <span className="text-sm font-medium">MLWF</span>
-                                </label>
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-lg border cursor-pointer hover:border-purple-300">
-                                  <input
-                                    type="checkbox"
-                                    checked={salaryFormData.tds_applicable}
-                                    onChange={(e) => setSalaryFormData({ ...salaryFormData, tds_applicable: e.target.checked })}
-                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                                  />
-                                  <span className="text-sm font-medium">TDS</span>
-                                </label>
-                                {salaryFormData.pf_applicable && (
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">PF Ceiling</label>
-                                    <select
-                                      value={salaryFormData.pf_wage_ceiling}
-                                      onChange={(e) => handleSalaryFieldChange('pf_wage_ceiling', e.target.value)}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    >
-                                      <option value="15000">₹15,000</option>
-                                      <option value="actual">Actual Basic</option>
-                                    </select>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Auto-Calculated Salary Breakdown */}
-                            {calculatedBreakdown && salaryFormData.pay_type === 'monthly' && (
-                              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
-                                <h5 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                                  <svg className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                  </svg>
-                                  Complete Salary Breakdown
-                                  <span className="ml-auto text-xs font-normal text-gray-500 bg-white px-2 py-1 rounded-lg border">
-                                    PF: {calculatedBreakdown.percentages.employeePF}% | ESIC: {calculatedBreakdown.percentages.employeeESIC}% | HRA: {calculatedBreakdown.percentages.hra}%
-                                  </span>
-                                </h5>
-
-                                {/* Main Summary Cards */}
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                                  <div className="bg-white rounded-xl p-4 text-center border-2 border-gray-200 shadow-sm">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Basic Salary</p>
-                                    <p className="text-xl font-bold text-gray-800">₹{calculatedBreakdown.earnings.basic.toLocaleString('en-IN')}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 text-center border-2 border-gray-200 shadow-sm">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Gross Salary</p>
-                                    <p className="text-xl font-bold text-gray-800">₹{calculatedBreakdown.summary.grossSalary.toLocaleString('en-IN')}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 text-center border-2 border-red-200 shadow-sm">
-                                    <p className="text-xs text-red-600 uppercase tracking-wide font-medium">Deductions</p>
-                                    <p className="text-xl font-bold text-red-600">-₹{calculatedBreakdown.deductions.total.toLocaleString('en-IN')}</p>
-                                  </div>
-                                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 text-center border-2 border-green-300 shadow-sm">
-                                    <p className="text-xs text-green-700 uppercase tracking-wide font-medium">Net Salary</p>
-                                    <p className="text-2xl font-bold text-green-600">₹{calculatedBreakdown.summary.netSalary.toLocaleString('en-IN')}</p>
-                                  </div>
-                                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 text-center border-2 border-purple-300 shadow-sm">
-                                    <p className="text-xs text-purple-700 uppercase tracking-wide font-medium">Monthly CTC</p>
-                                    <p className="text-xl font-bold text-purple-600">₹{calculatedBreakdown.summary.totalCTC.toLocaleString('en-IN')}</p>
-                                  </div>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                  {/* LEFT COLUMN - Earnings & Deductions */}
-                                  <div className="space-y-4">
-                                    {/* Earnings Section */}
-                                    <div className="bg-white rounded-xl p-5 border border-green-200 shadow-sm">
-                                      <h6 className="text-sm font-bold text-green-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-                                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                                        Monthly Earnings (Gross Pay)
-                                      </h6>
-                                      <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                          <div>
-                                            <span className="text-gray-700 font-medium">Basic Salary</span>
-                                            <span className="text-xs text-gray-500 block">50% of Gross</span>
-                                          </div>
-                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.basic.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                          <div>
-                                            <span className="text-gray-700 font-medium">House Rent Allowance (HRA)</span>
-                                            <span className="text-xs text-gray-500 block">{salaryPercentages.hra_percent}% of Basic</span>
-                                          </div>
-                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.hra.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                          <div>
-                                            <span className="text-gray-700 font-medium">Conveyance Allowance</span>
-                                            <span className="text-xs text-gray-500 block">Fixed (max ₹{salaryPercentages.conveyance.toLocaleString('en-IN')})</span>
-                                          </div>
-                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.conveyance.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                          <div>
-                                            <span className="text-gray-700 font-medium">Medical Allowance</span>
-                                            <span className="text-xs text-gray-500 block">Fixed (max ₹{salaryPercentages.medical.toLocaleString('en-IN')})</span>
-                                          </div>
-                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.medical.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                          <div>
-                                            <span className="text-gray-700 font-medium">Special Allowance</span>
-                                            <span className="text-xs text-gray-500 block">Balancing Amount</span>
-                                          </div>
-                                          <span className="font-semibold text-gray-800">₹{calculatedBreakdown.earnings.specialAllowance.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-3 border-t-2 border-green-300">
-                                          <span className="font-bold text-green-800 text-base">GROSS SALARY (A)</span>
-                                          <span className="font-bold text-green-800 text-lg">₹{calculatedBreakdown.earnings.total.toLocaleString('en-IN')}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Deductions Section */}
-                                    <div className="bg-white rounded-xl p-5 border border-red-200 shadow-sm">
-                                      <h6 className="text-sm font-bold text-red-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-                                        <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                                        Monthly Deductions (Employee)
-                                      </h6>
-                                      <div className="space-y-3 text-sm">
-                                        {calculatedBreakdown.deductions.employeePF > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">Provident Fund (PF)</span>
-                                              <span className="text-xs text-gray-500 block">{salaryPercentages.employee_pf_percent}% of Basic (max ₹{calculatedBreakdown.pfDetails.wageBase.toLocaleString('en-IN')})</span>
-                                            </div>
-                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.employeePF.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        {calculatedBreakdown.deductions.employeeESIC > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">ESIC</span>
-                                              <span className="text-xs text-gray-500 block">{salaryPercentages.employee_esic_percent}% of Gross</span>
-                                            </div>
-                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.employeeESIC.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        {calculatedBreakdown.deductions.pt > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">Professional Tax (PT)</span>
-                                              <span className="text-xs text-gray-500 block">State Tax (Maharashtra)</span>
-                                            </div>
-                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.pt.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        {calculatedBreakdown.deductions.tds > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">TDS (Income Tax)</span>
-                                              <span className="text-xs text-gray-500 block">Tax Deducted at Source</span>
-                                            </div>
-                                            <span className="font-semibold text-red-600">-₹{calculatedBreakdown.deductions.tds.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        <div className="flex justify-between items-center pt-3 border-t-2 border-red-300">
-                                          <span className="font-bold text-red-800 text-base">TOTAL DEDUCTIONS (B)</span>
-                                          <span className="font-bold text-red-800 text-lg">-₹{calculatedBreakdown.deductions.total.toLocaleString('en-IN')}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Net Salary Calculation */}
-                                    <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-5 text-white shadow-lg">
-                                      <div className="flex justify-between items-center">
-                                        <div>
-                                          <span className="text-green-100 text-sm">NET SALARY (A - B)</span>
-                                          <p className="text-xs text-green-200 mt-1">Take Home Pay</p>
-                                        </div>
-                                        <span className="text-3xl font-bold">₹{calculatedBreakdown.summary.netSalary.toLocaleString('en-IN')}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* RIGHT COLUMN - Employer Cost & Annual Summary */}
-                                  <div className="space-y-4">
-                                    {/* Employer Contributions Section */}
-                                    <div className="bg-white rounded-xl p-5 border border-blue-200 shadow-sm">
-                                      <h6 className="text-sm font-bold text-blue-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-                                        <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                                        Employer Contributions (Monthly)
-                                      </h6>
-                                      <div className="space-y-3 text-sm">
-                                        {calculatedBreakdown.employer.pf > 0 && (
-                                          <>
-                                            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                              <div>
-                                                <span className="text-gray-700 font-medium">Employer PF (EPF + EPS)</span>
-                                                <span className="text-xs text-gray-500 block">{salaryPercentages.employer_pf_percent}% of Basic</span>
-                                              </div>
-                                              <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.pf.toLocaleString('en-IN')}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center py-1 pl-4 text-xs text-gray-500">
-                                              <span>↳ EPF (3.67% to PF A/c)</span>
-                                              <span>₹{calculatedBreakdown.employer.epf.toLocaleString('en-IN')}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center py-1 pl-4 text-xs text-gray-500 border-b border-gray-100">
-                                              <span>↳ EPS (8.33% to Pension)</span>
-                                              <span>₹{calculatedBreakdown.employer.eps.toLocaleString('en-IN')}</span>
-                                            </div>
-                                          </>
-                                        )}
-                                        {calculatedBreakdown.employer.esic > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">Employer ESIC</span>
-                                              <span className="text-xs text-gray-500 block">{salaryPercentages.employer_esic_percent}% of Gross</span>
-                                            </div>
-                                            <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.esic.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        {calculatedBreakdown.employer.pfAdmin > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">PF Admin Charges</span>
-                                              <span className="text-xs text-gray-500 block">{salaryPercentages.pf_admin_percent}% of PF Wages</span>
-                                            </div>
-                                            <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.pfAdmin.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        {calculatedBreakdown.employer.edli > 0 && (
-                                          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                            <div>
-                                              <span className="text-gray-700 font-medium">EDLI (Insurance)</span>
-                                              <span className="text-xs text-gray-500 block">{salaryPercentages.edli_percent}% of PF Wages</span>
-                                            </div>
-                                            <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.edli.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        )}
-                                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                                          <div>
-                                            <span className="text-gray-700 font-medium">Gratuity Provision</span>
-                                            <span className="text-xs text-gray-500 block">{salaryPercentages.gratuity_percent}% of Basic</span>
-                                          </div>
-                                          <span className="font-semibold text-blue-600">₹{calculatedBreakdown.employer.gratuity.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-3 border-t-2 border-blue-300">
-                                          <span className="font-bold text-blue-800 text-base">TOTAL EMPLOYER COST (C)</span>
-                                          <span className="font-bold text-blue-800 text-lg">₹{calculatedBreakdown.employer.total.toLocaleString('en-IN')}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* CTC Calculation */}
-                                    <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-5 text-white shadow-lg">
-                                      <div className="space-y-3">
-                                        <div className="flex justify-between items-center text-purple-100 text-sm">
-                                          <span>Gross Salary (A)</span>
-                                          <span>₹{calculatedBreakdown.summary.grossSalary.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-purple-100 text-sm">
-                                          <span>+ Employer Cost (C)</span>
-                                          <span>₹{calculatedBreakdown.employer.total.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-2 border-t border-purple-400">
-                                          <span className="font-bold">MONTHLY CTC (A + C)</span>
-                                          <span className="text-2xl font-bold">₹{calculatedBreakdown.summary.totalCTC.toLocaleString('en-IN')}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* PF Account Summary */}
-                                    {calculatedBreakdown.pfDetails.totalPF > 0 && (
-                                      <div className="bg-white rounded-xl p-5 border border-amber-200 shadow-sm">
-                                        <h6 className="text-sm font-bold text-amber-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-                                          <span className="w-3 h-3 bg-amber-500 rounded-full"></span>
-                                          PF Account Summary
-                                        </h6>
-                                        <div className="space-y-2 text-sm">
-                                          <div className="flex justify-between py-1">
-                                            <span className="text-gray-600">PF Wage Base</span>
-                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.wageBase.toLocaleString('en-IN')}</span>
-                                          </div>
-                                          <div className="flex justify-between py-1">
-                                            <span className="text-gray-600">Employee PF ({salaryPercentages.employee_pf_percent}%)</span>
-                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.employeeContribution.toLocaleString('en-IN')}</span>
-                                          </div>
-                                          <div className="flex justify-between py-1">
-                                            <span className="text-gray-600">Employer EPF (3.67%)</span>
-                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.employerEPF.toLocaleString('en-IN')}</span>
-                                          </div>
-                                          <div className="flex justify-between py-1">
-                                            <span className="text-gray-600">Employer EPS (8.33%)</span>
-                                            <span className="font-medium">₹{calculatedBreakdown.pfDetails.employerEPS.toLocaleString('en-IN')}</span>
-                                          </div>
-                                          <div className="flex justify-between py-2 border-t border-amber-200 font-semibold text-amber-800">
-                                            <span>Total Monthly PF</span>
-                                            <span>₹{calculatedBreakdown.pfDetails.totalPF.toLocaleString('en-IN')}</span>
-                                          </div>
-                                          <div className="flex justify-between py-1 text-amber-600">
-                                            <span>Annual PF Savings</span>
-                                            <span className="font-bold">₹{calculatedBreakdown.pfDetails.annualPF.toLocaleString('en-IN')}</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Annual Summary Table */}
-                                <div className="mt-6 bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
-                                  <h6 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wide">Annual Summary</h6>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                      <thead>
-                                        <tr className="border-b-2 border-gray-200">
-                                          <th className="text-left py-2 text-gray-600 font-medium">Component</th>
-                                          <th className="text-right py-2 text-gray-600 font-medium">Monthly</th>
-                                          <th className="text-right py-2 text-gray-600 font-medium">Annual</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr className="border-b border-gray-100">
-                                          <td className="py-2 text-gray-700">Basic Salary</td>
-                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.earnings.basic.toLocaleString('en-IN')}</td>
-                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.summary.annualBasic.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-100">
-                                          <td className="py-2 text-gray-700">HRA</td>
-                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.earnings.hra.toLocaleString('en-IN')}</td>
-                                          <td className="py-2 text-right font-medium">₹{calculatedBreakdown.summary.annualHRA.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-100 bg-green-50">
-                                          <td className="py-2 text-green-700 font-medium">Gross Salary</td>
-                                          <td className="py-2 text-right font-bold text-green-700">₹{calculatedBreakdown.summary.grossSalary.toLocaleString('en-IN')}</td>
-                                          <td className="py-2 text-right font-bold text-green-700">₹{calculatedBreakdown.summary.annualGross.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-100 bg-red-50">
-                                          <td className="py-2 text-red-700 font-medium">Total Deductions</td>
-                                          <td className="py-2 text-right font-bold text-red-700">-₹{calculatedBreakdown.summary.totalDeductions.toLocaleString('en-IN')}</td>
-                                          <td className="py-2 text-right font-bold text-red-700">-₹{calculatedBreakdown.summary.annualDeductions.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-100 bg-green-100">
-                                          <td className="py-3 text-green-800 font-bold">Net Salary (Take Home)</td>
-                                          <td className="py-3 text-right font-bold text-green-800 text-lg">₹{calculatedBreakdown.summary.netSalary.toLocaleString('en-IN')}</td>
-                                          <td className="py-3 text-right font-bold text-green-800 text-lg">₹{calculatedBreakdown.summary.annualNet.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-100 bg-blue-50">
-                                          <td className="py-2 text-blue-700 font-medium">Employer Contributions</td>
-                                          <td className="py-2 text-right font-bold text-blue-700">₹{calculatedBreakdown.employer.total.toLocaleString('en-IN')}</td>
-                                          <td className="py-2 text-right font-bold text-blue-700">₹{calculatedBreakdown.summary.annualEmployerCost.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        <tr className="bg-purple-100">
-                                          <td className="py-3 text-purple-800 font-bold">Total CTC</td>
-                                          <td className="py-3 text-right font-bold text-purple-800 text-lg">₹{calculatedBreakdown.summary.totalCTC.toLocaleString('en-IN')}</td>
-                                          <td className="py-3 text-right font-bold text-purple-800 text-lg">₹{calculatedBreakdown.summary.annualCTC.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-
-                                {/* Info Notes */}
-                                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                                  <p className="text-xs text-amber-800">
-                                    <strong>Note:</strong> This is an estimated breakdown. Actual values may vary based on:
-                                    • PF wage ceiling selection (₹15,000 or actual basic)
-                                    • ESIC eligibility (Gross ≤ ₹21,000/month)
-                                    • State-specific Professional Tax rates
-                                    • TDS calculation based on income tax regime
-                                    • LWF deductions (twice a year in some states)
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Salary Components */}
-                            <div className="bg-gray-50 rounded-xl p-6">
-                              <div className="flex items-center justify-between mb-4">
-                                <h5 className="text-md font-semibold text-gray-800">Salary Components (Optional)</h5>
-                                <button
-                                  type="button"
-                                  onClick={addSalaryComponent}
-                                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-white border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Component
-                                </button>
-                              </div>
-
-                              {salaryComponents.length === 0 ? (
-                                <p className="text-sm text-gray-500 italic">No custom components added. Standard components (Basic, HRA, etc.) will be calculated automatically.</p>
-                              ) : (
-                                <div className="space-y-3">
-                                  {salaryComponents.map((comp, idx) => (
-                                    <div key={idx} className="bg-white p-4 rounded-lg border flex flex-wrap gap-3 items-end">
-                                      <div className="flex-1 min-w-[150px]">
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                                        <input
-                                          type="text"
-                                          value={comp.component_name}
-                                          onChange={(e) => updateSalaryComponent(idx, 'component_name', e.target.value)}
-                                          placeholder="e.g., Special Allowance"
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                      </div>
-                                      <div className="w-24">
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Code</label>
-                                        <input
-                                          type="text"
-                                          value={comp.component_code}
-                                          onChange={(e) => updateSalaryComponent(idx, 'component_code', e.target.value.toUpperCase())}
-                                          placeholder="SPA"
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
-                                      </div>
-                                      <div className="w-32">
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                                        <select
-                                          value={comp.component_type}
-                                          onChange={(e) => updateSalaryComponent(idx, 'component_type', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        >
-                                          <option value="earning">Earning</option>
-                                          <option value="deduction">Deduction</option>
-                                        </select>
-                                      </div>
-                                      <div className="w-28">
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Calc Type</label>
-                                        <select
-                                          value={comp.calculation_type}
-                                          onChange={(e) => updateSalaryComponent(idx, 'calculation_type', e.target.value)}
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        >
-                                          <option value="fixed">Fixed</option>
-                                          <option value="percentage">Percentage</option>
-                                        </select>
-                                      </div>
-                                      {comp.calculation_type === 'fixed' ? (
-                                        <div className="w-28">
-                                          <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
-                                          <input
-                                            type="number"
-                                            value={comp.fixed_amount}
-                                            onChange={(e) => updateSalaryComponent(idx, 'fixed_amount', e.target.value)}
-                                            placeholder="0.00"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <div className="w-20">
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">%</label>
-                                            <input
-                                              type="number"
-                                              value={comp.percentage_value}
-                                              onChange={(e) => updateSalaryComponent(idx, 'percentage_value', e.target.value)}
-                                              placeholder="0"
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                            />
-                                          </div>
-                                          <div className="w-24">
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Of</label>
-                                            <select
-                                              value={comp.percentage_of}
-                                              onChange={(e) => updateSalaryComponent(idx, 'percentage_of', e.target.value)}
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                            >
-                                              <option value="basic">Basic</option>
-                                              <option value="gross">Gross</option>
-                                              <option value="ctc">CTC</option>
-                                            </select>
-                                          </div>
-                                        </>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => removeSalaryComponent(idx)}
-                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                                      >
-                                        <TrashIcon className="h-5 w-5" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Remarks */}
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
-                              <textarea
-                                rows={2}
-                                value={salaryFormData.remarks}
-                                onChange={(e) => setSalaryFormData({ ...salaryFormData, remarks: e.target.value })}
-                                placeholder="Any notes about this salary structure..."
-                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              />
-                            </div>
-
-                            {/* Form Actions */}
-                            <div className="flex justify-end gap-3 pt-4 border-t">
-                              <button
-                                type="button"
-                                onClick={handleCancelSalaryEdit}
-                                className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={editingSalaryStructure ? handleUpdateSalaryStructure : handleSaveSalaryStructure}
-                                disabled={salaryLoading}
-                                className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50"
-                              >
-                                {salaryLoading ? 'Saving...' : (editingSalaryStructure ? 'Update Salary Structure' : 'Save Salary Structure')}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          /* Salary Structures List */
-                          <div>
-                            {/* Active Structure Card */}
-                            {activeSalaryStructure ? (
-                              <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
-                                <div className="flex items-start justify-between mb-4">
-                                  <div>
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      Active
-                                    </span>
-                                    <h5 className="text-lg font-semibold text-gray-900 mt-2">
-                                      {activeSalaryStructure.pay_type === 'monthly' ? 'Monthly Salary' : 
-                                       activeSalaryStructure.pay_type === 'hourly' ? 'Hourly Wage' : 'Daily Wage'}
-                                    </h5>
-                                    <p className="text-sm text-gray-600">
-                                      Effective from: {new Date(activeSalaryStructure.effective_from).toLocaleDateString('en-IN')}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-500 mr-2">Version {activeSalaryStructure.version}</span>
-                                    <button
-                                      onClick={() => handleEditSalaryStructure(activeSalaryStructure)}
-                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                      title="Edit"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteSalaryStructure(activeSalaryStructure.id)}
-                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      title="Delete"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  {activeSalaryStructure.pay_type === 'monthly' ? (
-                                    <>
-                                      <div>
-                                        <p className="text-xs text-gray-500 uppercase">CTC</p>
-                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.ctc || 0).toLocaleString('en-IN')}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-xs text-gray-500 uppercase">Gross</p>
-                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.gross_salary || 0).toLocaleString('en-IN')}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-xs text-gray-500 uppercase">Basic</p>
-                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.basic_salary || 0).toLocaleString('en-IN')}</p>
-                                      </div>
-                                    </>
-                                  ) : activeSalaryStructure.pay_type === 'hourly' ? (
-                                    <>
-                                      <div>
-                                        <p className="text-xs text-gray-500 uppercase">Hourly Rate</p>
-                                        <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.hourly_rate || 0).toLocaleString('en-IN')}/hr</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-xs text-gray-500 uppercase">OT Multiplier</p>
-                                        <p className="text-lg font-semibold text-gray-900">{activeSalaryStructure.ot_multiplier}x</p>
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <div>
-                                      <p className="text-xs text-gray-500 uppercase">Daily Rate</p>
-                                      <p className="text-lg font-semibold text-gray-900">₹{Number(activeSalaryStructure.daily_rate || 0).toLocaleString('en-IN')}/day</p>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <p className="text-xs text-gray-500 uppercase">Working Days</p>
-                                    <p className="text-lg font-semibold text-gray-900">{activeSalaryStructure.standard_working_days}</p>
-                                  </div>
-                                </div>
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                  {activeSalaryStructure.pf_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">PF</span>}
-                                  {activeSalaryStructure.esic_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">ESIC</span>}
-                                  {activeSalaryStructure.pt_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">PT</span>}
-                                  {activeSalaryStructure.mlwf_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">MLWF</span>}
-                                  {activeSalaryStructure.tds_applicable && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">TDS</span>}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="mb-6 p-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 text-center">
-                                <p className="text-gray-500">No active salary structure found.</p>
-                                <p className="text-sm text-gray-400 mt-1">Click &quot;New Salary Structure&quot; to create one.</p>
-                              </div>
-                            )}
-
-                            {/* Previous Versions */}
-                            {salaryStructures.length > 1 && (
-                              <div>
-                                <h5 className="text-sm font-semibold text-gray-700 mb-3">Previous Versions</h5>
-                                <div className="space-y-2">
-                                  {salaryStructures
-                                    .filter(s => s.id !== activeSalaryStructure?.id)
-                                    .map((structure) => (
-                                      <div key={structure.id} className="p-4 bg-gray-50 rounded-lg border flex items-center justify-between">
-                                        <div className="flex-1">
-                                          <span className="text-sm font-medium text-gray-700">Version {structure.version}</span>
-                                          <span className="mx-2 text-gray-400">•</span>
-                                          <span className="text-sm text-gray-500">
-                                            {new Date(structure.effective_from).toLocaleDateString('en-IN')}
-                                            {structure.effective_to && ` - ${new Date(structure.effective_to).toLocaleDateString('en-IN')}`}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                          <span className="text-sm text-gray-600">
-                                            {structure.pay_type === 'monthly' 
-                                              ? `₹${Number(structure.gross_salary || 0).toLocaleString('en-IN')}/mo` 
-                                              : structure.pay_type === 'hourly'
-                                              ? `₹${Number(structure.hourly_rate || 0).toLocaleString('en-IN')}/hr`
-                                              : `₹${Number(structure.daily_rate || 0).toLocaleString('en-IN')}/day`}
-                                          </span>
-                                          <button
-                                            onClick={() => handleEditSalaryStructure(structure)}
-                                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                            title="Edit"
-                                          >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                            </svg>
-                                          </button>
-                                          <button
-                                            onClick={() => handleDeleteSalaryStructure(structure.id)}
-                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                            title="Delete"
-                                          >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
 
                     {/* Academic & Experience */}
                     {editSubTab === 'academic' && (

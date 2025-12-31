@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 export async function GET(request, { params }) {
   try {
+    // RBAC: read proposals
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     
     // Get database connection
@@ -49,6 +54,10 @@ export async function GET(request, { params }) {
 // Convert proposal to project
 export async function POST(request, { params }) {
   try {
+    // RBAC: approve proposals (conversion requires approval permission)
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.APPROVE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     if (!id) return NextResponse.json({ success: false, error: 'Proposal id required' }, { status: 400 });
 
@@ -507,6 +516,10 @@ let proposalsSchemaInitialized = false;
 
 export async function PUT(request, { params }) {
   try {
+    // RBAC: update proposals
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const body = await request.json();
     
@@ -808,6 +821,10 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
+    // RBAC: delete proposals
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.DELETE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     
     // Get database connection

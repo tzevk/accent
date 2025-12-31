@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 export async function GET(request, { params }) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const { id } = await params;
     const db = await dbConnect();
@@ -23,6 +28,10 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   try {
     const { id } = await params;
     const body = await request.json();

@@ -1,9 +1,14 @@
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET individual lead by ID
 export async function GET(request, { params }) {
   try {
+    // RBAC: read leads
+    const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const leadId = parseInt(id);
     const db = await dbConnect();
@@ -38,6 +43,10 @@ export async function GET(request, { params }) {
 // PUT update lead by ID
 export async function PUT(request, { params }) {
   try {
+    // RBAC: update leads
+    const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.UPDATE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const leadId = parseInt(id);
     const data = await request.json();
@@ -123,6 +132,10 @@ export async function PUT(request, { params }) {
 // DELETE lead by ID
 export async function DELETE(request, { params }) {
   try {
+    // RBAC: delete leads
+    const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.DELETE);
+    if (auth instanceof Response) return auth;
+    
     const { id } = await params;
     const leadId = parseInt(id);
     const db = await dbConnect();

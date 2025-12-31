@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // Function to parse CSV content
 function parseCSV(csvContent) {
@@ -110,6 +111,10 @@ function validateEmployeeData(employee, rowIndex) {
 
 // POST - Import employees from CSV
 export async function POST(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.CREATE);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const formData = await request.formData();
     const file = formData.get('file');

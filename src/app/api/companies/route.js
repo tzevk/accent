@@ -1,8 +1,13 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET all companies
 export async function GET(request) {
   try {
+    // RBAC: read companies
+    const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim().toLowerCase();
 
@@ -72,6 +77,10 @@ export async function GET(request) {
 
 // POST - Create new company
 export async function POST(request) {
+  // RBAC: create companies
+  const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.CREATE);
+  if (auth instanceof Response) return auth;
+  
   let db;
   try {
     const data = await request.json();

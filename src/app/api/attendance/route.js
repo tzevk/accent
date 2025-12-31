@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET - Fetch attendance records
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   let connection;
   try {
     const { searchParams } = new URL(request.url);
@@ -102,6 +107,10 @@ export async function GET(request) {
 
 // POST - Save/Update attendance records (bulk)
 export async function POST(request) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   let connection;
   try {
     const body = await request.json();
@@ -111,47 +120,76 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Attendance records array is required' }, { status: 400 });
     }
 
-    connection = await dbConnect();
-
-    // Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
-    const insertQuery = `
-      INSERT INTO employee_attendance 
-        (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        status = VALUES(status),
-        overtime_hours = VALUES(overtime_hours),
-        is_weekly_off = VALUES(is_weekly_off),
-        remarks = VALUES(remarks),
-        updated_at = CURRENT_TIMESTAMP
-    `;
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const record of attendance_records) {
-      try {
-        await connection.execute(insertQuery, [
-          record.employee_id,
-          record.attendance_date,
-          record.status || 'P',
-          record.overtime_hours || 0,
-          record.is_weekly_off ? 1 : 0,
-          record.remarks || null
-        ]);
-        successCount++;
-      } catch (err) {
-        console.error('Error inserting attendance record:', err);
-        errorCount++;
-      }
+    if (attendance_records.length === 0) {
+      return NextResponse.json({ 
+        success: true, 
+        message: 'No records to save',
+        successCount: 0,
+        errorCount: 0
+      });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Attendance saved: ${successCount} records updated, ${errorCount} errors`,
-      successCount,
-      errorCount
-    });
+    connection = await dbConnect();
+    
+    // Start transaction
+    await connection.beginTransaction();
+
+    try {
+      // Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
+      const insertQuery = `
+        INSERT INTO employee_attendance 
+          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          status = VALUES(status),
+          overtime_hours = VALUES(overtime_hours),
+          is_weekly_off = VALUES(is_weekly_off),
+          remarks = VALUES(remarks),
+          updated_at = CURRENT_TIMESTAMP
+      `;
+
+      let successCount = 0;
+      let errorCount = 0;
+      const errors = [];
+
+      for (const record of attendance_records) {
+        try {
+          await connection.execute(insertQuery, [
+            record.employee_id,
+            record.attendance_date,
+            record.status || 'P',
+            record.overtime_hours || 0,
+            record.is_weekly_off ? 1 : 0,
+            record.remarks || null
+          ]);
+          successCount++;
+        } catch (err) {
+          console.error('Error inserting attendance record:', err);
+          errorCount++;
+          errors.push({
+            employee_id: record.employee_id,
+            date: record.attendance_date,
+            error: err.message
+          });
+        }
+      }
+      
+      // Commit transaction
+      await connection.commit();
+
+      return NextResponse.json({
+        success: true,
+        message: `Attendance saved: ${successCount} records updated${errorCount > 0 ? `, ${errorCount} errors` : ''}`,
+        successCount,
+        errorCount,
+        errors: errorCount > 0 ? errors : undefined
+      });
+      
+    } catch (err) {
+      // Rollback on error
+      await connection.rollback();
+      throw err;
+    }
 
   } catch (error) {
     console.error('Error saving attendance:', error);

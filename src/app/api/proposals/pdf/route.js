@@ -3,11 +3,16 @@ import { dbConnect } from '@/utils/database';
 import { Document, Page, Text, View, StyleSheet, pdf, Image } from '@react-pdf/renderer';
 import fs from 'fs';
 import path from 'path';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // Ensure Node.js runtime for fs operations
 export const runtime = 'nodejs';
 
 export async function GET(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   try {
     const url = new URL(request.url);
     const id = url.searchParams.get('id');

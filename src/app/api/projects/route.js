@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET all projects
-export async function GET() {
+export async function GET(request) {
   try {
+    // RBAC: read projects
+    const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+    if (auth instanceof Response) return auth;
+    
     const db = await dbConnect();
     
     // Create projects table if it doesn't exist
@@ -128,6 +133,10 @@ export async function GET() {
 // POST - Create new project
 export async function POST(request) {
   try {
+    // RBAC: create projects
+    const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.CREATE);
+    if (auth instanceof Response) return auth;
+    
     const data = await request.json();
     const {
       project_id,

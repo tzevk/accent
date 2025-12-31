@@ -1,7 +1,12 @@
 import { dbConnect } from '@/utils/database';
+import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // GET follow-ups for a specific proposal
 export async function GET(request, { params }) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  if (authResult.authorized === false) return authResult.response;
+
   let db;
   try {
     const { id } = await params;
@@ -51,6 +56,10 @@ export async function GET(request, { params }) {
 
 // POST - Create new follow-up for a proposal
 export async function POST(request, { params }) {
+  // RBAC check
+  const authResultPost = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  if (authResultPost.authorized === false) return authResultPost.response;
+
   let db;
   try {
     const { id } = await params;
@@ -136,6 +145,10 @@ export async function POST(request, { params }) {
 
 // PUT - Update a follow-up
 export async function PUT(request, { params }) {
+  // RBAC check
+  const authResultPut = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  if (authResultPut.authorized === false) return authResultPut.response;
+
   let db;
   try {
     const { id } = await params;
@@ -211,6 +224,10 @@ export async function PUT(request, { params }) {
 
 // DELETE - Delete a follow-up
 export async function DELETE(request, { params }) {
+  // RBAC check
+  const authResultDel = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.DELETE);
+  if (authResultDel.authorized === false) return authResultDel.response;
+
   let db;
   try {
     const { id } = await params;
