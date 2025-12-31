@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
@@ -158,6 +158,11 @@ function EditProjectForm() {
   // Sub-Activity dropdown UI state (per-activity)
   const [openSubActivityDropdowns, setOpenSubActivityDropdowns] = useState({});
   const [subActivitySearch, setSubActivitySearch] = useState({});
+  
+  // Multi-select activity checkbox state
+  const [showActivitySelector, setShowActivitySelector] = useState(false);
+  const [selectedActivitiesForAdd, setSelectedActivitiesForAdd] = useState({});
+  const [activitySelectorSearch, setActivitySelectorSearch] = useState('');
 
   // Collapsible sections for General / Project Details (Basic, Scope, Unit/Qty, Deliverables)
   const [openSections, setOpenSections] = useState({
@@ -1482,6 +1487,79 @@ function EditProjectForm() {
 
   const removeScopeActivity = (id) => {
     setProjectActivities(prev => prev.filter(r => r.id !== id));
+  };
+
+  // Multi-select activity helpers
+  const toggleActivitySelector = () => {
+    if (!showActivitySelector) {
+      // Reset selection state when opening
+      setSelectedActivitiesForAdd({});
+      setActivitySelectorSearch('');
+    }
+    setShowActivitySelector(!showActivitySelector);
+  };
+
+  const toggleActivitySelection = (funcId, actId) => {
+    const key = `${funcId}|${actId}`;
+    setSelectedActivitiesForAdd(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const toggleAllActivitiesInDiscipline = (funcId, acts) => {
+    const allSelected = acts.every(act => selectedActivitiesForAdd[`${funcId}|${act.id}`]);
+    const updates = {};
+    acts.forEach(act => {
+      updates[`${funcId}|${act.id}`] = !allSelected;
+    });
+    setSelectedActivitiesForAdd(prev => ({ ...prev, ...updates }));
+  };
+
+  const getSelectedCount = () => {
+    return Object.values(selectedActivitiesForAdd).filter(Boolean).length;
+  };
+
+  const addSelectedActivities = () => {
+    const selectedKeys = Object.entries(selectedActivitiesForAdd)
+      .filter(([, selected]) => selected)
+      .map(([key]) => key);
+
+    const newActivities = [];
+    selectedKeys.forEach(key => {
+      const [funcId, actId] = key.split('|');
+      const func = functions.find(f => String(f.id) === funcId);
+      const activity = func?.activities?.find(a => String(a.id) === actId);
+      
+      if (activity && func) {
+        // Check if already exists
+        const exists = projectActivities.some(pa => String(pa.id) === String(actId) && pa.type === 'activity');
+        if (!exists) {
+          newActivities.push({
+            id: activity.id,
+            type: 'activity',
+            source: 'master',
+            name: activity.activity_name,
+            discipline: func.function_name,
+            discipline_id: func.id,
+            activity_name: activity.activity_name,
+            planned_hours: parseFloat(activity.default_manhours) || 0,
+            actual_hours: parseFloat(activity.default_manhours) || 0,
+            assigned_user: '',
+            due_date: '',
+            priority: 'MEDIUM',
+            status: 'Not Started',
+            function_name: func.function_name
+          });
+        }
+      }
+    });
+
+    if (newActivities.length > 0) {
+      setProjectActivities(prev => [...prev, ...newActivities]);
+    }
+    setShowActivitySelector(false);
+    setSelectedActivitiesForAdd({});
   };
 
   // Internal Meetings helpers (add/update/remove)
@@ -3874,96 +3952,209 @@ function EditProjectForm() {
 
             {/* Project Activity / Daily Activity Tab */}
             {activeTab === 'project_activity' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                 {/* Header */}
-                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                  <h2 className="font-semibold text-gray-900">Project Activities</h2>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-gray-500">{projectActivities.length} items</span>
-                    <span className="text-blue-600 font-medium">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h planned</span>
-                    <span className="text-amber-600 font-medium">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h actual</span>
+                <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-purple-700 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-lg">
+                      <ClipboardDocumentListIcon className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-semibold text-white text-lg">Project Activities</h2>
+                      <p className="text-purple-200 text-xs">Manage and track project activities</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
+                      <span className="text-purple-200 text-xs">Total:</span>
+                      <span className="text-white font-bold">{projectActivities.length}</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-blue-500/30 rounded-lg px-3 py-1.5">
+                      <ClockIcon className="h-4 w-4 text-blue-200" />
+                      <span className="text-blue-100 text-xs">Plan:</span>
+                      <span className="text-white font-bold">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-amber-500/30 rounded-lg px-3 py-1.5">
+                      <CheckCircleIcon className="h-4 w-4 text-amber-200" />
+                      <span className="text-amber-100 text-xs">Actual:</span>
+                      <span className="text-white font-bold">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="p-4 space-y-4">
-                  {/* Quick Add - From Master Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="text" 
-                      value={newScopeActivityName} 
-                      onChange={(e) => setNewScopeActivityName(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addScopeActivity()}
-                      placeholder="Add manual activity..." 
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" 
-                    />
-                    <button 
-                      type="button" 
-                      onClick={addScopeActivity}
-                      disabled={!newScopeActivityName.trim()}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
-                    >
-                      Add
-                    </button>
-                    {functions.length > 0 && (
-                      <select
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (!value) return;
-                          
-                          // Format: act|functionId|activityId
-                          const [, funcId, actId] = value.split('|');
-                          const func = functions.find(f => String(f.id) === funcId);
-                          const activity = func?.activities?.find(a => String(a.id) === actId);
-                          
-                          if (activity && func) {
-                            const exists = projectActivities.some(pa => String(pa.id) === actId && pa.type === 'activity');
-                            if (!exists) {
-                              setProjectActivities(prev => [...prev, {
-                                id: activity.id,
-                                type: 'activity',
-                                source: 'master',
-                                name: activity.activity_name,
-                                discipline: func.function_name,
-                                discipline_id: func.id,
-                                activity_name: activity.activity_name,
-                                planned_hours: activity.default_manhours || 0,
-                                actual_hours: 0,
-                                assigned_user: '',
-                                due_date: '',
-                                priority: 'MEDIUM',
-                                status: 'Not Started',
-                                function_name: func.function_name
-                              }]);
-                            }
-                          }
-                          e.target.value = '';
-                        }}
-                        className="w-64 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                <div className="p-5 space-y-5">
+                  {/* Select Activities from Master */}
+                  {functions.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={toggleActivitySelector}
+                        className={`px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                          showActivitySelector 
+                            ? 'bg-gray-100 text-gray-700 border border-gray-300' 
+                            : 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-purple-200'
+                        }`}
                       >
-                        <option value="">Select from Master...</option>
-                        {functions.map(func => (
-                          <optgroup key={func.id} label={`📁 ${func.function_name}`}>
-                            {(func.activities || []).map(activity => (
-                              <option 
-                                key={activity.id}
-                                value={`act|${func.id}|${activity.id}`}
-                                disabled={projectActivities.some(pa => String(pa.id) === String(activity.id) && pa.type === 'activity')}
+                        {showActivitySelector ? (
+                          <>
+                            <XMarkIcon className="h-4 w-4" />
+                            Close Selection Panel
+                          </>
+                        ) : (
+                          <>
+                            <PlusIcon className="h-4 w-4" />
+                            Add Activities from Master
+                          </>
+                        )}
+                      </button>
+                      {projectActivities.length > 0 && (
+                        <div className="text-sm text-gray-500">
+                          {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Other'] = true; return acc; }, {})).length} disciplines
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Multi-Select Activity Checkboxes */}
+                  {showActivitySelector && functions.length > 0 && (
+                    <div className="border-2 border-purple-200 rounded-xl bg-gradient-to-b from-purple-50 to-white overflow-hidden shadow-sm">
+                      {/* Header with search and actions */}
+                      <div className="px-5 py-4 bg-gradient-to-r from-purple-100 to-purple-50 border-b border-purple-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-600 rounded-lg">
+                              <CheckIcon className="h-4 w-4 text-white" />
+                            </div>
+                            <div>
+                              <span className="font-semibold text-purple-900">Activity Master</span>
+                              {getSelectedCount() > 0 && (
+                                <span className="ml-2 px-2.5 py-1 bg-purple-600 text-white text-xs font-bold rounded-full">
+                                  {getSelectedCount()} selected
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input
+                                type="text"
+                                value={activitySelectorSearch}
+                                onChange={(e) => setActivitySelectorSearch(e.target.value)}
+                                placeholder="Search activities..."
+                                className="pl-9 pr-4 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 w-56 bg-white"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={addSelectedActivities}
+                              disabled={getSelectedCount() === 0}
+                              className="px-5 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg text-sm font-semibold hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2"
+                            >
+                              <PlusIcon className="h-4 w-4" />
+                              Add {getSelectedCount() > 0 ? `(${getSelectedCount()})` : 'Selected'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Activity list with checkboxes */}
+                      <div className="max-h-96 overflow-y-auto p-4 space-y-3">
+                        {functions.map(func => {
+                          const filteredActs = (func.activities || []).filter(act => {
+                            if (!activitySelectorSearch) return true;
+                            return act.activity_name?.toLowerCase().includes(activitySelectorSearch.toLowerCase());
+                          });
+                          
+                          if (filteredActs.length === 0) return null;
+                          
+                          const allSelected = filteredActs.every(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
+                          const someSelected = filteredActs.some(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
+                          const selectedInGroup = filteredActs.filter(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]).length;
+                          
+                          return (
+                            <div key={func.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                              {/* Discipline Header */}
+                              <div 
+                                className="px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center gap-3 cursor-pointer hover:bg-gray-50"
+                                onClick={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)}
                               >
-                                {activity.activity_name} {activity.default_manhours ? `(${activity.default_manhours}h)` : ''}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    )}
-                  </div>
+                                <input
+                                  type="checkbox"
+                                  checked={allSelected}
+                                  ref={el => el && (el.indeterminate = someSelected && !allSelected)}
+                                  onChange={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)}
+                                  className="h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <div className="flex-1">
+                                  <span className="font-semibold text-gray-800">{func.function_name}</span>
+                                  <span className="ml-2 text-xs text-gray-400">({filteredActs.length} activities)</span>
+                                </div>
+                                {selectedInGroup > 0 && (
+                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                                    {selectedInGroup} selected
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {/* Activities */}
+                              <div className="divide-y divide-gray-50">
+                                {filteredActs.map(activity => {
+                                  const isAlreadyAdded = projectActivities.some(pa => String(pa.id) === String(activity.id) && pa.type === 'activity');
+                                  const isSelected = selectedActivitiesForAdd[`${func.id}|${activity.id}`];
+                                  
+                                  return (
+                                    <label 
+                                      key={activity.id} 
+                                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                                        isAlreadyAdded 
+                                          ? 'opacity-50 cursor-not-allowed bg-gray-50' 
+                                          : isSelected 
+                                            ? 'bg-purple-50 hover:bg-purple-100' 
+                                            : 'hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected || false}
+                                        disabled={isAlreadyAdded}
+                                        onChange={() => !isAlreadyAdded && toggleActivitySelection(func.id, activity.id)}
+                                        className="h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500 disabled:opacity-50 cursor-pointer"
+                                      />
+                                      <span className={`flex-1 text-sm ${isAlreadyAdded ? 'text-gray-400 line-through' : isSelected ? 'text-purple-900 font-medium' : 'text-gray-700'}`}>
+                                        {activity.activity_name}
+                                      </span>
+                                      {activity.default_manhours > 0 && (
+                                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${isSelected ? 'bg-purple-200 text-purple-800' : 'bg-blue-50 text-blue-600'}`}>
+                                          {parseFloat(activity.default_manhours).toFixed(2)} hrs
+                                        </span>
+                                      )}
+                                      {isAlreadyAdded && (
+                                        <span className="text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+                                          <CheckCircleIcon className="h-3 w-3" />
+                                          Added
+                                        </span>
+                                      )}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Activities Grouped by Discipline */}
                   {projectActivities.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                      <DocumentIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>No activities yet</p>
-                      <p className="text-sm mt-1">Select from master or add manually</p>
+                    <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                      <div className="p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                        <ClipboardDocumentListIcon className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <p className="font-medium text-gray-600">No activities added yet</p>
+                      <p className="text-sm text-gray-400 mt-1">Click &quot;Add Activities from Master&quot; to get started</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -3977,23 +4168,31 @@ function EditProjectForm() {
                         }, {});
 
                         return Object.entries(grouped).map(([discipline, acts]) => (
-                          <div key={discipline} className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div key={discipline} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                             {/* Discipline Header */}
-                            <div className="bg-purple-50 px-4 py-2 border-b border-purple-100 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <DocumentIcon className="h-4 w-4 text-purple-600" />
-                                <span className="font-semibold text-purple-800">{discipline}</span>
-                                <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                            <div className="bg-gradient-to-r from-purple-50 to-white px-5 py-3 border-b border-purple-100 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="p-1.5 bg-purple-100 rounded-lg">
+                                  <DocumentIcon className="h-4 w-4 text-purple-600" />
+                                </div>
+                                <span className="font-semibold text-purple-900">{discipline}</span>
+                                <span className="text-xs text-purple-600 bg-purple-100 px-2.5 py-1 rounded-full font-medium">
                                   {acts.length} {acts.length === 1 ? 'activity' : 'activities'}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-3 text-xs">
-                                <span className="text-blue-600 font-medium">
-                                  {acts.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h plan
-                                </span>
-                                <span className="text-amber-600 font-medium">
-                                  {acts.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h actual
-                                </span>
+                              <div className="flex items-center gap-4 text-xs">
+                                <div className="flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg">
+                                  <ClockIcon className="h-3.5 w-3.5 text-blue-500" />
+                                  <span className="text-blue-600 font-semibold">
+                                    {acts.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h plan
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-lg">
+                                  <CheckCircleIcon className="h-3.5 w-3.5 text-amber-500" />
+                                  <span className="text-amber-600 font-semibold">
+                                    {acts.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h actual
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
