@@ -2,14 +2,16 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 
 /**
- * GET - Fetch current active DA for a specific date
- * Query params: date (optional, defaults to today)
+ * GET - Fetch current active DA for a specific date and year
+ * Query params: date (optional, defaults to today), year (optional, defaults to current year)
  */
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
+    const yearParam = searchParams.get('year');
     const forDate = dateParam || new Date().toISOString().split('T')[0];
+    const forYear = yearParam ? parseInt(yearParam) : new Date().getFullYear();
     
     const db = await dbConnect();
     
@@ -17,9 +19,12 @@ export async function GET(request) {
       `SELECT da_amount, effective_from, effective_to
        FROM da_schedule 
        WHERE is_active = 1 
+         AND YEAR(effective_from) <= ?
+         AND (YEAR(effective_to) >= ? OR effective_to IS NULL)
          AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
+       ORDER BY effective_from DESC
        LIMIT 1`,
-      [forDate]
+      [forYear, forYear, forDate]
     );
     
     await db.end();

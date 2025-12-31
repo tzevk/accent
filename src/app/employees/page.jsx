@@ -295,14 +295,39 @@ export default function EmployeesPage() {
   const editSubTabOrder = ['personal','contact','work','salary','academic','govt','bank','attendance'];
   const [editSubTab, setEditSubTab] = useState('personal');
 
-  // Salary Structure State
+  // Salary Structure State - New Core Payroll Tables Based
   const [salaryStructures, setSalaryStructures] = useState([]);
   const [activeSalaryStructure, setActiveSalaryStructure] = useState(null);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
   const [showSalaryForm, setShowSalaryForm] = useState(false);
   const [calculatedBreakdown, setCalculatedBreakdown] = useState(null);
-  const [manualOverride, setManualOverride] = useState(false); // Toggle for manual salary entry
+  const [manualOverride, setManualOverride] = useState(false);
+  
+  // New Salary Preview State (using core payroll tables)
+  const [salaryPreview, setSalaryPreview] = useState({
+    gross: '',
+    other_allowances: '',
+    pf_applicable: true,
+    esic_applicable: false
+  });
+  const [currentDA, setCurrentDA] = useState(0);
+  const [currentComponents, setCurrentComponents] = useState({
+    pf_employee: 0,
+    pf_employer: 0,
+    esic_employee: 0,
+    esic_employer: 0,
+    pt: 0,
+    mlwf: 0,
+    insurance: 0,
+    personal_accident: 0,
+    mediclaim: 0,
+    bonus: 0,
+    leaves: 0,
+    tds: 0
+  });
+  const [previewBreakdown, setPreviewBreakdown] = useState(null);
+  const [previewError, setPreviewError] = useState('');
   
   // Salary calculation percentages - now using centralized config
   // These values are frozen in /src/utils/payroll-config.js
@@ -375,6 +400,185 @@ export default function EmployeesPage() {
       setSalaryLoading(false);
     }
   }, []);
+
+  // Fetch current DA for salary preview (uses current date/month)
+  const fetchCurrentDA = async () => {
+    try {
+      const currentDate = new Date().toISOString().split('T')[0];
+      const currentYear = new Date().getFullYear();
+      const daRes = await fetch(`/api/payroll/da-schedule/current?date=${currentDate}&year=${currentYear}`);
+      const daData = await daRes.json();
+      
+      if (daData.success && daData.data) {
+        const daAmount = parseFloat(daData.data.da_amount) || 0;
+        setCurrentDA(daAmount);
+        return daAmount;
+      }
+    } catch (err) {
+      console.error('Error fetching DA:', err);
+    }
+    return 0;
+  };
+
+  // Fetch all current payroll components (PF, PT, ESIC, Insurance, Bonus, Leaves, etc.)
+  const fetchAllComponents = async (grossSalary = 0) => {
+    try {
+      const currentDate = new Date().toISOString().split('T')[0];
+      const gross = parseFloat(grossSalary) || parseFloat(salaryPreview.gross) || 0;
+      
+      const schedulesRes = await fetch(`/api/payroll/schedules/current?date=${currentDate}&gross=${gross}`);
+      const schedulesData = await schedulesRes.json();
+      
+      if (schedulesData.success && schedulesData.data) {
+        const components = schedulesData.data.components;
+        setCurrentComponents({
+          pf_employee: components.pf_employee?.amount || 0,
+          pf_employer: components.pf_employer?.amount || 0,
+          esic_employee: components.esic_employee?.amount || 0,
+          esic_employer: components.esic_employer?.amount || 0,
+          pt: components.pt?.amount || 0,
+          mlwf: components.mlwf?.amount || 0,
+          insurance: components.insurance?.amount || 0,
+          personal_accident: components.personal_accident?.amount || 0,
+          mediclaim: components.mediclaim?.amount || 0,
+          bonus: components.bonus?.amount || 0,
+          leaves: components.leaves?.amount || 0,
+          tds: components.tds?.amount || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching payroll components:', error);
+    }
+  };
+
+  // Calculate Salary Preview (using core payroll tables & frozen rules)
+  const calculateSalaryPreview = async (grossInput, otherAllowancesInput) => {
+    const gross = parseFloat(grossInput) || 0;
+    const otherAllowances = parseFloat(otherAllowancesInput) || 0;
+    
+    if (gross === 0) {
+      setPreviewBreakdown(null);
+      setPreviewError('');
+      return;
+    }
+    
+    try {
+      setPreviewError('');
+      
+      // Fetch all components based on current date and gross salary
+      await fetchAllComponents(gross);
+      
+      // Use current DA (already fetched)
+      let daAmount = currentDA || 0;
+      
+      if (daAmount === null || daAmount === 0) {
+        // Fetch current DA based on today's date
+        daAmount = await fetchCurrentDA();
+      }
+      
+      // Calculate using frozen PAYROLL_CONFIG rules (60/20/10/10)
+      const basic_plus_da = Math.round(gross * 0.60);
+      const basic = basic_plus_da - daAmount;
+      
+      // Validate: basic must be >= 0
+      if (basic < 0) {
+        setPreviewError(`Invalid: DA (\u20b9${daAmount}) exceeds Basic+DA (\u20b9${basic_plus_da}). Basic cannot be negative.`);
+        setPreviewBreakdown(null);
+        return;
+      }
+      
+      const hra = Math.round(gross * 0.20);
+      const conveyance = Math.round(gross * 0.10);
+      const call_allowance = Math.round(gross * 0.10);
+      const total_earnings = gross + otherAllowances;
+      
+      // Deductions
+      const pf_employee = salaryPreview.pf_applicable ? Math.round(gross * 0.12) : 0;
+      const esic_employee = salaryPreview.esic_applicable ? Math.round(gross * 0.0075) : 0;
+      const total_deductions = pf_employee + esic_employee;
+      const net_pay = total_earnings - total_deductions;
+      
+      // Employer Contributions
+      const pf_employer = salaryPreview.pf_applicable ? Math.round(gross * 0.13) : 0;
+      const esic_employer = salaryPreview.esic_applicable ? Math.round(gross * 0.0325) : 0;
+      const employer_cost = total_earnings + pf_employer + esic_employer;
+      
+      setPreviewBreakdown({
+        gross,
+        basic_plus_da,
+        da: daAmount,
+        basic,
+        hra,
+        conveyance,
+        call_allowance,
+        other_allowances: otherAllowances,
+        total_earnings,
+        pf_employee,
+        esic_employee,
+        total_deductions,
+        net_pay,
+        pf_employer,
+        esic_employer,
+        employer_cost
+      });
+    } catch (err) {
+      console.error('Error calculating salary preview:', err);
+      setPreviewError('Failed to calculate salary preview: ' + err.message);
+      setPreviewBreakdown(null);
+    }
+  };
+
+  // Save Salary Profile to employee_salary_profile table
+  const handleSaveSalaryProfile = async () => {
+    if (!selectedEmployee?.id) {
+      setPreviewError('No employee selected');
+      return;
+    }
+    
+    if (!salaryPreview.gross) {
+      setPreviewError('Please enter gross salary');
+      return;
+    }
+    
+    if (!previewBreakdown) {
+      setPreviewError('Please calculate preview first');
+      return;
+    }
+    
+    try {
+      const currentDate = new Date().toISOString().split('T')[0];
+      const currentYear = new Date().getFullYear();
+      const res = await fetch('/api/payroll/salary-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: selectedEmployee.id,
+          gross_salary: salaryPreview.gross,
+          other_allowances: salaryPreview.other_allowances,
+          pf_applicable: salaryPreview.pf_applicable,
+          esic_applicable: salaryPreview.esic_applicable
+        })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save salary profile');
+      
+      alert('Salary profile saved successfully');
+      
+      // Reset form
+      setSalaryPreview({
+        gross: '',
+        other_allowances: 0,
+        pf_applicable: true,
+        esic_applicable: true
+      });
+      setPreviewBreakdown(null);
+      setCurrentDA(null);
+    } catch (err) {
+      console.error('Error saving salary profile:', err);
+      setPreviewError('Failed to save: ' + err.message);
+    }
+  };
 
   // Save salary structure
   const handleSaveSalaryStructure = async () => {
@@ -2030,6 +2234,7 @@ export default function EmployeesPage() {
                         { key: 'personal', label: 'Personal Information' },
                         { key: 'contact', label: 'Contact Information' },
                         { key: 'work', label: 'Work Details' },
+                        { key: 'salary', label: 'Salary Structure' },
                         { key: 'academic', label: 'Academic & Experience' },
                         { key: 'govt', label: 'Government IDs' },
                         { key: 'bank', label: 'Bank Details' },
@@ -2037,10 +2242,12 @@ export default function EmployeesPage() {
                       ].map((t) => (
                         <button
                           key={t.key}
-                          onClick={() => {
+                          onClick={async () => {
                             setEditSubTab(t.key);
                             if (t.key === 'salary' && selectedEmployee?.id) {
                               fetchSalaryStructures(selectedEmployee.id);
+                              // Fetch current DA when salary tab is opened
+                              await fetchCurrentDA();
                             }
                           }}
                           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -2246,6 +2453,258 @@ export default function EmployeesPage() {
                             <input type="text" value={formData.pf_no || ''} onChange={(e) => setFormData({ ...formData, pf_no: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                           </div>
                         </div>
+                      </div>
+                    )}
+
+
+                    {/* Salary Structure Preview */}
+                    {editSubTab === 'salary' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-lg font-semibold text-gray-900">Salary Structure Preview</h4>
+                          <a 
+                            href="/admin/payroll-schedules" 
+                            target="_blank"
+                            className="text-xs text-purple-600 hover:text-purple-700 underline flex items-center gap-1"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Manage Payroll Schedules
+                          </a>
+                        </div>
+                        
+                        {/* Input Form - Compact */}
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Gross *</label>
+                              <input 
+                                type="number" 
+                                value={salaryPreview.gross} 
+                                onChange={(e) => {
+                                  setSalaryPreview({ ...salaryPreview, gross: e.target.value });
+                                  calculateSalaryPreview(e.target.value, salaryPreview.other_allowances);
+                                }}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500" 
+                                placeholder="50000"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                DA Amount * 
+                                <span className="text-[10px] text-gray-500 ml-1">(auto-fetched)</span>
+                              </label>
+                              <input 
+                                type="number" 
+                                value={currentDA || ''} 
+                                readOnly
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-gray-100 cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                placeholder="5000"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Other Allow.</label>
+                              <input 
+                                type="number" 
+                                value={salaryPreview.other_allowances} 
+                                onChange={(e) => {
+                                  setSalaryPreview({ ...salaryPreview, other_allowances: e.target.value });
+                                  calculateSalaryPreview(salaryPreview.gross, e.target.value);
+                                }}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500" 
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-4 text-xs">
+                            <label className="flex items-center cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={salaryPreview.pf_applicable} 
+                                onChange={(e) => {
+                                  setSalaryPreview({ ...salaryPreview, pf_applicable: e.target.checked });
+                                  calculateSalaryPreview(salaryPreview.gross, salaryPreview.other_allowances);
+                                }}
+                                className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500" 
+                              />
+                              <span className="ml-1.5 text-gray-700">PF</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={salaryPreview.esic_applicable} 
+                                onChange={(e) => {
+                                  setSalaryPreview({ ...salaryPreview, esic_applicable: e.target.checked });
+                                  calculateSalaryPreview(salaryPreview.gross, salaryPreview.other_allowances);
+                                }}
+                                className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500" 
+                              />
+                              <span className="ml-1.5 text-gray-700">ESIC</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Error Display */}
+                        {previewError && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
+                            <p className="text-xs text-red-800">{previewError}</p>
+                          </div>
+                        )}
+
+                        {/* Salary Bifurcation Table - Compact */}
+                        {previewBreakdown && (
+                          <>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">{/* Earnings Column */}
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-green-800 mb-2 flex items-center">
+                                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                Earnings
+                              </h5>
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-600">Basic+DA</span>
+                                  <span className="font-medium text-gray-900">₹{previewBreakdown.basic_plus_da.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-xs pl-2 border-l border-green-300">
+                                  <span className="text-gray-500">DA</span>
+                                  <span className="text-gray-700">₹{previewBreakdown.da.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-xs pl-2 border-l border-green-300">
+                                  <span className="text-gray-500">Basic</span>
+                                  <span className="text-gray-700">₹{previewBreakdown.basic.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-600">HRA</span>
+                                  <span className="font-medium text-gray-900">₹{previewBreakdown.hra.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-600">Conveyance</span>
+                                  <span className="font-medium text-gray-900">₹{previewBreakdown.conveyance.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-600">Call Allow.</span>
+                                  <span className="font-medium text-gray-900">₹{previewBreakdown.call_allowance.toLocaleString('en-IN')}</span>
+                                </div>
+                                {previewBreakdown.other_allowances > 0 && (
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">Other</span>
+                                    <span className="font-medium text-gray-900">₹{previewBreakdown.other_allowances.toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                <div className="border-t border-green-300 pt-1.5 mt-1.5">
+                                  <div className="flex justify-between font-semibold text-xs">
+                                    <span className="text-green-900">Total</span>
+                                    <span className="text-green-900">₹{previewBreakdown.total_earnings.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Deductions Column */}
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-red-800 mb-2 flex items-center">
+                                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                </svg>
+                                Deductions
+                              </h5>
+                              <div className="space-y-1.5">
+                                {salaryPreview.pf_applicable && (
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">Emp PF</span>
+                                    <span className="font-medium text-gray-900">₹{previewBreakdown.pf_employee.toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                {salaryPreview.esic_applicable && (
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">Emp ESIC</span>
+                                    <span className="font-medium text-gray-900">₹{previewBreakdown.esic_employee.toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                <div className="border-t border-red-300 pt-1.5 mt-1.5">
+                                  <div className="flex justify-between font-semibold text-xs">
+                                    <span className="text-red-900">Total</span>
+                                    <span className="text-red-900">₹{previewBreakdown.total_deductions.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </div>
+                                <div className="border-t-2 border-red-400 pt-1.5 mt-1">
+                                  <div className="flex justify-between font-bold text-sm">
+                                    <span className="text-green-900">Net Pay</span>
+                                    <span className="text-green-900">₹{previewBreakdown.net_pay.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Employer Cost Column */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                              <h5 className="text-xs font-semibold text-blue-800 mb-2 flex items-center">
+                                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                                Employer Cost
+                              </h5>
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-gray-600">Earnings</span>
+                                  <span className="font-medium text-gray-900">₹{previewBreakdown.total_earnings.toLocaleString('en-IN')}</span>
+                                </div>
+                                {salaryPreview.pf_applicable && (
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">Empr PF</span>
+                                    <span className="font-medium text-gray-900">₹{previewBreakdown.pf_employer.toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                {salaryPreview.esic_applicable && (
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-gray-600">Empr ESIC</span>
+                                    <span className="font-medium text-gray-900">₹{previewBreakdown.esic_employer.toLocaleString('en-IN')}</span>
+                                  </div>
+                                )}
+                                <div className="border-t border-blue-300 pt-1.5 mt-1.5">
+                                  <div className="flex justify-between font-semibold text-xs">
+                                    <span className="text-blue-900">Total CTC</span>
+                                    <span className="text-blue-900">₹{previewBreakdown.employer_cost.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                        {/* Action Buttons */}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSalaryPreview({
+                                  gross: '',
+                                  other_allowances: 0,
+                                  pf_applicable: true,
+                                  esic_applicable: true
+                                });
+                                setPreviewBreakdown(null);
+                                setCurrentDA(null);
+                                setPreviewError('');
+                              }}
+                              className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveSalaryProfile}
+                              className="px-4 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                            >
+                              Save Salary Profile
+                            </button>
+                          </div>
+                          </>
+                        )}
                       </div>
                     )}
 

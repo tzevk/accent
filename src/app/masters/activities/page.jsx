@@ -642,7 +642,7 @@ export default function ActivityMasterPage() {
                               onChange={(e) => setBulkManhours(e.target.value)}
                               placeholder="0"
                               min="0"
-                              step="0.5"
+                              step="0.01"
                               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
                             />
                             <p className="text-xs text-gray-400 mt-1">Distributed equally</p>
@@ -712,7 +712,7 @@ export default function ActivityMasterPage() {
                           onChange={(e) => setNewActivityManhours(e.target.value)}
                           placeholder="Hours"
                           min="0"
-                          step="0.5"
+                          step="0.01"
                           className="w-24 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
                           onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
                         />
@@ -800,7 +800,7 @@ export default function ActivityMasterPage() {
                                 onChange={(e) => setEditingActivity({ ...editingActivity, manhours: e.target.value })}
                                 className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-[#4472C4] focus:border-transparent text-right"
                                 min="0"
-                                step="0.5"
+                                step="0.01"
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') handleUpdateActivity();
                                   if (e.key === 'Escape') setEditingActivity(null);
