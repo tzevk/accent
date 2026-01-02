@@ -1521,7 +1521,7 @@ function EditProjectForm() {
   };
 
   // Multi-user assignment helpers
-  // assigned_users is now a simple array of user IDs: ['1', '2', ...]
+  // assigned_users is an array of objects: [{ user_id: '1', planned_hours: 0, actual_hours: 0 }, ...]
   const toggleUserForActivity = (activityId, userId) => {
     setProjectActivities(prev => prev.map(act => {
       if (act.id === activityId) {
@@ -1537,11 +1537,50 @@ function EditProjectForm() {
               const id = typeof u === 'object' ? u.user_id : u;
               return String(id) !== userIdStr;
             })
-          : [...currentUsers, userIdStr];
+          : [...currentUsers, { user_id: userIdStr, planned_hours: 0, actual_hours: 0 }];
         return { ...act, assigned_users: newUsers };
       }
       return act;
     }));
+  };
+
+  // Update individual user manhours
+  const updateUserManhours = (activityId, userId, field, value) => {
+    setProjectActivities(prev => prev.map(act => {
+      if (act.id === activityId) {
+        const updatedUsers = (act.assigned_users || []).map(u => {
+          const uId = typeof u === 'object' ? u.user_id : u;
+          if (String(uId) === String(userId)) {
+            if (typeof u === 'object') {
+              return { ...u, [field]: parseFloat(value) || 0 };
+            } else {
+              return { user_id: u, planned_hours: field === 'planned_hours' ? (parseFloat(value) || 0) : 0, actual_hours: field === 'actual_hours' ? (parseFloat(value) || 0) : 0 };
+            }
+          }
+          return typeof u === 'object' ? u : { user_id: u, planned_hours: 0, actual_hours: 0 };
+        });
+        return { ...act, assigned_users: updatedUsers };
+      }
+      return act;
+    }));
+  };
+
+  // Calculate total planned hours for an activity (sum of all user planned hours)
+  const getActivityTotalPlanned = (act) => {
+    if (!act.assigned_users || act.assigned_users.length === 0) return parseFloat(act.planned_hours) || 0;
+    return (act.assigned_users || []).reduce((sum, u) => {
+      const hours = typeof u === 'object' ? (parseFloat(u.planned_hours) || 0) : 0;
+      return sum + hours;
+    }, 0);
+  };
+
+  // Calculate total actual hours for an activity (sum of all user actual hours)
+  const getActivityTotalActual = (act) => {
+    if (!act.assigned_users || act.assigned_users.length === 0) return parseFloat(act.actual_hours) || 0;
+    return (act.assigned_users || []).reduce((sum, u) => {
+      const hours = typeof u === 'object' ? (parseFloat(u.actual_hours) || 0) : 0;
+      return sum + hours;
+    }, 0);
   };
 
   const getAssignedUserNames = (assignedUsers) => {
@@ -4234,15 +4273,11 @@ function EditProjectForm() {
 
                   {/* Activities Grouped by Discipline */}
                   {projectActivities.length === 0 ? (
-                    <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                      <div className="p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                        <ClipboardDocumentListIcon className="h-8 w-8 text-gray-400" />
-                      </div>
-                      <p className="font-medium text-gray-600">No activities added yet</p>
-                      <p className="text-sm text-gray-400 mt-1">Click &quot;Add Activities from Master&quot; to get started</p>
+                    <div className="text-center py-6 bg-gray-50 border border-gray-200 rounded">
+                      <p className="text-gray-500 text-sm">No activities added yet. Click "Add Activities from Master" to get started.</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {/* Group activities by discipline */}
                       {(() => {
                         const grouped = projectActivities.reduce((acc, act) => {
@@ -4253,255 +4288,220 @@ function EditProjectForm() {
                         }, {});
 
                         return Object.entries(grouped).map(([discipline, acts]) => (
-                          <div key={discipline} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                          <div key={discipline} className="border border-gray-300 rounded" style={{ overflow: 'visible' }}>
                             {/* Discipline Header */}
-                            <div className="bg-gradient-to-r from-purple-50 to-white px-5 py-3 border-b border-purple-100 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="p-1.5 bg-purple-100 rounded-lg">
-                                  <DocumentIcon className="h-4 w-4 text-purple-600" />
-                                </div>
-                                <span className="font-semibold text-purple-900">{discipline}</span>
-                                <span className="text-xs text-purple-600 bg-purple-100 px-2.5 py-1 rounded-full font-medium">
-                                  {acts.length} {acts.length === 1 ? 'activity' : 'activities'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-4 text-xs">
-                                <div className="flex items-center gap-1.5 bg-blue-50 px-3 py-1.5 rounded-lg">
-                                  <ClockIcon className="h-3.5 w-3.5 text-blue-500" />
-                                  <span className="text-blue-600 font-semibold">
-                                    {acts.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h plan
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-lg">
-                                  <CheckCircleIcon className="h-3.5 w-3.5 text-amber-500" />
-                                  <span className="text-amber-600 font-semibold">
-                                    {acts.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h actual
-                                  </span>
-                                </div>
+                            <div className="px-3 py-1.5 border-b border-gray-300 bg-gray-100 flex items-center justify-between">
+                              <span className="font-semibold text-gray-700 text-sm">{discipline} <span className="font-normal text-gray-500">({acts.length})</span></span>
+                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                                <span>Plan: <strong className="text-blue-600">{acts.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</strong></span>
+                                <span>Actual: <strong className="text-green-600">{acts.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</strong></span>
                               </div>
                             </div>
 
                             {/* Activities Table */}
-                            <table className="w-full text-sm table-fixed">
-                              <thead className="bg-gray-50 text-gray-600">
+                            <div style={{ overflow: 'visible' }}>
+                            <table className="w-full text-xs" style={{ overflow: 'visible' }}>
+                              <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '4%' }}>#</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '18%' }}>Activity</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '18%' }}>Assigned Team</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '10%' }}>Planned Hrs</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '10%' }}>Actual Hrs</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '10%' }}>Due Date</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '10%' }}>Status</th>
-                                  <th className="text-left py-3 px-4 font-medium text-xs" style={{ width: '16%' }}>Remarks</th>
-                                  <th className="text-center py-3 px-2" style={{ width: '4%' }}></th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '3%' }}>#</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '20%' }}>Activity</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '14%' }}>Team</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '7%' }}>Plan</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '7%' }}>Actual</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '10%' }}>Due</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '10%' }}>Status</th>
+                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '25%' }}>Remarks</th>
+                                  <th className="py-1.5 px-1" style={{ width: '4%' }}></th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {acts.map((act, idx) => (
-                                  <tr key={`${act.id}-${act.type}-${idx}`} className="hover:bg-gray-50 align-top">
-                                    <td className="py-4 px-4 text-gray-400 text-sm font-medium">{idx + 1}</td>
-                                    <td className="py-4 px-4">
-                                      <input 
-                                        type="text" 
-                                        value={act.activity_name || act.name || ''} 
-                                        onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
-                                        className="w-full px-3 py-2 text-sm border border-gray-200 hover:border-gray-300 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 text-gray-800" 
-                                        placeholder="Activity name"
-                                      />
-                                    </td>
-                                    <td className="py-4 px-4">
-                                      {/* Team assignments */}
-                                      <div className="space-y-2">
-                                        {/* User list */}
-                                        <div className="flex flex-wrap gap-1.5">
-                                          {(act.assigned_users || []).map((assignment, uIdx) => {
-                                            const userId = typeof assignment === 'object' ? assignment.user_id : assignment;
-                                            const userList = allUsers.length > 0 ? allUsers : userMaster;
-                                            const user = userList.find(u => String(u.id) === String(userId));
-                                            const name = user ? (user.full_name || user.employee_name || user.username || user.email || '?') : '?';
-                                            const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
-                                            
-                                            return (
-                                              <div 
-                                                key={userId} 
-                                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-purple-50 border border-purple-200 rounded-full group hover:bg-purple-100 transition-colors"
-                                                title={name}
+                              <tbody style={{ overflow: 'visible' }}>
+                                {acts.map((act, idx) => {
+                                  const assignedUsers = act.assigned_users || [];
+                                  const hasUsers = assignedUsers.length > 0;
+                                  
+                                  return (
+                                    <Fragment key={`${act.id}-${act.type}-${idx}`}>
+                                      {/* Activity Header Row */}
+                                      <tr className="bg-gray-50 border-t border-gray-200">
+                                        <td className="py-1.5 px-2 text-gray-600 font-bold align-middle">{idx + 1}</td>
+                                        <td className="py-1.5 px-2" colSpan={7}>
+                                          <div className="flex items-center gap-2">
+                                            <input 
+                                              type="text" 
+                                              value={act.activity_name || act.name || ''} 
+                                              onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
+                                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none text-gray-800 bg-white" 
+                                              placeholder="Activity name"
+                                            />
+                                            <div className="relative" data-user-selector-dropdown>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id);
+                                                }}
+                                                className="px-2 py-1 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 whitespace-nowrap"
                                               >
-                                                <div className="w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                                                  {initials}
-                                                </div>
-                                                <span className="text-xs text-purple-700 font-medium max-w-[80px] truncate">{name.split(' ')[0]}</span>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => toggleUserForActivity(act.id, userId)}
-                                                  className="p-0.5 text-purple-400 hover:text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                + Add
+                                              </button>
+                                              
+                                              {openUserSelectorForActivity === act.id && (
+                                                <div 
+                                                  className="absolute z-[9999] mt-1 right-0 w-48 bg-white border border-gray-300 rounded shadow-lg"
+                                                  onClick={(e) => e.stopPropagation()}
                                                 >
-                                                  <XMarkIcon className="h-3 w-3" />
-                                                </button>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                        
-                                        {/* Add member button */}
-                                        <div className="relative" data-user-selector-dropdown>
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id);
-                                            }}
-                                            className={`inline-flex items-center gap-1 px-2 py-1 border border-dashed rounded-full text-xs font-medium transition-all ${
-                                              openUserSelectorForActivity === act.id
-                                                ? 'border-purple-400 bg-purple-50 text-purple-600'
-                                                : 'border-gray-300 text-gray-500 hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50'
-                                            }`}
-                                          >
-                                            <PlusIcon className="h-3 w-3" />
-                                            Add
-                                          </button>
-                                          
-                                          {/* Dropdown */}
-                                          {openUserSelectorForActivity === act.id && (
-                                            <div 
-                                              className="absolute z-50 mt-2 left-0 w-64 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
-                                              onClick={(e) => e.stopPropagation()}
-                                            >
-                                              <div className="px-4 py-2.5 bg-gray-50 border-b text-xs font-semibold text-gray-700 flex items-center justify-between">
-                                                <span>Select Team Members</span>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setOpenUserSelectorForActivity(null)}
-                                                  className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                                                >
-                                                  <XMarkIcon className="h-4 w-4 text-gray-500" />
-                                                </button>
-                                              </div>
-                                              <div className="max-h-56 overflow-y-auto">
-                                                {(allUsers.length > 0 ? allUsers : userMaster).filter(user => {
-                                                  // Only show users not already assigned
-                                                  return !isUserAssigned(act.assigned_users, user.id);
-                                                }).map(user => {
-                                                  const userName = user.full_name || user.employee_name || user.username || user.email || 'Unknown';
-                                                  const userInitials = userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
-                                                  return (
-                                                    <div
-                                                      key={user.id}
-                                                      onClick={() => toggleUserForActivity(act.id, user.id)}
-                                                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer text-sm transition-colors hover:bg-purple-50"
-                                                    >
-                                                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-gray-200 text-gray-600">
-                                                        {userInitials}
-                                                      </div>
-                                                      <span className="flex-1 truncate text-gray-700">
-                                                        {userName}
-                                                      </span>
-                                                      <PlusIcon className="h-4 w-4 text-gray-400" />
-                                                    </div>
-                                                  );
-                                                })}
-                                                {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).length === 0 && (
-                                                  <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                                                    All team members assigned
+                                                  <div className="px-2 py-1.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700 flex items-center justify-between">
+                                                    <span>Select Member</span>
+                                                    <button type="button" onClick={() => setOpenUserSelectorForActivity(null)} className="text-gray-400 hover:text-gray-600">×</button>
                                                   </div>
-                                                )}
-                                              </div>
-                                              <div className="px-4 py-3 bg-gray-50 border-t">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setOpenUserSelectorForActivity(null)}
-                                                  className="w-full py-2 text-xs bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-colors"
-                                                >
-                                                  Done
-                                                </button>
-                                              </div>
+                                                  <div className="max-h-40 overflow-y-auto">
+                                                    {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).map(user => {
+                                                      const userName = user.full_name || user.employee_name || user.username || user.email || 'Unknown';
+                                                      return (
+                                                        <div
+                                                          key={user.id}
+                                                          onClick={() => toggleUserForActivity(act.id, user.id)}
+                                                          className="px-2 py-1.5 cursor-pointer text-xs text-gray-700 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                                        >
+                                                          {userName}
+                                                        </div>
+                                                      );
+                                                    })}
+                                                    {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).length === 0 && (
+                                                      <div className="px-2 py-1.5 text-xs text-gray-500 text-center">All assigned</div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              )}
                                             </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td className="py-4 px-4">
-                                      <div 
-                                        className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg text-center font-medium text-gray-700"
-                                        title="Planned hours from Activity Master"
-                                      >
-                                        {act.planned_hours || 0}
-                                      </div>
-                                    </td>
-                                    <td className="py-4 px-4">
-                                      <input 
-                                        type="number" 
-                                        value={act.actual_hours || ''} 
-                                        onChange={(e) => updateScopeActivity(act.id, 'actual_hours', parseFloat(e.target.value) || 0)} 
-                                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-amber-500 focus:ring-2 focus:ring-amber-100 text-center font-medium" 
-                                        placeholder="0"
-                                        min="0"
-                                        step="0.5"
-                                      />
-                                    </td>
-                                    <td className="py-4 px-4">
-                                      <input 
-                                        type="date" 
-                                        value={act.due_date || ''} 
-                                        onChange={(e) => updateScopeActivity(act.id, 'due_date', e.target.value)} 
-                                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100" 
-                                      />
-                                    </td>
-                                    <td className="py-4 px-4">
-                                      <select
-                                        value={act.status || 'Not Started'}
-                                        onChange={(e) => updateScopeActivity(act.id, 'status', e.target.value)}
-                                        className={`w-full px-3 py-2 text-sm border rounded-lg font-medium cursor-pointer ${
-                                          act.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
-                                          act.status === 'In Progress' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                          act.status === 'On Hold' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                          'bg-gray-50 text-gray-600 border-gray-200'
-                                        }`}
-                                      >
-                                        <option value="Not Started">Not Started</option>
-                                        <option value="In Progress">In Progress</option>
-                                        <option value="Completed">Completed</option>
-                                        <option value="On Hold">On Hold</option>
-                                      </select>
-                                    </td>
-                                    <td className="py-4 px-4">
-                                      <input 
-                                        type="text" 
-                                        value={act.remarks || ''} 
-                                        onChange={(e) => updateScopeActivity(act.id, 'remarks', e.target.value)} 
-                                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100" 
-                                        placeholder="Add remarks..."
-                                      />
-                                    </td>
-                                    <td className="py-4 px-2 text-center">
-                                      <button 
-                                        type="button" 
-                                        onClick={() => removeScopeActivity(act.id)} 
-                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                      >
-                                        <TrashIcon className="h-4 w-4" />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
+                                          </div>
+                                        </td>
+                                        <td className="py-1.5 px-1 text-center align-middle">
+                                          <button 
+                                            type="button" 
+                                            onClick={() => removeScopeActivity(act.id)} 
+                                            className="text-gray-400 hover:text-red-500"
+                                            title="Remove"
+                                          >
+                                            ×
+                                          </button>
+                                        </td>
+                                      </tr>
+                                      
+                                      {/* User Rows */}
+                                      {hasUsers && assignedUsers.map((assignment, uIdx) => {
+                                        const userId = typeof assignment === 'object' ? assignment.user_id : assignment;
+                                        const userList = allUsers.length > 0 ? allUsers : userMaster;
+                                        const user = userList.find(u => String(u.id) === String(userId));
+                                        const name = user ? (user.full_name || user.employee_name || user.username || user.email || '?') : '?';
+                                        const plannedHrs = typeof assignment === 'object' ? (assignment.planned_hours || '') : '';
+                                        const actualHrs = typeof assignment === 'object' ? (assignment.actual_hours || '') : '';
+                                        const dueDate = typeof assignment === 'object' ? (assignment.due_date || '') : '';
+                                        const status = typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
+                                        const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
+                                        
+                                        return (
+                                          <tr key={`${act.id}-user-${userId}`} className="bg-white border-t border-gray-100 hover:bg-gray-50">
+                                            <td className="py-1 px-2"></td>
+                                            <td className="py-1 px-2"></td>
+                                            <td className="py-1 px-2 text-gray-700">{name}</td>
+                                            <td className="py-1 px-2">
+                                              <input
+                                                type="number"
+                                                value={plannedHrs}
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'planned_hours', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none"
+                                                placeholder="0"
+                                                min="0"
+                                                step="0.5"
+                                              />
+                                            </td>
+                                            <td className="py-1 px-2">
+                                              <input
+                                                type="number"
+                                                value={actualHrs}
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'actual_hours', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none"
+                                                placeholder="0"
+                                                min="0"
+                                                step="0.5"
+                                              />
+                                            </td>
+                                            <td className="py-1 px-2">
+                                              <input 
+                                                type="date" 
+                                                value={dueDate} 
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'due_date', e.target.value)} 
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none" 
+                                              />
+                                            </td>
+                                            <td className="py-1 px-2">
+                                              <select
+                                                value={status}
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'status', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none"
+                                              >
+                                                <option value="Not Started">Not Started</option>
+                                                <option value="In Progress">In Progress</option>
+                                                <option value="Completed">Completed</option>
+                                                <option value="On Hold">On Hold</option>
+                                              </select>
+                                            </td>
+                                            <td className="py-1 px-2">
+                                              <input
+                                                type="text"
+                                                value={remarks}
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'remarks', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none"
+                                                placeholder="Remarks..."
+                                              />
+                                            </td>
+                                            <td className="py-1 px-1 text-center">
+                                              <button 
+                                                type="button" 
+                                                onClick={() => toggleUserForActivity(act.id, userId)} 
+                                                className="text-gray-400 hover:text-red-500"
+                                                title="Remove"
+                                              >
+                                                ×
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                      
+                                      {/* Totals Row */}
+                                      {hasUsers && (
+                                        <tr className="bg-gray-100 border-t border-gray-200">
+                                          <td className="py-1 px-2"></td>
+                                          <td className="py-1 px-2"></td>
+                                          <td className="py-1 px-2 text-right text-gray-600 font-medium">Total:</td>
+                                          <td className="py-1 px-2 font-bold text-blue-600">{getActivityTotalPlanned(act).toFixed(1)}</td>
+                                          <td className="py-1 px-2 font-bold text-green-600">{getActivityTotalActual(act).toFixed(1)}</td>
+                                          <td className="py-1 px-2"></td>
+                                          <td className="py-1 px-2"></td>
+                                          <td className="py-1 px-2"></td>
+                                          <td className="py-1 px-1"></td>
+                                        </tr>
+                                      )}
+                                    </Fragment>
+                                  );
+                                })}
                               </tbody>
                             </table>
+                            </div>
                           </div>
                         ));
                       })()}
 
                       {/* Summary Footer */}
-                      <div className="bg-gray-100 rounded-lg px-3 py-2 flex items-center justify-between text-xs">
+                      <div className="bg-gray-100 border border-gray-300 rounded px-3 py-2 flex items-center justify-between text-xs">
                         <span className="text-gray-600">
                           {projectActivities.length} activities • {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines
                         </span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-blue-600 font-semibold">
-                            Plan: {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h
-                          </span>
-                          <span className="text-amber-600 font-semibold">
-                            Actual: {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h
-                          </span>
+                        <div className="flex items-center gap-4">
+                          <span className="text-gray-600">Plan: <strong className="text-blue-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</strong></span>
+                          <span className="text-gray-600">Actual: <strong className="text-green-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</strong></span>
                         </div>
                       </div>
                     </div>
