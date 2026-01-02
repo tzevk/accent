@@ -231,11 +231,20 @@ export async function PUT(request) {
     const vals = [];
     // Allow updating role_id (system role), permissions, and field_permissions
     const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role', 'role_id', 'permissions', 'field_permissions'];
+    
+    console.log('[PUT /api/users] Received data keys:', Object.keys(data));
+    console.log('[PUT /api/users] Permissions in request:', data.permissions);
+    
     allowed.forEach(k => {
       if (data.hasOwnProperty(k)) {
         if (k === 'permissions' || k === 'field_permissions') {
           fields.push(`${k} = ?`);
-          vals.push(data[k] ? JSON.stringify(data[k]) : null);
+          // Handle empty arrays - still save them as JSON
+          const jsonValue = Array.isArray(data[k]) || (data[k] && typeof data[k] === 'object') 
+            ? JSON.stringify(data[k]) 
+            : null;
+          vals.push(jsonValue);
+          console.log(`[PUT /api/users] Setting ${k} to:`, jsonValue);
         } else if (k === 'employee_id' || k === 'role_id') {
           // Convert empty strings to NULL for integer fields
           fields.push(`${k} = ?`);

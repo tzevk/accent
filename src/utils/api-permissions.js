@@ -137,11 +137,18 @@ export async function ensurePermission(request, resource, permission) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Debug logging for permission checks
+  console.log(`[RBAC] Checking ${resource}:${permission} for user ${user.email || user.username}`);
+  console.log(`[RBAC] is_super_admin: ${user.is_super_admin}`);
+  console.log(`[RBAC] permissions (${user.permissions?.length || 0}):`, user.permissions?.slice(0, 5));
+  console.log(`[RBAC] merged_permissions (${user.merged_permissions?.length || 0}):`, user.merged_permissions?.slice(0, 5));
+
   // Super admin bypass or exact permission match
   if (user.is_super_admin || hasPermission(user, resource, permission)) {
     return { authorized: true, user };
   }
 
+  console.log(`[RBAC] DENIED: ${user.email || user.username} does not have ${resource}:${permission}`);
   return NextResponse.json({ success: false, error: 'Forbidden: missing permission' }, { status: 403 });
 }
 

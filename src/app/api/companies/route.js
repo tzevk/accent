@@ -1,12 +1,25 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { ensurePermission, RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
+import { hasPermission } from '@/utils/rbac';
+import { NextResponse } from 'next/server';
 
 // GET all companies
 export async function GET(request) {
   try {
-    // RBAC: read companies
-    const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.READ);
-    if (auth instanceof Response) return auth;
+    // RBAC: read companies OR read leads (leads page needs companies for dropdown)
+    const user = await getCurrentUser(request);
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Allow if user has companies:read OR leads:read (for dropdowns in leads form)
+    const canReadCompanies = user.is_super_admin || 
+      hasPermission(user, RESOURCES.COMPANIES, PERMISSIONS.READ) ||
+      hasPermission(user, RESOURCES.LEADS, PERMISSIONS.READ);
+    
+    if (!canReadCompanies) {
+      return NextResponse.json({ success: false, error: 'Forbidden: missing permission' }, { status: 403 });
+    }
     
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim().toLowerCase();

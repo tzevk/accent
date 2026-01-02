@@ -1,11 +1,33 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
+import { hasPermission } from '@/utils/rbac';
+
+// Helper to check if user is in project team
+function isUserInProjectTeam(projectTeam, userId, userEmail) {
+  if (!projectTeam) return false;
+  try {
+    const team = typeof projectTeam === 'string' ? JSON.parse(projectTeam) : projectTeam;
+    if (!Array.isArray(team)) return false;
+    return team.some(member => 
+      String(member.user_id) === String(userId) || 
+      String(member.id) === String(userId) ||
+      member.email === userEmail
+    );
+  } catch {
+    return false;
+  }
+}
 
 // GET specific project
 export async function GET(request, { params }) {
-  // RBAC: read projects
-  const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
-  if (auth instanceof Response) return auth;
+  // Get current user first
+  const user = await getCurrentUser(request);
+  if (!user) {
+    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  
+  // Check if user has full projects:read permission
+  const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.READ);
   
   const { id } = await params;
   // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
@@ -97,6 +119,19 @@ export async function GET(request, { params }) {
     }
 
     const project = rows[0];
+    
+    // If user doesn't have full access, check if they're in the project team
+    if (!hasFullAccess) {
+      const isTeamMember = isUserInProjectTeam(project.project_team, user.id, user.email);
+      if (!isTeamMember) {
+        console.log(`[Projects API] User ${user.email} denied access to project ${id} - not a team member`);
+        return Response.json({
+          success: false,
+          error: 'You do not have permission to access this project'
+        }, { status: 403 });
+      }
+      console.log(`[Projects API] User ${user.email} granted access to project ${id} as team member`);
+    }
 
     // Fetch associated project activities after we have the project row.
     // Determine which key the activities table expects: prefer primary key value, fallback to project_id or project_code.
@@ -317,9 +352,14 @@ export async function GET(request, { params }) {
 
 // PUT - Update project
 export async function PUT(request, context) {
-  // RBAC: update projects
-  const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-  if (auth instanceof Response) return auth;
+  // Get current user first
+  const user = await getCurrentUser(request);
+  if (!user) {
+    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  
+  // Check if user has full projects:update permission
+  const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   
   let db = null;
   let retries = 0;
@@ -421,6 +461,30 @@ export async function PUT(request, context) {
       // ensure DB connection closed before returning
       try { await db.end(); } catch {}
       return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
+    }
+    
+    // If user doesn't have full access, check if they're in the project team
+    if (!hasFullAccess) {
+      try {
+        const [projectRows] = await db.execute(
+          `SELECT project_team FROM projects WHERE ${pkCol} = ?`,
+          [projectId]
+        );
+        if (projectRows && projectRows.length > 0) {
+          const isTeamMember = isUserInProjectTeam(projectRows[0].project_team, user.id, user.email);
+          if (!isTeamMember) {
+            console.log(`[Projects API PUT] User ${user.email} denied update access to project ${id} - not a team member`);
+            try { await db.end(); } catch {}
+            return Response.json({
+              success: false,
+              error: 'You do not have permission to update this project'
+            }, { status: 403 });
+          }
+          console.log(`[Projects API PUT] User ${user.email} granted update access to project ${id} as team member`);
+        }
+      } catch (teamCheckErr) {
+        console.warn('Error checking team membership for PUT:', teamCheckErr.message);
+      }
     }
     
     const {
@@ -947,14 +1011,42 @@ export async function PUT(request, context) {
 // DELETE project
 export async function DELETE(request, { params }) {
   try {
-    // RBAC: delete projects
-    const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
-    if (auth instanceof Response) return auth;
+    // Get current user first
+    const user = await getCurrentUser(request);
+    if (!user) {
+      return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Check if user has full projects:delete permission
+    const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
     
     const { id } = await params;
     const projectId = parseInt(id);
     
     const db = await dbConnect();
+    
+    // If user doesn't have full access, check if they're in the project team
+    if (!hasFullAccess) {
+      const [projectRows] = await db.execute(
+        'SELECT project_team FROM projects WHERE id = ?',
+        [projectId]
+      );
+      if (projectRows && projectRows.length > 0) {
+        const isTeamMember = isUserInProjectTeam(projectRows[0].project_team, user.id, user.email);
+        if (!isTeamMember) {
+          console.log(`[Projects API DELETE] User ${user.email} denied delete access to project ${id} - not a team member`);
+          await db.end();
+          return Response.json({
+            success: false,
+            error: 'You do not have permission to delete this project'
+          }, { status: 403 });
+        }
+        console.log(`[Projects API DELETE] User ${user.email} granted delete access to project ${id} as team member`);
+      } else {
+        await db.end();
+        return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
+      }
+    }
     
     const [result] = await db.execute(
       'DELETE FROM projects WHERE id = ?',

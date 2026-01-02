@@ -1,14 +1,36 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { ensurePermission, RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
+import { hasPermission } from '@/utils/rbac';
+
+// Helper to check if user is in project team
+function isUserInProjectTeam(projectTeam, userId, userEmail) {
+  if (!projectTeam) return false;
+  try {
+    const team = typeof projectTeam === 'string' ? JSON.parse(projectTeam) : projectTeam;
+    if (!Array.isArray(team)) return false;
+    return team.some(member => 
+      String(member.user_id) === String(userId) || 
+      String(member.id) === String(userId) ||
+      member.email === userEmail
+    );
+  } catch {
+    return false;
+  }
+}
 
 // GET all projects
 export async function GET(request) {
   try {
-    // RBAC: read projects
-    const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
-    if (auth instanceof Response) return auth;
+    // Get current user first
+    const user = await getCurrentUser(request);
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Check if user has full projects:read permission
+    const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.READ);
     
     const db = await dbConnect();
     
@@ -119,7 +141,17 @@ export async function GET(request) {
     
     await db.end();
     
-    return NextResponse.json({ success: true, data: rows });
+    // If user doesn't have full access, filter to only projects they're assigned to
+    let filteredRows = rows;
+    if (!hasFullAccess) {
+      console.log('[Projects API] User does not have full access, filtering by team membership');
+      filteredRows = rows.filter(project => 
+        isUserInProjectTeam(project.project_team, user.id, user.email)
+      );
+      console.log(`[Projects API] Filtered from ${rows.length} to ${filteredRows.length} projects for user ${user.email}`);
+    }
+    
+    return NextResponse.json({ success: true, data: filteredRows });
   } catch (error) {
     console.error('Projects GET error:', error);
     return NextResponse.json({ 
