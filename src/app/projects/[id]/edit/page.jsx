@@ -4077,32 +4077,13 @@ function EditProjectForm() {
             {/* Project Activity / Daily Activity Tab */}
             {activeTab === 'project_activity' && (
               <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                {/* Header */}
-                <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-purple-700 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white/20 rounded-lg">
-                      <ClipboardDocumentListIcon className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="font-semibold text-white text-lg">Project Activities</h2>
-                      <p className="text-purple-200 text-xs">Manage and track project activities</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5">
-                      <span className="text-purple-200 text-xs">Total:</span>
-                      <span className="text-white font-bold">{projectActivities.length}</span>
-                    </div>
-                    <div className="flex items-center gap-2 bg-blue-500/30 rounded-lg px-3 py-1.5">
-                      <ClockIcon className="h-4 w-4 text-blue-200" />
-                      <span className="text-blue-100 text-xs">Plan:</span>
-                      <span className="text-white font-bold">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h</span>
-                    </div>
-                    <div className="flex items-center gap-2 bg-amber-500/30 rounded-lg px-3 py-1.5">
-                      <CheckCircleIcon className="h-4 w-4 text-amber-200" />
-                      <span className="text-amber-100 text-xs">Actual:</span>
-                      <span className="text-white font-bold">{projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h</span>
-                    </div>
+                {/* Simple Header */}
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-800 text-lg">Project Activities</h2>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-gray-500">{projectActivities.length} activities</span>
+                    <span className="text-blue-600 font-medium">Plan: {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h</span>
+                    <span className="text-green-600 font-medium">Actual: {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h</span>
                   </div>
                 </div>
 
@@ -4113,117 +4094,101 @@ function EditProjectForm() {
                       <button
                         type="button"
                         onClick={toggleActivitySelector}
-                        className={`px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-sm ${
+                        className={`px-3 py-1.5 rounded text-sm font-medium flex items-center gap-1.5 transition-all ${
                           showActivitySelector 
-                            ? 'bg-gray-100 text-gray-700 border border-gray-300' 
-                            : 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 shadow-purple-200'
+                            ? 'bg-gray-200 text-gray-700' 
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
                       >
                         {showActivitySelector ? (
                           <>
                             <XMarkIcon className="h-4 w-4" />
-                            Close Selection Panel
+                            Close
                           </>
                         ) : (
                           <>
                             <PlusIcon className="h-4 w-4" />
-                            Add Activities from Master
+                            Add Activities
                           </>
                         )}
                       </button>
                       {projectActivities.length > 0 && (
                         <div className="text-sm text-gray-500">
-                          {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Other'] = true; return acc; }, {})).length} disciplines
+                          {projectActivities.length} added
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Multi-Select Activity Checkboxes */}
+                  {/* Compact Activity Selector by Discipline */}
                   {showActivitySelector && functions.length > 0 && (
-                    <div className="border-2 border-purple-200 rounded-xl bg-gradient-to-b from-purple-50 to-white overflow-hidden shadow-sm">
-                      {/* Header with search and actions */}
-                      <div className="px-5 py-4 bg-gradient-to-r from-purple-100 to-purple-50 border-b border-purple-200">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-600 rounded-lg">
-                              <CheckIcon className="h-4 w-4 text-white" />
-                            </div>
-                            <div>
-                              <span className="font-semibold text-purple-900">Activity Master</span>
-                              {getSelectedCount() > 0 && (
-                                <span className="ml-2 px-2.5 py-1 bg-purple-600 text-white text-xs font-bold rounded-full">
-                                  {getSelectedCount()} selected
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="relative">
-                              <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                              <input
-                                type="text"
-                                value={activitySelectorSearch}
-                                onChange={(e) => setActivitySelectorSearch(e.target.value)}
-                                placeholder="Search activities..."
-                                className="pl-9 pr-4 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 w-56 bg-white"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={addSelectedActivities}
-                              disabled={getSelectedCount() === 0}
-                              className="px-5 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg text-sm font-semibold hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2"
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                              Add {getSelectedCount() > 0 ? `(${getSelectedCount()})` : 'Selected'}
-                            </button>
-                          </div>
+                    <div className="border border-gray-200 rounded-lg bg-white text-sm">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50">
+                        <input
+                          type="text"
+                          value={activitySelectorSearch}
+                          onChange={(e) => setActivitySelectorSearch(e.target.value)}
+                          placeholder="Search..."
+                          className="px-2 py-1 text-sm border border-gray-300 rounded w-48 focus:outline-none focus:border-blue-500"
+                        />
+                        <div className="flex items-center gap-3">
+                          {getSelectedCount() > 0 && (
+                            <span className="text-blue-600 font-medium">{getSelectedCount()} selected</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={addSelectedActivities}
+                            disabled={getSelectedCount() === 0}
+                            className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                          >
+                            Add
+                          </button>
                         </div>
                       </div>
                       
-                      {/* Activity list with checkboxes */}
-                      <div className="max-h-96 overflow-y-auto p-4 space-y-3">
+                      {/* Disciplines */}
+                      <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
                         {functions.map(func => {
                           const filteredActs = (func.activities || []).filter(act => {
                             if (!activitySelectorSearch) return true;
                             return act.activity_name?.toLowerCase().includes(activitySelectorSearch.toLowerCase());
                           });
                           
-                          if (filteredActs.length === 0) return null;
+                          // Show discipline even if no activities (but hide if search active and no matches)
+                          if (activitySelectorSearch && filteredActs.length === 0) return null;
                           
-                          const allSelected = filteredActs.every(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
+                          const allSelected = filteredActs.length > 0 && filteredActs.every(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
                           const someSelected = filteredActs.some(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
-                          const selectedInGroup = filteredActs.filter(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]).length;
                           
                           return (
-                            <div key={func.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                              {/* Discipline Header */}
+                            <div key={func.id}>
+                              {/* Discipline header */}
                               <div 
-                                className="px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center gap-3 cursor-pointer hover:bg-gray-50"
-                                onClick={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)}
+                                className={`flex items-center gap-2 px-3 py-1 bg-gray-50 ${filteredActs.length > 0 ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                                onClick={() => filteredActs.length > 0 && toggleAllActivitiesInDiscipline(func.id, filteredActs)}
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={allSelected}
-                                  ref={el => el && (el.indeterminate = someSelected && !allSelected)}
-                                  onChange={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)}
-                                  className="h-5 w-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500 cursor-pointer"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                                <div className="flex-1">
-                                  <span className="font-semibold text-gray-800">{func.function_name}</span>
-                                  <span className="ml-2 text-xs text-gray-400">({filteredActs.length} activities)</span>
-                                </div>
-                                {selectedInGroup > 0 && (
-                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
-                                    {selectedInGroup} selected
-                                  </span>
+                                {filteredActs.length > 0 ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    ref={el => el && (el.indeterminate = someSelected && !allSelected)}
+                                    onChange={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)}
+                                    className="h-3.5 w-3.5 text-blue-600 rounded border-gray-300"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                ) : (
+                                  <span className="h-3.5 w-3.5" />
                                 )}
+                                <span className="font-medium text-gray-700 text-xs">{func.function_name}</span>
+                                <span className="text-gray-400 text-xs">
+                                  {filteredActs.length > 0 ? `(${filteredActs.length})` : '(no activities)'}
+                                </span>
                               </div>
                               
-                              {/* Activities */}
-                              <div className="divide-y divide-gray-50">
+                              {/* Activities under this discipline - 3 columns */}
+                              {filteredActs.length > 0 && (
+                              <div className="grid grid-cols-3 gap-x-1 px-2 py-1">
                                 {filteredActs.map(activity => {
                                   const isAlreadyAdded = projectActivities.some(pa => String(pa.id) === String(activity.id) && pa.type === 'activity');
                                   const isSelected = selectedActivitiesForAdd[`${func.id}|${activity.id}`];
@@ -4231,39 +4196,27 @@ function EditProjectForm() {
                                   return (
                                     <label 
                                       key={activity.id} 
-                                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                                        isAlreadyAdded 
-                                          ? 'opacity-50 cursor-not-allowed bg-gray-50' 
-                                          : isSelected 
-                                            ? 'bg-purple-50 hover:bg-purple-100' 
-                                            : 'hover:bg-gray-50'
+                                      className={`flex items-center gap-1 py-0.5 cursor-pointer text-xs truncate ${
+                                        isAlreadyAdded ? 'opacity-40 cursor-not-allowed' : isSelected ? 'text-blue-700' : 'text-gray-600 hover:text-gray-900'
                                       }`}
+                                      title={activity.activity_name}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={isSelected || false}
                                         disabled={isAlreadyAdded}
                                         onChange={() => !isAlreadyAdded && toggleActivitySelection(func.id, activity.id)}
-                                        className="h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500 disabled:opacity-50 cursor-pointer"
+                                        className="h-3 w-3 text-blue-600 rounded border-gray-300 flex-shrink-0"
                                       />
-                                      <span className={`flex-1 text-sm ${isAlreadyAdded ? 'text-gray-400 line-through' : isSelected ? 'text-purple-900 font-medium' : 'text-gray-700'}`}>
+                                      <span className={`truncate ${isAlreadyAdded ? 'line-through' : ''}`}>
                                         {activity.activity_name}
                                       </span>
-                                      {activity.default_manhours > 0 && (
-                                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${isSelected ? 'bg-purple-200 text-purple-800' : 'bg-blue-50 text-blue-600'}`}>
-                                          {parseFloat(activity.default_manhours).toFixed(2)} hrs
-                                        </span>
-                                      )}
-                                      {isAlreadyAdded && (
-                                        <span className="text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                                          <CheckCircleIcon className="h-3 w-3" />
-                                          Added
-                                        </span>
-                                      )}
+                                      {isAlreadyAdded && <span className="text-green-600 flex-shrink-0">✓</span>}
                                     </label>
                                   );
                                 })}
                               </div>
+                              )}
                             </div>
                           );
                         })}
@@ -4273,11 +4226,11 @@ function EditProjectForm() {
 
                   {/* Activities Grouped by Discipline */}
                   {projectActivities.length === 0 ? (
-                    <div className="text-center py-6 bg-gray-50 border border-gray-200 rounded">
-                      <p className="text-gray-500 text-sm">No activities added yet. Click "Add Activities from Master" to get started.</p>
+                    <div className="text-center py-6 text-gray-400 text-sm">
+                      No activities added yet. Click the button above to add activities.
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {/* Group activities by discipline */}
                       {(() => {
                         const grouped = projectActivities.reduce((acc, act) => {
@@ -4288,30 +4241,30 @@ function EditProjectForm() {
                         }, {});
 
                         return Object.entries(grouped).map(([discipline, acts]) => (
-                          <div key={discipline} className="border border-gray-300 rounded" style={{ overflow: 'visible' }}>
+                          <div key={discipline} style={{ overflow: 'visible' }}>
                             {/* Discipline Header */}
-                            <div className="px-3 py-1.5 border-b border-gray-300 bg-gray-100 flex items-center justify-between">
-                              <span className="font-semibold text-gray-700 text-sm">{discipline} <span className="font-normal text-gray-500">({acts.length})</span></span>
-                              <div className="flex items-center gap-4 text-xs text-gray-600">
-                                <span>Plan: <strong className="text-blue-600">{acts.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</strong></span>
-                                <span>Actual: <strong className="text-green-600">{acts.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</strong></span>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-gray-800 text-sm">{discipline} <span className="font-normal text-gray-400 text-xs">({acts.length})</span></span>
+                              <div className="flex items-center gap-3 text-xs">
+                                <span className="text-blue-600 font-medium">{acts.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h plan</span>
+                                <span className="text-green-600 font-medium">{acts.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h actual</span>
                               </div>
                             </div>
 
                             {/* Activities Table */}
                             <div style={{ overflow: 'visible' }}>
-                            <table className="w-full text-xs" style={{ overflow: 'visible' }}>
-                              <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '3%' }}>#</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '20%' }}>Activity</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '14%' }}>Team</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '7%' }}>Plan</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '7%' }}>Actual</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '10%' }}>Due</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '10%' }}>Status</th>
-                                  <th className="text-left py-1.5 px-2 font-semibold text-gray-600" style={{ width: '25%' }}>Remarks</th>
-                                  <th className="py-1.5 px-1" style={{ width: '4%' }}></th>
+                            <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
+                              <thead>
+                                <tr className="border-b border-gray-300">
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '3%' }}>#</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '20%' }}>Activity</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '14%' }}>Team</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '7%' }}>Plan</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '7%' }}>Actual</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '10%' }}>Due</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '10%' }}>Status</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '25%' }}>Remarks</th>
+                                  <th className="py-2 px-1" style={{ width: '4%' }}></th>
                                 </tr>
                               </thead>
                               <tbody style={{ overflow: 'visible' }}>
@@ -4322,15 +4275,15 @@ function EditProjectForm() {
                                   return (
                                     <Fragment key={`${act.id}-${act.type}-${idx}`}>
                                       {/* Activity Header Row */}
-                                      <tr className="bg-gray-50 border-t border-gray-200">
-                                        <td className="py-1.5 px-2 text-gray-600 font-bold align-middle">{idx + 1}</td>
-                                        <td className="py-1.5 px-2" colSpan={7}>
+                                      <tr className="border-b border-gray-200">
+                                        <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
+                                        <td className="py-2 px-2" colSpan={7}>
                                           <div className="flex items-center gap-2">
                                             <input 
                                               type="text" 
                                               value={act.activity_name || act.name || ''} 
                                               onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
-                                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none text-gray-800 bg-white" 
+                                              className="flex-1 px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" 
                                               placeholder="Activity name"
                                             />
                                             <div className="relative" data-user-selector-dropdown>
@@ -4340,14 +4293,14 @@ function EditProjectForm() {
                                                   e.stopPropagation();
                                                   setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id);
                                                 }}
-                                                className="px-2 py-1 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 whitespace-nowrap"
+                                                className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap"
                                               >
                                                 + Add
                                               </button>
                                               
                                               {openUserSelectorForActivity === act.id && (
                                                 <div 
-                                                  className="absolute z-[9999] mt-1 right-0 w-48 bg-white border border-gray-300 rounded shadow-lg"
+                                                  className="absolute z-[9999] mt-1 right-0 w-48 bg-white border border-gray-200 rounded-md shadow-lg"
                                                   onClick={(e) => e.stopPropagation()}
                                                 >
                                                   <div className="px-2 py-1.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700 flex items-center justify-between">
@@ -4376,11 +4329,11 @@ function EditProjectForm() {
                                             </div>
                                           </div>
                                         </td>
-                                        <td className="py-1.5 px-1 text-center align-middle">
+                                        <td className="py-2 px-1 text-center align-middle">
                                           <button 
                                             type="button" 
                                             onClick={() => removeScopeActivity(act.id)} 
-                                            className="text-gray-400 hover:text-red-500"
+                                            className="text-gray-300 hover:text-red-500"
                                             title="Remove"
                                           >
                                             ×
@@ -4401,45 +4354,48 @@ function EditProjectForm() {
                                         const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
                                         
                                         return (
-                                          <tr key={`${act.id}-user-${userId}`} className="bg-white border-t border-gray-100 hover:bg-gray-50">
-                                            <td className="py-1 px-2"></td>
-                                            <td className="py-1 px-2"></td>
-                                            <td className="py-1 px-2 text-gray-700">{name}</td>
-                                            <td className="py-1 px-2">
+                                          <tr key={`${act.id}-user-${userId}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2 text-gray-600 text-xs">
+                                              <span className="text-gray-400 mr-1">{uIdx + 1}.</span>
+                                              {name}
+                                            </td>
+                                            <td className="py-1.5 px-2">
                                               <input
                                                 type="number"
                                                 value={plannedHrs}
                                                 onChange={(e) => updateUserManhours(act.id, userId, 'planned_hours', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none"
-                                                placeholder="0"
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
+                                                placeholder="–"
                                                 min="0"
                                                 step="0.5"
                                               />
                                             </td>
-                                            <td className="py-1 px-2">
+                                            <td className="py-1.5 px-2">
                                               <input
                                                 type="number"
                                                 value={actualHrs}
                                                 onChange={(e) => updateUserManhours(act.id, userId, 'actual_hours', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none"
-                                                placeholder="0"
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
+                                                placeholder="–"
                                                 min="0"
                                                 step="0.5"
                                               />
                                             </td>
-                                            <td className="py-1 px-2">
+                                            <td className="py-1.5 px-2">
                                               <input 
                                                 type="date" 
                                                 value={dueDate} 
                                                 onChange={(e) => updateUserManhours(act.id, userId, 'due_date', e.target.value)} 
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none" 
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent" 
                                               />
                                             </td>
-                                            <td className="py-1 px-2">
+                                            <td className="py-1.5 px-2">
                                               <select
                                                 value={status}
                                                 onChange={(e) => updateUserManhours(act.id, userId, 'status', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none"
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"
                                               >
                                                 <option value="Not Started">Not Started</option>
                                                 <option value="In Progress">In Progress</option>
@@ -4447,20 +4403,20 @@ function EditProjectForm() {
                                                 <option value="On Hold">On Hold</option>
                                               </select>
                                             </td>
-                                            <td className="py-1 px-2">
-                                              <input
-                                                type="text"
+                                            <td className="py-1.5 px-2">
+                                              <textarea
                                                 value={remarks}
                                                 onChange={(e) => updateUserManhours(act.id, userId, 'remarks', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none"
-                                                placeholder="Remarks..."
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-transparent resize-y min-h-[24px]"
+                                                placeholder="–"
+                                                rows={1}
                                               />
                                             </td>
-                                            <td className="py-1 px-1 text-center">
+                                            <td className="py-1.5 px-1 text-center">
                                               <button 
                                                 type="button" 
                                                 onClick={() => toggleUserForActivity(act.id, userId)} 
-                                                className="text-gray-400 hover:text-red-500"
+                                                className="text-gray-300 hover:text-red-500"
                                                 title="Remove"
                                               >
                                                 ×
@@ -4472,16 +4428,16 @@ function EditProjectForm() {
                                       
                                       {/* Totals Row */}
                                       {hasUsers && (
-                                        <tr className="bg-gray-100 border-t border-gray-200">
-                                          <td className="py-1 px-2"></td>
-                                          <td className="py-1 px-2"></td>
-                                          <td className="py-1 px-2 text-right text-gray-600 font-medium">Total:</td>
-                                          <td className="py-1 px-2 font-bold text-blue-600">{getActivityTotalPlanned(act).toFixed(1)}</td>
-                                          <td className="py-1 px-2 font-bold text-green-600">{getActivityTotalActual(act).toFixed(1)}</td>
-                                          <td className="py-1 px-2"></td>
-                                          <td className="py-1 px-2"></td>
-                                          <td className="py-1 px-2"></td>
-                                          <td className="py-1 px-1"></td>
+                                        <tr className="border-t border-gray-200">
+                                          <td className="py-1.5 px-2"></td>
+                                          <td className="py-1.5 px-2"></td>
+                                          <td className="py-1.5 px-2 text-right text-gray-400 text-xs">Total</td>
+                                          <td className="py-1.5 px-2 font-semibold text-blue-600 text-xs">{getActivityTotalPlanned(act).toFixed(1)}</td>
+                                          <td className="py-1.5 px-2 font-semibold text-green-600 text-xs">{getActivityTotalActual(act).toFixed(1)}</td>
+                                          <td className="py-1.5 px-2"></td>
+                                          <td className="py-1.5 px-2"></td>
+                                          <td className="py-1.5 px-2"></td>
+                                          <td className="py-1.5 px-1"></td>
                                         </tr>
                                       )}
                                     </Fragment>
@@ -4495,13 +4451,11 @@ function EditProjectForm() {
                       })()}
 
                       {/* Summary Footer */}
-                      <div className="bg-gray-100 border border-gray-300 rounded px-3 py-2 flex items-center justify-between text-xs">
-                        <span className="text-gray-600">
-                          {projectActivities.length} activities • {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines
-                        </span>
+                      <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+                        <span>{projectActivities.length} activities • {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines</span>
                         <div className="flex items-center gap-4">
-                          <span className="text-gray-600">Plan: <strong className="text-blue-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</strong></span>
-                          <span className="text-gray-600">Actual: <strong className="text-green-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</strong></span>
+                          <span>Plan: <strong className="text-blue-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</strong></span>
+                          <span>Actual: <strong className="text-green-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</strong></span>
                         </div>
                       </div>
                     </div>
