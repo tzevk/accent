@@ -97,13 +97,12 @@ export async function POST(req) {
       })
       const isProd = process.env.NODE_ENV === 'production'
       
-      // Set cookies with immediate effect
+      // Set cookies as session cookies (cleared when browser closes)
       res.cookies.set('auth', '1', {
         httpOnly: true,
         sameSite: 'lax',
         secure: isProd,
         path: '/',
-        maxAge: 60 * 60 * 8, // 8 hours
         priority: 'high'
       })
       
@@ -114,7 +113,6 @@ export async function POST(req) {
         sameSite: 'lax',
         secure: isProd,
         path: '/',
-        maxAge: 60 * 60 * 8,
         priority: 'high'
       })
       
@@ -125,7 +123,6 @@ export async function POST(req) {
         sameSite: 'lax',
         secure: isProd,
         path: '/',
-        maxAge: 60 * 60 * 8,
         priority: 'high'
       })
       
