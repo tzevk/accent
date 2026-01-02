@@ -1551,10 +1551,14 @@ function EditProjectForm() {
         const updatedUsers = (act.assigned_users || []).map(u => {
           const uId = typeof u === 'object' ? u.user_id : u;
           if (String(uId) === String(userId)) {
+            // Only parse as float for numeric fields
+            const numericFields = ['planned_hours', 'actual_hours', 'qty_assigned', 'qty_completed'];
+            const newValue = numericFields.includes(field) ? (parseFloat(value) || 0) : value;
+            
             if (typeof u === 'object') {
-              return { ...u, [field]: parseFloat(value) || 0 };
+              return { ...u, [field]: newValue };
             } else {
-              return { user_id: u, planned_hours: field === 'planned_hours' ? (parseFloat(value) || 0) : 0, actual_hours: field === 'actual_hours' ? (parseFloat(value) || 0) : 0 };
+              return { user_id: u, planned_hours: field === 'planned_hours' ? (parseFloat(value) || 0) : 0, actual_hours: field === 'actual_hours' ? (parseFloat(value) || 0) : 0, [field]: newValue };
             }
           }
           return typeof u === 'object' ? u : { user_id: u, planned_hours: 0, actual_hours: 0 };
@@ -4255,16 +4259,27 @@ function EditProjectForm() {
                             <div style={{ overflow: 'visible' }}>
                             <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
                               <thead>
+                                <tr className="border-b border-gray-200">
+                                  <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
+                                  <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '18%' }}></th>
+                                  <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Team</th>
+                                  <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '10%' }}>Unit/Qty</th>
+                                  <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '28%' }}>Progress</th>
+                                  <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '20%' }}>Notes</th>
+                                  <th className="py-1 px-1" style={{ width: '4%' }}></th>
+                                </tr>
                                 <tr className="border-b border-gray-300">
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '3%' }}>#</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '20%' }}>Activity</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '14%' }}>Team</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '7%' }}>Plan</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '7%' }}>Actual</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '10%' }}>Due</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '10%' }}>Status</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase" style={{ width: '25%' }}>Remarks</th>
-                                  <th className="py-2 px-1" style={{ width: '4%' }}></th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
+                                  <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Member</th>
+                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
+                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
+                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-l border-blue-200">Plan</th>
+                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Actual</th>
+                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Due</th>
+                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Status</th>
+                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
+                                  <th className="py-2 px-1"></th>
                                 </tr>
                               </thead>
                               <tbody style={{ overflow: 'visible' }}>
@@ -4277,7 +4292,7 @@ function EditProjectForm() {
                                       {/* Activity Header Row */}
                                       <tr className="border-b border-gray-200">
                                         <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
-                                        <td className="py-2 px-2" colSpan={7}>
+                                        <td className="py-2 px-2" colSpan={9}>
                                           <div className="flex items-center gap-2">
                                             <input 
                                               type="text" 
@@ -4349,6 +4364,8 @@ function EditProjectForm() {
                                         const name = user ? (user.full_name || user.employee_name || user.username || user.email || '?') : '?';
                                         const plannedHrs = typeof assignment === 'object' ? (assignment.planned_hours || '') : '';
                                         const actualHrs = typeof assignment === 'object' ? (assignment.actual_hours || '') : '';
+                                        const qtyAssigned = typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
+                                        const qtyCompleted = typeof assignment === 'object' ? (assignment.qty_completed || '') : '';
                                         const dueDate = typeof assignment === 'object' ? (assignment.due_date || '') : '';
                                         const status = typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
                                         const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
@@ -4360,6 +4377,26 @@ function EditProjectForm() {
                                             <td className="py-1.5 px-2 text-gray-600 text-xs">
                                               <span className="text-gray-400 mr-1">{uIdx + 1}.</span>
                                               {name}
+                                            </td>
+                                            <td className="py-1.5 px-1">
+                                              <input
+                                                type="number"
+                                                value={qtyAssigned}
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'qty_assigned', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
+                                                placeholder="–"
+                                                min="0"
+                                              />
+                                            </td>
+                                            <td className="py-1.5 px-1">
+                                              <input
+                                                type="number"
+                                                value={qtyCompleted}
+                                                onChange={(e) => updateUserManhours(act.id, userId, 'qty_completed', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
+                                                placeholder="–"
+                                                min="0"
+                                              />
                                             </td>
                                             <td className="py-1.5 px-2">
                                               <input
@@ -4432,6 +4469,12 @@ function EditProjectForm() {
                                           <td className="py-1.5 px-2"></td>
                                           <td className="py-1.5 px-2"></td>
                                           <td className="py-1.5 px-2 text-right text-gray-400 text-xs">Total</td>
+                                          <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">
+                                            {(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_assigned : 0) || 0), 0)}
+                                          </td>
+                                          <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">
+                                            {(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_completed : 0) || 0), 0)}
+                                          </td>
                                           <td className="py-1.5 px-2 font-semibold text-blue-600 text-xs">{getActivityTotalPlanned(act).toFixed(1)}</td>
                                           <td className="py-1.5 px-2 font-semibold text-green-600 text-xs">{getActivityTotalActual(act).toFixed(1)}</td>
                                           <td className="py-1.5 px-2"></td>
