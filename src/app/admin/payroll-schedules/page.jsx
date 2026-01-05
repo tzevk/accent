@@ -26,6 +26,16 @@ export default function PayrollSchedulesPage() {
   });
 
   const componentCategories = {
+    allowances: {
+      label: 'Allowances',
+      icon: '💰',
+      components: [
+        { value: 'da', label: 'Dearness Allowance (DA)', type: 'fixed', suffix: '₹' },
+        { value: 'hra_percent', label: 'HRA %', type: 'percentage', suffix: '%' },
+        { value: 'conveyance_percent', label: 'Conveyance %', type: 'percentage', suffix: '%' },
+        { value: 'call_allowance_percent', label: 'Call Allowance %', type: 'percentage', suffix: '%' },
+      ]
+    },
     statutory: {
       label: 'Statutory Contributions',
       icon: '⚖️',

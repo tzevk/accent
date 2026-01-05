@@ -200,12 +200,14 @@ export default function EmployeeAttendancePage() {
       if (oldStatus === 'PL') empData.privilegedLeave--;
       if (oldStatus === 'OT') empData.overtime--;
       if (oldStatus === 'WO') empData.weeklyOff--;
+      if (oldStatus === 'H') empData.holiday = (empData.holiday || 1) - 1;
       
       if (newStatus === 'P') empData.present++;
       if (newStatus === 'A') empData.absent++;
       if (newStatus === 'PL') empData.privilegedLeave++;
       if (newStatus === 'OT') empData.overtime++;
       if (newStatus === 'WO') empData.weeklyOff++;
+      if (newStatus === 'H') empData.holiday = (empData.holiday || 0) + 1;
       
       return { ...prev, [employeeId]: empData };
     });
@@ -214,12 +216,17 @@ export default function EmployeeAttendancePage() {
   // Get status color and icon
   const getStatusStyle = (status) => {
     switch (status) {
-      case 'P': return { bg: 'bg-green-100', text: 'text-green-700', label: 'P' };
-      case 'A': return { bg: 'bg-red-100', text: 'text-red-700', label: 'A' };
-      case 'PL': return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'PL' };
-      case 'OT': return { bg: 'bg-purple-100', text: 'text-purple-700', label: 'OT' };
-      case 'WO': return { bg: 'bg-gray-100', text: 'text-gray-500', label: 'WO' };
-      default: return { bg: 'bg-gray-50', text: 'text-gray-400', label: '-' };
+      case 'P': return { bg: 'bg-green-100', text: 'text-green-700', label: 'P', fullLabel: 'Present' };
+      case 'A': return { bg: 'bg-red-100', text: 'text-red-700', label: 'A', fullLabel: 'Absent' };
+      case 'PL': return { bg: 'bg-blue-100', text: 'text-blue-700', label: 'PL', fullLabel: 'Privilege Leave' };
+      case 'OT': return { bg: 'bg-purple-100', text: 'text-purple-700', label: 'OT', fullLabel: 'Overtime' };
+      case 'WO': return { bg: 'bg-gray-200', text: 'text-gray-600', label: 'WO', fullLabel: 'Weekly Off' };
+      case 'H': return { bg: 'bg-orange-100', text: 'text-orange-700', label: 'H', fullLabel: 'Holiday' };
+      case 'HD': return { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'HD', fullLabel: 'Half Day' };
+      case 'CL': return { bg: 'bg-cyan-100', text: 'text-cyan-700', label: 'CL', fullLabel: 'Casual Leave' };
+      case 'SL': return { bg: 'bg-pink-100', text: 'text-pink-700', label: 'SL', fullLabel: 'Sick Leave' };
+      case 'LWP': return { bg: 'bg-rose-100', text: 'text-rose-700', label: 'LWP', fullLabel: 'Leave Without Pay' };
+      default: return { bg: 'bg-gray-50', text: 'text-gray-400', label: '-', fullLabel: 'Not Marked' };
     }
   };
 
@@ -428,29 +435,45 @@ export default function EmployeeAttendancePage() {
 
         {/* Legend */}
         <div className="px-6 py-4 flex-shrink-0">
-          <div className="flex items-center gap-6 text-sm">
-            <span className="text-gray-600 font-medium">Legend:</span>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">P</span>
-              <span className="text-gray-600">Present</span>
+          <div className="flex flex-wrap items-center gap-4 text-sm bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <span className="text-gray-700 font-semibold">Legend:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-green-100 text-green-700 rounded-lg text-xs font-bold">P</span>
+              <span className="text-gray-600 text-xs">Present</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">A</span>
-              <span className="text-gray-600">Absent</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-red-100 text-red-700 rounded-lg text-xs font-bold">A</span>
+              <span className="text-gray-600 text-xs">Absent</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">PL</span>
-              <span className="text-gray-600">Privileged Leave</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-orange-100 text-orange-700 rounded-lg text-xs font-bold">H</span>
+              <span className="text-gray-600 text-xs">Holiday</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">OT</span>
-              <span className="text-gray-600">Overtime</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-gray-200 text-gray-600 rounded-lg text-xs font-bold">WO</span>
+              <span className="text-gray-600 text-xs">Weekly Off</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-medium">WO</span>
-              <span className="text-gray-600">Weekly Off</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">PL</span>
+              <span className="text-gray-600 text-xs">Priv. Leave</span>
             </div>
-            <span className="text-gray-400 ml-4">Click on a cell to cycle through statuses</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-cyan-100 text-cyan-700 rounded-lg text-xs font-bold">CL</span>
+              <span className="text-gray-600 text-xs">Casual Leave</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-pink-100 text-pink-700 rounded-lg text-xs font-bold">SL</span>
+              <span className="text-gray-600 text-xs">Sick Leave</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-lg text-xs font-bold">HD</span>
+              <span className="text-gray-600 text-xs">Half Day</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-7 h-7 flex items-center justify-center bg-purple-100 text-purple-700 rounded-lg text-xs font-bold">OT</span>
+              <span className="text-gray-600 text-xs">Overtime</span>
+            </div>
+            <span className="text-gray-400 text-xs ml-auto italic">Click on any cell to mark attendance</span>
           </div>
         </div>
 
@@ -485,6 +508,7 @@ export default function EmployeeAttendancePage() {
                     ))}
                     <th className="px-3 py-3 text-center text-xs font-semibold text-purple-600 uppercase tracking-wider bg-purple-50 border-l border-purple-200">OT</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider bg-gray-100">WO</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-orange-600 uppercase tracking-wider bg-orange-50">H</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-green-600 uppercase tracking-wider bg-green-50">P</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-red-600 uppercase tracking-wider bg-red-50">A</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-blue-600 uppercase tracking-wider bg-blue-50">PL</th>
@@ -509,6 +533,7 @@ export default function EmployeeAttendancePage() {
                     ))}
                     <th className="bg-purple-50"></th>
                     <th className="bg-gray-100"></th>
+                    <th className="bg-orange-50"></th>
                     <th className="bg-green-50"></th>
                     <th className="bg-red-50"></th>
                     <th className="bg-blue-50"></th>
@@ -535,6 +560,7 @@ export default function EmployeeAttendancePage() {
                             <button
                               onClick={() => openAttendanceModal(empData.id, day.fullDate, status, employeeName)}
                               className={`w-8 h-8 rounded-lg text-xs font-semibold ${style.bg} ${style.text} hover:ring-2 hover:ring-purple-300 transition-all`}
+                              title={style.fullLabel}
                             >
                               {style.label}
                             </button>
@@ -542,19 +568,22 @@ export default function EmployeeAttendancePage() {
                         );
                       })}
                       <td className="px-3 py-3 text-center text-sm font-semibold text-purple-600 bg-purple-50/50 border-l border-purple-100">
-                        {empData.overtime}
+                        {empData.overtime || 0}
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-gray-600 bg-gray-100/50">
-                        {empData.weeklyOff}
+                        {empData.weeklyOff || 0}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-orange-600 bg-orange-50/50">
+                        {empData.holiday || 0}
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-green-600 bg-green-50/50">
-                        {empData.present}
+                        {empData.present || 0}
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-red-600 bg-red-50/50">
-                        {empData.absent}
+                        {empData.absent || 0}
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-blue-600 bg-blue-50/50">
-                        {empData.privilegedLeave}
+                        {empData.privilegedLeave || 0}
                       </td>
                     </tr>
                   ))}
@@ -634,12 +663,15 @@ export default function EmployeeAttendancePage() {
                   >
                     <option value="P">Present</option>
                     <option value="A">Absent</option>
-                    <option value="PL">Privileged Leave</option>
-                    <option value="OT">Overtime</option>
+                    <option value="P">Present</option>
+                    <option value="A">Absent</option>
+                    <option value="H">Holiday</option>
                     <option value="WO">Weekly Off</option>
-                    <option value="HD">Half Day</option>
+                    <option value="PL">Privileged Leave</option>
                     <option value="CL">Casual Leave</option>
                     <option value="SL">Sick Leave</option>
+                    <option value="HD">Half Day</option>
+                    <option value="OT">Overtime</option>
                     <option value="LWP">Leave Without Pay</option>
                   </select>
                 </div>

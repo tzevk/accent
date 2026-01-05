@@ -131,6 +131,26 @@ export async function POST(request) {
 
     connection = await dbConnect();
     
+    // Create table if it doesn't exist
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS employee_attendance (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        employee_id INT NOT NULL,
+        attendance_date DATE NOT NULL,
+        status VARCHAR(10) DEFAULT 'P',
+        overtime_hours DECIMAL(5, 2) DEFAULT 0,
+        is_weekly_off TINYINT(1) DEFAULT 0,
+        remarks TEXT,
+        in_time TIME,
+        out_time TIME,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_emp_date (employee_id, attendance_date),
+        INDEX idx_attendance_date (attendance_date),
+        INDEX idx_employee_id (employee_id)
+      )
+    `);
+    
     // Start transaction
     await connection.beginTransaction();
 
