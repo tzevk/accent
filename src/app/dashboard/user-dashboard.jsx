@@ -119,16 +119,24 @@ export default function UserDashboard({ verifiedUser }) {
   });
 
   useEffect(() => {
-    if (!user?.id) return;
+    // Use verifiedUser first (passed from parent after auth check), then contextUser
+    const userId = verifiedUser?.id || user?.id;
+    if (!userId) {
+      console.log('UserDashboard: No user ID available yet');
+      return;
+    }
+    
+    console.log('UserDashboard: Loading data for user:', userId);
     
     const loadData = async () => {
+      setLoading(true);
       try {
         // Load all data in parallel for efficiency
         const promises = [];
 
         // 1. Attendance data
         promises.push(
-          fetchJSON(`/api/users/${user.id}/attendance`)
+          fetchJSON(`/api/users/${userId}/attendance`)
             .then(res => {
               if (res.success) setAttendance(res.data);
             })
@@ -137,7 +145,7 @@ export default function UserDashboard({ verifiedUser }) {
 
         // 2. Projects with activities
         promises.push(
-          fetchJSON(`/api/users/${user.id}/projects`)
+          fetchJSON(`/api/users/${userId}/projects`)
             .then(res => {
               if (res.success) {
                 setProjectsData(res.data);
@@ -190,7 +198,7 @@ export default function UserDashboard({ verifiedUser }) {
 
         // 5. Dashboard stats with upcoming deadlines and overdue
         promises.push(
-          fetch(`/api/users/${user.id}/dashboard`)
+          fetch(`/api/users/${userId}/dashboard`, { cache: 'no-store' })
             .then(async (response) => {
               if (response.status === 401 || response.status === 403) {
                 setModuleAccess(prev => ({ ...prev, dashboard: false }));
@@ -215,13 +223,15 @@ export default function UserDashboard({ verifiedUser }) {
 
         // 5b. Activity assignments from project_activities_list (JSON-based)
         promises.push(
-          fetch(`/api/users/${user.id}/activity-assignments`)
+          fetch(`/api/users/${userId}/activity-assignments`, { cache: 'no-store' })
             .then(async (response) => {
               if (response.status === 401 || response.status === 403) {
                 return;
               }
               const res = await response.json();
+              console.log('Activity assignments response:', res);
               if (res.success && res.data) {
+                console.log('Activity assignments stats:', res.data.stats);
                 setModuleAssignments(prev => ({
                   ...prev,
                   activityAssignments: {
@@ -231,7 +241,7 @@ export default function UserDashboard({ verifiedUser }) {
                 }));
               }
             })
-            .catch(() => {})
+            .catch((err) => console.error('Activity assignments fetch error:', err))
         );
 
         // 6. Today's work logs
@@ -265,7 +275,7 @@ export default function UserDashboard({ verifiedUser }) {
     };
 
     loadData();
-  }, [user?.id]);
+  }, [verifiedUser?.id, user?.id]);
 
   const generateAnalysisData = (data) => {
     const { projects, stats } = data;
@@ -366,24 +376,31 @@ export default function UserDashboard({ verifiedUser }) {
         
         {/* Main Content */}
         <div className="flex-1 ml-72">
-          <div className="px-4 sm:px-6 lg:px-8 py-6">
+          <div className="px-4 sm:px-6 lg:px-8 py-8">
             {/* Header */}
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Welcome, {user?.full_name || 'User'}!</h1>
-              <p className="text-gray-600 text-sm">{attendance.currentMonth}</p>
+              <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+                <ol className="inline-flex items-center gap-2">
+                  <li>Home</li>
+                  <li className="text-gray-300">/</li>
+                  <li className="text-gray-700">Dashboard</li>
+                </ol>
+              </nav>
+              <h1 className="text-3xl font-bold text-gray-900">Welcome, {user?.full_name || 'User'}!</h1>
+              <p className="text-sm text-gray-500 mt-1">{attendance.currentMonth}</p>
             </div>
 
             {/* Quick Actions & Alerts Bar */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
               {/* Total Assigned Tasks */}
-              <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'bg-purple-100' : 'bg-gray-100'}`}>
-                    <ClipboardDocumentListIcon className={`w-5 h-5 ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'text-purple-600' : 'text-gray-400'}`} />
+              <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <ClipboardDocumentListIcon className={`h-5 w-5 ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Total Tasks</p>
-                    <p className={`text-xl font-bold ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
+                    <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">Total Tasks</p>
+                    <p className={`text-2xl font-bold ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                       {moduleAssignments.activityAssignments.stats.totalAssignments}
                     </p>
                   </div>
@@ -391,14 +408,14 @@ export default function UserDashboard({ verifiedUser }) {
               </div>
 
               {/* In Progress Tasks */}
-              <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                    <ClockIcon className={`w-5 h-5 ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'text-blue-600' : 'text-gray-400'}`} />
+              <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <ClockIcon className={`h-5 w-5 ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">In Progress</p>
-                    <p className={`text-xl font-bold ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                    <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">In Progress</p>
+                    <p className={`text-2xl font-bold ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                       {moduleAssignments.activityAssignments.stats.inProgressCount}
                     </p>
                   </div>
@@ -406,14 +423,14 @@ export default function UserDashboard({ verifiedUser }) {
               </div>
 
               {/* Completed Tasks */}
-              <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'bg-green-100' : 'bg-gray-100'}`}>
-                    <CheckCircleIcon className={`w-5 h-5 ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'text-green-600' : 'text-gray-400'}`} />
+              <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+                    <CheckCircleIcon className={`h-5 w-5 ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Completed</p>
-                    <p className={`text-xl font-bold ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                    <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">Completed</p>
+                    <p className={`text-2xl font-bold ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                       {moduleAssignments.activityAssignments.stats.completedCount}
                     </p>
                   </div>
@@ -422,14 +439,14 @@ export default function UserDashboard({ verifiedUser }) {
 
               {/* Today's Work Hours - only show if user has access */}
               {moduleAccess.workLogs && (
-                <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${moduleAssignments.todayWorkHours > 0 ? 'bg-orange-100' : 'bg-gray-100'}`}>
-                      <DocumentTextIcon className={`w-5 h-5 ${moduleAssignments.todayWorkHours > 0 ? 'text-orange-600' : 'text-gray-400'}`} />
+                <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.todayWorkHours > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+                      <DocumentTextIcon className={`h-5 w-5 ${moduleAssignments.todayWorkHours > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Today&apos;s Logged</p>
-                      <p className={`text-xl font-bold ${moduleAssignments.todayWorkHours > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                      <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">Today&apos;s Logged</p>
+                      <p className={`text-2xl font-bold ${moduleAssignments.todayWorkHours > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
                         {moduleAssignments.todayWorkHours}h
                       </p>
                     </div>
@@ -473,57 +490,53 @@ export default function UserDashboard({ verifiedUser }) {
             {user?.id && <ProjectActivityAssignments userId={user.id} />}
 
             {/* Row 1: Project-Based Stats Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
               {/* Assigned Projects Card - uses activityAssignments from JSON-based assignments */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <BriefcaseIcon className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Assigned Projects</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Assigned Projects</h3>
+                  <BriefcaseIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="text-center mb-3">
-                  <p className="text-3xl font-bold text-purple-600">
+                <div className="text-center mb-4">
+                  <p className="text-3xl font-bold text-gray-900">
                     {moduleAssignments.activityAssignments.stats.totalProjects || moduleAssignments.activeProjects.length}
                   </p>
                   <p className="text-xs text-gray-500">Active Projects</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-center p-2 bg-purple-50 rounded-lg">
-                    <p className="text-lg font-bold text-purple-600">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <p className="text-xl font-bold text-purple-700">
                       {moduleAssignments.activityAssignments.stats.totalAssignments || moduleAssignments.activeProjects.reduce((sum, p) => sum + (p.total_activities || 0), 0)}
                     </p>
-                    <p className="text-[10px] text-gray-600">Total Tasks</p>
+                    <p className="text-xs text-purple-500">Total Tasks</p>
                   </div>
-                  <div className="text-center p-2 bg-red-50 rounded-lg">
-                    <p className="text-lg font-bold text-red-600">
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <p className="text-xl font-bold text-red-700">
                       {moduleAssignments.activeProjects.reduce((sum, p) => sum + (p.overdue || 0), 0)}
                     </p>
-                    <p className="text-[10px] text-gray-600">Overdue</p>
+                    <p className="text-xs text-red-500">Overdue</p>
                   </div>
                 </div>
               </div>
 
               {/* Manhours Card - uses activityAssignments data */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <ClockIcon className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Manhours</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Manhours</h3>
+                  <ClockIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-center p-2 bg-purple-50 rounded-lg">
-                    <p className="text-lg font-bold text-purple-600">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <p className="text-xl font-bold text-purple-700">
                       {Math.round(moduleAssignments.activityAssignments.stats.totalPlannedHours || moduleAssignments.workloadSummary.total_estimated_hours || 0)}
                     </p>
-                    <p className="text-[10px] text-gray-600">Planned</p>
+                    <p className="text-xs text-purple-500">Planned</p>
                   </div>
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-600">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <p className="text-xl font-bold text-green-700">
                       {Math.round(moduleAssignments.activityAssignments.stats.totalActualHours || moduleAssignments.workloadSummary.total_actual_hours || 0)}
                     </p>
-                    <p className="text-[10px] text-gray-600">Actual</p>
+                    <p className="text-xs text-green-500">Actual</p>
                   </div>
                 </div>
                 {(moduleAssignments.activityAssignments.stats.totalPlannedHours > 0 || moduleAssignments.workloadSummary.total_estimated_hours > 0) && (
@@ -547,61 +560,57 @@ export default function UserDashboard({ verifiedUser }) {
               </div>
 
               {/* Task Status Card - uses activityAssignments stats */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <ClipboardDocumentListIcon className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Task Status</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Task Status</h3>
+                  <ClipboardDocumentListIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-center p-2 bg-gray-50 rounded-lg">
-                    <p className="text-lg font-bold text-gray-600">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xl font-bold text-gray-700">
                       {moduleAssignments.activityAssignments.stats.notStartedCount || moduleAssignments.statusSummary.not_started}
                     </p>
-                    <p className="text-[10px] text-gray-600">Not Started</p>
+                    <p className="text-xs text-gray-500">Not Started</p>
                   </div>
-                  <div className="text-center p-2 bg-blue-50 rounded-lg">
-                    <p className="text-lg font-bold text-blue-600">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xl font-bold text-blue-700">
                       {moduleAssignments.activityAssignments.stats.inProgressCount || moduleAssignments.statusSummary.in_progress}
                     </p>
-                    <p className="text-[10px] text-gray-600">In Progress</p>
+                    <p className="text-xs text-blue-500">In Progress</p>
                   </div>
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-600">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <p className="text-xl font-bold text-green-700">
                       {moduleAssignments.activityAssignments.stats.completedCount || moduleAssignments.statusSummary.completed}
                     </p>
-                    <p className="text-[10px] text-gray-600">Completed</p>
+                    <p className="text-xs text-green-500">Completed</p>
                   </div>
-                  <div className="text-center p-2 bg-yellow-50 rounded-lg">
-                    <p className="text-lg font-bold text-yellow-600">
+                  <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                    <p className="text-xl font-bold text-yellow-700">
                       {moduleAssignments.activityAssignments.stats.onHoldCount || moduleAssignments.statusSummary.on_hold}
                     </p>
-                    <p className="text-[10px] text-gray-600">On Hold</p>
+                    <p className="text-xs text-yellow-500">On Hold</p>
                   </div>
                 </div>
               </div>
 
               {/* Quantity Progress Card - uses activityAssignments qty data */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Quantity Progress</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Quantity Progress</h3>
+                  <CheckCircleIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-center p-2 bg-purple-50 rounded-lg">
-                    <p className="text-lg font-bold text-purple-600">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <p className="text-xl font-bold text-purple-700">
                       {Math.round(moduleAssignments.activityAssignments.stats.totalQtyAssigned || 0)}
                     </p>
-                    <p className="text-[10px] text-gray-600">Qty Assigned</p>
+                    <p className="text-xs text-purple-500">Qty Assigned</p>
                   </div>
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-600">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <p className="text-xl font-bold text-green-700">
                       {Math.round(moduleAssignments.activityAssignments.stats.totalQtyCompleted || 0)}
                     </p>
-                    <p className="text-[10px] text-gray-600">Qty Completed</p>
+                    <p className="text-xs text-green-500">Qty Completed</p>
                   </div>
                 </div>
                 {moduleAssignments.activityAssignments.stats.totalQtyAssigned > 0 && (
@@ -626,85 +635,77 @@ export default function UserDashboard({ verifiedUser }) {
             </div>
 
             {/* Row 2: Time & Attendance Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
               {/* In Time / Out Time Card */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <ClockIcon className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Today&apos;s Time</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Today&apos;s Time</h3>
+                  <ClockIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-600 mb-1">In Time</p>
-                    <p className="text-lg font-bold text-green-600">{formatTime(attendance.inTime)}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-green-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-green-600 mb-1 font-medium">In Time</p>
+                    <p className="text-2xl font-bold text-green-700">{formatTime(attendance.inTime)}</p>
                   </div>
-                  <div className="bg-orange-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-600 mb-1">Out Time</p>
-                    <p className="text-lg font-bold text-orange-600">{formatTime(attendance.outTime)}</p>
+                  <div className="bg-orange-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-orange-600 mb-1 font-medium">Out Time</p>
+                    <p className="text-2xl font-bold text-orange-700">{formatTime(attendance.outTime)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Monthly Attendance Card */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <CalendarDaysIcon className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Attendance</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Attendance</h3>
+                  <CalendarDaysIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="text-center p-2 bg-blue-50 rounded-lg">
-                    <p className="text-lg font-bold text-blue-600">{attendance.daysPresent}</p>
-                    <p className="text-[10px] text-gray-600">Present</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xl font-bold text-blue-700">{attendance.daysPresent}</p>
+                    <p className="text-xs text-blue-500">Present</p>
                   </div>
-                  <div className="text-center p-2 bg-gray-50 rounded-lg">
-                    <p className="text-lg font-bold text-gray-600">{attendance.weeklyOff}</p>
-                    <p className="text-[10px] text-gray-600">Week Off</p>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xl font-bold text-gray-700">{attendance.weeklyOff}</p>
+                    <p className="text-xs text-gray-500">Week Off</p>
                   </div>
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-600">{attendance.holidays}</p>
-                    <p className="text-[10px] text-gray-600">Holiday</p>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <p className="text-xl font-bold text-green-700">{attendance.holidays}</p>
+                    <p className="text-xs text-green-500">Holiday</p>
                   </div>
                 </div>
               </div>
 
               {/* Leaves Card */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                    <UserIcon className="w-5 h-5 text-yellow-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Leaves</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Leaves</h3>
+                  <UserIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="text-center p-2 bg-blue-50 rounded-lg">
-                    <p className="text-lg font-bold text-blue-600">{attendance.leaves.total}</p>
-                    <p className="text-[10px] text-gray-600">Total</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xl font-bold text-blue-700">{attendance.leaves.total}</p>
+                    <p className="text-xs text-blue-500">Total</p>
                   </div>
-                  <div className="text-center p-2 bg-red-50 rounded-lg">
-                    <p className="text-lg font-bold text-red-600">{attendance.leaves.used}</p>
-                    <p className="text-[10px] text-gray-600">Used</p>
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <p className="text-xl font-bold text-red-700">{attendance.leaves.used}</p>
+                    <p className="text-xs text-red-500">Used</p>
                   </div>
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-600">{attendance.leaves.balance}</p>
-                    <p className="text-[10px] text-gray-600">Balance</p>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <p className="text-xl font-bold text-green-700">{attendance.leaves.balance}</p>
+                    <p className="text-xs text-green-500">Balance</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Row 3: Analysis Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Productivity Trend Chart */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
-                    <ArrowTrendingUpIcon className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Manhours Trend</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Manhours Trend</h3>
+                  <ArrowTrendingUpIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={analysisData.productivityTrend}>
@@ -718,12 +719,10 @@ export default function UserDashboard({ verifiedUser }) {
               </div>
 
               {/* Status Distribution Chart */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <ChartBarIcon className="w-4 h-4 text-green-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Activity Status</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Activity Status</h3>
+                  <ChartBarIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
                 {analysisData.statusDistribution.length > 0 ? (
                   <ResponsiveContainer width="100%" height={180}>
@@ -756,12 +755,10 @@ export default function UserDashboard({ verifiedUser }) {
               </div>
 
               {/* Efficiency Card */}
-              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <CheckCircleIcon className="w-4 h-4 text-purple-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Performance</h3>
+              <div className="bg-white rounded-xl border border-purple-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Performance</h3>
+                  <CheckCircleIcon className="h-5 w-5 text-[#64126D]" />
                 </div>
                 
                 {/* Efficiency Meter */}
@@ -785,22 +782,22 @@ export default function UserDashboard({ verifiedUser }) {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-center p-3 bg-orange-50 rounded-lg">
-                    <p className="text-xl font-bold text-orange-600">{stats.totalAssignedHours}</p>
-                    <p className="text-[10px] text-gray-600">Assigned Hours</p>
+                    <p className="text-xl font-bold text-orange-700">{stats.totalAssignedHours}</p>
+                    <p className="text-xs text-orange-500">Assigned Hours</p>
                   </div>
                   <div className="text-center p-3 bg-blue-50 rounded-lg">
-                    <p className="text-xl font-bold text-blue-600">{stats.totalActualHours}</p>
-                    <p className="text-[10px] text-gray-600">Actual Hours</p>
+                    <p className="text-xl font-bold text-blue-700">{stats.totalActualHours}</p>
+                    <p className="text-xs text-blue-500">Actual Hours</p>
                   </div>
                   <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <p className="text-xl font-bold text-green-600">{stats.completedActivities}</p>
-                    <p className="text-[10px] text-gray-600">Completed</p>
+                    <p className="text-xl font-bold text-green-700">{stats.completedActivities}</p>
+                    <p className="text-xs text-green-500">Completed</p>
                   </div>
                   <div className="text-center p-3 bg-red-50 rounded-lg">
-                    <p className="text-xl font-bold text-red-600">
+                    <p className="text-xl font-bold text-red-700">
                       {stats.totalActivities - stats.completedActivities - stats.inProgressActivities}
                     </p>
-                    <p className="text-[10px] text-gray-600">Pending</p>
+                    <p className="text-xs text-red-500">Pending</p>
                   </div>
                 </div>
               </div>

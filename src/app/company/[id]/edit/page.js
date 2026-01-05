@@ -1,10 +1,15 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import AccessGuard from '@/components/AccessGuard';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeftIcon,
+  BuildingOfficeIcon,
+  UserIcon,
+  MapPinIcon,
+  DocumentTextIcon,
   CheckIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
@@ -14,7 +19,9 @@ export default function EditCompany({ params }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState('details');
   const [formData, setFormData] = useState({
+    company_id: '',
     company_name: '',
     industry: '',
     company_size: '',
@@ -29,7 +36,12 @@ export default function EditCompany({ params }) {
     description: '',
     founded_year: '',
     revenue: '',
-    notes: ''
+    notes: '',
+    location: '',
+    contact_person: '',
+    designation: '',
+    mobile_number: '',
+    sector: ''
   });
 
   useEffect(() => {
@@ -43,6 +55,7 @@ export default function EditCompany({ params }) {
           const companyData = result.data;
           setCompany(companyData);
           setFormData({
+            company_id: companyData.company_id || '',
             company_name: companyData.company_name || '',
             industry: companyData.industry || '',
             company_size: companyData.company_size || '',
@@ -57,20 +70,29 @@ export default function EditCompany({ params }) {
             description: companyData.description || '',
             founded_year: companyData.founded_year || '',
             revenue: companyData.revenue || '',
-            notes: companyData.notes || ''
+            notes: companyData.notes || '',
+            location: companyData.location || '',
+            contact_person: companyData.contact_person || '',
+            designation: companyData.designation || '',
+            mobile_number: companyData.mobile_number || '',
+            sector: companyData.sector || ''
           });
         } else {
           console.error('Error fetching company:', result.error);
+          alert('Company not found');
+          router.push('/company');
         }
       } catch (error) {
         console.error('Error:', error);
+        alert('Error loading company details');
+        router.push('/company');
       } finally {
         setLoading(false);
       }
     };
 
     fetchCompany();
-  }, [params]);
+  }, [params, router]);
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -97,7 +119,7 @@ export default function EditCompany({ params }) {
       
       if (result.success) {
         alert('Company updated successfully!');
-        router.push(`/company/${company.id}`);
+        router.push('/company');
       } else {
         alert('Error updating company: ' + result.error);
       }
@@ -109,13 +131,17 @@ export default function EditCompany({ params }) {
     }
   };
 
+  const handleCancel = () => {
+    router.push('/company');
+  };
+
   if (loading) {
     return (
-      <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#64126D] mx-auto"></div>
             <p className="mt-4 text-gray-600">Loading company details...</p>
           </div>
         </div>
@@ -125,14 +151,16 @@ export default function EditCompany({ params }) {
 
   if (!company) {
     return (
-      <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-gray-600">Company not found</p>
+            <BuildingOfficeIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h2 className="mt-4 text-xl font-semibold text-gray-900">Company not found</h2>
+            <p className="mt-2 text-gray-600">The company you&apos;re trying to edit doesn&apos;t exist.</p>
             <button
               onClick={() => router.push('/company')}
-              className="mt-4 px-4 py-2 bg-accent-primary text-white rounded-md hover:bg-accent-primary/90"
+              className="mt-4 bg-gradient-to-r from-[#64126D] to-[#86288F] text-white px-4 py-2 rounded-md hover:from-[#86288F] hover:to-[#64126D] transition-all"
             >
               Back to Companies
             </button>
@@ -143,286 +171,503 @@ export default function EditCompany({ params }) {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      <Navbar />
-      
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full px-8 pt-22">
-          {/* Header */}
-          <div className="mb-4">
+    <AccessGuard resource="companies" permission="write" showNavbar={false}>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+        <Navbar />
+
+        {/* Fixed header section */}
+        <div className="flex-shrink-0 pt-24 px-4 sm:px-6 lg:px-8 pb-4">
+          <div className="mb-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-4">
                 <button
-                  onClick={() => router.push(`/company/${company.id}`)}
-                  className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
+                  onClick={handleCancel}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                 >
-                  <ArrowLeftIcon className="h-4 w-4" />
+                  <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
                 </button>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900">
-                    Edit {company.company_name}
-                  </h1>
-                  <p className="text-gray-600 text-sm">Update company information</p>
+                  <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
+                  <p className="text-gray-600 text-sm">{company.company_name}</p>
                 </div>
               </div>
               
-              <div className="flex space-x-2">
+              <div className="flex space-x-3">
                 <button
-                  onClick={() => router.push(`/company/${company.id}`)}
-                  className="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex items-center space-x-1"
+                  onClick={handleCancel}
+                  className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex items-center space-x-2"
                 >
-                  <XMarkIcon className="h-3 w-3" />
+                  <XMarkIcon className="h-4 w-4" />
                   <span>Cancel</span>
                 </button>
                 <button
                   type="submit"
                   form="edit-company-form"
                   disabled={saving}
-                  className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-1 disabled:opacity-50"
+                  className="px-4 py-2 text-sm text-white bg-gradient-to-r from-[#64126D] to-[#86288F] rounded-md hover:from-[#86288F] hover:to-[#64126D] transition-all flex items-center space-x-2 disabled:opacity-50 shadow-lg"
                 >
-                  <CheckIcon className="h-3 w-3" />
+                  <CheckIcon className="h-4 w-4" />
                   <span>{saving ? 'Saving...' : 'Save Changes'}</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Edit Form */}
-          <div className="h-full overflow-y-auto pb-8">
-            <form id="edit-company-form" onSubmit={handleSubmit} className="space-y-3">
-              <div className="bg-white rounded-lg border border-gray-200 p-3">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Edit Company Information</h3>
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 bg-white rounded-t-lg px-6 pt-4">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                activeTab === 'details'
+                  ? 'border-[#64126D] text-[#64126D] bg-purple-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <BuildingOfficeIcon className="h-5 w-5 inline mr-2" />
+              Company Details
+            </button>
+
+            <button
+              onClick={() => setActiveTab('contact')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                activeTab === 'contact'
+                  ? 'border-[#64126D] text-[#64126D] bg-purple-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <UserIcon className="h-5 w-5 inline mr-2" />
+              Contact Info
+            </button>
+
+            <button
+              onClick={() => setActiveTab('location')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                activeTab === 'location'
+                  ? 'border-[#64126D] text-[#64126D] bg-purple-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <MapPinIcon className="h-5 w-5 inline mr-2" />
+              Location
+            </button>
+
+            <button
+              onClick={() => setActiveTab('additional')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 rounded-t-md transition-colors ${
+                activeTab === 'additional'
+                  ? 'border-[#64126D] text-[#64126D] bg-purple-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <DocumentTextIcon className="h-5 w-5 inline mr-2" />
+              Additional
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable content area */}
+        <div className="flex-1 px-4 sm:px-6 lg:px-8 overflow-hidden pb-8">
+          <div className="h-full overflow-y-auto bg-white rounded-b-lg border border-t-0 border-gray-200">
+            <div className="p-6">
+              <form id="edit-company-form" onSubmit={handleSubmit}>
                 
-                {/* Form Grid Layout */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                  {/* Basic Information */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Company Name *
-                    </label>
-                    <input
-                      type="text"
-                      name="company_name"
-                      value={formData.company_name}
-                      onChange={handleFormChange}
-                      required
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter company name"
-                    />
-                  </div>
+                {/* Company Details Tab */}
+                {activeTab === 'details' && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Company Information</h2>
+                        <p className="text-gray-600 text-sm mt-1">Basic details about the company</p>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        <span className="text-red-500">*</span> Required fields
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Industry
-                    </label>
-                    <input
-                      type="text"
-                      name="industry"
-                      value={formData.industry}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="e.g., Technology, Finance"
-                    />
-                  </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Company ID
+                        </label>
+                        <input
+                          type="text"
+                          name="company_id"
+                          value={formData.company_id}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., COMP001"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Company Size
-                    </label>
-                    <select
-                      name="company_size"
-                      value={formData.company_size}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                    >
-                      <option value="">Select size</option>
-                      <option value="1-10">1-10 employees</option>
-                      <option value="11-50">11-50 employees</option>
-                      <option value="51-200">51-200 employees</option>
-                      <option value="201-500">201-500 employees</option>
-                      <option value="501-1000">501-1000 employees</option>
-                      <option value="1000+">1000+ employees</option>
-                    </select>
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Company Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="company_name"
+                          value={formData.company_name}
+                          onChange={handleFormChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="Enter company name"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Website
-                    </label>
-                    <input
-                      type="url"
-                      name="website"
-                      value={formData.website}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="https://example.com"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Industry
+                        </label>
+                        <select
+                          name="industry"
+                          value={formData.industry}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                        >
+                          <option value="">Select industry</option>
+                          <option value="Technology">Technology</option>
+                          <option value="Finance">Finance</option>
+                          <option value="Healthcare">Healthcare</option>
+                          <option value="Manufacturing">Manufacturing</option>
+                          <option value="Retail">Retail</option>
+                          <option value="Construction">Construction</option>
+                          <option value="Education">Education</option>
+                          <option value="Real Estate">Real Estate</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter phone number"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Company Size
+                        </label>
+                        <select
+                          name="company_size"
+                          value={formData.company_size}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                        >
+                          <option value="">Select size</option>
+                          <option value="1-10">1-10 employees</option>
+                          <option value="11-50">11-50 employees</option>
+                          <option value="51-200">51-200 employees</option>
+                          <option value="201-500">201-500 employees</option>
+                          <option value="501-1000">501-1000 employees</option>
+                          <option value="1000+">1000+ employees</option>
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter email address"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Sector
+                        </label>
+                        <input
+                          type="text"
+                          name="sector"
+                          value={formData.sector}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., IT Services, Consulting"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      name="city"
-                      value={formData.city}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter city"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Website
+                        </label>
+                        <input
+                          type="url"
+                          name="website"
+                          value={formData.website}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="https://example.com"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      State
-                    </label>
-                    <input
-                      type="text"
-                      name="state"
-                      value={formData.state}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter state"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Founded Year
+                        </label>
+                        <input
+                          type="number"
+                          name="founded_year"
+                          value={formData.founded_year}
+                          onChange={handleFormChange}
+                          min="1800"
+                          max="2026"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., 2010"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Country
-                    </label>
-                    <input
-                      type="text"
-                      name="country"
-                      value={formData.country}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter country"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Annual Revenue
+                        </label>
+                        <input
+                          type="text"
+                          name="revenue"
+                          value={formData.revenue}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., $1M-$10M"
+                        />
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Postal Code
-                    </label>
-                    <input
-                      type="text"
-                      name="postal_code"
-                      value={formData.postal_code}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter postal code"
-                    />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Description
+                      </label>
+                      <textarea
+                        name="description"
+                        value={formData.description}
+                        onChange={handleFormChange}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                        placeholder="Brief description of the company"
+                      />
+                    </div>
                   </div>
+                )}
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Founded Year
-                    </label>
-                    <input
-                      type="number"
-                      name="founded_year"
-                      value={formData.founded_year}
-                      onChange={handleFormChange}
-                      min="1800"
-                      max="2025"
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="e.g., 2010"
-                    />
-                  </div>
+                {/* Contact Info Tab */}
+                {activeTab === 'contact' && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Contact Information</h2>
+                        <p className="text-gray-600 text-sm mt-1">Primary contact details for this company</p>
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Annual Revenue
-                    </label>
-                    <input
-                      type="text"
-                      name="revenue"
-                      value={formData.revenue}
-                      onChange={handleFormChange}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="e.g., $1M-$10M"
-                    />
-                  </div>
-                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Contact Person
+                        </label>
+                        <input
+                          type="text"
+                          name="contact_person"
+                          value={formData.contact_person}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="Primary contact name"
+                        />
+                      </div>
 
-                {/* Address & Description - Full Width */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Address
-                    </label>
-                    <textarea
-                      name="address"
-                      value={formData.address}
-                      onChange={handleFormChange}
-                      rows={2}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Enter full address"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Designation
+                        </label>
+                        <input
+                          type="text"
+                          name="designation"
+                          value={formData.designation}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., CEO, Manager"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Description
-                    </label>
-                    <textarea
-                      name="description"
-                      value={formData.description}
-                      onChange={handleFormChange}
-                      rows={2}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Company description"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          name="email"
+                          value={formData.email}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="company@example.com"
+                        />
+                      </div>
 
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                      Notes
-                    </label>
-                    <textarea
-                      name="notes"
-                      value={formData.notes}
-                      onChange={handleFormChange}
-                      rows={2}
-                      className="w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent text-xs"
-                      placeholder="Additional notes"
-                    />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone
+                        </label>
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={formData.phone}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="Office phone number"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Mobile Number
+                        </label>
+                        <input
+                          type="tel"
+                          name="mobile_number"
+                          value={formData.mobile_number}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="Mobile number"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </form>
+                )}
+
+                {/* Location Tab */}
+                {activeTab === 'location' && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Location Details</h2>
+                        <p className="text-gray-600 text-sm mt-1">Company address and location information</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          City
+                        </label>
+                        <input
+                          type="text"
+                          name="city"
+                          value={formData.city}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="City"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          State
+                        </label>
+                        <input
+                          type="text"
+                          name="state"
+                          value={formData.state}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="State/Province"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Country
+                        </label>
+                        <input
+                          type="text"
+                          name="country"
+                          value={formData.country}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="Country"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Postal Code
+                        </label>
+                        <input
+                          type="text"
+                          name="postal_code"
+                          value={formData.postal_code}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="ZIP/Postal code"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Location
+                        </label>
+                        <input
+                          type="text"
+                          name="location"
+                          value={formData.location}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="Office location/branch"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Full Address
+                      </label>
+                      <textarea
+                        name="address"
+                        value={formData.address}
+                        onChange={handleFormChange}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                        placeholder="Complete street address"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Tab */}
+                {activeTab === 'additional' && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Additional Information</h2>
+                        <p className="text-gray-600 text-sm mt-1">Notes and other details</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Notes
+                      </label>
+                      <textarea
+                        name="notes"
+                        value={formData.notes}
+                        onChange={handleFormChange}
+                        rows={6}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                        placeholder="Additional notes about this company..."
+                      />
+                    </div>
+
+                    {/* Company Summary Card */}
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <h3 className="text-sm font-medium text-gray-900 mb-3">Company Summary</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">Company ID:</span>
+                          <p className="font-medium text-gray-900">{formData.company_id || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Industry:</span>
+                          <p className="font-medium text-gray-900">{formData.industry || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Size:</span>
+                          <p className="font-medium text-gray-900">{formData.company_size || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">City:</span>
+                          <p className="font-medium text-gray-900">{formData.city || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </form>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </AccessGuard>
   );
 }
