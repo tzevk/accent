@@ -105,7 +105,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Save/Update attendance records (bulk)
+// POST - Save/Update attendance records (bulk) - OPTIMIZED with batching
 export async function POST(request) {
   // RBAC check
   const authResultPost = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE);
@@ -114,7 +114,7 @@ export async function POST(request) {
   let connection;
   try {
     const body = await request.json();
-    const { attendance_records, month } = body;
+    const { attendance_records } = body;
 
     if (!attendance_records || !Array.isArray(attendance_records)) {
       return NextResponse.json({ error: 'Attendance records array is required' }, { status: 400 });
@@ -131,13 +131,13 @@ export async function POST(request) {
 
     connection = await dbConnect();
     
-    // Create table if it doesn't exist
-    await connection.execute(`
+    // Create table if it doesn't exist (only runs once due to IF NOT EXISTS)
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS employee_attendance (
         id INT AUTO_INCREMENT PRIMARY KEY,
         employee_id INT NOT NULL,
         attendance_date DATE NOT NULL,
-        status VARCHAR(10) DEFAULT 'P',
+        status VARCHAR(20) DEFAULT 'P',
         overtime_hours DECIMAL(5, 2) DEFAULT 0,
         is_weekly_off TINYINT(1) DEFAULT 0,
         remarks TEXT,
@@ -150,16 +150,34 @@ export async function POST(request) {
         INDEX idx_employee_id (employee_id)
       )
     `);
-    
-    // Start transaction
-    await connection.beginTransaction();
 
-    try {
-      // Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
-      const insertQuery = `
+    // Process in smaller batches of 50 records to avoid query size limits
+    const BATCH_SIZE = 50;
+    let totalProcessed = 0;
+    
+    for (let i = 0; i < attendance_records.length; i += BATCH_SIZE) {
+      const batch = attendance_records.slice(i, i + BATCH_SIZE);
+      const values = [];
+      const placeholders = [];
+      
+      for (const record of batch) {
+        const status = (record.status || 'P').substring(0, 20);
+        values.push(
+          record.employee_id,
+          record.attendance_date,
+          status,
+          record.overtime_hours || 0,
+          record.is_weekly_off ? 1 : 0,
+          record.remarks || null
+        );
+        placeholders.push('(?, ?, ?, ?, ?, ?)');
+      }
+      
+      // Use query instead of execute for better performance with dynamic queries
+      const batchQuery = `
         INSERT INTO employee_attendance 
           (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES ${placeholders.join(', ')}
         ON DUPLICATE KEY UPDATE
           status = VALUES(status),
           overtime_hours = VALUES(overtime_hours),
@@ -167,54 +185,27 @@ export async function POST(request) {
           remarks = VALUES(remarks),
           updated_at = CURRENT_TIMESTAMP
       `;
-
-      let successCount = 0;
-      let errorCount = 0;
-      const errors = [];
-
-      for (const record of attendance_records) {
-        try {
-          await connection.execute(insertQuery, [
-            record.employee_id,
-            record.attendance_date,
-            record.status || 'P',
-            record.overtime_hours || 0,
-            record.is_weekly_off ? 1 : 0,
-            record.remarks || null
-          ]);
-          successCount++;
-        } catch (err) {
-          console.error('Error inserting attendance record:', err);
-          errorCount++;
-          errors.push({
-            employee_id: record.employee_id,
-            date: record.attendance_date,
-            error: err.message
-          });
-        }
-      }
       
-      // Commit transaction
-      await connection.commit();
-
-      return NextResponse.json({
-        success: true,
-        message: `Attendance saved: ${successCount} records updated${errorCount > 0 ? `, ${errorCount} errors` : ''}`,
-        successCount,
-        errorCount,
-        errors: errorCount > 0 ? errors : undefined
-      });
-      
-    } catch (err) {
-      // Rollback on error
-      await connection.rollback();
-      throw err;
+      await connection.query(batchQuery, values);
+      totalProcessed += batch.length;
     }
+    
+    // Release connection before returning
+    connection.release();
+    connection = null;
+
+    return NextResponse.json({
+      success: true,
+      message: `Attendance saved: ${totalProcessed} records processed`,
+      successCount: totalProcessed,
+      errorCount: 0
+    });
 
   } catch (error) {
     console.error('Error saving attendance:', error);
+    if (connection) {
+      try { connection.release(); } catch {}
+    }
     return NextResponse.json({ error: error.message || 'Failed to save attendance' }, { status: 500 });
-  } finally {
-    if (connection) connection.release();
   }
 }
