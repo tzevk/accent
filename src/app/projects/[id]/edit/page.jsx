@@ -1366,16 +1366,37 @@ function EditProjectForm() {
   };
 
   // Project Manhours helpers
+  const getNextMonth = (currentMonth) => {
+    if (!currentMonth) {
+      // Default to current month if no month provided
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const [year, month] = currentMonth.split('-').map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+  };
+
   const addManhourRow = () => {
     if (!newManhourRow.name_of_engineer_designer || !newManhourRow.name_of_engineer_designer.trim()) return;
-    const row = { ...newManhourRow, id: Date.now() };
+    // Add the row as locked (non-editable)
+    const row = { ...newManhourRow, id: Date.now(), isLocked: true };
     setProjectManhours(prev => [...prev, row]);
-    setNewManhourRow({ month: '', name_of_engineer_designer: '', engineering: '', designer: '', drafting: '', checking: '', coordination: '', site_visit: '', others: '', remarks: '' });
+    // Auto-generate next month in the input field
+    const nextMonth = getNextMonth(newManhourRow.month);
+    setNewManhourRow({ month: nextMonth, name_of_engineer_designer: '', engineering: '', designer: '', drafting: '', checking: '', coordination: '', site_visit: '', others: '', remarks: '' });
     setTimeout(() => newManhourNameRef.current?.focus(), 10);
   };
 
   const updateManhourRow = (id, field, value) => {
-    setProjectManhours(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    setProjectManhours(prev => prev.map(r => {
+      // Prevent updates on locked rows
+      if (r.id === id && !r.isLocked) {
+        return { ...r, [field]: value };
+      }
+      return r;
+    }));
   };
 
   const removeManhourRow = (id) => {
@@ -1627,17 +1648,28 @@ function EditProjectForm() {
     }));
   };
 
-  // Add daily entry for user activity
+  // Add daily entry for user activity - entries are locked after adding
   const addDailyEntry = (activityId, userId) => {
-    const today = new Date().toISOString().split('T')[0];
     setProjectActivities(prev => prev.map(act => {
       if (act.id === activityId) {
         const updatedUsers = (act.assigned_users || []).map(u => {
           const uId = typeof u === 'object' ? u.user_id : u;
           if (String(uId) === String(userId)) {
             const currentEntries = (typeof u === 'object' && u.daily_entries) ? u.daily_entries : [];
-            const newEntry = { date: today, qty_done: '', hours: '', remarks: '' };
-            return { ...u, daily_entries: [...currentEntries, newEntry] };
+            // Get the next date based on last entry, or today if no entries
+            let nextDate;
+            if (currentEntries.length > 0) {
+              const lastEntry = currentEntries[currentEntries.length - 1];
+              const lastDate = new Date(lastEntry.date);
+              lastDate.setDate(lastDate.getDate() + 1);
+              nextDate = lastDate.toISOString().split('T')[0];
+            } else {
+              nextDate = new Date().toISOString().split('T')[0];
+            }
+            // Lock all previous entries and add new unlocked entry
+            const lockedEntries = currentEntries.map(e => ({ ...e, isLocked: true }));
+            const newEntry = { date: nextDate, qty_done: '', hours: '', remarks: '', isLocked: false };
+            return { ...u, daily_entries: [...lockedEntries, newEntry] };
           }
           return u;
         });
@@ -3538,88 +3570,116 @@ function EditProjectForm() {
             {/* Project Manhours Tab */}
             {activeTab === 'project_manhours' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                <div className="px-4 py-2 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                   <div className="flex items-center gap-2">
                     <svg className="h-4 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <h2 className="text-sm font-bold text-gray-900">Project Manhours</h2>
+                    <span className="text-[10px] text-gray-400 ml-2">• Entries lock after adding</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Track monthly manhours per engineer/designer across activities</p>
                 </div>
 
-                <div className="px-6 py-5">
-                  <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                    <table className="w-full text-xs border-collapse">
+                <div className="px-3 py-2">
+                  <div className="overflow-x-auto border border-gray-200 rounded">
+                    <table className="w-full text-[11px] border-collapse">
                       <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                         <tr>
-                          <th className="text-center py-2 px-2 font-semibold text-gray-700">Sr No</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Month</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Name of Engineer/Designer</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Engineering</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Designer</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Drafting</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Checking</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Co-ordation</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Site Visit</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Others</th>
-                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Remarks</th>
-                          <th className="text-center py-2 px-2 font-semibold text-gray-700">Action</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-8">#</th>
+                          <th className="text-left py-1.5 px-1 font-semibold text-gray-700 w-24">Month</th>
+                          <th className="text-left py-1.5 px-1 font-semibold text-gray-700 w-36">Engineer/Designer</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Eng</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Des</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Draft</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Chk</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Coord</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Site</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Other</th>
+                          <th className="text-left py-1.5 px-1 font-semibold text-gray-700 w-24">Remarks</th>
+                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-12"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr className="bg-purple-25/30 border-b-2 border-purple-100">
-                          <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input type="month" value={newManhourRow.month} onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} placeholder="Month" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input ref={newManhourNameRef} type="text" value={newManhourRow.name_of_engineer_designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} placeholder="Engineer/Designer Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.engineering} onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.drafting} onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.checking} onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.coordination} onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.site_visit} onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="number" value={newManhourRow.others} onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} placeholder="Hrs" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newManhourRow.remarks} onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2 text-center">
+                        <tr className="bg-purple-25/30 border-b border-purple-100">
+                          <td className="py-1 px-1 text-center text-gray-400 font-semibold">+</td>
+                          <td className="py-1 px-1"><input type="month" value={newManhourRow.month} onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-1 px-1"><input ref={newManhourNameRef} type="text" value={newManhourRow.name_of_engineer_designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} placeholder="Name" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.engineering} onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.drafting} onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.checking} onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.coordination} onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.site_visit} onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="number" value={newManhourRow.others} onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
+                          <td className="py-1 px-1"><input type="text" value={newManhourRow.remarks} onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} placeholder="..." className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-1 px-1 text-center">
                             <button 
                               type="button" 
                               onClick={addManhourRow} 
                               disabled={!(newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim())} 
-                              className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                              title="Add manhour row"
+                              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                             >
                               Add
                             </button>
                           </td>
                         </tr>
                         {projectManhours.map((r, index) => (
-                          <tr key={r.id} className="hover:bg-gray-50 transition-colors align-top">
-                            <td className="py-2 px-2 text-center">{index + 1}</td>
-                            <td className="py-2 px-2"><input type="month" value={r.month || ''} onChange={(e)=>updateManhourRow(r.id,'month', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2">
-                              <select value={r.name_of_engineer_designer || ''} onChange={(e)=>updateManhourRow(r.id,'name_of_engineer_designer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent">
-                                <option value="">Select Team Member</option>
-                                {projectTeamMembers.map(member => (
-                                  <option key={member.id} value={member.name}>{member.name}</option>
-                                ))}
-                              </select>
+                          <tr key={r.id} className={`transition-colors align-middle ${r.isLocked ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
+                            <td className="py-1 px-1 text-center text-gray-500">{index + 1}</td>
+                            <td className="py-1 px-1">
+                              {r.isLocked ? (
+                                <span className="text-[11px] text-gray-600 flex items-center gap-1">
+                                  <svg className="h-3 w-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                                  {r.month || '-'}
+                                </span>
+                              ) : (
+                                <input type="month" value={r.month || ''} onChange={(e)=>updateManhourRow(r.id,'month', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" />
+                              )}
                             </td>
-                            <td className="py-2 px-2"><input type="number" value={r.engineering || ''} onChange={(e)=>updateManhourRow(r.id,'engineering', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="number" value={r.designer || ''} onChange={(e)=>updateManhourRow(r.id,'designer', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="number" value={r.drafting || ''} onChange={(e)=>updateManhourRow(r.id,'drafting', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="number" value={r.checking || ''} onChange={(e)=>updateManhourRow(r.id,'checking', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="number" value={r.coordination || ''} onChange={(e)=>updateManhourRow(r.id,'coordination', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="number" value={r.site_visit || ''} onChange={(e)=>updateManhourRow(r.id,'site_visit', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="number" value={r.others || ''} onChange={(e)=>updateManhourRow(r.id,'others', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2"><input type="text" value={r.remarks || ''} onChange={(e)=>updateManhourRow(r.id,'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                            <td className="py-2 px-2 text-center">
+                            <td className="py-1 px-1">
+                              {r.isLocked ? (
+                                <span className="text-[11px] text-gray-600">{r.name_of_engineer_designer || '-'}</span>
+                              ) : (
+                                <select value={r.name_of_engineer_designer || ''} onChange={(e)=>updateManhourRow(r.id,'name_of_engineer_designer', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]">
+                                  <option value="">Select</option>
+                                  {projectTeamMembers.map(member => (
+                                    <option key={member.id} value={member.name}>{member.name}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.engineering || '-'}</span> : <input type="number" value={r.engineering || ''} onChange={(e)=>updateManhourRow(r.id,'engineering', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.designer || '-'}</span> : <input type="number" value={r.designer || ''} onChange={(e)=>updateManhourRow(r.id,'designer', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.drafting || '-'}</span> : <input type="number" value={r.drafting || ''} onChange={(e)=>updateManhourRow(r.id,'drafting', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.checking || '-'}</span> : <input type="number" value={r.checking || ''} onChange={(e)=>updateManhourRow(r.id,'checking', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.coordination || '-'}</span> : <input type="number" value={r.coordination || ''} onChange={(e)=>updateManhourRow(r.id,'coordination', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.site_visit || '-'}</span> : <input type="number" value={r.site_visit || ''} onChange={(e)=>updateManhourRow(r.id,'site_visit', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.others || '-'}</span> : <input type="number" value={r.others || ''} onChange={(e)=>updateManhourRow(r.id,'others', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
+                            </td>
+                            <td className="py-1 px-1">
+                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.remarks || '-'}</span> : <input type="text" value={r.remarks || ''} onChange={(e)=>updateManhourRow(r.id,'remarks', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" />}
+                            </td>
+                            <td className="py-1 px-1 text-center">
                               <button 
                                 type="button" 
                                 onClick={()=>removeManhourRow(r.id)} 
-                                className="text-red-500 hover:text-red-700 p-1"
+                                className="text-red-400 hover:text-red-600 p-0.5"
                                 title="Remove row"
                               >
-                                <XMarkIcon className="h-4 w-4" />
+                                <XMarkIcon className="h-3 w-3" />
                               </button>
                             </td>
                           </tr>
@@ -4618,19 +4678,19 @@ function EditProjectForm() {
 
                                           {/* Daily Entry Rows */}
                                           {dailyEntries.map((entry, eIdx) => {
-                                            // Check if entry is from a previous day (locked)
+                                            // Entry is locked if explicitly marked or from a previous day
                                             const today = new Date();
                                             today.setHours(0, 0, 0, 0);
                                             const entryDate = entry.date ? new Date(entry.date) : null;
                                             if (entryDate) entryDate.setHours(0, 0, 0, 0);
-                                            const isLocked = entryDate && entryDate < today;
+                                            const isLocked = entry.isLocked === true || (entryDate && entryDate < today);
                                             
                                             return (
-                                              <tr key={`${act.id}-day-${eIdx}`} className={`border-b border-gray-100 ${isLocked ? 'bg-gray-50 opacity-75' : 'hover:bg-gray-50'}`}>
+                                              <tr key={`${act.id}-day-${eIdx}`} className={`border-b border-gray-100 ${isLocked ? 'bg-gray-100' : 'hover:bg-gray-50'}`}>
                                                 <td className="py-1.5 px-2"></td>
                                                 <td className="py-1.5 px-2 text-gray-400 text-xs">
                                                   <span className="text-gray-300 mr-1">Day {eIdx + 1}</span>
-                                                  {isLocked && <span className="ml-1 text-orange-500" title="Entry locked (past date)">🔒</span>}
+                                                  {isLocked && <span className="ml-1 text-orange-500" title="Entry locked">🔒</span>}
                                                 </td>
                                                 <td className="py-1.5 px-1">
                                                   <span className="text-xs text-gray-600 px-1">
@@ -4638,41 +4698,50 @@ function EditProjectForm() {
                                                   </span>
                                                 </td>
                                                 <td className="py-1.5 px-1 text-center text-gray-400 text-xs">–</td>
-                                                <td className="py-1.5 px-1">
-                                                  <input
-                                                    type="number"
-                                                    value={entry.qty_done || ''}
-                                                    onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'qty_done', e.target.value)}
-                                                    className={`w-full px-1 py-0.5 text-xs border-0 border-b text-center focus:outline-none bg-transparent ${isLocked ? 'border-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-200 focus:border-blue-500'}`}
-                                                    placeholder="–"
-                                                    min="0"
-                                                    disabled={isLocked}
-                                                  />
+                                                <td className="py-1.5 px-1 text-center">
+                                                  {isLocked ? (
+                                                    <span className="text-xs text-gray-600">{entry.qty_done || '–'}</span>
+                                                  ) : (
+                                                    <input
+                                                      type="number"
+                                                      value={entry.qty_done || ''}
+                                                      onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'qty_done', e.target.value)}
+                                                      className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
+                                                      placeholder="–"
+                                                      min="0"
+                                                    />
+                                                  )}
                                                 </td>
                                                 <td className="py-1.5 px-1 text-center text-gray-400 text-xs">–</td>
-                                                <td className="py-1.5 px-1">
-                                                  <input
-                                                    type="number"
-                                                    value={entry.hours || ''}
-                                                    onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'hours', e.target.value)}
-                                                    className={`w-full px-1 py-0.5 text-xs border-0 border-b text-center focus:outline-none bg-transparent ${isLocked ? 'border-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-200 focus:border-blue-500'}`}
-                                                    placeholder="–"
-                                                    min="0"
-                                                    step="0.5"
-                                                    disabled={isLocked}
-                                                  />
+                                                <td className="py-1.5 px-1 text-center">
+                                                  {isLocked ? (
+                                                    <span className="text-xs text-gray-600">{entry.hours || '–'}</span>
+                                                  ) : (
+                                                    <input
+                                                      type="number"
+                                                      value={entry.hours || ''}
+                                                      onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'hours', e.target.value)}
+                                                      className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
+                                                      placeholder="–"
+                                                      min="0"
+                                                      step="0.5"
+                                                    />
+                                                  )}
                                                 </td>
                                                 <td className="py-1.5 px-1"></td>
                                                 <td className="py-1.5 px-1"></td>
                                                 <td className="py-1.5 px-2">
-                                                  <input
-                                                    type="text"
-                                                    value={entry.remarks || ''}
-                                                    onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'remarks', e.target.value)}
-                                                    className={`w-full px-1 py-0.5 text-xs border-0 border-b focus:outline-none bg-transparent ${isLocked ? 'border-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-200 focus:border-blue-500'}`}
-                                                    placeholder="–"
-                                                    disabled={isLocked}
-                                                  />
+                                                  {isLocked ? (
+                                                    <span className="text-xs text-gray-600">{entry.remarks || '–'}</span>
+                                                  ) : (
+                                                    <input
+                                                      type="text"
+                                                      value={entry.remarks || ''}
+                                                      onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'remarks', e.target.value)}
+                                                      className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"
+                                                      placeholder="–"
+                                                    />
+                                                  )}
                                                 </td>
                                                 <td className="py-1.5 px-1 text-center">
                                                   {!isLocked && (
