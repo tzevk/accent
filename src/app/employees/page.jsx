@@ -503,21 +503,22 @@ export default function EmployeesPage() {
       // Fetch all components based on current date and gross salary
       await fetchAllComponents(gross);
       
-      // Use current DA (already fetched)
+      // Use current DA (already fetched) or manual DA if in manual edit mode
       let daAmount = currentDA || 0;
       
-      if (daAmount === null || daAmount === 0) {
+      if (useManual || manualEdit) {
+        // Use manual DA value if provided
+        daAmount = parseFloat(manualValues.da) || currentDA || 0;
+      } else if (daAmount === null || daAmount === 0) {
         // Fetch current DA based on today's date
         daAmount = await fetchCurrentDA();
       }
       
-      let basic_plus_da, basic, hra, conveyance, call_allowance, pf_employee, esic_employee, pf_employer, esic_employer;
+      let basic_plus_da, hra, conveyance, call_allowance, pf_employee, esic_employee, pf_employer, esic_employer;
       
       if (useManual || manualEdit) {
         // Use manual values if provided, otherwise fall back to calculated
         basic_plus_da = parseFloat(manualValues.basic_plus_da) || Math.round(gross * 0.60);
-        daAmount = parseFloat(manualValues.da) || daAmount;
-        basic = parseFloat(manualValues.basic) || (basic_plus_da - daAmount);
         hra = parseFloat(manualValues.hra) || Math.round(gross * 0.20);
         conveyance = parseFloat(manualValues.conveyance) || Math.round(gross * 0.10);
         call_allowance = parseFloat(manualValues.call_allowance) || Math.round(gross * 0.10);
@@ -528,14 +529,6 @@ export default function EmployeesPage() {
       } else {
         // Calculate using frozen PAYROLL_CONFIG rules (60/20/10/10)
         basic_plus_da = Math.round(gross * 0.60);
-        basic = basic_plus_da - daAmount;
-        
-        // Validate: basic must be >= 0
-        if (basic < 0) {
-          setPreviewError(`Invalid: DA (₹${daAmount}) exceeds Basic+DA (₹${basic_plus_da}). Basic cannot be negative.`);
-          setPreviewBreakdown(null);
-          return;
-        }
         
         hra = Math.round(gross * 0.20);
         conveyance = Math.round(gross * 0.10);
@@ -546,16 +539,16 @@ export default function EmployeesPage() {
         esic_employer = salaryPreview.esic_applicable ? Math.round(gross * 0.0325) : 0;
       }
       
-      const total_earnings = gross + otherAllowances;
+      // Total earnings = sum of all earning components including DA and other allowances
+      const total_earnings = basic_plus_da + daAmount + hra + conveyance + call_allowance + otherAllowances;
       const total_deductions = pf_employee + esic_employee;
       const net_pay = total_earnings - total_deductions;
       const employer_cost = total_earnings + pf_employer + esic_employer;
       
       setPreviewBreakdown({
-        gross,
+        gross: gross, // Keep original gross for percentage calculations
         basic_plus_da,
         da: daAmount,
-        basic,
         hra,
         conveyance,
         call_allowance,
@@ -666,7 +659,6 @@ export default function EmployeesPage() {
         // Include breakdown values (manual or calculated)
         basic_plus_da: previewBreakdown.basic_plus_da,
         da: previewBreakdown.da,
-        basic: previewBreakdown.basic,
         hra: previewBreakdown.hra,
         conveyance: previewBreakdown.conveyance,
         call_allowance: previewBreakdown.call_allowance,
@@ -2669,12 +2661,12 @@ export default function EmployeesPage() {
                               </summary>
                               <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
                                 <div className="bg-white/80 rounded p-2">
-                                  <p className="text-gray-500">DA</p>
-                                  <p className="font-semibold">₹{(savedSalaryProfiles[0]?.da || 0).toLocaleString('en-IN')}</p>
+                                  <p className="text-gray-500">Basic</p>
+                                  <p className="font-semibold">₹{(savedSalaryProfiles[0]?.basic_plus_da || 0).toLocaleString('en-IN')}</p>
                                 </div>
                                 <div className="bg-white/80 rounded p-2">
-                                  <p className="text-gray-500">Basic</p>
-                                  <p className="font-semibold">₹{(savedSalaryProfiles[0]?.basic || 0).toLocaleString('en-IN')}</p>
+                                  <p className="text-gray-500">DA</p>
+                                  <p className="font-semibold">₹{(savedSalaryProfiles[0]?.da || 0).toLocaleString('en-IN')}</p>
                                 </div>
                                 <div className="bg-white/80 rounded p-2">
                                   <p className="text-gray-500">HRA</p>
@@ -2911,9 +2903,9 @@ export default function EmployeesPage() {
                                     <span className="font-medium text-gray-900">₹{previewBreakdown.basic_plus_da.toLocaleString('en-IN')}</span>
                                   )}
                                 </div>
-                                <div className="flex justify-between items-center text-xs pl-2 border-l border-green-300">
-                                  <span className="text-gray-500">DA</span>
-                                  <span className="text-gray-700">₹{previewBreakdown.da.toLocaleString('en-IN')}</span>
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-gray-600">DA</span>
+                                  <span className="font-medium text-gray-900">₹{(previewBreakdown.da || 0).toLocaleString('en-IN')}</span>
                                 </div>
                                 <div className="flex justify-between items-center text-xs">
                                   <span className="text-gray-600">HRA</span>
