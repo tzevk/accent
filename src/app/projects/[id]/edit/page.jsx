@@ -95,7 +95,8 @@ const TABS = [
   { id: 'software', label: 'Software' },
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'project_schedule', label: 'Project Schedule' },
-  { id: 'project_activity', label: 'Project Activity' },
+  { id: 'project_activity', label: 'Project Activity', adminOnly: true },
+  { id: 'my_activities', label: 'My Activities', userOnly: true },
   { id: 'documents_issued', label: 'Documents Issued' },
   { id: 'project_handover', label: 'Project Handover' },
   { id: 'project_manhours', label: 'Project Manhours' },
@@ -113,12 +114,69 @@ const PROCUREMENT_STATUS_OPTIONS = ['Not Started', 'In Progress', 'Completed', '
 const DOCUMENTATION_STATUS_OPTIONS = ['Not Started', 'Drafted', 'Reviewed', 'Finalized'];
 
 function LoadingFallback() {
+  const [elapsed, setElapsed] = useState(0);
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  };
+
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-gray-50 to-white flex flex-col">
       <Navbar />
-      <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
-        Loading project…
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          {/* Animated spinner */}
+          <div className="relative inline-flex mb-6">
+            <div className="w-16 h-16 rounded-full border-4 border-gray-200"></div>
+            <div className="absolute top-0 left-0 w-16 h-16 rounded-full border-4 border-transparent border-t-violet-500 border-r-violet-500 animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <svg className="w-6 h-6 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+          </div>
+          
+          {/* Loading text */}
+          <div className="space-y-2">
+            <p className="text-base font-medium text-gray-700">Loading Project</p>
+            <p className="text-sm text-gray-400">
+              Fetching project data<span className="loading-dots">...</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-3 font-mono bg-gray-100 px-3 py-1 rounded-full inline-block">
+              ⏱️ {formatTime(elapsed)}
+            </p>
+          </div>
+        </div>
       </div>
+      
+      {/* Loading animation styles */}
+      <style jsx>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+          animation: spin 1s linear infinite;
+        }
+        .loading-dots::after {
+          content: '';
+          animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+          0%, 20% { content: ''; }
+          40% { content: '.'; }
+          60% { content: '..'; }
+          80%, 100% { content: '...'; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -1569,6 +1627,66 @@ function EditProjectForm() {
     }));
   };
 
+  // Add daily entry for user activity
+  const addDailyEntry = (activityId, userId) => {
+    const today = new Date().toISOString().split('T')[0];
+    setProjectActivities(prev => prev.map(act => {
+      if (act.id === activityId) {
+        const updatedUsers = (act.assigned_users || []).map(u => {
+          const uId = typeof u === 'object' ? u.user_id : u;
+          if (String(uId) === String(userId)) {
+            const currentEntries = (typeof u === 'object' && u.daily_entries) ? u.daily_entries : [];
+            const newEntry = { date: today, qty_done: '', hours: '', remarks: '' };
+            return { ...u, daily_entries: [...currentEntries, newEntry] };
+          }
+          return u;
+        });
+        return { ...act, assigned_users: updatedUsers };
+      }
+      return act;
+    }));
+  };
+
+  // Update daily entry for user activity
+  const updateDailyEntry = (activityId, userId, entryIndex, field, value) => {
+    setProjectActivities(prev => prev.map(act => {
+      if (act.id === activityId) {
+        const updatedUsers = (act.assigned_users || []).map(u => {
+          const uId = typeof u === 'object' ? u.user_id : u;
+          if (String(uId) === String(userId) && typeof u === 'object') {
+            const entries = [...(u.daily_entries || [])];
+            if (entries[entryIndex]) {
+              entries[entryIndex] = { ...entries[entryIndex], [field]: value };
+            }
+            return { ...u, daily_entries: entries };
+          }
+          return u;
+        });
+        return { ...act, assigned_users: updatedUsers };
+      }
+      return act;
+    }));
+  };
+
+  // Remove daily entry for user activity
+  const removeDailyEntry = (activityId, userId, entryIndex) => {
+    setProjectActivities(prev => prev.map(act => {
+      if (act.id === activityId) {
+        const updatedUsers = (act.assigned_users || []).map(u => {
+          const uId = typeof u === 'object' ? u.user_id : u;
+          if (String(uId) === String(userId) && typeof u === 'object') {
+            const entries = [...(u.daily_entries || [])];
+            entries.splice(entryIndex, 1);
+            return { ...u, daily_entries: entries };
+          }
+          return u;
+        });
+        return { ...act, assigned_users: updatedUsers };
+      }
+      return act;
+    }));
+  };
+
   // Calculate total planned hours for an activity (sum of all user planned hours)
   const getActivityTotalPlanned = (act) => {
     if (!act.assigned_users || act.assigned_users.length === 0) return parseFloat(act.planned_hours) || 0;
@@ -2047,7 +2165,13 @@ function EditProjectForm() {
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
               }}>
                 <div className="flex items-center gap-0 flex-wrap">
-                  {TABS.map((tab, index) => {
+                  {TABS.filter(tab => {
+                    // Filter tabs based on user role
+                    const isAdmin = sessionUser?.is_super_admin || sessionUser?.role_info?.hierarchy <= 2;
+                    if (tab.adminOnly && !isAdmin) return false;
+                    if (tab.userOnly && isAdmin) return false;
+                    return true;
+                  }).map((tab, index) => {
                     const isActive = activeTab === tab.id;
                     return (
                       <button
@@ -4078,148 +4202,74 @@ function EditProjectForm() {
               </section>
             )}
 
-            {/* Project Activity / Daily Activity Tab */}
+            {/* Project Activity Tab - Admin view for all team members */}
             {activeTab === 'project_activity' && (
               <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                {/* Simple Header */}
                 <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                   <h2 className="font-semibold text-gray-800 text-lg">Project Activities</h2>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="text-gray-500">{projectActivities.length} activities</span>
-                    <span className="text-blue-600 font-medium">Plan: {projectActivities.reduce((sum, a) => sum + (parseFloat(a.planned_hours) || 0), 0).toFixed(1)}h</span>
-                    <span className="text-green-600 font-medium">Actual: {projectActivities.reduce((sum, a) => sum + (parseFloat(a.actual_hours) || 0), 0).toFixed(1)}h</span>
+                    <span className="text-blue-600 font-medium">Plan: {projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</span>
+                    <span className="text-green-600 font-medium">Actual: {projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</span>
                   </div>
                 </div>
 
                 <div className="p-5 space-y-5">
-                  {/* Select Activities from Master */}
                   {functions.length > 0 && (
                     <div className="flex items-center justify-between">
                       <button
                         type="button"
                         onClick={toggleActivitySelector}
                         className={`px-3 py-1.5 rounded text-sm font-medium flex items-center gap-1.5 transition-all ${
-                          showActivitySelector 
-                            ? 'bg-gray-200 text-gray-700' 
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                          showActivitySelector ? 'bg-gray-200 text-gray-700' : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
                       >
                         {showActivitySelector ? (
-                          <>
-                            <XMarkIcon className="h-4 w-4" />
-                            Close
-                          </>
+                          <><XMarkIcon className="h-4 w-4" />Close</>
                         ) : (
-                          <>
-                            <PlusIcon className="h-4 w-4" />
-                            Add Activities
-                          </>
+                          <><PlusIcon className="h-4 w-4" />Add Activities</>
                         )}
                       </button>
-                      {projectActivities.length > 0 && (
-                        <div className="text-sm text-gray-500">
-                          {projectActivities.length} added
-                        </div>
-                      )}
+                      {projectActivities.length > 0 && <div className="text-sm text-gray-500">{projectActivities.length} added</div>}
                     </div>
                   )}
 
-                  {/* Compact Activity Selector by Discipline */}
                   {showActivitySelector && functions.length > 0 && (
                     <div className="border border-gray-200 rounded-lg bg-white text-sm">
-                      {/* Header */}
                       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50">
-                        <input
-                          type="text"
-                          value={activitySelectorSearch}
-                          onChange={(e) => setActivitySelectorSearch(e.target.value)}
-                          placeholder="Search..."
-                          className="px-2 py-1 text-sm border border-gray-300 rounded w-48 focus:outline-none focus:border-blue-500"
-                        />
+                        <input type="text" value={activitySelectorSearch} onChange={(e) => setActivitySelectorSearch(e.target.value)} placeholder="Search..." className="px-2 py-1 text-sm border border-gray-300 rounded w-48 focus:outline-none focus:border-blue-500" />
                         <div className="flex items-center gap-3">
-                          {getSelectedCount() > 0 && (
-                            <span className="text-blue-600 font-medium">{getSelectedCount()} selected</span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={addSelectedActivities}
-                            disabled={getSelectedCount() === 0}
-                            className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                          >
-                            Add
-                          </button>
+                          {getSelectedCount() > 0 && <span className="text-blue-600 font-medium">{getSelectedCount()} selected</span>}
+                          <button type="button" onClick={addSelectedActivities} disabled={getSelectedCount() === 0} className="px-3 py-1 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed">Add</button>
                         </div>
                       </div>
-                      
-                      {/* Disciplines */}
                       <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
                         {functions.map(func => {
-                          const filteredActs = (func.activities || []).filter(act => {
-                            if (!activitySelectorSearch) return true;
-                            return act.activity_name?.toLowerCase().includes(activitySelectorSearch.toLowerCase());
-                          });
-                          
-                          // Show discipline even if no activities (but hide if search active and no matches)
+                          const filteredActs = (func.activities || []).filter(act => !activitySelectorSearch || act.activity_name?.toLowerCase().includes(activitySelectorSearch.toLowerCase()));
                           if (activitySelectorSearch && filteredActs.length === 0) return null;
-                          
                           const allSelected = filteredActs.length > 0 && filteredActs.every(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
                           const someSelected = filteredActs.some(act => selectedActivitiesForAdd[`${func.id}|${act.id}`]);
-                          
                           return (
                             <div key={func.id}>
-                              {/* Discipline header */}
-                              <div 
-                                className={`flex items-center gap-2 px-3 py-1 bg-gray-50 ${filteredActs.length > 0 ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-                                onClick={() => filteredActs.length > 0 && toggleAllActivitiesInDiscipline(func.id, filteredActs)}
-                              >
-                                {filteredActs.length > 0 ? (
-                                  <input
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    ref={el => el && (el.indeterminate = someSelected && !allSelected)}
-                                    onChange={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)}
-                                    className="h-3.5 w-3.5 text-blue-600 rounded border-gray-300"
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                ) : (
-                                  <span className="h-3.5 w-3.5" />
-                                )}
+                              <div className={`flex items-center gap-2 px-3 py-1 bg-gray-50 ${filteredActs.length > 0 ? 'cursor-pointer hover:bg-gray-100' : ''}`} onClick={() => filteredActs.length > 0 && toggleAllActivitiesInDiscipline(func.id, filteredActs)}>
+                                {filteredActs.length > 0 ? <input type="checkbox" checked={allSelected} ref={el => el && (el.indeterminate = someSelected && !allSelected)} onChange={() => toggleAllActivitiesInDiscipline(func.id, filteredActs)} className="h-3.5 w-3.5 text-blue-600 rounded border-gray-300" onClick={(e) => e.stopPropagation()} /> : <span className="h-3.5 w-3.5" />}
                                 <span className="font-medium text-gray-700 text-xs">{func.function_name}</span>
-                                <span className="text-gray-400 text-xs">
-                                  {filteredActs.length > 0 ? `(${filteredActs.length})` : '(no activities)'}
-                                </span>
+                                <span className="text-gray-400 text-xs">{filteredActs.length > 0 ? `(${filteredActs.length})` : '(no activities)'}</span>
                               </div>
-                              
-                              {/* Activities under this discipline - 3 columns */}
                               {filteredActs.length > 0 && (
-                              <div className="grid grid-cols-3 gap-x-1 px-2 py-1">
-                                {filteredActs.map(activity => {
-                                  const isAlreadyAdded = projectActivities.some(pa => String(pa.id) === String(activity.id) && pa.type === 'activity');
-                                  const isSelected = selectedActivitiesForAdd[`${func.id}|${activity.id}`];
-                                  
-                                  return (
-                                    <label 
-                                      key={activity.id} 
-                                      className={`flex items-center gap-1 py-0.5 cursor-pointer text-xs truncate ${
-                                        isAlreadyAdded ? 'opacity-40 cursor-not-allowed' : isSelected ? 'text-blue-700' : 'text-gray-600 hover:text-gray-900'
-                                      }`}
-                                      title={activity.activity_name}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected || false}
-                                        disabled={isAlreadyAdded}
-                                        onChange={() => !isAlreadyAdded && toggleActivitySelection(func.id, activity.id)}
-                                        className="h-3 w-3 text-blue-600 rounded border-gray-300 flex-shrink-0"
-                                      />
-                                      <span className={`truncate ${isAlreadyAdded ? 'line-through' : ''}`}>
-                                        {activity.activity_name}
-                                      </span>
-                                      {isAlreadyAdded && <span className="text-green-600 flex-shrink-0">✓</span>}
-                                    </label>
-                                  );
-                                })}
-                              </div>
+                                <div className="grid grid-cols-3 gap-x-1 px-2 py-1">
+                                  {filteredActs.map(activity => {
+                                    const isAlreadyAdded = projectActivities.some(pa => String(pa.id) === String(activity.id) && pa.type === 'activity');
+                                    const isSelected = selectedActivitiesForAdd[`${func.id}|${activity.id}`];
+                                    return (
+                                      <label key={activity.id} className={`flex items-center gap-1 py-0.5 cursor-pointer text-xs truncate ${isAlreadyAdded ? 'opacity-40 cursor-not-allowed' : isSelected ? 'text-blue-700' : 'text-gray-600 hover:text-gray-900'}`} title={activity.activity_name}>
+                                        <input type="checkbox" checked={isSelected || false} disabled={isAlreadyAdded} onChange={() => !isAlreadyAdded && toggleActivitySelection(func.id, activity.id)} className="h-3 w-3 text-blue-600 rounded border-gray-300 flex-shrink-0" />
+                                        <span className={`truncate ${isAlreadyAdded ? 'line-through' : ''}`}>{activity.activity_name}</span>
+                                        {isAlreadyAdded && <span className="text-green-600 flex-shrink-0">✓</span>}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
                               )}
                             </div>
                           );
@@ -4228,25 +4278,14 @@ function EditProjectForm() {
                     </div>
                   )}
 
-                  {/* Activities Grouped by Discipline */}
                   {projectActivities.length === 0 ? (
-                    <div className="text-center py-6 text-gray-400 text-sm">
-                      No activities added yet. Click the button above to add activities.
-                    </div>
+                    <div className="text-center py-6 text-gray-400 text-sm">No activities added yet. Click the button above to add activities.</div>
                   ) : (
                     <div className="space-y-4">
-                      {/* Group activities by discipline */}
                       {(() => {
-                        const grouped = projectActivities.reduce((acc, act) => {
-                          const discipline = act.discipline || act.function_name || 'Manual Entry';
-                          if (!acc[discipline]) acc[discipline] = [];
-                          acc[discipline].push(act);
-                          return acc;
-                        }, {});
-
+                        const grouped = projectActivities.reduce((acc, act) => { const discipline = act.discipline || act.function_name || 'Manual Entry'; if (!acc[discipline]) acc[discipline] = []; acc[discipline].push(act); return acc; }, {});
                         return Object.entries(grouped).map(([discipline, acts]) => (
                           <div key={discipline} style={{ overflow: 'visible' }}>
-                            {/* Discipline Header */}
                             <div className="flex items-center justify-between mb-2">
                               <span className="font-semibold text-gray-800 text-sm">{discipline} <span className="font-normal text-gray-400 text-xs">({acts.length})</span></span>
                               <div className="flex items-center gap-3 text-xs">
@@ -4254,246 +4293,118 @@ function EditProjectForm() {
                                 <span className="text-green-600 font-medium">{acts.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h actual</span>
                               </div>
                             </div>
-
-                            {/* Activities Table */}
                             <div style={{ overflow: 'visible' }}>
-                            <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
-                              <thead>
-                                <tr className="border-b border-gray-200">
-                                  <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
-                                  <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '18%' }}></th>
-                                  <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Team</th>
-                                  <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '10%' }}>Unit/Qty</th>
-                                  <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '28%' }}>Progress</th>
-                                  <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '20%' }}>Notes</th>
-                                  <th className="py-1 px-1" style={{ width: '4%' }}></th>
-                                </tr>
-                                <tr className="border-b border-gray-300">
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
-                                  <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Member</th>
-                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
-                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
-                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-l border-blue-200">Plan</th>
-                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Actual</th>
-                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Due</th>
-                                  <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Status</th>
-                                  <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
-                                  <th className="py-2 px-1"></th>
-                                </tr>
-                              </thead>
-                              <tbody style={{ overflow: 'visible' }}>
-                                {acts.map((act, idx) => {
-                                  const assignedUsers = act.assigned_users || [];
-                                  const hasUsers = assignedUsers.length > 0;
-                                  
-                                  return (
-                                    <Fragment key={`${act.id}-${act.type}-${idx}`}>
-                                      {/* Activity Header Row */}
-                                      <tr className="border-b border-gray-200">
-                                        <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
-                                        <td className="py-2 px-2" colSpan={9}>
-                                          <div className="flex items-center gap-2">
-                                            <input 
-                                              type="text" 
-                                              value={act.activity_name || act.name || ''} 
-                                              onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} 
-                                              className="flex-1 px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" 
-                                              placeholder="Activity name"
-                                            />
-                                            <div className="relative" data-user-selector-dropdown>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id);
-                                                }}
-                                                className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap"
-                                              >
-                                                + Add
-                                              </button>
-                                              
-                                              {openUserSelectorForActivity === act.id && (
-                                                <div 
-                                                  className="absolute z-[9999] mt-1 right-0 w-48 bg-white border border-gray-200 rounded-md shadow-lg"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                >
-                                                  <div className="px-2 py-1.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700 flex items-center justify-between">
-                                                    <span>Select Member</span>
-                                                    <button type="button" onClick={() => setOpenUserSelectorForActivity(null)} className="text-gray-400 hover:text-gray-600">×</button>
-                                                  </div>
-                                                  <div className="max-h-40 overflow-y-auto">
-                                                    {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).map(user => {
-                                                      const userName = user.full_name || user.employee_name || user.username || user.email || 'Unknown';
-                                                      return (
-                                                        <div
-                                                          key={user.id}
-                                                          onClick={() => toggleUserForActivity(act.id, user.id)}
-                                                          className="px-2 py-1.5 cursor-pointer text-xs text-gray-700 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                                                        >
-                                                          {userName}
+                              <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
+                                <thead>
+                                  <tr className="border-b border-gray-200">
+                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
+                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '18%' }}></th>
+                                    <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Team</th>
+                                    <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '10%' }}>Unit/Qty</th>
+                                    <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '28%' }}>Progress</th>
+                                    <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '20%' }}>Notes</th>
+                                    <th className="py-1 px-1" style={{ width: '4%' }}></th>
+                                  </tr>
+                                  <tr className="border-b border-gray-300">
+                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
+                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
+                                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Member</th>
+                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
+                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
+                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-l border-blue-200">Plan</th>
+                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Actual</th>
+                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Due</th>
+                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Status</th>
+                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
+                                    <th className="py-2 px-1"></th>
+                                  </tr>
+                                </thead>
+                                <tbody style={{ overflow: 'visible' }}>
+                                  {acts.map((act, idx) => {
+                                    const assignedUsers = act.assigned_users || [];
+                                    const hasUsers = assignedUsers.length > 0;
+                                    return (
+                                      <Fragment key={`${act.id}-${act.type}-${idx}`}>
+                                        <tr className="border-b border-gray-200">
+                                          <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
+                                          <td className="py-2 px-2" colSpan={9}>
+                                            <div className="flex items-center gap-2">
+                                              <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="flex-1 px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" placeholder="Activity name" />
+                                              <div className="relative" data-user-selector-dropdown>
+                                                <button type="button" onClick={(e) => { e.stopPropagation(); setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id); }} className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap">+ Add User</button>
+                                                {openUserSelectorForActivity === act.id && (
+                                                  <div className="absolute z-[9999] mt-1 right-0 w-48 bg-white border border-gray-200 rounded-md shadow-lg" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="px-2 py-1.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700 flex items-center justify-between">
+                                                      <span>Select Member</span>
+                                                      <button type="button" onClick={() => setOpenUserSelectorForActivity(null)} className="text-gray-400 hover:text-gray-600">×</button>
+                                                    </div>
+                                                    <div className="max-h-40 overflow-y-auto">
+                                                      {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).map(user => (
+                                                        <div key={user.id} onClick={() => toggleUserForActivity(act.id, user.id)} className="px-2 py-1.5 cursor-pointer text-xs text-gray-700 hover:bg-blue-50 border-b border-gray-100 last:border-b-0">
+                                                          {user.full_name || user.employee_name || user.username || user.email || 'Unknown'}
                                                         </div>
-                                                      );
-                                                    })}
-                                                    {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).length === 0 && (
-                                                      <div className="px-2 py-1.5 text-xs text-gray-500 text-center">All assigned</div>
-                                                    )}
+                                                      ))}
+                                                      {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).length === 0 && <div className="px-2 py-1.5 text-xs text-gray-500 text-center">All assigned</div>}
+                                                    </div>
                                                   </div>
-                                                </div>
-                                              )}
+                                                )}
+                                              </div>
                                             </div>
-                                          </div>
-                                        </td>
-                                        <td className="py-2 px-1 text-center align-middle">
-                                          <button 
-                                            type="button" 
-                                            onClick={() => removeScopeActivity(act.id)} 
-                                            className="text-gray-300 hover:text-red-500"
-                                            title="Remove"
-                                          >
-                                            ×
-                                          </button>
-                                        </td>
-                                      </tr>
-                                      
-                                      {/* User Rows */}
-                                      {hasUsers && assignedUsers.map((assignment, uIdx) => {
-                                        const userId = typeof assignment === 'object' ? assignment.user_id : assignment;
-                                        const userList = allUsers.length > 0 ? allUsers : userMaster;
-                                        const user = userList.find(u => String(u.id) === String(userId));
-                                        const name = user ? (user.full_name || user.employee_name || user.username || user.email || '?') : '?';
-                                        const plannedHrs = typeof assignment === 'object' ? (assignment.planned_hours || '') : '';
-                                        const actualHrs = typeof assignment === 'object' ? (assignment.actual_hours || '') : '';
-                                        const qtyAssigned = typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
-                                        const qtyCompleted = typeof assignment === 'object' ? (assignment.qty_completed || '') : '';
-                                        const dueDate = typeof assignment === 'object' ? (assignment.due_date || '') : '';
-                                        const status = typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
-                                        const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
-                                        
-                                        return (
-                                          <tr key={`${act.id}-user-${userId}`} className="border-b border-gray-100 hover:bg-gray-50">
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2 text-gray-600 text-xs">
-                                              <span className="text-gray-400 mr-1">{uIdx + 1}.</span>
-                                              {name}
-                                            </td>
-                                            <td className="py-1.5 px-1">
-                                              <input
-                                                type="number"
-                                                value={qtyAssigned}
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'qty_assigned', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
-                                                placeholder="–"
-                                                min="0"
-                                              />
-                                            </td>
-                                            <td className="py-1.5 px-1">
-                                              <input
-                                                type="number"
-                                                value={qtyCompleted}
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'qty_completed', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
-                                                placeholder="–"
-                                                min="0"
-                                              />
-                                            </td>
-                                            <td className="py-1.5 px-2">
-                                              <input
-                                                type="number"
-                                                value={plannedHrs}
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'planned_hours', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
-                                                placeholder="–"
-                                                min="0"
-                                                step="0.5"
-                                              />
-                                            </td>
-                                            <td className="py-1.5 px-2">
-                                              <input
-                                                type="number"
-                                                value={actualHrs}
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'actual_hours', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
-                                                placeholder="–"
-                                                min="0"
-                                                step="0.5"
-                                              />
-                                            </td>
-                                            <td className="py-1.5 px-2">
-                                              <input 
-                                                type="date" 
-                                                value={dueDate} 
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'due_date', e.target.value)} 
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent" 
-                                              />
-                                            </td>
-                                            <td className="py-1.5 px-2">
-                                              <select
-                                                value={status}
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'status', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"
-                                              >
-                                                <option value="Not Started">Not Started</option>
-                                                <option value="In Progress">In Progress</option>
-                                                <option value="Completed">Completed</option>
-                                                <option value="On Hold">On Hold</option>
-                                              </select>
-                                            </td>
-                                            <td className="py-1.5 px-2">
-                                              <textarea
-                                                value={remarks}
-                                                onChange={(e) => updateUserManhours(act.id, userId, 'remarks', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-transparent resize-y min-h-[24px]"
-                                                placeholder="–"
-                                                rows={1}
-                                              />
-                                            </td>
-                                            <td className="py-1.5 px-1 text-center">
-                                              <button 
-                                                type="button" 
-                                                onClick={() => toggleUserForActivity(act.id, userId)} 
-                                                className="text-gray-300 hover:text-red-500"
-                                                title="Remove"
-                                              >
-                                                ×
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                      
-                                      {/* Totals Row */}
-                                      {hasUsers && (
-                                        <tr className="border-t border-gray-200">
-                                          <td className="py-1.5 px-2"></td>
-                                          <td className="py-1.5 px-2"></td>
-                                          <td className="py-1.5 px-2 text-right text-gray-400 text-xs">Total</td>
-                                          <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">
-                                            {(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_assigned : 0) || 0), 0)}
                                           </td>
-                                          <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">
-                                            {(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_completed : 0) || 0), 0)}
-                                          </td>
-                                          <td className="py-1.5 px-2 font-semibold text-blue-600 text-xs">{getActivityTotalPlanned(act).toFixed(1)}</td>
-                                          <td className="py-1.5 px-2 font-semibold text-green-600 text-xs">{getActivityTotalActual(act).toFixed(1)}</td>
-                                          <td className="py-1.5 px-2"></td>
-                                          <td className="py-1.5 px-2"></td>
-                                          <td className="py-1.5 px-2"></td>
-                                          <td className="py-1.5 px-1"></td>
+                                          <td className="py-2 px-1 text-center align-middle"><button type="button" onClick={() => removeScopeActivity(act.id)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
                                         </tr>
-                                      )}
-                                    </Fragment>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                                        {hasUsers && assignedUsers.map((assignment, uIdx) => {
+                                          const odUserId = typeof assignment === 'object' ? assignment.user_id : assignment;
+                                          const userList = allUsers.length > 0 ? allUsers : userMaster;
+                                          const user = userList.find(u => String(u.id) === String(odUserId));
+                                          const name = user ? (user.full_name || user.employee_name || user.username || user.email || '?') : '?';
+                                          const plannedHrs = typeof assignment === 'object' ? (assignment.planned_hours || '') : '';
+                                          const actualHrs = typeof assignment === 'object' ? (assignment.actual_hours || '') : '';
+                                          const qtyAssigned = typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
+                                          const qtyCompleted = typeof assignment === 'object' ? (assignment.qty_completed || '') : '';
+                                          const dueDate = typeof assignment === 'object' ? (assignment.due_date || '') : '';
+                                          const status = typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
+                                          const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
+                                          return (
+                                            <tr key={`${act.id}-user-${odUserId}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                              <td className="py-1.5 px-2"></td>
+                                              <td className="py-1.5 px-2"></td>
+                                              <td className="py-1.5 px-2 text-gray-600 text-xs"><span className="text-gray-400 mr-1">{uIdx + 1}.</span>{name}</td>
+                                              <td className="py-1.5 px-1"><input type="number" value={qtyAssigned} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_assigned', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
+                                              <td className="py-1.5 px-1"><input type="number" value={qtyCompleted} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_completed', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
+                                              <td className="py-1.5 px-2"><input type="number" value={plannedHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'planned_hours', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
+                                              <td className="py-1.5 px-2"><input type="number" value={actualHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'actual_hours', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
+                                              <td className="py-1.5 px-2"><input type="date" value={dueDate} onChange={(e) => updateUserManhours(act.id, odUserId, 'due_date', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent" /></td>
+                                              <td className="py-1.5 px-2"><select value={status} onChange={(e) => updateUserManhours(act.id, odUserId, 'status', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"><option value="Not Started">Not Started</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="On Hold">On Hold</option></select></td>
+                                              <td className="py-1.5 px-2"><textarea value={remarks} onChange={(e) => updateUserManhours(act.id, odUserId, 'remarks', e.target.value)} className="w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-transparent resize-y min-h-[24px]" placeholder="–" rows={1} /></td>
+                                              <td className="py-1.5 px-1 text-center"><button type="button" onClick={() => toggleUserForActivity(act.id, odUserId)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
+                                            </tr>
+                                          );
+                                        })}
+                                        {hasUsers && (
+                                          <tr className="border-t border-gray-200">
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2 text-right text-gray-400 text-xs">Total</td>
+                                            <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_assigned : 0) || 0), 0)}</td>
+                                            <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_completed : 0) || 0), 0)}</td>
+                                            <td className="py-1.5 px-2 font-semibold text-blue-600 text-xs">{getActivityTotalPlanned(act).toFixed(1)}</td>
+                                            <td className="py-1.5 px-2 font-semibold text-green-600 text-xs">{getActivityTotalActual(act).toFixed(1)}</td>
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-1"></td>
+                                          </tr>
+                                        )}
+                                      </Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         ));
                       })()}
-
-                      {/* Summary Footer */}
                       <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
                         <span>{projectActivities.length} activities • {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines</span>
                         <div className="flex items-center gap-4">
@@ -4511,6 +4422,346 @@ function EditProjectForm() {
             {activeTab === 'discussion' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <ProjectFollowupsForm projectId={id} projectTeamMembers={projectTeamMembers} currentUser={sessionUser} />
+              </section>
+            )}
+
+            {/* My Activities Tab - Personalized user manhours tracking */}
+            {activeTab === 'my_activities' && (
+              <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                {/* Header */}
+                <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <ClockIcon className="h-5 w-5 text-[#7F2487]" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-900">My Activities</h2>
+                        <p className="text-xs text-gray-500">Your assigned activities and manhours tracking</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-6">
+                  {(() => {
+                    // Filter activities where current user is assigned
+                    const myActivities = projectActivities.filter(act => {
+                      const assignedUsers = act.assigned_users || [];
+                      return assignedUsers.some(assignment => {
+                        const odUserId = typeof assignment === 'object' ? assignment.user_id : assignment;
+                        return String(odUserId) === String(sessionUser?.id);
+                      });
+                    });
+
+                    if (myActivities.length === 0) {
+                      return (
+                        <div className="text-center py-12">
+                          <ClockIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500 text-sm">No activities assigned to you in this project</p>
+                        </div>
+                      );
+                    }
+
+                    // Group by discipline
+                    const groupedByDiscipline = myActivities.reduce((acc, act) => {
+                      const discipline = act.discipline || act.function_name || 'Manual';
+                      if (!acc[discipline]) acc[discipline] = [];
+                      acc[discipline].push(act);
+                      return acc;
+                    }, {});
+
+                    // Calculate totals from daily entries
+                    const totals = myActivities.reduce((acc, act) => {
+                      const assignedUsers = act.assigned_users || [];
+                      const myAssignment = assignedUsers.find(a => {
+                        const odUserId = typeof a === 'object' ? a.user_id : a;
+                        return String(odUserId) === String(sessionUser?.id);
+                      });
+                      if (myAssignment && typeof myAssignment === 'object') {
+                        acc.qtyAssigned += parseFloat(myAssignment.qty_assigned) || 0;
+                        acc.plannedHours += parseFloat(myAssignment.planned_hours) || 0;
+                        // Sum from daily entries
+                        const dailyEntries = myAssignment.daily_entries || [];
+                        acc.qtyCompleted += dailyEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+                        acc.actualHours += dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+                      }
+                      return acc;
+                    }, { qtyAssigned: 0, qtyCompleted: 0, plannedHours: 0, actualHours: 0 });
+
+                    return (
+                      <div className="space-y-6">
+                        {/* Discipline Groups */}
+                        {Object.entries(groupedByDiscipline).map(([discipline, acts]) => {
+                          // Calculate discipline totals for current user from daily entries
+                          const disciplineTotals = acts.reduce((acc, act) => {
+                            const assignedUsers = act.assigned_users || [];
+                            const myAssignment = assignedUsers.find(a => {
+                              const odUserId = typeof a === 'object' ? a.user_id : a;
+                              return String(odUserId) === String(sessionUser?.id);
+                            });
+                            if (myAssignment && typeof myAssignment === 'object') {
+                              acc.planned += parseFloat(myAssignment.planned_hours) || 0;
+                              const dailyEntries = myAssignment.daily_entries || [];
+                              acc.actual += dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+                            }
+                            return acc;
+                          }, { planned: 0, actual: 0 });
+
+                          return (
+                            <div key={discipline} className="border border-gray-200 rounded-lg overflow-hidden">
+                              {/* Discipline Header */}
+                              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
+                                <span className="font-semibold text-gray-800 text-sm">{discipline} <span className="font-normal text-gray-400 text-xs">({acts.length})</span></span>
+                                <div className="flex items-center gap-3 text-xs">
+                                  <span className="text-blue-600 font-medium">{disciplineTotals.planned.toFixed(1)}h plan</span>
+                                  <span className="text-green-600 font-medium">{disciplineTotals.actual.toFixed(1)}h actual</span>
+                                </div>
+                              </div>
+
+                              {/* Activities Table */}
+                              <div style={{ overflow: 'visible' }}>
+                                <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
+                                  <thead>
+                                    <tr className="border-b border-gray-200">
+                                      <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
+                                      <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '20%' }}></th>
+                                      <th className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Date</th>
+                                      <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '12%' }}>Qty</th>
+                                      <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '16%' }}>Hours</th>
+                                      <th className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-orange-50 border-l border-r border-orange-200" style={{ width: '10%' }}>Due</th>
+                                      <th className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-gray-100 border-l border-r border-gray-200" style={{ width: '10%' }}>Status</th>
+                                      <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '15%' }}>Notes</th>
+                                      <th className="py-1 px-1" style={{ width: '4%' }}></th>
+                                    </tr>
+                                    <tr className="border-b border-gray-300">
+                                      <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
+                                      <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Work Date</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-l border-blue-200">Plan</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Actual</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-orange-50 border-l border-r border-orange-200">Due Date</th>
+                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-gray-100 border-l border-r border-gray-200">Status</th>
+                                      <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
+                                      <th className="py-2 px-1"></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody style={{ overflow: 'visible' }}>
+                                    {acts.map((act, idx) => {
+                                      const assignedUsers = act.assigned_users || [];
+                                      const myAssignment = assignedUsers.find(a => {
+                                        const odUserId = typeof a === 'object' ? a.user_id : a;
+                                        return String(odUserId) === String(sessionUser?.id);
+                                      });
+
+                                      const qtyAssigned = myAssignment && typeof myAssignment === 'object' ? (myAssignment.qty_assigned || '') : '';
+                                      const dailyEntries = myAssignment && typeof myAssignment === 'object' ? (myAssignment.daily_entries || []) : [];
+                                      const totalQtyDone = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+                                      const totalActualHrs = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+                                      const plannedHrs = myAssignment && typeof myAssignment === 'object' ? (myAssignment.planned_hours || '') : '';
+                                      const dueDate = myAssignment && typeof myAssignment === 'object' ? (myAssignment.due_date || '') : '';
+                                      const status = myAssignment && typeof myAssignment === 'object' ? (myAssignment.status || 'Not Started') : 'Not Started';
+                                      const remarks = myAssignment && typeof myAssignment === 'object' ? (myAssignment.remarks || '') : '';
+                                      const balancedQty = (parseFloat(qtyAssigned) || 0) - totalQtyDone;
+
+                                      return (
+                                        <Fragment key={act.id}>
+                                          {/* Activity Header Row */}
+                                          <tr className="border-b border-gray-200 bg-gray-50">
+                                            <td className="py-2 px-2 text-gray-500 font-medium">{idx + 1}</td>
+                                            <td className="py-2 px-2" colSpan={6}>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-gray-800 font-medium">{act.activity_name || act.name}</span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => addDailyEntry(act.id, sessionUser?.id)}
+                                                  className="px-2 py-0.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                                >
+                                                  + Add Day
+                                                </button>
+                                              </div>
+                                            </td>
+                                            <td className="py-2 px-2">
+                                              <input 
+                                                type="date" 
+                                                value={dueDate} 
+                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'due_date', e.target.value)} 
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent" 
+                                              />
+                                            </td>
+                                            <td className="py-2 px-2">
+                                              <select
+                                                value={status}
+                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'status', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent"
+                                              >
+                                                <option value="Not Started">Not Started</option>
+                                                <option value="In Progress">In Progress</option>
+                                                <option value="Completed">Completed</option>
+                                                <option value="On Hold">On Hold</option>
+                                              </select>
+                                            </td>
+                                            <td className="py-2 px-2">
+                                              <textarea
+                                                value={remarks}
+                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'remarks', e.target.value)}
+                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none bg-transparent resize-y min-h-[24px]"
+                                                placeholder="–"
+                                                rows={1}
+                                              />
+                                            </td>
+                                            <td className="py-2 px-1"></td>
+                                          </tr>
+
+                                          {/* Daily Entry Rows */}
+                                          {dailyEntries.map((entry, eIdx) => {
+                                            // Check if entry is from a previous day (locked)
+                                            const today = new Date();
+                                            today.setHours(0, 0, 0, 0);
+                                            const entryDate = entry.date ? new Date(entry.date) : null;
+                                            if (entryDate) entryDate.setHours(0, 0, 0, 0);
+                                            const isLocked = entryDate && entryDate < today;
+                                            
+                                            return (
+                                              <tr key={`${act.id}-day-${eIdx}`} className={`border-b border-gray-100 ${isLocked ? 'bg-gray-50 opacity-75' : 'hover:bg-gray-50'}`}>
+                                                <td className="py-1.5 px-2"></td>
+                                                <td className="py-1.5 px-2 text-gray-400 text-xs">
+                                                  <span className="text-gray-300 mr-1">Day {eIdx + 1}</span>
+                                                  {isLocked && <span className="ml-1 text-orange-500" title="Entry locked (past date)">🔒</span>}
+                                                </td>
+                                                <td className="py-1.5 px-1">
+                                                  <span className="text-xs text-gray-600 px-1">
+                                                    {entry.date ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '–'}
+                                                  </span>
+                                                </td>
+                                                <td className="py-1.5 px-1 text-center text-gray-400 text-xs">–</td>
+                                                <td className="py-1.5 px-1">
+                                                  <input
+                                                    type="number"
+                                                    value={entry.qty_done || ''}
+                                                    onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'qty_done', e.target.value)}
+                                                    className={`w-full px-1 py-0.5 text-xs border-0 border-b text-center focus:outline-none bg-transparent ${isLocked ? 'border-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-200 focus:border-blue-500'}`}
+                                                    placeholder="–"
+                                                    min="0"
+                                                    disabled={isLocked}
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-1 text-center text-gray-400 text-xs">–</td>
+                                                <td className="py-1.5 px-1">
+                                                  <input
+                                                    type="number"
+                                                    value={entry.hours || ''}
+                                                    onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'hours', e.target.value)}
+                                                    className={`w-full px-1 py-0.5 text-xs border-0 border-b text-center focus:outline-none bg-transparent ${isLocked ? 'border-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-200 focus:border-blue-500'}`}
+                                                    placeholder="–"
+                                                    min="0"
+                                                    step="0.5"
+                                                    disabled={isLocked}
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-1"></td>
+                                                <td className="py-1.5 px-1"></td>
+                                                <td className="py-1.5 px-2">
+                                                  <input
+                                                    type="text"
+                                                    value={entry.remarks || ''}
+                                                    onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'remarks', e.target.value)}
+                                                    className={`w-full px-1 py-0.5 text-xs border-0 border-b focus:outline-none bg-transparent ${isLocked ? 'border-gray-100 text-gray-500 cursor-not-allowed' : 'border-gray-200 focus:border-blue-500'}`}
+                                                    placeholder="–"
+                                                    disabled={isLocked}
+                                                  />
+                                                </td>
+                                                <td className="py-1.5 px-1 text-center">
+                                                  {!isLocked && (
+                                                    <button 
+                                                      type="button" 
+                                                      onClick={() => removeDailyEntry(act.id, sessionUser?.id, eIdx)} 
+                                                      className="text-gray-300 hover:text-red-500"
+                                                      title="Remove"
+                                                    >
+                                                      ×
+                                                    </button>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+
+                                          {/* Totals Row */}
+                                          {dailyEntries.length > 0 && (
+                                            <tr className="border-b border-gray-200 bg-blue-50/50">
+                                              <td className="py-1.5 px-2"></td>
+                                              <td className="py-1.5 px-2 text-right text-gray-500 text-xs font-medium">Total</td>
+                                              <td className="py-1.5 px-1"></td>
+                                              <td className="py-1.5 px-1 text-center">
+                                                <input
+                                                  type="number"
+                                                  value={qtyAssigned}
+                                                  onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'qty_assigned', e.target.value)}
+                                                  className="w-full px-1 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent font-semibold text-purple-600"
+                                                  placeholder="–"
+                                                  min="0"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 px-1 text-center font-semibold text-green-600 text-xs">{totalQtyDone || '–'}</td>
+                                              <td className="py-1.5 px-1 text-center">
+                                                <input
+                                                  type="number"
+                                                  value={plannedHrs}
+                                                  onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'planned_hours', e.target.value)}
+                                                  className="w-full px-1 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent font-semibold text-blue-600"
+                                                  placeholder="–"
+                                                  min="0"
+                                                  step="0.5"
+                                                />
+                                              </td>
+                                              <td className="py-1.5 px-1 text-center font-semibold text-green-600 text-xs">{totalActualHrs.toFixed(1) || '–'}</td>
+                                              <td className="py-1.5 px-1"></td>
+                                              <td className="py-1.5 px-1 text-center">
+                                                <span className={`text-xs font-medium ${balancedQty > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                                                  Bal: {qtyAssigned ? balancedQty : '–'}
+                                                </span>
+                                              </td>
+                                              <td className="py-1.5 px-2"></td>
+                                              <td className="py-1.5 px-1"></td>
+                                            </tr>
+                                          )}
+
+                                          {/* No entries message */}
+                                          {dailyEntries.length === 0 && (
+                                            <tr className="border-b border-gray-100">
+                                              <td className="py-2 px-2"></td>
+                                              <td colSpan={9} className="py-2 px-2 text-center text-gray-400 text-xs italic">
+                                                No daily entries yet. Click &quot;+ Add Day&quot; to log your work.
+                                              </td>
+                                              <td className="py-2 px-1"></td>
+                                            </tr>
+                                          )}
+                                        </Fragment>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Summary Footer */}
+                        <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+                          <span>{myActivities.length} activities • {Object.keys(groupedByDiscipline).length} disciplines</span>
+                          <div className="flex items-center gap-4">
+                            <span>Plan: <strong className="text-blue-600">{totals.plannedHours.toFixed(1)}h</strong></span>
+                            <span>Actual: <strong className="text-green-600">{totals.actualHours.toFixed(1)}h</strong></span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </section>
             )}
 

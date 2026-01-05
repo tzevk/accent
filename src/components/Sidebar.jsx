@@ -33,21 +33,25 @@ export default function Sidebar() {
   // If we're on /user/dashboard, treat as non-admin regardless of context state
   const isOnUserDashboard = pathname.startsWith('/user/dashboard');
   const isOnAdminDashboard = pathname.startsWith('/admin/dashboard');
+  const isOnAdminRoute = pathname.startsWith('/admin/');
   
   // Only treat as admin if context says so AND we're NOT on user dashboard
-  const isAdmin = !isOnUserDashboard && (user?.is_super_admin || user?.role?.code === 'admin');
+  // OR if we're already on an admin route (means auth passed)
+  const isAdmin = !isOnUserDashboard && (isOnAdminRoute || user?.is_super_admin || user?.role?.code === 'admin');
 
   // Permission checks for each module - also respect route-based override
+  // When on admin route, we know user is authorized so show items even while rbacLoading
   // When on user dashboard, don't show admin-level items regardless of context state
-  const canViewDashboard = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ));
-  const canViewEmployees = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ));
-  const canViewUsers = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ));
-  const canViewActivities = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ));
-  const canViewCompanies = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ));
-  const canViewVendors = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ));
-  const canViewLeads = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ));
-  const canViewProjects = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ));
-  const canViewProposals = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ));
+  const adminRouteOverride = isOnAdminRoute && !isOnUserDashboard;
+  const canViewDashboard = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ)));
+  const canViewEmployees = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ)));
+  const canViewUsers = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ)));
+  const canViewActivities = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ)));
+  const canViewCompanies = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ)));
+  const canViewVendors = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ)));
+  const canViewLeads = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ)));
+  const canViewProjects = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ)));
+  const canViewProposals = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ)));
 
   useEffect(() => { setMounted(true); }, []);
 

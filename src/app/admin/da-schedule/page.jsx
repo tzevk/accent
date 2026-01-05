@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
+import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
@@ -212,7 +213,7 @@ export default function DASchedulePage() {
           </div>
           
           {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading...</div>
+            <InlineSpinner message="Loading DA schedule..." />
           ) : schedule.length === 0 ? (
             <div className="p-8 text-center text-gray-500">No DA schedule entries found. Add one to get started.</div>
           ) : (

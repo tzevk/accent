@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
@@ -39,14 +40,7 @@ export default function UserMasterPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
-          <div className="flex items-center justify-center h-[calc(100vh-120px)]">
-            <div className="flex flex-col items-center gap-3">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#64126D]" />
-              <span className="text-gray-500">Loading...</span>
-            </div>
-          </div>
-        </div>
+        <LoadingSpinner message="Loading Users" subMessage="Fetching user data..." fullScreen={false} />
       </div>
     );
   }

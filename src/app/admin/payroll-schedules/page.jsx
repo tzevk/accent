@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
+import { InlineSpinner } from '@/components/LoadingSpinner';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
@@ -335,7 +336,7 @@ export default function PayrollSchedulesPage() {
         {/* Schedules List */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           {loading ? (
-            <div className="p-8 text-center text-sm text-gray-500">Loading...</div>
+            <InlineSpinner message="Loading schedules..." />
           ) : filteredSchedules.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-500">No schedules found</div>
           ) : (

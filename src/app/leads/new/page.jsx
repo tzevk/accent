@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 const STATUS_OPTIONS = ['NEW', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'cancelled'];
@@ -30,7 +31,7 @@ const INITIAL_FORM = {
 
 function LoadingFallback() {
   return (
-    <div className="p-8 text-sm text-gray-500">Loading…</div>
+    <LoadingSpinner message="Loading" subMessage="Preparing form..." size="sm" />
   );
 }
 

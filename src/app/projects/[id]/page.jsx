@@ -1,6 +1,7 @@
 'use client';
 
 import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
@@ -241,9 +242,7 @@ export default function ProjectViewPage() {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
         <Navbar />
-        <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
-          Loading project…
-        </div>
+        <LoadingSpinner message="Loading Project" subMessage="Fetching project details..." fullScreen={false} />
       </div>
     );
   }

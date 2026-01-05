@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { clearSessionCache } from '@/context/SessionContext';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 // Dynamic import to prevent any flash
 const UserDashboardContent = dynamic(
@@ -11,12 +12,10 @@ const UserDashboardContent = dynamic(
   { 
     ssr: false,
     loading: () => (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      </div>
+      <LoadingSpinner 
+        message="Loading Dashboard" 
+        subMessage="Preparing your workspace..." 
+      />
     )
   }
 );
@@ -86,12 +85,10 @@ export default function UserDashboardPage() {
   // PROTECTION: While checking, show ONLY loader - no dashboard UI
   if (checking || !isAuthorized) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      </div>
+      <LoadingSpinner 
+        message="Loading Dashboard" 
+        subMessage="Verifying your session..." 
+      />
     );
   }
 

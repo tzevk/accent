@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 import { fetchJSON } from '@/utils/http';
 import { 
@@ -339,12 +340,10 @@ export default function AdminDashboard() {
   // PROTECTION: While checking, show ONLY loader - no admin UI
   if (checking || !isAuthorized) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      </div>
+      <LoadingSpinner 
+        message="Loading Admin Dashboard" 
+        subMessage="Verifying permissions..." 
+      />
     );
   }
 

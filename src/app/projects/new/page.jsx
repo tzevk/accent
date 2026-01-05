@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 
@@ -38,7 +39,7 @@ const INITIAL_FORM = {
 
 function LoadingFallback() {
   return (
-    <div className="p-8 text-sm text-gray-500">Loading…</div>
+    <LoadingSpinner message="Loading" subMessage="Preparing form..." size="sm" />
   );
 }
 

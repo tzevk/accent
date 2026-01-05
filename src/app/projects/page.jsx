@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
 import { 
@@ -45,7 +46,7 @@ const BOARD_COLUMNS = [
 /** Suspense wrapper to satisfy Next.js for useSearchParams */
 export default function Projects() {
   return (
-    <Suspense fallback={<div className="p-8 text-sm">Loading…</div>}>
+    <Suspense fallback={<LoadingSpinner message="Loading Projects" subMessage="Fetching project data..." />}>
       <ProjectsInner />
     </Suspense>
   );

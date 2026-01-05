@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import {
   PlusIcon,
   PencilIcon,
@@ -178,7 +179,7 @@ export default function MyWorkLogsPage() {
   };
 
   if (authLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return <LoadingSpinner message="Loading Work Logs" subMessage="Fetching your entries..." />;
   }
 
   if (!user) {

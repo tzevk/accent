@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function Home() {
   const router = useRouter();
@@ -41,17 +42,9 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        {checking ? (
-          <>
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-4"></div>
-            <p className="text-lg text-gray-600">Loading...</p>
-          </>
-        ) : (
-          <p className="text-lg text-gray-600">Redirecting...</p>
-        )}
-      </div>
-    </div>
+    <LoadingSpinner 
+      message={checking ? 'Loading' : 'Redirecting'} 
+      subMessage="Please wait..." 
+    />
   );
 }
