@@ -316,7 +316,6 @@ export default function EmployeesPage() {
   const [manualValues, setManualValues] = useState({
     basic_plus_da: '',
     da: '',
-    basic: '',
     hra: '',
     conveyance: '',
     call_allowance: '',
@@ -2635,7 +2634,7 @@ export default function EmployeesPage() {
                                 <p className="text-lg font-bold text-gray-900">₹{(savedSalaryProfiles[0]?.gross_salary || savedSalaryProfiles[0]?.gross || 0).toLocaleString('en-IN')}</p>
                               </div>
                               <div className="bg-white rounded-lg p-3 shadow-sm">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Basic + DA</p>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Basic</p>
                                 <p className="text-lg font-bold text-gray-900">₹{(savedSalaryProfiles[0]?.basic_plus_da || 0).toLocaleString('en-IN')}</p>
                               </div>
                               <div className="bg-white rounded-lg p-3 shadow-sm">
@@ -2753,7 +2752,6 @@ export default function EmployeesPage() {
                                     setManualValues({
                                       basic_plus_da: '',
                                       da: '',
-                                      basic: '',
                                       hra: '',
                                       conveyance: '',
                                       call_allowance: '',
@@ -2898,7 +2896,7 @@ export default function EmployeesPage() {
                               </h5>
                               <div className="space-y-1.5">
                                 <div className="flex justify-between items-center text-xs">
-                                  <span className="text-gray-600">Basic+DA</span>
+                                  <span className="text-gray-600">Basic</span>
                                   {manualEdit ? (
                                     <input
                                       type="number"
@@ -2916,22 +2914,6 @@ export default function EmployeesPage() {
                                 <div className="flex justify-between items-center text-xs pl-2 border-l border-green-300">
                                   <span className="text-gray-500">DA</span>
                                   <span className="text-gray-700">₹{previewBreakdown.da.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs pl-2 border-l border-green-300">
-                                  <span className="text-gray-500">Basic</span>
-                                  {manualEdit ? (
-                                    <input
-                                      type="number"
-                                      value={manualValues.basic || previewBreakdown.basic}
-                                      onChange={(e) => {
-                                        setManualValues({ ...manualValues, basic: e.target.value });
-                                        calculateSalaryPreview(salaryPreview.gross, salaryPreview.other_allowances, true);
-                                      }}
-                                      className="w-20 px-1 py-0.5 text-xs text-right border border-orange-300 rounded bg-orange-50 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                    />
-                                  ) : (
-                                    <span className="text-gray-700">₹{previewBreakdown.basic.toLocaleString('en-IN')}</span>
-                                  )}
                                 </div>
                                 <div className="flex justify-between items-center text-xs">
                                   <span className="text-gray-600">HRA</span>
@@ -3133,7 +3115,6 @@ export default function EmployeesPage() {
                                 setManualValues({
                                   basic_plus_da: '',
                                   da: '',
-                                  basic: '',
                                   hra: '',
                                   conveyance: '',
                                   call_allowance: '',

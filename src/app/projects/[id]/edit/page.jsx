@@ -4488,7 +4488,7 @@ function EditProjectForm() {
             {/* My Activities Tab - Personalized user manhours tracking */}
             {activeTab === 'my_activities' && (
               <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                {/* Header */}
+                {/* Header with Totals */}
                 <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-white border-b border-purple-100">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -4500,6 +4500,46 @@ function EditProjectForm() {
                         <p className="text-xs text-gray-500">Your assigned activities and manhours tracking</p>
                       </div>
                     </div>
+                    {/* Total Hours Summary */}
+                    {(() => {
+                      const myActs = projectActivities.filter(act => {
+                        const assignedUsers = act.assigned_users || [];
+                        return assignedUsers.some(assignment => {
+                          const odUserId = typeof assignment === 'object' ? assignment.user_id : assignment;
+                          return String(odUserId) === String(sessionUser?.id);
+                        });
+                      });
+                      const totalsHeader = myActs.reduce((acc, act) => {
+                        const assignedUsers = act.assigned_users || [];
+                        const myAssignment = assignedUsers.find(a => {
+                          const odUserId = typeof a === 'object' ? a.user_id : a;
+                          return String(odUserId) === String(sessionUser?.id);
+                        });
+                        if (myAssignment && typeof myAssignment === 'object') {
+                          acc.plannedHours += parseFloat(myAssignment.planned_hours) || 0;
+                          const dailyEntries = myAssignment.daily_entries || [];
+                          acc.actualHours += dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+                        }
+                        return acc;
+                      }, { plannedHours: 0, actualHours: 0 });
+                      const remaining = totalsHeader.plannedHours - totalsHeader.actualHours;
+                      return (
+                        <div className="flex items-center gap-4 bg-white/80 rounded-lg px-4 py-2 border border-purple-100">
+                          <div className="text-center border-r border-gray-200 pr-4">
+                            <span className="text-[10px] text-gray-500 uppercase block">Planned</span>
+                            <strong className="text-blue-600 text-lg">{totalsHeader.plannedHours.toFixed(1)}h</strong>
+                          </div>
+                          <div className="text-center border-r border-gray-200 pr-4">
+                            <span className="text-[10px] text-gray-500 uppercase block">Actual</span>
+                            <strong className="text-green-600 text-lg">{totalsHeader.actualHours.toFixed(1)}h</strong>
+                          </div>
+                          <div className="text-center">
+                            <span className="text-[10px] text-gray-500 uppercase block">Remaining</span>
+                            <strong className={`text-lg ${remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>{remaining.toFixed(1)}h</strong>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -4551,7 +4591,7 @@ function EditProjectForm() {
                     }, { qtyAssigned: 0, qtyCompleted: 0, plannedHours: 0, actualHours: 0 });
 
                     return (
-                      <div className="space-y-6">
+                      <div className="space-y-4">
                         {/* Discipline Groups */}
                         {Object.entries(groupedByDiscipline).map(([discipline, acts]) => {
                           // Calculate discipline totals for current user from daily entries
@@ -4685,6 +4725,14 @@ function EditProjectForm() {
                                             if (entryDate) entryDate.setHours(0, 0, 0, 0);
                                             const isLocked = entry.isLocked === true || (entryDate && entryDate < today);
                                             
+                                            // Calculate remaining qty balance up to this entry
+                                            const doneUpToThisEntry = dailyEntries.slice(0, eIdx + 1).reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+                                            const remainingQtyAfterThisEntry = (parseFloat(qtyAssigned) || 0) - doneUpToThisEntry;
+                                            
+                                            // Calculate remaining hours balance up to this entry
+                                            const hoursUpToThisEntry = dailyEntries.slice(0, eIdx + 1).reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+                                            const remainingHoursAfterThisEntry = (parseFloat(plannedHrs) || 0) - hoursUpToThisEntry;
+                                            
                                             return (
                                               <tr key={`${act.id}-day-${eIdx}`} className={`border-b border-gray-100 ${isLocked ? 'bg-gray-100' : 'hover:bg-gray-50'}`}>
                                                 <td className="py-1.5 px-2"></td>
@@ -4697,7 +4745,11 @@ function EditProjectForm() {
                                                     {entry.date ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '–'}
                                                   </span>
                                                 </td>
-                                                <td className="py-1.5 px-1 text-center text-gray-400 text-xs">–</td>
+                                                <td className="py-1.5 px-1 text-center">
+                                                  <span className={`text-xs font-medium ${remainingQtyAfterThisEntry > 0 ? 'text-orange-600' : remainingQtyAfterThisEntry === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {qtyAssigned ? remainingQtyAfterThisEntry : '–'}
+                                                  </span>
+                                                </td>
                                                 <td className="py-1.5 px-1 text-center">
                                                   {isLocked ? (
                                                     <span className="text-xs text-gray-600">{entry.qty_done || '–'}</span>
@@ -4712,7 +4764,11 @@ function EditProjectForm() {
                                                     />
                                                   )}
                                                 </td>
-                                                <td className="py-1.5 px-1 text-center text-gray-400 text-xs">–</td>
+                                                <td className="py-1.5 px-1 text-center">
+                                                  <span className={`text-xs font-medium ${remainingHoursAfterThisEntry > 0 ? 'text-orange-600' : remainingHoursAfterThisEntry === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {plannedHrs ? remainingHoursAfterThisEntry.toFixed(1) : '–'}
+                                                  </span>
+                                                </td>
                                                 <td className="py-1.5 px-1 text-center">
                                                   {isLocked ? (
                                                     <span className="text-xs text-gray-600">{entry.hours || '–'}</span>
@@ -4818,15 +4874,6 @@ function EditProjectForm() {
                             </div>
                           );
                         })}
-
-                        {/* Summary Footer */}
-                        <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
-                          <span>{myActivities.length} activities • {Object.keys(groupedByDiscipline).length} disciplines</span>
-                          <div className="flex items-center gap-4">
-                            <span>Plan: <strong className="text-blue-600">{totals.plannedHours.toFixed(1)}h</strong></span>
-                            <span>Actual: <strong className="text-green-600">{totals.actualHours.toFixed(1)}h</strong></span>
-                          </div>
-                        </div>
                       </div>
                     );
                   })()}
