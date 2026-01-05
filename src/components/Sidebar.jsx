@@ -28,18 +28,26 @@ export default function Sidebar() {
   const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const isAdmin = user?.is_super_admin || user?.role?.code === 'admin';
+  
+  // Determine if user is admin - but also respect the current route
+  // If we're on /user/dashboard, treat as non-admin regardless of context state
+  const isOnUserDashboard = pathname.startsWith('/user/dashboard');
+  const isOnAdminDashboard = pathname.startsWith('/admin/dashboard');
+  
+  // Only treat as admin if context says so AND we're NOT on user dashboard
+  const isAdmin = !isOnUserDashboard && (user?.is_super_admin || user?.role?.code === 'admin');
 
-  // Permission checks for each module
-  const canViewDashboard = !rbacLoading && (user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ));
-  const canViewEmployees = !rbacLoading && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ));
-  const canViewUsers = !rbacLoading && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ));
-  const canViewActivities = !rbacLoading && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ));
-  const canViewCompanies = !rbacLoading && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ));
-  const canViewVendors = !rbacLoading && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ));
-  const canViewLeads = !rbacLoading && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ));
-  const canViewProjects = !rbacLoading && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ));
-  const canViewProposals = !rbacLoading && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ));
+  // Permission checks for each module - also respect route-based override
+  // When on user dashboard, don't show admin-level items regardless of context state
+  const canViewDashboard = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ));
+  const canViewEmployees = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ));
+  const canViewUsers = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ));
+  const canViewActivities = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ));
+  const canViewCompanies = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ));
+  const canViewVendors = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ));
+  const canViewLeads = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ));
+  const canViewProjects = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ));
+  const canViewProposals = !rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ));
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -120,8 +128,13 @@ export default function Sidebar() {
             <span>PAGES</span>
           </div>
           <div className="space-y-1 mt-1">
-            {/* Dashboard - always visible (users see their own dashboard) */}
-            <NavRow icon={ClockIcon} label="Dashboard" href="/dashboard" active={pathname === '/dashboard'} />
+            {/* Dashboard - route based on user role */}
+            <NavRow 
+              icon={ClockIcon} 
+              label="Dashboard" 
+              href={isAdmin ? '/admin/dashboard' : '/user/dashboard'} 
+              active={pathname === '/dashboard' || pathname === '/admin/dashboard' || pathname === '/user/dashboard'} 
+            />
             {/* Work Logs - always visible (users log their own work) */}
             <NavRow icon={BriefcaseIcon} label="Work Logs" href="/work-logs" active={pathname.startsWith('/work-logs')} />
             {/* Messages - always visible with unread badge */}

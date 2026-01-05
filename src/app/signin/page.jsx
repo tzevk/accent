@@ -95,16 +95,9 @@ export default function SignIn() {
           console.warn('Session verification incomplete, proceeding with redirect anyway');
         }
         
-        // Super admin goes to admin dashboard
-        if (data.is_super_admin) {
-          router.push('/admin/productivity');
-          return;
-        }
-        
-        // If redirected here from a protected page, go back there
-        const params = new URLSearchParams(window.location.search);
-        const from = params.get('from');
-        router.push(from && from !== '/signin' ? from : '/dashboard');
+        // All users go through the gate route after login
+        // Gate will determine the correct destination based on role/permissions
+        router.replace('/gate');
       }
       else setError(data?.message || 'Invalid credentials');
     } catch (e) {

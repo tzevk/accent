@@ -27,19 +27,33 @@ export default function ProjectActivityAssignments({ userId }) {
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all'); // all, pending, in-progress, completed
+  const [hasAccess, setHasAccess] = useState(true);
 
   useEffect(() => {
     if (!userId) return;
     
     const loadData = async () => {
       try {
-        const res = await fetchJSON(`/api/users/${userId}/activity-assignments`);
+        const response = await fetch(`/api/users/${userId}/activity-assignments`);
+        
+        // Handle unauthorized gracefully
+        if (response.status === 401 || response.status === 403) {
+          setHasAccess(false);
+          setLoading(false);
+          return;
+        }
+        
+        const res = await response.json();
         if (res.success) {
           setAssignments(res.data.assignments || []);
           setStats(res.data.stats || {});
+        } else {
+          // If not successful, hide the section
+          setHasAccess(false);
         }
       } catch (err) {
         console.error('Failed to load activity assignments:', err);
+        setHasAccess(false);
       } finally {
         setLoading(false);
       }
@@ -141,6 +155,11 @@ export default function ProjectActivityAssignments({ userId }) {
         <div className="text-center text-gray-500">Loading assignments...</div>
       </div>
     );
+  }
+
+  // Hide section completely if user doesn't have access
+  if (!hasAccess) {
+    return null;
   }
 
   return (
