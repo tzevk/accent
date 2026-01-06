@@ -4622,30 +4622,43 @@ function EditProjectForm() {
 
                               {/* Activities Table */}
                               <div style={{ overflow: 'visible' }}>
-                                <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
+                                <table className="w-full text-xs" style={{ overflow: 'visible' }}>
                                   <thead>
-                                    <tr className="border-b border-gray-200">
-                                      <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
-                                      <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '20%' }}></th>
-                                      <th className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Date</th>
-                                      <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '12%' }}>Qty</th>
-                                      <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '16%' }}>Hours</th>
-                                      <th className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-orange-50 border-l border-r border-orange-200" style={{ width: '10%' }}>Due</th>
-                                      <th className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-gray-100 border-l border-r border-gray-200" style={{ width: '10%' }}>Status</th>
-                                      <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '15%' }}>Notes</th>
-                                      <th className="py-1 px-1" style={{ width: '4%' }}></th>
+                                    <tr className="bg-gradient-to-r from-slate-50 to-slate-100">
+                                      <th className="py-2.5 px-3" style={{ width: '3%' }}></th>
+                                      <th className="py-2.5 px-3" style={{ width: '20%' }}></th>
+                                      <th className="py-2.5 px-2 text-center" style={{ width: '8%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">Date</span>
+                                      </th>
+                                      <th colSpan={2} className="py-2.5 px-2 text-center" style={{ width: '12%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 uppercase tracking-wider">Hours</span>
+                                      </th>
+                                      <th colSpan={3} className="py-2.5 px-2 text-center" style={{ width: '18%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-700 uppercase tracking-wider">Quantity</span>
+                                      </th>
+                                      <th className="py-2.5 px-2 text-center" style={{ width: '8%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 uppercase tracking-wider">Due</span>
+                                      </th>
+                                      <th className="py-2.5 px-2 text-center" style={{ width: '8%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Status</span>
+                                      </th>
+                                      <th className="py-2.5 px-3 text-center" style={{ width: '12%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Notes</span>
+                                      </th>
+                                      <th className="py-2.5 px-1" style={{ width: '3%' }}></th>
                                     </tr>
-                                    <tr className="border-b border-gray-300">
-                                      <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
-                                      <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Work Date</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-l border-blue-200">Plan</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Actual</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-orange-50 border-l border-r border-orange-200">Due Date</th>
-                                      <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-gray-100 border-l border-r border-gray-200">Status</th>
-                                      <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
+                                    <tr className="border-b-2 border-slate-200 bg-white">
+                                      <th className="text-left py-2 px-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide">#</th>
+                                      <th className="text-left py-2 px-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide">Activity</th>
+                                      <th className="text-center py-2 px-2 font-medium text-emerald-600 text-[10px] uppercase bg-emerald-50/50 rounded-t"></th>
+                                      <th className="text-center py-2 px-2 font-medium text-blue-600 text-[10px] uppercase bg-blue-50/50">Plan</th>
+                                      <th className="text-center py-2 px-2 font-medium text-blue-600 text-[10px] uppercase bg-blue-50/50">Actual</th>
+                                      <th className="text-center py-2 px-2 font-medium text-purple-600 text-[10px] uppercase bg-purple-50/50">Asgn</th>
+                                      <th className="text-center py-2 px-2 font-medium text-purple-600 text-[10px] uppercase bg-purple-50/50">Done</th>
+                                      <th className="text-center py-2 px-2 font-medium text-purple-600 text-[10px] uppercase bg-purple-100/50">Bal</th>
+                                      <th className="text-center py-2 px-2 font-medium text-orange-600 text-[10px] uppercase bg-orange-50/50"></th>
+                                      <th className="text-center py-2 px-2 font-medium text-slate-500 text-[10px] uppercase bg-slate-50/50"></th>
+                                      <th className="text-left py-2 px-3 font-medium text-amber-600 text-[10px] uppercase bg-amber-50/50"></th>
                                       <th className="py-2 px-1"></th>
                                     </tr>
                                   </thead>
@@ -4669,34 +4682,81 @@ function EditProjectForm() {
 
                                       return (
                                         <Fragment key={act.id}>
-                                          {/* Activity Header Row */}
-                                          <tr className="border-b border-gray-200 bg-gray-50">
-                                            <td className="py-2 px-2 text-gray-500 font-medium">{idx + 1}</td>
-                                            <td className="py-2 px-2" colSpan={6}>
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-gray-800 font-medium">{act.activity_name || act.name}</span>
+                                          {/* Activity Row with Totals */}
+                                          <tr className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-slate-50 hover:from-slate-100 hover:to-slate-100 transition-colors">
+                                            <td className="py-3 px-3">
+                                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 text-slate-600 font-semibold text-[10px]">{idx + 1}</span>
+                                            </td>
+                                            <td className="py-3 px-3">
+                                              <div className="flex items-center gap-3">
+                                                <span className="text-slate-800 font-semibold text-sm">{act.activity_name || act.name}</span>
                                                 <button
                                                   type="button"
                                                   onClick={() => addDailyEntry(act.id, sessionUser?.id)}
-                                                  className="px-2 py-0.5 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
                                                 >
-                                                  + Add Day
+                                                  <span>+</span> Add Day
                                                 </button>
                                               </div>
                                             </td>
-                                            <td className="py-2 px-2">
+                                            <td className="py-3 px-2 text-center">
+                                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
+                                            </td>
+                                            {/* Hours - Plan */}
+                                            <td className="py-3 px-2 text-center bg-blue-50/60">
+                                              <input
+                                                type="number"
+                                                value={plannedHrs}
+                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'planned_hours', e.target.value)}
+                                                className="w-14 px-2 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded-md text-center focus:ring-2 focus:ring-blue-300 focus:border-blue-400 focus:outline-none transition-shadow"
+                                                placeholder="0"
+                                                min="0"
+                                                step="0.5"
+                                              />
+                                            </td>
+                                            {/* Hours - Actual */}
+                                            <td className="py-3 px-2 text-center bg-blue-50/60">
+                                              <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-emerald-700 bg-emerald-100 rounded-md">{totalActualHrs.toFixed(1)}</span>
+                                            </td>
+                                            {/* Qty - Assigned */}
+                                            <td className="py-3 px-2 text-center bg-purple-50/60">
+                                              <input
+                                                type="number"
+                                                value={qtyAssigned}
+                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'qty_assigned', e.target.value)}
+                                                className="w-14 px-2 py-1 text-xs font-bold text-purple-700 bg-white border border-purple-200 rounded-md text-center focus:ring-2 focus:ring-purple-300 focus:border-purple-400 focus:outline-none transition-shadow"
+                                                placeholder="0"
+                                                min="0"
+                                              />
+                                            </td>
+                                            {/* Qty - Done */}
+                                            <td className="py-3 px-2 text-center bg-purple-50/60">
+                                              <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-emerald-700 bg-emerald-100 rounded-md">{totalQtyDone || '0'}</span>
+                                            </td>
+                                            {/* Qty - Balance */}
+                                            <td className="py-3 px-2 text-center bg-purple-100/60">
+                                              <span className={`inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold rounded-md ${balancedQty > 0 ? 'text-orange-700 bg-orange-100' : 'text-emerald-700 bg-emerald-100'}`}>
+                                                {qtyAssigned ? balancedQty : '–'}
+                                              </span>
+                                            </td>
+                                            <td className="py-3 px-2">
                                               <input 
                                                 type="date" 
                                                 value={dueDate} 
                                                 onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'due_date', e.target.value)} 
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent" 
+                                                className="w-full px-2 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-orange-200 focus:border-orange-300 focus:outline-none transition-shadow" 
                                               />
                                             </td>
-                                            <td className="py-2 px-2">
+                                            <td className="py-3 px-2">
                                               <select
                                                 value={status}
                                                 onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'status', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-300 focus:border-blue-500 focus:outline-none bg-transparent"
+                                                className={`w-full px-2 py-1 text-xs font-medium rounded-md border focus:ring-2 focus:outline-none transition-shadow ${
+                                                  status === 'Completed' ? 'text-emerald-700 bg-emerald-50 border-emerald-200 focus:ring-emerald-200' :
+                                                  status === 'In Progress' ? 'text-blue-700 bg-blue-50 border-blue-200 focus:ring-blue-200' :
+                                                  status === 'On Hold' ? 'text-amber-700 bg-amber-50 border-amber-200 focus:ring-amber-200' :
+                                                  'text-slate-600 bg-slate-50 border-slate-200 focus:ring-slate-200'
+                                                }`}
                                               >
                                                 <option value="Not Started">Not Started</option>
                                                 <option value="In Progress">In Progress</option>
@@ -4704,16 +4764,16 @@ function EditProjectForm() {
                                                 <option value="On Hold">On Hold</option>
                                               </select>
                                             </td>
-                                            <td className="py-2 px-2">
-                                              <textarea
+                                            <td className="py-3 px-3">
+                                              <input
+                                                type="text"
                                                 value={remarks}
                                                 onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'remarks', e.target.value)}
-                                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none bg-transparent resize-y min-h-[24px]"
-                                                placeholder="–"
-                                                rows={1}
+                                                className="w-full px-2 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-amber-200 focus:border-amber-300 focus:outline-none transition-shadow"
+                                                placeholder="Add note..."
                                               />
                                             </td>
-                                            <td className="py-2 px-1"></td>
+                                            <td className="py-3 px-1"></td>
                                           </tr>
 
                                           {/* Daily Entry Rows */}
@@ -4734,80 +4794,95 @@ function EditProjectForm() {
                                             const remainingHoursAfterThisEntry = (parseFloat(plannedHrs) || 0) - hoursUpToThisEntry;
                                             
                                             return (
-                                              <tr key={`${act.id}-day-${eIdx}`} className={`border-b border-gray-100 ${isLocked ? 'bg-gray-100' : 'hover:bg-gray-50'}`}>
-                                                <td className="py-1.5 px-2"></td>
-                                                <td className="py-1.5 px-2 text-gray-400 text-xs">
-                                                  <span className="text-gray-300 mr-1">Day {eIdx + 1}</span>
-                                                  {isLocked && <span className="ml-1 text-orange-500" title="Entry locked">🔒</span>}
+                                              <tr key={`${act.id}-day-${eIdx}`} className={`border-b border-slate-100 transition-colors ${isLocked ? 'bg-slate-50/50' : 'hover:bg-slate-50/80'}`}>
+                                                <td className="py-2.5 px-3"></td>
+                                                <td className="py-2.5 px-3">
+                                                  <div className="flex items-center gap-2 pl-4">
+                                                    <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
+                                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                                      Day {eIdx + 1}
+                                                    </span>
+                                                    {isLocked && <span className="text-amber-500 text-[10px]" title="Entry locked">🔒</span>}
+                                                  </div>
                                                 </td>
-                                                <td className="py-1.5 px-1">
-                                                  <span className="text-xs text-gray-600 px-1">
-                                                    {entry.date ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '–'}
+                                                <td className="py-2.5 px-2 text-center">
+                                                  <span className="inline-flex items-center px-2 py-0.5 text-[11px] text-slate-600 bg-emerald-50 rounded font-medium">
+                                                    {entry.date ? new Date(entry.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '–'}
                                                   </span>
                                                 </td>
-                                                <td className="py-1.5 px-1 text-center">
-                                                  <span className={`text-xs font-medium ${remainingQtyAfterThisEntry > 0 ? 'text-orange-600' : remainingQtyAfterThisEntry === 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {qtyAssigned ? remainingQtyAfterThisEntry : '–'}
-                                                  </span>
+                                                {/* Hours - Plan (empty for daily rows) */}
+                                                <td className="py-2.5 px-2 text-center bg-blue-50/20">
+                                                  <span className="text-slate-300">·</span>
                                                 </td>
-                                                <td className="py-1.5 px-1 text-center">
+                                                {/* Hours - Actual */}
+                                                <td className="py-2.5 px-2 text-center bg-blue-50/20">
                                                   {isLocked ? (
-                                                    <span className="text-xs text-gray-600">{entry.qty_done || '–'}</span>
-                                                  ) : (
-                                                    <input
-                                                      type="number"
-                                                      value={entry.qty_done || ''}
-                                                      onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'qty_done', e.target.value)}
-                                                      className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
-                                                      placeholder="–"
-                                                      min="0"
-                                                    />
-                                                  )}
-                                                </td>
-                                                <td className="py-1.5 px-1 text-center">
-                                                  <span className={`text-xs font-medium ${remainingHoursAfterThisEntry > 0 ? 'text-orange-600' : remainingHoursAfterThisEntry === 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {plannedHrs ? remainingHoursAfterThisEntry.toFixed(1) : '–'}
-                                                  </span>
-                                                </td>
-                                                <td className="py-1.5 px-1 text-center">
-                                                  {isLocked ? (
-                                                    <span className="text-xs text-gray-600">{entry.hours || '–'}</span>
+                                                    <span className="inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-medium text-slate-600 bg-slate-100 rounded">{entry.hours || '–'}</span>
                                                   ) : (
                                                     <input
                                                       type="number"
                                                       value={entry.hours || ''}
                                                       onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'hours', e.target.value)}
-                                                      className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent"
-                                                      placeholder="–"
+                                                      className="w-12 px-2 py-0.5 text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded text-center focus:ring-1 focus:ring-blue-300 focus:border-blue-300 focus:outline-none"
+                                                      placeholder="0"
                                                       min="0"
                                                       step="0.5"
                                                     />
                                                   )}
                                                 </td>
-                                                <td className="py-1.5 px-1"></td>
-                                                <td className="py-1.5 px-1"></td>
-                                                <td className="py-1.5 px-2">
+                                                {/* Qty - Assigned (empty for daily rows) */}
+                                                <td className="py-2.5 px-2 text-center bg-purple-50/20">
+                                                  <span className="text-slate-300">·</span>
+                                                </td>
+                                                {/* Qty - Done */}
+                                                <td className="py-2.5 px-2 text-center bg-purple-50/20">
                                                   {isLocked ? (
-                                                    <span className="text-xs text-gray-600">{entry.remarks || '–'}</span>
+                                                    <span className="inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-medium text-slate-600 bg-slate-100 rounded">{entry.qty_done || '–'}</span>
+                                                  ) : (
+                                                    <input
+                                                      type="number"
+                                                      value={entry.qty_done || ''}
+                                                      onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'qty_done', e.target.value)}
+                                                      className="w-12 px-2 py-0.5 text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded text-center focus:ring-1 focus:ring-purple-300 focus:border-purple-300 focus:outline-none"
+                                                      placeholder="0"
+                                                      min="0"
+                                                    />
+                                                  )}
+                                                </td>
+                                                {/* Qty - Balance */}
+                                                <td className="py-2.5 px-2 text-center bg-purple-100/20">
+                                                  <span className={`inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-semibold rounded ${
+                                                    remainingQtyAfterThisEntry > 0 ? 'text-orange-600 bg-orange-50' : 
+                                                    remainingQtyAfterThisEntry === 0 ? 'text-emerald-600 bg-emerald-50' : 
+                                                    'text-red-600 bg-red-50'
+                                                  }`}>
+                                                    {qtyAssigned ? remainingQtyAfterThisEntry : '–'}
+                                                  </span>
+                                                </td>
+                                                <td className="py-2.5 px-2"></td>
+                                                <td className="py-2.5 px-2"></td>
+                                                <td className="py-2.5 px-3">
+                                                  {isLocked ? (
+                                                    <span className="text-[11px] text-slate-500">{entry.remarks || '–'}</span>
                                                   ) : (
                                                     <input
                                                       type="text"
                                                       value={entry.remarks || ''}
                                                       onChange={(e) => updateDailyEntry(act.id, sessionUser?.id, eIdx, 'remarks', e.target.value)}
-                                                      className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"
-                                                      placeholder="–"
+                                                      className="w-full px-2 py-0.5 text-[11px] text-slate-600 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-amber-200 focus:border-amber-300 focus:outline-none"
+                                                      placeholder="Add note..."
                                                     />
                                                   )}
                                                 </td>
-                                                <td className="py-1.5 px-1 text-center">
+                                                <td className="py-2.5 px-1 text-center">
                                                   {!isLocked && (
                                                     <button 
                                                       type="button" 
                                                       onClick={() => removeDailyEntry(act.id, sessionUser?.id, eIdx)} 
-                                                      className="text-gray-300 hover:text-red-500"
+                                                      className="w-5 h-5 inline-flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                                       title="Remove"
                                                     >
-                                                      ×
+                                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                     </button>
                                                   )}
                                                 </td>
@@ -4815,54 +4890,17 @@ function EditProjectForm() {
                                             );
                                           })}
 
-                                          {/* Totals Row */}
-                                          {dailyEntries.length > 0 && (
-                                            <tr className="border-b border-gray-200 bg-blue-50/50">
-                                              <td className="py-1.5 px-2"></td>
-                                              <td className="py-1.5 px-2 text-right text-gray-500 text-xs font-medium">Total</td>
-                                              <td className="py-1.5 px-1"></td>
-                                              <td className="py-1.5 px-1 text-center">
-                                                <input
-                                                  type="number"
-                                                  value={qtyAssigned}
-                                                  onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'qty_assigned', e.target.value)}
-                                                  className="w-full px-1 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent font-semibold text-purple-600"
-                                                  placeholder="–"
-                                                  min="0"
-                                                />
-                                              </td>
-                                              <td className="py-1.5 px-1 text-center font-semibold text-green-600 text-xs">{totalQtyDone || '–'}</td>
-                                              <td className="py-1.5 px-1 text-center">
-                                                <input
-                                                  type="number"
-                                                  value={plannedHrs}
-                                                  onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'planned_hours', e.target.value)}
-                                                  className="w-full px-1 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent font-semibold text-blue-600"
-                                                  placeholder="–"
-                                                  min="0"
-                                                  step="0.5"
-                                                />
-                                              </td>
-                                              <td className="py-1.5 px-1 text-center font-semibold text-green-600 text-xs">{totalActualHrs.toFixed(1) || '–'}</td>
-                                              <td className="py-1.5 px-1"></td>
-                                              <td className="py-1.5 px-1 text-center">
-                                                <span className={`text-xs font-medium ${balancedQty > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                                                  Bal: {qtyAssigned ? balancedQty : '–'}
-                                                </span>
-                                              </td>
-                                              <td className="py-1.5 px-2"></td>
-                                              <td className="py-1.5 px-1"></td>
-                                            </tr>
-                                          )}
-
                                           {/* No entries message */}
                                           {dailyEntries.length === 0 && (
-                                            <tr className="border-b border-gray-100">
-                                              <td className="py-2 px-2"></td>
-                                              <td colSpan={9} className="py-2 px-2 text-center text-gray-400 text-xs italic">
-                                                No daily entries yet. Click &quot;+ Add Day&quot; to log your work.
+                                            <tr>
+                                              <td className="py-4 px-3"></td>
+                                              <td colSpan={10} className="py-4 px-3">
+                                                <div className="flex items-center justify-center gap-2 text-slate-400">
+                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                                  <span className="text-xs">No daily entries yet. Click &quot;+ Add Day&quot; to log your work.</span>
+                                                </div>
                                               </td>
-                                              <td className="py-2 px-1"></td>
+                                              <td className="py-4 px-1"></td>
                                             </tr>
                                           )}
                                         </Fragment>

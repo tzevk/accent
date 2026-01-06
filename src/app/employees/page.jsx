@@ -2748,6 +2748,32 @@ export default function EmployeesPage() {
                     {editSubTab === 'salary' && (
                       <div className="space-y-6">
                         
+                        {/* Link to Attendance for Monthly Payroll */}
+                        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-semibold text-blue-900">Monthly Payroll Linked to Attendance</h4>
+                                <p className="text-xs text-blue-600">Salary is calculated based on days present. Manage attendance to generate monthly payroll.</p>
+                              </div>
+                            </div>
+                            <a
+                              href="/employees/attendance"
+                              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                              </svg>
+                              Manage Attendance
+                            </a>
+                          </div>
+                        </div>
+
                         {/* SECTION 1: Current Salary Profile Summary */}
                         {savedSalaryProfiles.length > 0 && (
                           <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">

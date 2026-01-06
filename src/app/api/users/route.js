@@ -229,8 +229,8 @@ export async function PUT(request) {
 
     const fields = [];
     const vals = [];
-    // Allow updating role_id (system role), permissions, and field_permissions
-    const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role', 'role_id', 'permissions', 'field_permissions'];
+    // Allow updating role_id (system role), permissions, field_permissions, and user details
+    const allowed = ['username', 'password_hash', 'email', 'employee_id', 'role', 'role_id', 'permissions', 'field_permissions', 'full_name', 'status', 'department'];
     
     console.log('[PUT /api/users] Received data keys:', Object.keys(data));
     console.log('[PUT /api/users] Permissions in request:', data.permissions);

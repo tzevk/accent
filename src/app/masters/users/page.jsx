@@ -15,7 +15,8 @@ import {
   XMarkIcon,
   ChevronRightIcon,
   InformationCircleIcon,
-  KeyIcon
+  KeyIcon,
+  PencilIcon
 } from '@heroicons/react/24/outline';
 
 // Tab configuration
@@ -143,6 +144,8 @@ function UsersTabContent() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [selectedUserForReset, setSelectedUserForReset] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -365,6 +368,17 @@ function UsersTabContent() {
                         <div className="flex items-center justify-end gap-3">
                           <button 
                             onClick={() => {
+                              setSelectedUserForEdit(user);
+                              setShowEditModal(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-1"
+                            title="Edit User"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                            Edit
+                          </button>
+                          <button 
+                            onClick={() => {
                               setSelectedUserForReset(user);
                               setShowResetPasswordModal(true);
                             }}
@@ -372,13 +386,13 @@ function UsersTabContent() {
                             title="Reset Password"
                           >
                             <KeyIcon className="h-4 w-4" />
-                            Reset Password
+                            Reset
                           </button>
                           <button 
                             onClick={() => goToPermissions(user.id)}
                             className="text-[#64126D] hover:text-[#4a0d52] font-medium inline-flex items-center gap-1"
                           >
-                            Manage Permissions
+                            Permissions
                             <ChevronRightIcon className="h-4 w-4" />
                           </button>
                         </div>
@@ -423,6 +437,23 @@ function UsersTabContent() {
           onSuccess={() => {
             setShowResetPasswordModal(false);
             setSelectedUserForReset(null);
+            fetchData();
+          }}
+        />
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && selectedUserForEdit && (
+        <EditUserModal
+          user={selectedUserForEdit}
+          employees={employees}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedUserForEdit(null);
+          }}
+          onSuccess={() => {
+            setShowEditModal(false);
+            setSelectedUserForEdit(null);
             fetchData();
           }}
         />
@@ -1026,6 +1057,210 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
                 <>
                   <KeyIcon className="h-4 w-4" />
                   Reset Password
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Edit User Modal
+function EditUserModal({ user, employees, onClose, onSuccess }) {
+  const employee = employees?.find(e => e.id === user.employee_id);
+  const [formData, setFormData] = useState({
+    username: user.username || '',
+    email: user.email || '',
+    full_name: user.full_name || '',
+    status: user.status || 'active',
+    department: user.department || ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!formData.username) {
+      setError('Username is required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: user.id,
+          username: formData.username,
+          email: formData.email,
+          full_name: formData.full_name,
+          status: formData.status,
+          department: formData.department
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setSuccess('User updated successfully');
+        setTimeout(() => {
+          onSuccess();
+        }, 1000);
+      } else {
+        setError(data.error || 'Failed to update user');
+      }
+    } catch {
+      setError('Failed to update user');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white flex items-center justify-between rounded-t-xl">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Edit User</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Update user account details</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <XMarkIcon className="h-6 w-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Linked Employee Info */}
+          {employee && (
+            <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium">
+                  {(employee.first_name || 'U').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">{employee.first_name} {employee.last_name}</p>
+                  <p className="text-xs text-gray-500">{employee.department || 'No department'} • {employee.position || 'No position'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Username <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter username"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter email"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Full Name
+            </label>
+            <input
+              type="text"
+              value={formData.full_name}
+              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter full name"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Department
+              </label>
+              <input
+                type="text"
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter department"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Success Message */}
+          {success && (
+            <div className="bg-green-50 text-green-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {success}
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !!success}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <PencilIcon className="h-4 w-4" />
+                  Save Changes
                 </>
               )}
             </button>
