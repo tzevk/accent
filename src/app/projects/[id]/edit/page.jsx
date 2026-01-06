@@ -4702,32 +4702,21 @@ function EditProjectForm() {
                                             <td className="py-3 px-2 text-center">
                                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
                                             </td>
-                                            {/* Hours - Plan */}
+                                            {/* Hours - Plan (Read-only) */}
                                             <td className="py-3 px-2 text-center bg-blue-50/60">
-                                              <input
-                                                type="number"
-                                                value={plannedHrs}
-                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'planned_hours', e.target.value)}
-                                                className="w-14 px-2 py-1 text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded-md text-center focus:ring-2 focus:ring-blue-300 focus:border-blue-400 focus:outline-none transition-shadow"
-                                                placeholder="0"
-                                                min="0"
-                                                step="0.5"
-                                              />
+                                              <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-blue-700 bg-blue-100 rounded-md">
+                                                {plannedHrs || '–'}
+                                              </span>
                                             </td>
                                             {/* Hours - Actual */}
                                             <td className="py-3 px-2 text-center bg-blue-50/60">
                                               <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-emerald-700 bg-emerald-100 rounded-md">{totalActualHrs.toFixed(1)}</span>
                                             </td>
-                                            {/* Qty - Assigned */}
+                                            {/* Qty - Assigned (Read-only) */}
                                             <td className="py-3 px-2 text-center bg-purple-50/60">
-                                              <input
-                                                type="number"
-                                                value={qtyAssigned}
-                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'qty_assigned', e.target.value)}
-                                                className="w-14 px-2 py-1 text-xs font-bold text-purple-700 bg-white border border-purple-200 rounded-md text-center focus:ring-2 focus:ring-purple-300 focus:border-purple-400 focus:outline-none transition-shadow"
-                                                placeholder="0"
-                                                min="0"
-                                              />
+                                              <span className="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 text-xs font-bold text-purple-700 bg-purple-100 rounded-md">
+                                                {qtyAssigned || '–'}
+                                              </span>
                                             </td>
                                             {/* Qty - Done */}
                                             <td className="py-3 px-2 text-center bg-purple-50/60">
