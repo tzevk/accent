@@ -714,13 +714,31 @@ export default function EmployeesPage() {
     return 0;
   };
 
+  // Fetch Insurance amount from payroll schedules
+  const fetchInsurance = async () => {
+    try {
+      const currentDate = new Date().toISOString().split('T')[0];
+      const schedulesRes = await fetch(`/api/payroll/schedules?component_type=insurance&active_only=true&date=${currentDate}`);
+      const schedulesData = await schedulesRes.json();
+      
+      if (schedulesData.success && schedulesData.data && schedulesData.data.length > 0) {
+        const insuranceAmount = parseFloat(schedulesData.data[0].value) || 0;
+        setCurrentInsurance(insuranceAmount);
+        return insuranceAmount;
+      }
+    } catch (err) {
+      console.error('Error fetching Insurance:', err);
+    }
+    return 0;
+  };
+
   // Check if employee is exempt from PT
   // Male: up to 7500 = exempt
-  // Female: below 25000 = exempt
+  // Female: up to 25000 = exempt
   const isPTExempt = (grossSalary) => {
     const gender = formData.gender || selectedEmployee?.gender || '';
     const gross = parseFloat(grossSalary) || 0;
-    if (gender === 'Female' && gross < 25000) return true;
+    if (gender === 'Female' && gross <= 25000) return true;
     if (gender === 'Male' && gross <= 7500) return true;
     return false;
   };
@@ -790,20 +808,39 @@ export default function EmployeesPage() {
   const recalculateTotalsFromManual = (updatedManualValues) => {
     if (!previewBreakdown) return;
     
-    // Helper to get numeric value - handles 0, empty strings, and undefined properly
-    const getVal = (manualVal, fallback1, fallback2 = 0) => {
-      if (manualVal !== undefined && manualVal !== '' && manualVal !== null) {
-        return parseFloat(manualVal) || 0;
-      }
-      return fallback1 !== undefined && fallback1 !== null ? (parseFloat(fallback1) || 0) : fallback2;
-    };
+    const gross = parseFloat(salaryPreview.gross) || 0;
     
-    const basic_plus_da = getVal(updatedManualValues.basic_plus_da, previewBreakdown.basic_plus_da);
-    const da = getVal(updatedManualValues.da, previewBreakdown.da, currentDA);
-    const hra = getVal(updatedManualValues.hra, previewBreakdown.hra);
-    const conveyance = getVal(updatedManualValues.conveyance, previewBreakdown.conveyance);
-    const call_allowance = getVal(updatedManualValues.call_allowance, previewBreakdown.call_allowance);
-    const other_allowances = getVal(updatedManualValues.other_allowances, salaryPreview.other_allowances, previewBreakdown.other_allowances);
+    // Auto-calculate bifurcation based on gross salary (unless manually overridden)
+    // Basic = 60% of Gross - DA, HRA = 20%, Conveyance = 10%, Call Allowance = 10%
+    const calculatedBasic = Math.round(Math.max(0, gross * 0.60 - (currentDA || 0)));
+    const calculatedHra = Math.round(gross * 0.20);
+    const calculatedConveyance = Math.round(gross * 0.10);
+    const calculatedCallAllowance = Math.round(gross * 0.10);
+    
+    // Use manual value if explicitly provided, otherwise use auto-calculated value
+    const basic_plus_da = (updatedManualValues.basic_plus_da !== undefined && updatedManualValues.basic_plus_da !== '' && updatedManualValues.basic_plus_da !== null)
+      ? parseFloat(updatedManualValues.basic_plus_da) || 0
+      : calculatedBasic;
+    
+    const da = (updatedManualValues.da !== undefined && updatedManualValues.da !== '' && updatedManualValues.da !== null)
+      ? parseFloat(updatedManualValues.da) || 0
+      : (currentDA || previewBreakdown.da || 0);
+    
+    const hra = (updatedManualValues.hra !== undefined && updatedManualValues.hra !== '' && updatedManualValues.hra !== null)
+      ? parseFloat(updatedManualValues.hra) || 0
+      : calculatedHra;
+    
+    const conveyance = (updatedManualValues.conveyance !== undefined && updatedManualValues.conveyance !== '' && updatedManualValues.conveyance !== null)
+      ? parseFloat(updatedManualValues.conveyance) || 0
+      : calculatedConveyance;
+    
+    const call_allowance = (updatedManualValues.call_allowance !== undefined && updatedManualValues.call_allowance !== '' && updatedManualValues.call_allowance !== null)
+      ? parseFloat(updatedManualValues.call_allowance) || 0
+      : calculatedCallAllowance;
+    
+    const other_allowances = (updatedManualValues.other_allowances !== undefined && updatedManualValues.other_allowances !== '' && updatedManualValues.other_allowances !== null)
+      ? parseFloat(updatedManualValues.other_allowances) || 0
+      : (parseFloat(salaryPreview.other_allowances) || previewBreakdown.other_allowances || 0);
     
     // Calculate Basic + DA total for PF and Bonus calculations
     const basicPlusDaTotal = basic_plus_da + da;
@@ -816,9 +853,20 @@ export default function EmployeesPage() {
     const calculatedPfEmployer = salaryPreview.pf_applicable ? Math.round(PF_CEILING * 0.13) : 0; // ₹1,950
     
     // Bonus is calculated as percentage of Basic + DA (currentBonus is the rate)
+    // Always auto-calculate bonus based on current Basic + DA, unless manually overridden
     const calculatedBonus = salaryPreview.bonus_applicable ? Math.round(basicPlusDaTotal * currentBonus / 100) : 0;
-    const bonus = salaryPreview.bonus_applicable ? getVal(updatedManualValues.bonus, previewBreakdown.bonus, calculatedBonus) : 0;
-    const incentive = salaryPreview.incentive_applicable ? getVal(updatedManualValues.incentive, previewBreakdown.incentive, currentIncentive) : 0;
+    const bonus = salaryPreview.bonus_applicable 
+      ? ((updatedManualValues.bonus !== undefined && updatedManualValues.bonus !== '' && updatedManualValues.bonus !== null)
+          ? parseFloat(updatedManualValues.bonus) || 0
+          : calculatedBonus)
+      : 0;
+    
+    // Incentive - use manual value if explicitly provided, otherwise use fetched value
+    const incentive = salaryPreview.incentive_applicable 
+      ? ((updatedManualValues.incentive !== undefined && updatedManualValues.incentive !== '' && updatedManualValues.incentive !== null)
+          ? parseFloat(updatedManualValues.incentive) || 0
+          : (currentIncentive || previewBreakdown.incentive || 0))
+      : 0;
     
     // PF values - ALWAYS use fixed ceiling values (₹1,800 employee, ₹1,950 employer)
     // Use user-edited value if explicitly entered, otherwise use calculated value
@@ -828,21 +876,49 @@ export default function EmployeesPage() {
     const pf_employer = (updatedManualValues.pf_employer !== undefined && updatedManualValues.pf_employer !== '' && updatedManualValues.pf_employer !== null)
       ? parseFloat(updatedManualValues.pf_employer) || 0
       : calculatedPfEmployer; // Always use the fixed ceiling value
-    const esic_employee = getVal(updatedManualValues.esic_employee, previewBreakdown.esic_employee);
-    const esic_employer = getVal(updatedManualValues.esic_employer, previewBreakdown.esic_employer);
-    // PT calculated based on gender, salary and month rules
-    const ptExempt = isPTExempt(salaryPreview.gross);
-    const ptAmount = calculatePTAmount(salaryPreview.gross);
-    const pt = (salaryPreview.pt_applicable && !ptExempt) ? ptAmount : 0;
-    const mlwf = salaryPreview.mlwf_applicable ? getVal(null, previewBreakdown.mlwf, currentMLWF) : 0;
-    // Use manual retention value if provided, otherwise use currentRetention
-    const retention = salaryPreview.retention_applicable 
-      ? getVal(updatedManualValues.retention, previewBreakdown.retention, currentRetention) 
+    
+    // ESIC - auto-calculate based on gross salary unless manually overridden
+    const calculatedEsicEmployee = salaryPreview.esic_applicable ? Math.round(gross * 0.0075) : 0;
+    const calculatedEsicEmployer = salaryPreview.esic_applicable ? Math.round(gross * 0.0325) : 0;
+    const esic_employee = salaryPreview.esic_applicable
+      ? ((updatedManualValues.esic_employee !== undefined && updatedManualValues.esic_employee !== '' && updatedManualValues.esic_employee !== null)
+          ? parseFloat(updatedManualValues.esic_employee) || 0
+          : calculatedEsicEmployee)
+      : 0;
+    const esic_employer = salaryPreview.esic_applicable
+      ? ((updatedManualValues.esic_employer !== undefined && updatedManualValues.esic_employer !== '' && updatedManualValues.esic_employer !== null)
+          ? parseFloat(updatedManualValues.esic_employer) || 0
+          : calculatedEsicEmployer)
       : 0;
     
-    // Insurance (employee earning and employer cost)
+    // PT - use manual value if explicitly provided, otherwise always auto-calculate based on gender, salary and month rules
+    const ptExempt = isPTExempt(salaryPreview.gross);
+    const calculatedPt = calculatePTAmount(salaryPreview.gross);
+    const pt = salaryPreview.pt_applicable && !ptExempt 
+      ? ((updatedManualValues.pt !== undefined && updatedManualValues.pt !== '' && updatedManualValues.pt !== null)
+          ? parseFloat(updatedManualValues.pt) || 0
+          : calculatedPt)
+      : 0;
+    
+    // MLWF - use manual value if explicitly provided, otherwise use fetched value
+    const mlwf = salaryPreview.mlwf_applicable 
+      ? ((updatedManualValues.mlwf !== undefined && updatedManualValues.mlwf !== '' && updatedManualValues.mlwf !== null)
+          ? parseFloat(updatedManualValues.mlwf) || 0
+          : (currentMLWF || previewBreakdown.mlwf || 0))
+      : 0;
+    
+    // Retention - use manual value if explicitly provided, otherwise use fetched value
+    const retention = salaryPreview.retention_applicable 
+      ? ((updatedManualValues.retention !== undefined && updatedManualValues.retention !== '' && updatedManualValues.retention !== null)
+          ? parseFloat(updatedManualValues.retention) || 0
+          : (currentRetention || previewBreakdown.retention || 0))
+      : 0;
+    
+    // Insurance - use manual value if explicitly provided, otherwise use fetched value
     const insurance = salaryPreview.insurance_applicable
-      ? getVal(updatedManualValues.insurance, previewBreakdown.insurance, currentInsurance)
+      ? ((updatedManualValues.insurance !== undefined && updatedManualValues.insurance !== '' && updatedManualValues.insurance !== null)
+          ? parseFloat(updatedManualValues.insurance) || 0
+          : (currentInsurance || previewBreakdown.insurance || 0))
       : 0;
     
     // Total earnings = Basic + DA (within 60%) + HRA (20%) + Conveyance (10%) + Call Allowance (10%) = Gross
@@ -850,8 +926,14 @@ export default function EmployeesPage() {
     const total_earnings = Math.round(basic_plus_da + da + hra + conveyance + call_allowance + other_allowances + incentive);
     const total_deductions = Math.round(pf_employee + esic_employee + pt + mlwf + retention);
     const net_pay = Math.round(total_earnings - total_deductions);
-    // Use currentMLWFEmployer from state, or fall back to previewBreakdown value (fetched from payroll schedules)
-    const mlwf_employer = salaryPreview.mlwf_applicable ? (currentMLWFEmployer || previewBreakdown.mlwf_employer || 0) : 0;
+    
+    // MLWF Employer - use manual value if explicitly provided, otherwise use fetched value
+    const mlwf_employer = salaryPreview.mlwf_applicable 
+      ? ((updatedManualValues.mlwf_employer !== undefined && updatedManualValues.mlwf_employer !== '' && updatedManualValues.mlwf_employer !== null)
+          ? parseFloat(updatedManualValues.mlwf_employer) || 0
+          : (currentMLWFEmployer || previewBreakdown.mlwf_employer || 0))
+      : 0;
+    
     // Employer cost = Total Earnings + Employer contributions + Bonus + Insurance
     const employer_cost = Math.round(total_earnings + pf_employer + esic_employer + mlwf_employer + bonus + insurance);
     const basic_da_total = Math.round(basic_plus_da + da);
@@ -870,7 +952,10 @@ export default function EmployeesPage() {
       esic_employee: Math.round(esic_employee),
       pf_employer: Math.round(pf_employer),
       esic_employer: Math.round(esic_employer),
+      pt: Math.round(pt),
+      mlwf: Math.round(mlwf),
       mlwf_employer: Math.round(mlwf_employer),
+      retention: Math.round(retention),
       insurance: Math.round(insurance),
       basic_da_total,
       total_earnings,
@@ -1107,7 +1192,8 @@ export default function EmployeesPage() {
             mlwf_applicable: savedProfile.mlwf_applicable === 1 || savedProfile.mlwf_applicable === true,
             retention_applicable: savedProfile.retention_applicable === 1 || savedProfile.retention_applicable === true,
             bonus_applicable: savedProfile.bonus_applicable === 1 || savedProfile.bonus_applicable === true,
-            incentive_applicable: savedProfile.incentive_applicable === 1 || savedProfile.incentive_applicable === true
+            incentive_applicable: savedProfile.incentive_applicable === 1 || savedProfile.incentive_applicable === true,
+            insurance_applicable: savedProfile.insurance_applicable === 1 || savedProfile.insurance_applicable === true
           });
           
           // Load the saved breakdown values directly (frozen/fixed)
@@ -1130,6 +1216,7 @@ export default function EmployeesPage() {
             mlwf: parseFloat(savedProfile.mlwf) || 0,
             mlwf_employer: parseFloat(savedProfile.mlwf_employer) || 0,
             retention: parseFloat(savedProfile.retention) || 0,
+            insurance: parseFloat(savedProfile.insurance) || 0,
             total_earnings: parseFloat(savedProfile.total_earnings) || 0,
             total_deductions: parseFloat(savedProfile.total_deductions) || 0,
             net_pay: parseFloat(savedProfile.net_pay) || 0,
@@ -1147,6 +1234,7 @@ export default function EmployeesPage() {
             incentive: savedProfile.incentive?.toString() || '',
             other_allowances: savedProfile.other_allowances?.toString() || '',
             retention: savedProfile.retention?.toString() || '',
+            insurance: savedProfile.insurance?.toString() || '',
             pf_employee: savedProfile.pf_employee?.toString() || '',
             esic_employee: savedProfile.esic_employee?.toString() || '',
             pf_employer: savedProfile.pf_employer?.toString() || '',
@@ -1156,6 +1244,11 @@ export default function EmployeesPage() {
           // Set DA value
           if (savedProfile.da) {
             setCurrentDA(parseFloat(savedProfile.da));
+          }
+          
+          // Set Insurance value
+          if (savedProfile.insurance) {
+            setCurrentInsurance(parseFloat(savedProfile.insurance));
           }
         }
       }
@@ -2815,7 +2908,7 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.pf_applicable} 
+                                  checked={!!salaryPreview.pf_applicable} 
                                   onChange={(e) => {
                                     setSalaryPreview({ ...salaryPreview, pf_applicable: e.target.checked });
                                     recalculateTotalsFromManual(manualValues);
@@ -2827,7 +2920,7 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.esic_applicable} 
+                                  checked={!!salaryPreview.esic_applicable} 
                                   onChange={(e) => {
                                     setSalaryPreview({ ...salaryPreview, esic_applicable: e.target.checked });
                                     recalculateTotalsFromManual(manualValues);
@@ -2839,11 +2932,40 @@ export default function EmployeesPage() {
                               <label className={`flex items-center ${isPTExempt(salaryPreview.gross) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} title={isPTExempt(salaryPreview.gross) ? `PT exempt: ${(formData.gender || selectedEmployee?.gender) === 'Male' ? 'Male ≤₹7,500' : 'Female <₹25,000'}` : `PT: ${calculatePTAmount(salaryPreview.gross)}/month${new Date().getMonth() === 1 ? ' (Feb rate)' : ''}`}>
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.pt_applicable && !isPTExempt(salaryPreview.gross)} 
+                                  checked={!!(salaryPreview.pt_applicable && !isPTExempt(salaryPreview.gross))} 
                                   disabled={isPTExempt(salaryPreview.gross)}
-                                  onChange={(e) => {
-                                    setSalaryPreview({ ...salaryPreview, pt_applicable: e.target.checked });
-                                    recalculateTotalsFromManual(manualValues);
+                                  onChange={async (e) => {
+                                    const isChecked = e.target.checked;
+                                    setSalaryPreview({ ...salaryPreview, pt_applicable: isChecked });
+                                    
+                                    if (isChecked && previewBreakdown && !isPTExempt(salaryPreview.gross)) {
+                                      // Fetch PT value if not already loaded, or use calculated value
+                                      let ptAmount = currentPT;
+                                      if (ptAmount === 0) {
+                                        ptAmount = await fetchPT();
+                                      }
+                                      // If no PT from schedules, use calculated value
+                                      if (ptAmount === 0) {
+                                        ptAmount = calculatePTAmount(salaryPreview.gross);
+                                      }
+                                      // Update previewBreakdown with fetched/calculated value
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalDeductions = Math.round(
+                                          prev.pf_employee + prev.esic_employee + ptAmount + (prev.mlwf || 0) + (prev.retention || 0)
+                                        );
+                                        const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
+                                        return { ...prev, pt: ptAmount, total_deductions: newTotalDeductions, net_pay: newNetPay };
+                                      });
+                                    } else if (!isChecked && previewBreakdown) {
+                                      // Unchecking - reset PT to 0
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalDeductions = Math.round(
+                                          prev.pf_employee + prev.esic_employee + 0 + (prev.mlwf || 0) + (prev.retention || 0)
+                                        );
+                                        const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
+                                        return { ...prev, pt: 0, total_deductions: newTotalDeductions, net_pay: newNetPay };
+                                      });
+                                    }
                                   }}
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
                                 />
@@ -2858,10 +2980,44 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.mlwf_applicable} 
-                                  onChange={(e) => {
-                                    setSalaryPreview({ ...salaryPreview, mlwf_applicable: e.target.checked });
-                                    recalculateTotalsFromManual(manualValues);
+                                  checked={!!salaryPreview.mlwf_applicable} 
+                                  onChange={async (e) => {
+                                    const isChecked = e.target.checked;
+                                    setSalaryPreview({ ...salaryPreview, mlwf_applicable: isChecked });
+                                    
+                                    if (isChecked && previewBreakdown) {
+                                      // Fetch MLWF values if not already loaded
+                                      let mlwfEmployee = currentMLWF;
+                                      let mlwfEmployer = currentMLWFEmployer;
+                                      if (mlwfEmployee === 0 || mlwfEmployer === 0) {
+                                        const mlwfValues = await fetchMLWFWithEmployer();
+                                        mlwfEmployee = mlwfValues.employee;
+                                        mlwfEmployer = mlwfValues.employer;
+                                      }
+                                      // Update previewBreakdown with fetched values
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalDeductions = Math.round(
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + mlwfEmployee + (prev.retention || 0)
+                                        );
+                                        const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
+                                        const newEmployerCost = Math.round(
+                                          prev.total_earnings + prev.pf_employer + prev.esic_employer + mlwfEmployer + (prev.bonus || 0) + (prev.insurance || 0)
+                                        );
+                                        return { ...prev, mlwf: mlwfEmployee, mlwf_employer: mlwfEmployer, total_deductions: newTotalDeductions, net_pay: newNetPay, employer_cost: newEmployerCost };
+                                      });
+                                    } else if (!isChecked && previewBreakdown) {
+                                      // Unchecking - reset MLWF values to 0
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalDeductions = Math.round(
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + 0 + (prev.retention || 0)
+                                        );
+                                        const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
+                                        const newEmployerCost = Math.round(
+                                          prev.total_earnings + prev.pf_employer + prev.esic_employer + 0 + (prev.bonus || 0) + (prev.insurance || 0)
+                                        );
+                                        return { ...prev, mlwf: 0, mlwf_employer: 0, total_deductions: newTotalDeductions, net_pay: newNetPay, employer_cost: newEmployerCost };
+                                      });
+                                    }
                                   }}
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
                                 />
@@ -2870,10 +3026,35 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.retention_applicable} 
-                                  onChange={(e) => {
-                                    setSalaryPreview({ ...salaryPreview, retention_applicable: e.target.checked });
-                                    recalculateTotalsFromManual(manualValues);
+                                  checked={!!salaryPreview.retention_applicable} 
+                                  onChange={async (e) => {
+                                    const isChecked = e.target.checked;
+                                    setSalaryPreview({ ...salaryPreview, retention_applicable: isChecked });
+                                    
+                                    if (isChecked && previewBreakdown) {
+                                      // Fetch retention value if not already loaded
+                                      let retentionAmount = currentRetention;
+                                      if (retentionAmount === 0) {
+                                        retentionAmount = await fetchRetention();
+                                      }
+                                      // Update previewBreakdown with fetched value
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalDeductions = Math.round(
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + (prev.mlwf || 0) + retentionAmount
+                                        );
+                                        const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
+                                        return { ...prev, retention: retentionAmount, total_deductions: newTotalDeductions, net_pay: newNetPay };
+                                      });
+                                    } else if (!isChecked && previewBreakdown) {
+                                      // Unchecking - reset retention to 0
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalDeductions = Math.round(
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + (prev.mlwf || 0) + 0
+                                        );
+                                        const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
+                                        return { ...prev, retention: 0, total_deductions: newTotalDeductions, net_pay: newNetPay };
+                                      });
+                                    }
                                   }}
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
                                 />
@@ -2882,20 +3063,47 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.bonus_applicable} 
+                                  checked={!!salaryPreview.bonus_applicable} 
                                   onChange={async (e) => {
                                     const isChecked = e.target.checked;
                                     setSalaryPreview({ ...salaryPreview, bonus_applicable: isChecked });
-                                    // Fetch bonus rate if checking and not already loaded
-                                    if (isChecked && currentBonus === 0) {
-                                      await fetchBonus();
-                                      // Trigger full recalculation to use the newly fetched bonus rate
-                                      if (salaryPreview.gross) {
-                                        await calculateSalaryPreview(salaryPreview.gross, salaryPreview.other_allowances);
+                                    
+                                    if (isChecked && previewBreakdown) {
+                                      // Fetch bonus rate if not already loaded
+                                      let bonusRate = currentBonus;
+                                      if (bonusRate === 0) {
+                                        bonusRate = await fetchBonus();
                                       }
-                                    } else {
-                                      // Just recalculate totals
-                                      setTimeout(() => recalculateTotalsFromManual(manualValues), 50);
+                                      // Calculate bonus amount
+                                      const basicPlusDaTotal = (parseFloat(manualValues.basic_plus_da) || previewBreakdown.basic_plus_da || 0) + 
+                                                                (parseFloat(manualValues.da) || previewBreakdown.da || currentDA || 0);
+                                      const calculatedBonus = Math.round(basicPlusDaTotal * bonusRate / 100);
+                                      
+                                      // Update previewBreakdown with bonus and recalculate employer_cost
+                                      setPreviewBreakdown(prev => {
+                                        const newEmployerCost = Math.round(
+                                          prev.total_earnings + 
+                                          prev.pf_employer + 
+                                          prev.esic_employer + 
+                                          (prev.mlwf_employer || 0) + 
+                                          calculatedBonus + 
+                                          (prev.insurance || 0)
+                                        );
+                                        return { ...prev, bonus: calculatedBonus, employer_cost: newEmployerCost };
+                                      });
+                                    } else if (!isChecked && previewBreakdown) {
+                                      // Unchecking - reset bonus to 0 and recalculate employer_cost
+                                      setPreviewBreakdown(prev => {
+                                        const newEmployerCost = Math.round(
+                                          prev.total_earnings + 
+                                          prev.pf_employer + 
+                                          prev.esic_employer + 
+                                          (prev.mlwf_employer || 0) + 
+                                          0 + // bonus = 0
+                                          (prev.insurance || 0)
+                                        );
+                                        return { ...prev, bonus: 0, employer_cost: newEmployerCost };
+                                      });
                                     }
                                   }}
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
@@ -2905,20 +3113,40 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.incentive_applicable} 
+                                  checked={!!salaryPreview.incentive_applicable} 
                                   onChange={async (e) => {
                                     const isChecked = e.target.checked;
                                     setSalaryPreview({ ...salaryPreview, incentive_applicable: isChecked });
-                                    // Fetch incentive amount if checking and not already loaded
-                                    if (isChecked && currentIncentive === 0) {
-                                      await fetchIncentive();
-                                      // Trigger full recalculation to use the newly fetched incentive
-                                      if (salaryPreview.gross) {
-                                        await calculateSalaryPreview(salaryPreview.gross, salaryPreview.other_allowances);
+                                    
+                                    if (isChecked && previewBreakdown) {
+                                      // Fetch incentive amount if not already loaded
+                                      let incentiveAmount = currentIncentive;
+                                      if (incentiveAmount === 0) {
+                                        incentiveAmount = await fetchIncentive();
                                       }
-                                    } else {
-                                      // Just recalculate totals
-                                      setTimeout(() => recalculateTotalsFromManual(manualValues), 50);
+                                      // Update previewBreakdown with fetched value
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalEarnings = Math.round(
+                                          prev.basic_plus_da + prev.da + prev.hra + prev.conveyance + prev.call_allowance + (prev.other_allowances || 0) + incentiveAmount
+                                        );
+                                        const newNetPay = Math.round(newTotalEarnings - prev.total_deductions);
+                                        const newEmployerCost = Math.round(
+                                          newTotalEarnings + prev.pf_employer + prev.esic_employer + (prev.mlwf_employer || 0) + (prev.bonus || 0) + (prev.insurance || 0)
+                                        );
+                                        return { ...prev, incentive: incentiveAmount, total_earnings: newTotalEarnings, net_pay: newNetPay, employer_cost: newEmployerCost };
+                                      });
+                                    } else if (!isChecked && previewBreakdown) {
+                                      // Unchecking - reset incentive to 0
+                                      setPreviewBreakdown(prev => {
+                                        const newTotalEarnings = Math.round(
+                                          prev.basic_plus_da + prev.da + prev.hra + prev.conveyance + prev.call_allowance + (prev.other_allowances || 0) + 0
+                                        );
+                                        const newNetPay = Math.round(newTotalEarnings - prev.total_deductions);
+                                        const newEmployerCost = Math.round(
+                                          newTotalEarnings + prev.pf_employer + prev.esic_employer + (prev.mlwf_employer || 0) + (prev.bonus || 0) + (prev.insurance || 0)
+                                        );
+                                        return { ...prev, incentive: 0, total_earnings: newTotalEarnings, net_pay: newNetPay, employer_cost: newEmployerCost };
+                                      });
                                     }
                                   }}
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
@@ -2928,10 +3156,33 @@ export default function EmployeesPage() {
                               <label className="flex items-center cursor-pointer">
                                 <input 
                                   type="checkbox" 
-                                  checked={salaryPreview.insurance_applicable} 
-                                  onChange={(e) => {
-                                    setSalaryPreview({ ...salaryPreview, insurance_applicable: e.target.checked });
-                                    recalculateTotalsFromManual(manualValues);
+                                  checked={!!salaryPreview.insurance_applicable} 
+                                  onChange={async (e) => {
+                                    const isChecked = e.target.checked;
+                                    setSalaryPreview({ ...salaryPreview, insurance_applicable: isChecked });
+                                    
+                                    if (isChecked && previewBreakdown) {
+                                      // Fetch insurance amount if not already loaded
+                                      let insuranceAmount = currentInsurance;
+                                      if (insuranceAmount === 0) {
+                                        insuranceAmount = await fetchInsurance();
+                                      }
+                                      // Update previewBreakdown with fetched value
+                                      setPreviewBreakdown(prev => {
+                                        const newEmployerCost = Math.round(
+                                          prev.total_earnings + prev.pf_employer + prev.esic_employer + (prev.mlwf_employer || 0) + (prev.bonus || 0) + insuranceAmount
+                                        );
+                                        return { ...prev, insurance: insuranceAmount, employer_cost: newEmployerCost };
+                                      });
+                                    } else if (!isChecked && previewBreakdown) {
+                                      // Unchecking - reset insurance to 0
+                                      setPreviewBreakdown(prev => {
+                                        const newEmployerCost = Math.round(
+                                          prev.total_earnings + prev.pf_employer + prev.esic_employer + (prev.mlwf_employer || 0) + (prev.bonus || 0) + 0
+                                        );
+                                        return { ...prev, insurance: 0, employer_cost: newEmployerCost };
+                                      });
+                                    }
                                   }}
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
                                 />
@@ -2959,13 +3210,13 @@ export default function EmployeesPage() {
                                       <input
                                         type="number"
                                         step="0.01"
-                                        value={manualValues.basic_plus_da ?? previewBreakdown.basic_plus_da}
+                                        value={manualValues.basic_plus_da !== undefined && manualValues.basic_plus_da !== '' ? manualValues.basic_plus_da : (previewBreakdown.basic_plus_da || '')}
                                         onChange={(e) => {
                                           const updated = { ...manualValues, basic_plus_da: e.target.value };
                                           setManualValues(updated);
                                           recalculateTotalsFromManual(updated);
                                         }}
-                                        className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                       />
                                     </div>
                                     <div className="flex justify-between items-center">
@@ -2973,13 +3224,13 @@ export default function EmployeesPage() {
                                       <input
                                         type="number"
                                         step="0.01"
-                                        value={manualValues.da ?? previewBreakdown.da ?? currentDA ?? ''}
+                                        value={manualValues.da !== undefined && manualValues.da !== '' ? manualValues.da : (previewBreakdown.da || currentDA || '')}
                                         onChange={(e) => {
                                           const updated = { ...manualValues, da: e.target.value };
                                           setManualValues(updated);
                                           recalculateTotalsFromManual(updated);
                                         }}
-                                        className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                       />
                                     </div>
                                     <div className="flex justify-between items-center">
@@ -2987,13 +3238,13 @@ export default function EmployeesPage() {
                                       <input
                                         type="number"
                                         step="0.01"
-                                        value={manualValues.hra ?? previewBreakdown.hra}
+                                        value={manualValues.hra !== undefined && manualValues.hra !== '' ? manualValues.hra : (previewBreakdown.hra || '')}
                                         onChange={(e) => {
                                           const updated = { ...manualValues, hra: e.target.value };
                                           setManualValues(updated);
                                           recalculateTotalsFromManual(updated);
                                         }}
-                                        className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                       />
                                     </div>
                                     <div className="flex justify-between items-center">
@@ -3001,13 +3252,13 @@ export default function EmployeesPage() {
                                       <input
                                         type="number"
                                         step="0.01"
-                                        value={manualValues.conveyance ?? previewBreakdown.conveyance}
+                                        value={manualValues.conveyance !== undefined && manualValues.conveyance !== '' ? manualValues.conveyance : (previewBreakdown.conveyance || '')}
                                         onChange={(e) => {
                                           const updated = { ...manualValues, conveyance: e.target.value };
                                           setManualValues(updated);
                                           recalculateTotalsFromManual(updated);
                                         }}
-                                        className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                       />
                                     </div>
                                     <div className="flex justify-between items-center">
@@ -3015,13 +3266,13 @@ export default function EmployeesPage() {
                                       <input
                                         type="number"
                                         step="0.01"
-                                        value={manualValues.call_allowance ?? previewBreakdown.call_allowance}
+                                        value={manualValues.call_allowance !== undefined && manualValues.call_allowance !== '' ? manualValues.call_allowance : (previewBreakdown.call_allowance || '')}
                                         onChange={(e) => {
                                           const updated = { ...manualValues, call_allowance: e.target.value };
                                           setManualValues(updated);
                                           recalculateTotalsFromManual(updated);
                                         }}
-                                        className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                        className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                       />
                                     </div>
                                     {salaryPreview.incentive_applicable && (
@@ -3030,13 +3281,13 @@ export default function EmployeesPage() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.incentive ?? previewBreakdown.incentive ?? currentIncentive ?? ''}
+                                          value={manualValues.incentive !== undefined && manualValues.incentive !== '' ? manualValues.incentive : (previewBreakdown.incentive || currentIncentive || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, incentive: e.target.value };
                                             setManualValues(updated);
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                           className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
                                       </div>
                                     )}
@@ -3046,14 +3297,14 @@ export default function EmployeesPage() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.other_allowances ?? previewBreakdown.other_allowances ?? salaryPreview.other_allowances ?? ''}
+                                          value={manualValues.other_allowances !== undefined && manualValues.other_allowances !== '' ? manualValues.other_allowances : (previewBreakdown.other_allowances || salaryPreview.other_allowances || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, other_allowances: e.target.value };
                                             setManualValues(updated);
                                             setSalaryPreview({ ...salaryPreview, other_allowances: e.target.value });
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                          className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
                                       </div>
                                     )}
@@ -3076,7 +3327,7 @@ export default function EmployeesPage() {
                                   </h5>
                                   <div className="space-y-2">
                                     <div className="flex justify-between items-center text-sm text-gray-500 mb-2">
-                                      <span>Earnings:</span>
+                                      <span>From Earnings:</span>
                                       <span>₹{formatCurrency(previewBreakdown.total_earnings)}</span>
                                     </div>
                                     {salaryPreview.pf_applicable && (
@@ -3085,13 +3336,13 @@ export default function EmployeesPage() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.pf_employee ?? previewBreakdown.pf_employee}
+                                          value={manualValues.pf_employee !== undefined && manualValues.pf_employee !== '' ? manualValues.pf_employee : (previewBreakdown.pf_employee || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, pf_employee: e.target.value };
                                             setManualValues(updated);
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                          className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
                                       </div>
                                     )}
@@ -3101,30 +3352,36 @@ export default function EmployeesPage() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.esic_employee ?? previewBreakdown.esic_employee}
+                                          value={manualValues.esic_employee !== undefined && manualValues.esic_employee !== '' ? manualValues.esic_employee : (previewBreakdown.esic_employee || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, esic_employee: e.target.value };
                                             setManualValues(updated);
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                          className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
                                       </div>
                                     )}
-                                    {salaryPreview.pt_applicable && (
+                                    {salaryPreview.pt_applicable && !isPTExempt(salaryPreview.gross) && (
                                       <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-600">PT {new Date().getMonth() === 1 && <span className="text-xs text-blue-600">(Feb)</span>} {isPTExempt(salaryPreview.gross) && <span className="text-xs text-green-600">(Exempt)</span>}</span>
+                                        <span className="text-sm text-gray-600">PT {new Date().getMonth() === 1 && <span className="text-xs text-blue-600">(Feb)</span>}</span>
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.pt ?? previewBreakdown.pt ?? ''}
+                                          value={manualValues.pt !== undefined && manualValues.pt !== '' ? manualValues.pt : (previewBreakdown.pt || calculatePTAmount(salaryPreview.gross) || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, pt: e.target.value };
                                             setManualValues(updated);
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                          className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
+                                      </div>
+                                    )}
+                                    {isPTExempt(salaryPreview.gross) && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">PT</span>
+                                        <span className="text-sm font-medium text-green-600">Exempt</span>
                                       </div>
                                     )}
                                     {salaryPreview.mlwf_applicable && (
@@ -3133,13 +3390,13 @@ export default function EmployeesPage() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.mlwf ?? previewBreakdown.mlwf ?? currentMLWF ?? ''}
+                                          value={manualValues.mlwf !== undefined && manualValues.mlwf !== '' ? manualValues.mlwf : (previewBreakdown.mlwf || currentMLWF || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, mlwf: e.target.value };
                                             setManualValues(updated);
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                          className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
                                       </div>
                                     )}
@@ -3149,13 +3406,13 @@ export default function EmployeesPage() {
                                         <input
                                           type="number"
                                           step="0.01"
-                                          value={manualValues.retention ?? previewBreakdown.retention ?? currentRetention ?? ''}
+                                          value={manualValues.retention !== undefined && manualValues.retention !== '' ? manualValues.retention : (previewBreakdown.retention || currentRetention || '')}
                                           onChange={(e) => {
                                             const updated = { ...manualValues, retention: e.target.value };
                                             setManualValues(updated);
                                             recalculateTotalsFromManual(updated);
                                           }}
-                                          className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                         />
                                       </div>
                                     )}
@@ -3165,9 +3422,9 @@ export default function EmployeesPage() {
                                         <span className="text-red-900">₹{formatCurrency(previewBreakdown.total_deductions)}</span>
                                       </div>
                                     </div>
-                                    <div className="border-t border-green-300 pt-2 mt-2">
-                                      <div className="flex justify-between font-semibold">
-                                        <span className="text-green-900">Net Pay (In Hand)</span>
+                                    <div className="border-t-2 border-green-400 pt-2 mt-2">
+                                      <div className="flex justify-between font-bold text-lg">
+                                        <span className="text-green-700">Net Pay (In Hand)</span>
                                         <span className="text-green-700">₹{formatCurrency(previewBreakdown.net_pay)}</span>
                                       </div>
                                     </div>
@@ -3184,7 +3441,7 @@ export default function EmployeesPage() {
                                   </h5>
                                   <div className="space-y-2">
                                     <div className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-600">Gross Salary</span>
+                                      <span className="text-sm text-gray-600">Total Earnings</span>
                                       <span className="text-sm font-medium text-gray-900">₹{formatCurrency(previewBreakdown.total_earnings)}</span>
                                     </div>
                                     <div className="border-t border-blue-200 pt-2 mt-2">
@@ -3195,13 +3452,13 @@ export default function EmployeesPage() {
                                           <input
                                             type="number"
                                             step="0.01"
-                                            value={manualValues.pf_employer ?? previewBreakdown.pf_employer}
+                                            value={manualValues.pf_employer !== undefined && manualValues.pf_employer !== '' ? manualValues.pf_employer : (previewBreakdown.pf_employer || '')}
                                             onChange={(e) => {
                                               const updated = { ...manualValues, pf_employer: e.target.value };
                                               setManualValues(updated);
                                               recalculateTotalsFromManual(updated);
                                             }}
-                                            className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                           />
                                         </div>
                                       )}
@@ -3211,13 +3468,13 @@ export default function EmployeesPage() {
                                           <input
                                             type="number"
                                             step="0.01"
-                                            value={manualValues.esic_employer ?? previewBreakdown.esic_employer}
+                                            value={manualValues.esic_employer !== undefined && manualValues.esic_employer !== '' ? manualValues.esic_employer : (previewBreakdown.esic_employer || '')}
                                             onChange={(e) => {
                                               const updated = { ...manualValues, esic_employer: e.target.value };
                                               setManualValues(updated);
                                               recalculateTotalsFromManual(updated);
                                             }}
-                                            className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                           />
                                         </div>
                                       )}
@@ -3227,13 +3484,13 @@ export default function EmployeesPage() {
                                           <input
                                             type="number"
                                             step="0.01"
-                                            value={manualValues.mlwf_employer ?? previewBreakdown.mlwf_employer ?? currentMLWFEmployer ?? ''}
+                                            value={manualValues.mlwf_employer !== undefined && manualValues.mlwf_employer !== '' ? manualValues.mlwf_employer : (previewBreakdown.mlwf_employer || currentMLWFEmployer || '')}
                                             onChange={(e) => {
                                               const updated = { ...manualValues, mlwf_employer: e.target.value };
                                               setManualValues(updated);
                                               recalculateTotalsFromManual(updated);
                                             }}
-                                            className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                           />
                                         </div>
                                       )}
@@ -3243,35 +3500,35 @@ export default function EmployeesPage() {
                                           <input
                                             type="number"
                                             step="0.01"
-                                            value={manualValues.bonus ?? previewBreakdown.bonus ?? ''}
+                                            value={manualValues.bonus !== undefined && manualValues.bonus !== '' ? manualValues.bonus : (previewBreakdown.bonus || '')}
                                             onChange={(e) => {
                                               const updated = { ...manualValues, bonus: e.target.value };
                                               setManualValues(updated);
                                               recalculateTotalsFromManual(updated);
                                             }}
-                                            className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                           />
                                         </div>
                                       )}
                                       {salaryPreview.insurance_applicable && (
                                         <div className="flex justify-between items-center">
-                                          <span className="text-sm text-gray-600">Insurance</span>
+                                          <span className="text-sm text-gray-600">Insurance (PA/Mediclaim)</span>
                                           <input
                                             type="number"
                                             step="0.01"
-                                            value={manualValues.insurance ?? previewBreakdown.insurance ?? currentInsurance ?? ''}
+                                            value={manualValues.insurance !== undefined && manualValues.insurance !== '' ? manualValues.insurance : (previewBreakdown.insurance || currentInsurance || '')}
                                             onChange={(e) => {
                                               const updated = { ...manualValues, insurance: e.target.value };
                                               setManualValues(updated);
                                               recalculateTotalsFromManual(updated);
                                             }}
-                                            className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                           />
                                         </div>
                                       )}
                                     </div>
-                                    <div className="border-t border-blue-300 pt-2 mt-2">
-                                      <div className="flex justify-between font-semibold">
+                                    <div className="border-t-2 border-blue-400 pt-2 mt-2">
+                                      <div className="flex justify-between font-bold text-lg">
                                         <span className="text-blue-700">Total CTC</span>
                                         <span className="text-blue-700">₹{formatCurrency(previewBreakdown.employer_cost)}</span>
                                       </div>
@@ -3290,6 +3547,7 @@ export default function EmployeesPage() {
                                       other_allowances: 0,
                                       pf_applicable: true,
                                       esic_applicable: false,
+                                      pt_applicable: false,
                                       mlwf_applicable: false,
                                       retention_applicable: false,
                                       bonus_applicable: false,
@@ -3298,6 +3556,7 @@ export default function EmployeesPage() {
                                     });
                                     setPreviewBreakdown(null);
                                     setCurrentDA(0);
+                                    setCurrentPT(0);
                                     setCurrentMLWF(0);
                                     setCurrentRetention(0);
                                     setCurrentBonus(0);

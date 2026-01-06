@@ -33,6 +33,7 @@ export async function POST(request) {
       retention_applicable = false,
       bonus_applicable = false,
       incentive_applicable = false,
+      insurance_applicable = false,
       // Additional breakdown fields
       basic_plus_da,
       da,
@@ -50,6 +51,7 @@ export async function POST(request) {
       mlwf,
       mlwf_employer,
       retention,
+      insurance,
       total_earnings,
       total_deductions,
       net_pay,
@@ -135,6 +137,8 @@ export async function POST(request) {
       { name: 'mlwf', definition: 'DECIMAL(12, 2)' },
       { name: 'mlwf_employer', definition: 'DECIMAL(12, 2)' },
       { name: 'retention', definition: 'DECIMAL(12, 2)' },
+      { name: 'insurance', definition: 'DECIMAL(12, 2)' },
+      { name: 'insurance_applicable', definition: 'TINYINT(1) DEFAULT 0' },
     ];
     
     for (const col of columnsToAdd) {
@@ -179,11 +183,11 @@ export async function POST(request) {
     const [result] = await db.query(
       `INSERT INTO employee_salary_profile 
        (employee_id, gross, gross_salary, other_allowances, effective_from, da_year, 
-        pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable,
+        pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
         basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
-        pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention,
+        pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
         total_earnings, total_deductions, net_pay, employer_cost, is_manual_override) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
         gross = VALUES(gross),
         gross_salary = VALUES(gross_salary),
@@ -195,6 +199,7 @@ export async function POST(request) {
         retention_applicable = VALUES(retention_applicable),
         bonus_applicable = VALUES(bonus_applicable),
         incentive_applicable = VALUES(incentive_applicable),
+        insurance_applicable = VALUES(insurance_applicable),
         basic_plus_da = VALUES(basic_plus_da),
         da = VALUES(da),
         basic = VALUES(basic),
@@ -211,6 +216,7 @@ export async function POST(request) {
         mlwf = VALUES(mlwf),
         mlwf_employer = VALUES(mlwf_employer),
         retention = VALUES(retention),
+        insurance = VALUES(insurance),
         total_earnings = VALUES(total_earnings),
         total_deductions = VALUES(total_deductions),
         net_pay = VALUES(net_pay),
@@ -231,6 +237,7 @@ export async function POST(request) {
         retention_applicable ? 1 : 0,
         bonus_applicable ? 1 : 0,
         incentive_applicable ? 1 : 0,
+        insurance_applicable ? 1 : 0,
         parseFloat(basic_plus_da) || null, 
         parseFloat(da) || null, 
         parseFloat(basic) || null, 
@@ -247,6 +254,7 @@ export async function POST(request) {
         parseFloat(mlwf) || null,
         parseFloat(mlwf_employer) || null,
         parseFloat(retention) || null,
+        parseFloat(insurance) || null,
         parseFloat(total_earnings) || null, 
         parseFloat(total_deductions) || null, 
         parseFloat(net_pay) || null, 
@@ -342,6 +350,8 @@ export async function GET(request) {
         { name: 'mlwf', definition: 'DECIMAL(12, 2)' },
         { name: 'mlwf_employer', definition: 'DECIMAL(12, 2)' },
         { name: 'retention', definition: 'DECIMAL(12, 2)' },
+        { name: 'insurance', definition: 'DECIMAL(12, 2)' },
+        { name: 'insurance_applicable', definition: 'TINYINT(1) DEFAULT 0' },
       ];
       
       for (const col of columnsToAdd) {
@@ -388,6 +398,8 @@ export async function GET(request) {
           retention_applicable,
           bonus_applicable,
           incentive_applicable,
+          insurance,
+          insurance_applicable,
           total_earnings,
           total_deductions,
           net_pay,
