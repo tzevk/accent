@@ -403,7 +403,12 @@ export default function EmployeesPage() {
   
   // New Salary Preview State (using core payroll tables)
   const [salaryPreview, setSalaryPreview] = useState({
+    salary_type: 'monthly', // monthly, hourly, daily, contract, lumpsum
     gross: '',
+    hourly_rate: '',
+    daily_rate: '',
+    contract_amount: '',
+    lumpsum_amount: '',
     other_allowances: '',
     pf_applicable: true,
     esic_applicable: false,
@@ -1193,7 +1198,19 @@ export default function EmployeesPage() {
             retention_applicable: savedProfile.retention_applicable === 1 || savedProfile.retention_applicable === true,
             bonus_applicable: savedProfile.bonus_applicable === 1 || savedProfile.bonus_applicable === true,
             incentive_applicable: savedProfile.incentive_applicable === 1 || savedProfile.incentive_applicable === true,
-            insurance_applicable: savedProfile.insurance_applicable === 1 || savedProfile.insurance_applicable === true
+            insurance_applicable: savedProfile.insurance_applicable === 1 || savedProfile.insurance_applicable === true,
+            // Salary type fields
+            salary_type: savedProfile.salary_type || 'monthly',
+            hourly_rate: savedProfile.hourly_rate || '',
+            std_hours_per_day: savedProfile.std_hours_per_day || 8,
+            ot_multiplier: savedProfile.ot_multiplier || 1.5,
+            daily_rate: savedProfile.daily_rate || '',
+            std_working_days: savedProfile.std_working_days || 26,
+            contract_amount: savedProfile.contract_amount || '',
+            contract_duration: savedProfile.contract_duration || 'monthly',
+            contract_end_date: savedProfile.contract_end_date || '',
+            lumpsum_amount: savedProfile.lumpsum_amount || '',
+            lumpsum_description: savedProfile.lumpsum_description || ''
           });
           
           // Load the saved breakdown values directly (frozen/fixed)
@@ -1296,13 +1313,29 @@ export default function EmployeesPage() {
       return;
     }
     
-    if (!salaryPreview.gross) {
-      setPreviewError('Please enter gross salary');
-      return;
-    }
+    // Validate based on salary type
+    const salaryType = salaryPreview.salary_type || 'monthly';
     
-    if (!previewBreakdown) {
-      setPreviewError('Please enter a gross salary first to calculate breakdown');
+    if (salaryType === 'monthly') {
+      if (!salaryPreview.gross) {
+        setPreviewError('Please enter gross salary');
+        return;
+      }
+      if (!previewBreakdown) {
+        setPreviewError('Please enter a gross salary first to calculate breakdown');
+        return;
+      }
+    } else if (salaryType === 'hourly' && !salaryPreview.hourly_rate) {
+      setPreviewError('Please enter hourly rate');
+      return;
+    } else if (salaryType === 'daily' && !salaryPreview.daily_rate) {
+      setPreviewError('Please enter daily rate');
+      return;
+    } else if (salaryType === 'contract' && !salaryPreview.contract_amount) {
+      setPreviewError('Please enter contract amount');
+      return;
+    } else if (salaryType === 'lumpsum' && !salaryPreview.lumpsum_amount) {
+      setPreviewError('Please enter lumpsum amount');
       return;
     }
     
@@ -1314,44 +1347,98 @@ export default function EmployeesPage() {
       const currentDate = new Date().toISOString().split('T')[0];
       const currentYear = new Date().getFullYear();
       
-      const payload = {
+      // Build payload based on salary type
+      let payload = {
         employee_id: selectedEmployee.id,
-        gross_salary: parseFloat(salaryPreview.gross),
-        other_allowances: parseFloat(salaryPreview.other_allowances) || 0,
-        pf_applicable: salaryPreview.pf_applicable,
-        esic_applicable: salaryPreview.esic_applicable,
-        pt_applicable: salaryPreview.pt_applicable,
-        mlwf_applicable: salaryPreview.mlwf_applicable,
-        retention_applicable: salaryPreview.retention_applicable,
-        bonus_applicable: salaryPreview.bonus_applicable,
-        incentive_applicable: salaryPreview.incentive_applicable,
-        insurance_applicable: salaryPreview.insurance_applicable,
+        salary_type: salaryType,
         effective_from: currentDate,
         da_year: currentYear,
-        // Include breakdown values (manual or calculated)
-        basic_plus_da: previewBreakdown.basic_plus_da,
-        da: previewBreakdown.da,
-        basic_da_total: previewBreakdown.basic_da_total, // Combined Basic + DA
-        hra: previewBreakdown.hra,
-        conveyance: previewBreakdown.conveyance,
-        call_allowance: previewBreakdown.call_allowance,
-        bonus: previewBreakdown.bonus || 0,
-        incentive: previewBreakdown.incentive || 0,
-        pf_employee: previewBreakdown.pf_employee,
-        esic_employee: previewBreakdown.esic_employee,
-        pt: previewBreakdown.pt || 0,
-        mlwf: previewBreakdown.mlwf || 0,
-        mlwf_employer: previewBreakdown.mlwf_employer || 0,
-        retention: previewBreakdown.retention || 0,
-        insurance: previewBreakdown.insurance || 0,
-        pf_employer: previewBreakdown.pf_employer,
-        esic_employer: previewBreakdown.esic_employer,
-        total_earnings: previewBreakdown.total_earnings,
-        total_deductions: previewBreakdown.total_deductions,
-        net_pay: previewBreakdown.net_pay,
-        employer_cost: previewBreakdown.employer_cost,
         is_manual_override: false
       };
+      
+      if (salaryType === 'monthly') {
+        payload = {
+          ...payload,
+          gross_salary: parseFloat(salaryPreview.gross),
+          other_allowances: parseFloat(salaryPreview.other_allowances) || 0,
+          pf_applicable: salaryPreview.pf_applicable,
+          esic_applicable: salaryPreview.esic_applicable,
+          pt_applicable: salaryPreview.pt_applicable,
+          mlwf_applicable: salaryPreview.mlwf_applicable,
+          retention_applicable: salaryPreview.retention_applicable,
+          bonus_applicable: salaryPreview.bonus_applicable,
+          incentive_applicable: salaryPreview.incentive_applicable,
+          insurance_applicable: salaryPreview.insurance_applicable,
+          // Include breakdown values (manual or calculated)
+          basic_plus_da: previewBreakdown.basic_plus_da,
+          da: previewBreakdown.da,
+          basic_da_total: previewBreakdown.basic_da_total, // Combined Basic + DA
+          hra: previewBreakdown.hra,
+          conveyance: previewBreakdown.conveyance,
+          call_allowance: previewBreakdown.call_allowance,
+          bonus: previewBreakdown.bonus || 0,
+          incentive: previewBreakdown.incentive || 0,
+          pf_employee: previewBreakdown.pf_employee,
+          esic_employee: previewBreakdown.esic_employee,
+          pt: previewBreakdown.pt || 0,
+          mlwf: previewBreakdown.mlwf || 0,
+          mlwf_employer: previewBreakdown.mlwf_employer || 0,
+          retention: previewBreakdown.retention || 0,
+          insurance: previewBreakdown.insurance || 0,
+          pf_employer: previewBreakdown.pf_employer,
+          esic_employer: previewBreakdown.esic_employer,
+          total_earnings: previewBreakdown.total_earnings,
+          total_deductions: previewBreakdown.total_deductions,
+          net_pay: previewBreakdown.net_pay,
+          employer_cost: previewBreakdown.employer_cost,
+        };
+      } else if (salaryType === 'hourly') {
+        const hourlyRate = parseFloat(salaryPreview.hourly_rate) || 0;
+        const stdHours = parseFloat(salaryPreview.std_hours_per_day) || 8;
+        const estimatedMonthly = hourlyRate * stdHours * 26;
+        payload = {
+          ...payload,
+          hourly_rate: hourlyRate,
+          std_hours_per_day: stdHours,
+          ot_multiplier: parseFloat(salaryPreview.ot_multiplier) || 1.5,
+          gross_salary: estimatedMonthly,
+          net_pay: estimatedMonthly,
+          employer_cost: estimatedMonthly,
+        };
+      } else if (salaryType === 'daily') {
+        const dailyRate = parseFloat(salaryPreview.daily_rate) || 0;
+        const stdDays = parseFloat(salaryPreview.std_working_days) || 26;
+        const estimatedMonthly = dailyRate * stdDays;
+        payload = {
+          ...payload,
+          daily_rate: dailyRate,
+          std_working_days: stdDays,
+          gross_salary: estimatedMonthly,
+          net_pay: estimatedMonthly,
+          employer_cost: estimatedMonthly,
+        };
+      } else if (salaryType === 'contract') {
+        const contractAmount = parseFloat(salaryPreview.contract_amount) || 0;
+        payload = {
+          ...payload,
+          contract_amount: contractAmount,
+          contract_duration: salaryPreview.contract_duration || 'monthly',
+          contract_end_date: salaryPreview.contract_end_date || null,
+          gross_salary: contractAmount,
+          net_pay: contractAmount,
+          employer_cost: contractAmount,
+        };
+      } else if (salaryType === 'lumpsum') {
+        const lumpsumAmount = parseFloat(salaryPreview.lumpsum_amount) || 0;
+        payload = {
+          ...payload,
+          lumpsum_amount: lumpsumAmount,
+          lumpsum_description: salaryPreview.lumpsum_description || '',
+          gross_salary: lumpsumAmount,
+          net_pay: lumpsumAmount,
+          employer_cost: lumpsumAmount,
+        };
+      }
       
       console.log('Sending salary profile:', payload);
       
@@ -2783,6 +2870,11 @@ export default function EmployeesPage() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 Current Salary Profile
+                                {savedSalaryProfiles[0]?.salary_type && savedSalaryProfiles[0]?.salary_type !== 'monthly' && (
+                                  <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-purple-200 text-purple-800 rounded-full capitalize">
+                                    {savedSalaryProfiles[0].salary_type}
+                                  </span>
+                                )}
                               </h4>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-purple-600">
@@ -2808,22 +2900,89 @@ export default function EmployeesPage() {
                               </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gross</p>
-                                <p className="text-xl font-bold text-gray-900">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
-                              </div>
-                              <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Basic + DA</p>
-                                <p className="text-xl font-bold text-gray-900">₹{formatCurrency(parseFloat(savedSalaryProfiles[0]?.basic_plus_da || 0) + parseFloat(savedSalaryProfiles[0]?.da || 0))}</p>
-                              </div>
-                              <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">In Hand</p>
-                                <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.net_pay || 0)}</p>
-                              </div>
-                              <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Employer Cost</p>
-                                <p className="text-xl font-bold text-blue-600">₹{formatCurrency(savedSalaryProfiles[0]?.employer_cost || 0)}</p>
-                              </div>
+                              {/* Show different cards based on salary type */}
+                              {(!savedSalaryProfiles[0]?.salary_type || savedSalaryProfiles[0]?.salary_type === 'monthly') ? (
+                                <>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gross</p>
+                                    <p className="text-xl font-bold text-gray-900">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Basic + DA</p>
+                                    <p className="text-xl font-bold text-gray-900">₹{formatCurrency(parseFloat(savedSalaryProfiles[0]?.basic_plus_da || 0) + parseFloat(savedSalaryProfiles[0]?.da || 0))}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">In Hand</p>
+                                    <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.net_pay || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Employer Cost</p>
+                                    <p className="text-xl font-bold text-blue-600">₹{formatCurrency(savedSalaryProfiles[0]?.employer_cost || 0)}</p>
+                                  </div>
+                                </>
+                              ) : savedSalaryProfiles[0]?.salary_type === 'hourly' ? (
+                                <>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">⏰ Hourly Rate</p>
+                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.hourly_rate || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Hours/Day</p>
+                                    <p className="text-xl font-bold text-gray-900">{savedSalaryProfiles[0]?.std_hours_per_day || 8}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Est. Monthly</p>
+                                    <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">OT Multiplier</p>
+                                    <p className="text-xl font-bold text-gray-700">{savedSalaryProfiles[0]?.ot_multiplier || 1.5}x</p>
+                                  </div>
+                                </>
+                              ) : savedSalaryProfiles[0]?.salary_type === 'daily' ? (
+                                <>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">📆 Daily Rate</p>
+                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.daily_rate || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Working Days</p>
+                                    <p className="text-xl font-bold text-gray-900">{savedSalaryProfiles[0]?.std_working_days || 26}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Est. Monthly</p>
+                                    <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
+                                  </div>
+                                </>
+                              ) : savedSalaryProfiles[0]?.salary_type === 'contract' ? (
+                                <>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">📝 Contract Amount</p>
+                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.contract_amount || savedSalaryProfiles[0]?.gross_salary || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</p>
+                                    <p className="text-lg font-bold text-gray-900 capitalize">{savedSalaryProfiles[0]?.contract_duration?.replace('_', ' ') || 'Monthly'}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">End Date</p>
+                                    <p className="text-lg font-bold text-orange-600">
+                                      {savedSalaryProfiles[0]?.contract_end_date ? new Date(savedSalaryProfiles[0].contract_end_date).toLocaleDateString('en-IN') : 'Not Set'}
+                                    </p>
+                                  </div>
+                                </>
+                              ) : savedSalaryProfiles[0]?.salary_type === 'lumpsum' ? (
+                                <>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">💰 Lumpsum Amount</p>
+                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.lumpsum_amount || savedSalaryProfiles[0]?.gross_salary || 0)}</p>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Description</p>
+                                    <p className="text-sm font-medium text-gray-700">{savedSalaryProfiles[0]?.lumpsum_description || 'One-time payment'}</p>
+                                  </div>
+                                </>
+                              ) : null}
                             </div>
                           </div>
                         )}
@@ -2868,6 +3027,45 @@ export default function EmployeesPage() {
 
                           {/* Input Row: Gross + Checkboxes */}
                           <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                            {/* Salary Type Selection */}
+                            <div className="mb-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Salary Type *</label>
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  { value: 'monthly', label: 'Monthly', desc: 'Fixed monthly salary' },
+                                  { value: 'hourly', label: 'Hourly',  desc: 'Paid per hour worked' },
+                                  { value: 'daily', label: 'Daily', desc: 'Paid per day worked' },
+                                  { value: 'contract', label: 'Contract', desc: 'Fixed contract amount' },
+                                  { value: 'lumpsum', label: 'Lumpsum', desc: 'One-time payment' }
+                                ].map((type) => (
+                                  <button
+                                    key={type.value}
+                                    type="button"
+                                    onClick={() => setSalaryPreview({ ...salaryPreview, salary_type: type.value })}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                                      salaryPreview.salary_type === type.value
+                                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                    }`}
+                                  >
+                                    <span className="text-lg">{type.icon}</span>
+                                    <div className="text-left">
+                                      <span className="font-medium text-sm">{type.label}</span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="text-xs text-gray-500 mt-2">
+                                {salaryPreview.salary_type === 'monthly' && '💡 Standard monthly salary with statutory deductions like PF, ESIC, PT'}
+                                {salaryPreview.salary_type === 'hourly' && '💡 Payment based on hours worked. Ideal for part-time or flexible workers'}
+                                {salaryPreview.salary_type === 'daily' && '💡 Payment based on days worked. Common for casual/temporary workers'}
+                                {salaryPreview.salary_type === 'contract' && '💡 Fixed amount for the contract duration. No statutory deductions'}
+                                {salaryPreview.salary_type === 'lumpsum' && '💡 One-time payment for specific work. No recurring salary structure'}
+                              </p>
+                            </div>
+
+                            {/* Monthly Salary Fields */}
+                            {salaryPreview.salary_type === 'monthly' && (
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-3">
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Gross Salary *</label>
@@ -2928,6 +3126,214 @@ export default function EmployeesPage() {
                                 />
                               </div>
                             </div>
+                            )}
+
+                            {/* Hourly Rate Fields */}
+                            {salaryPreview.salary_type === 'hourly' && (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate (₹) *</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.hourly_rate} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, hourly_rate: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="Enter hourly rate"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Std Hours/Day</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.std_hours_per_day || '8'} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, std_hours_per_day: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="8"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">OT Multiplier</label>
+                                  <select 
+                                    value={salaryPreview.ot_multiplier || '1.5'} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, ot_multiplier: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  >
+                                    <option value="1">1x (No OT)</option>
+                                    <option value="1.5">1.5x</option>
+                                    <option value="2">2x</option>
+                                  </select>
+                                </div>
+                                <div className="md:col-span-3 bg-blue-50 rounded-lg p-3">
+                                  <p className="text-sm text-blue-800">
+                                    <strong>Estimated Monthly:</strong> ₹{formatCurrency((parseFloat(salaryPreview.hourly_rate) || 0) * (parseFloat(salaryPreview.std_hours_per_day) || 8) * 26)} 
+                                    <span className="text-xs text-blue-600 ml-2">(based on 26 working days)</span>
+                                  </p>
+                                </div>
+                                <div className="md:col-span-3 mt-3">
+                                  <button
+                                    onClick={handleSaveSalaryProfile}
+                                    disabled={salaryProfileSaving || !salaryPreview.hourly_rate}
+                                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                  >
+                                    {salaryProfileSaving ? (
+                                      <><span className="animate-spin">⏳</span> Saving...</>
+                                    ) : (
+                                      <><span></span> Save Hourly Rate Profile</>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Daily Rate Fields */}
+                            {salaryPreview.salary_type === 'daily' && (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Daily Rate (₹) *</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.daily_rate} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, daily_rate: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="Enter daily rate"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Std Working Days/Month</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.std_working_days || '26'} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, std_working_days: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="26"
+                                  />
+                                </div>
+                                <div className="md:col-span-3 bg-green-50 rounded-lg p-3">
+                                  <p className="text-sm text-green-800">
+                                    <strong>Estimated Monthly:</strong> ₹{formatCurrency((parseFloat(salaryPreview.daily_rate) || 0) * (parseFloat(salaryPreview.std_working_days) || 26))} 
+                                    <span className="text-xs text-green-600 ml-2">(if all days worked)</span>
+                                  </p>
+                                </div>
+                                <div className="md:col-span-3 mt-3">
+                                  <button
+                                    onClick={handleSaveSalaryProfile}
+                                    disabled={salaryProfileSaving || !salaryPreview.daily_rate}
+                                    className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                  >
+                                    {salaryProfileSaving ? (
+                                      <><span className="animate-spin">⏳</span> Saving...</>
+                                    ) : (
+                                      <><span></span> Save Daily Rate Profile</>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Contract Amount Fields */}
+                            {salaryPreview.salary_type === 'contract' && (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract Amount (₹) *</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.contract_amount} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_amount: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="Enter contract amount"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract Duration</label>
+                                  <select 
+                                    value={salaryPreview.contract_duration || 'monthly'} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_duration: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  >
+                                    <option value="monthly">Per Month</option>
+                                    <option value="quarterly">Per Quarter</option>
+                                    <option value="half_yearly">Per 6 Months</option>
+                                    <option value="yearly">Per Year</option>
+                                    <option value="project">Per Project</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract End Date</label>
+                                  <input 
+                                    type="date" 
+                                    value={salaryPreview.contract_end_date || ''} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_end_date: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                  />
+                                </div>
+                                <div className="md:col-span-3 bg-amber-50 rounded-lg p-3">
+                                  <p className="text-sm text-amber-800">
+                                    <strong>Note:</strong> Contract workers are typically not covered under PF/ESIC. TDS may apply based on income.
+                                  </p>
+                                </div>
+                                <div className="md:col-span-3 mt-3">
+                                  <button
+                                    onClick={handleSaveSalaryProfile}
+                                    disabled={salaryProfileSaving || !salaryPreview.contract_amount}
+                                    className="w-full px-4 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                  >
+                                    {salaryProfileSaving ? (
+                                      <><span className="animate-spin">⏳</span> Saving...</>
+                                    ) : (
+                                      <><span></span> Save Contract Profile</>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Lumpsum Amount Fields */}
+                            {salaryPreview.salary_type === 'lumpsum' && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Lumpsum Amount (₹) *</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.lumpsum_amount} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, lumpsum_amount: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="Enter lumpsum amount"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Description</label>
+                                  <input 
+                                    type="text" 
+                                    value={salaryPreview.lumpsum_description || ''} 
+                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, lumpsum_description: e.target.value })}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                    placeholder="e.g., Project completion bonus"
+                                  />
+                                </div>
+                                <div className="md:col-span-2 bg-purple-50 rounded-lg p-3">
+                                  <p className="text-sm text-purple-800">
+                                    <strong>Note:</strong> Lumpsum payments are one-time. No recurring salary or statutory deductions.
+                                  </p>
+                                </div>
+                                <div className="md:col-span-2 mt-3">
+                                  <button
+                                    onClick={handleSaveSalaryProfile}
+                                    disabled={salaryProfileSaving || !salaryPreview.lumpsum_amount}
+                                    className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                  >
+                                    {salaryProfileSaving ? (
+                                      <><span className="animate-spin">⏳</span> Saving...</>
+                                    ) : (
+                                      <><span></span> Save Lumpsum Profile</>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Statutory Deductions - Only for Monthly type */}
+                            {salaryPreview.salary_type === 'monthly' && (
+                            <>
                             <div>
                             </div>
                             <div className="flex flex-wrap gap-4">
@@ -3215,10 +3621,12 @@ export default function EmployeesPage() {
                                 <span className="ml-2 text-sm text-gray-700">Insurance</span>
                               </label>
                             </div>
+                            </>
+                            )}
                           </div>
 
-                          {/* 3-Column Breakdown */}
-                          {previewBreakdown && (
+                          {/* 3-Column Breakdown - Only for Monthly */}
+                          {salaryPreview.salary_type === 'monthly' && previewBreakdown && (
                             <>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                 
@@ -3562,14 +3970,99 @@ export default function EmployeesPage() {
                                   </div>
                                 </div>
                               </div>
+                            </>
+                          )}
 
-                              {/* Action Buttons */}
+                          {/* Summary for Non-Monthly Types */}
+                          {salaryPreview.salary_type !== 'monthly' && (salaryPreview.hourly_rate || salaryPreview.daily_rate || salaryPreview.contract_amount || salaryPreview.lumpsum_amount) && (
+                            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5 mb-4">
+                              <h5 className="text-lg font-semibold text-indigo-900 mb-4 flex items-center gap-2">
+                                <span className="text-xl">
+                                  {salaryPreview.salary_type === 'hourly' && '⏰'}
+                                  {salaryPreview.salary_type === 'daily' && '📆'}
+                                  {salaryPreview.salary_type === 'contract' && '📝'}
+                                  {salaryPreview.salary_type === 'lumpsum' && '💰'}
+                                </span>
+                                {salaryPreview.salary_type.charAt(0).toUpperCase() + salaryPreview.salary_type.slice(1)} Payment Summary
+                              </h5>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                                    {salaryPreview.salary_type === 'hourly' && 'Hourly Rate'}
+                                    {salaryPreview.salary_type === 'daily' && 'Daily Rate'}
+                                    {salaryPreview.salary_type === 'contract' && 'Contract Amount'}
+                                    {salaryPreview.salary_type === 'lumpsum' && 'Lumpsum Amount'}
+                                  </p>
+                                  <p className="text-xl font-bold text-indigo-700">
+                                    ₹{formatCurrency(
+                                      salaryPreview.hourly_rate || 
+                                      salaryPreview.daily_rate || 
+                                      salaryPreview.contract_amount || 
+                                      salaryPreview.lumpsum_amount || 0
+                                    )}
+                                  </p>
+                                </div>
+                                {salaryPreview.salary_type === 'hourly' && (
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Est. Monthly</p>
+                                    <p className="text-xl font-bold text-green-600">
+                                      ₹{formatCurrency((parseFloat(salaryPreview.hourly_rate) || 0) * (parseFloat(salaryPreview.std_hours_per_day) || 8) * 26)}
+                                    </p>
+                                  </div>
+                                )}
+                                {salaryPreview.salary_type === 'daily' && (
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Est. Monthly</p>
+                                    <p className="text-xl font-bold text-green-600">
+                                      ₹{formatCurrency((parseFloat(salaryPreview.daily_rate) || 0) * (parseFloat(salaryPreview.std_working_days) || 26))}
+                                    </p>
+                                  </div>
+                                )}
+                                {salaryPreview.salary_type === 'contract' && (
+                                  <>
+                                    <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</p>
+                                      <p className="text-lg font-bold text-gray-700">
+                                        {salaryPreview.contract_duration === 'monthly' && 'Monthly'}
+                                        {salaryPreview.contract_duration === 'quarterly' && 'Quarterly'}
+                                        {salaryPreview.contract_duration === 'half_yearly' && '6 Months'}
+                                        {salaryPreview.contract_duration === 'yearly' && 'Yearly'}
+                                        {salaryPreview.contract_duration === 'project' && 'Project'}
+                                        {!salaryPreview.contract_duration && 'Monthly'}
+                                      </p>
+                                    </div>
+                                    {salaryPreview.contract_end_date && (
+                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">End Date</p>
+                                        <p className="text-lg font-bold text-orange-600">
+                                          {new Date(salaryPreview.contract_end_date).toLocaleDateString('en-IN')}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                                <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Statutory</p>
+                                  <p className="text-lg font-bold text-gray-500">N/A</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          {(salaryPreview.salary_type === 'monthly' ? previewBreakdown : (salaryPreview.hourly_rate || salaryPreview.daily_rate || salaryPreview.contract_amount || salaryPreview.lumpsum_amount)) && (
+                            <>
                               <div className="flex justify-end gap-3 mt-4">
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setSalaryPreview({
+                                      salary_type: 'monthly',
                                       gross: '',
+                                      hourly_rate: '',
+                                      daily_rate: '',
+                                      contract_amount: '',
+                                      lumpsum_amount: '',
                                       other_allowances: 0,
                                       pf_applicable: true,
                                       esic_applicable: false,

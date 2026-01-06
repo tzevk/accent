@@ -34,6 +34,18 @@ export async function POST(request) {
       bonus_applicable = false,
       incentive_applicable = false,
       insurance_applicable = false,
+      // Salary type fields
+      salary_type = 'monthly',
+      hourly_rate,
+      std_hours_per_day = 8,
+      ot_multiplier = 1.5,
+      daily_rate,
+      std_working_days = 26,
+      contract_amount,
+      contract_duration = 'monthly',
+      contract_end_date,
+      lumpsum_amount,
+      lumpsum_description,
       // Additional breakdown fields
       basic_plus_da,
       da,
@@ -139,6 +151,18 @@ export async function POST(request) {
       { name: 'retention', definition: 'DECIMAL(12, 2)' },
       { name: 'insurance', definition: 'DECIMAL(12, 2)' },
       { name: 'insurance_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      // New salary type columns
+      { name: 'salary_type', definition: "VARCHAR(20) DEFAULT 'monthly'" },
+      { name: 'hourly_rate', definition: 'DECIMAL(12, 2)' },
+      { name: 'std_hours_per_day', definition: 'DECIMAL(4, 1) DEFAULT 8' },
+      { name: 'ot_multiplier', definition: 'DECIMAL(4, 2) DEFAULT 1.5' },
+      { name: 'daily_rate', definition: 'DECIMAL(12, 2)' },
+      { name: 'std_working_days', definition: 'INT DEFAULT 26' },
+      { name: 'contract_amount', definition: 'DECIMAL(12, 2)' },
+      { name: 'contract_duration', definition: "VARCHAR(20) DEFAULT 'monthly'" },
+      { name: 'contract_end_date', definition: 'DATE' },
+      { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
+      { name: 'lumpsum_description', definition: 'VARCHAR(255)' },
     ];
     
     for (const col of columnsToAdd) {
@@ -186,8 +210,10 @@ export async function POST(request) {
         pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
         basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
         pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
-        total_earnings, total_deductions, net_pay, employer_cost, is_manual_override) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
+        salary_type, hourly_rate, std_hours_per_day, ot_multiplier, daily_rate, std_working_days,
+        contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
         gross = VALUES(gross),
         gross_salary = VALUES(gross_salary),
@@ -222,6 +248,17 @@ export async function POST(request) {
         net_pay = VALUES(net_pay),
         employer_cost = VALUES(employer_cost),
         is_manual_override = VALUES(is_manual_override),
+        salary_type = VALUES(salary_type),
+        hourly_rate = VALUES(hourly_rate),
+        std_hours_per_day = VALUES(std_hours_per_day),
+        ot_multiplier = VALUES(ot_multiplier),
+        daily_rate = VALUES(daily_rate),
+        std_working_days = VALUES(std_working_days),
+        contract_amount = VALUES(contract_amount),
+        contract_duration = VALUES(contract_duration),
+        contract_end_date = VALUES(contract_end_date),
+        lumpsum_amount = VALUES(lumpsum_amount),
+        lumpsum_description = VALUES(lumpsum_description),
         updated_at = CURRENT_TIMESTAMP`,
       [
         employee_id, 
@@ -259,7 +296,19 @@ export async function POST(request) {
         parseFloat(total_deductions) || null, 
         parseFloat(net_pay) || null, 
         parseFloat(employer_cost) || null,
-        is_manual_override ? 1 : 0
+        is_manual_override ? 1 : 0,
+        // New salary type fields
+        salary_type || 'monthly',
+        parseFloat(hourly_rate) || null,
+        parseFloat(std_hours_per_day) || 8,
+        parseFloat(ot_multiplier) || 1.5,
+        parseFloat(daily_rate) || null,
+        parseInt(std_working_days) || 26,
+        parseFloat(contract_amount) || null,
+        contract_duration || 'monthly',
+        contract_end_date || null,
+        parseFloat(lumpsum_amount) || null,
+        lumpsum_description || null
       ]
     );
     
