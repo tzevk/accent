@@ -45,7 +45,9 @@ export default function PayrollSchedulesPage() {
         { value: 'esic_employee', label: 'ESIC Employee', type: 'percentage', suffix: '%' },
         { value: 'esic_employer', label: 'ESIC Employer', type: 'percentage', suffix: '%' },
         { value: 'pt', label: 'Professional Tax', type: 'fixed', suffix: '₹', hasSlab: true },
-        { value: 'mlwf', label: 'MLWF', type: 'fixed', suffix: '₹' },
+        { value: 'mlwf_employee', label: 'MLWF Employee', type: 'fixed', suffix: '₹' },
+        { value: 'mlwf_employer', label: 'MLWF Employer', type: 'fixed', suffix: '₹' },
+        { value: 'retention', label: 'Retention', type: 'fixed', suffix: '₹' },
         { value: 'tds', label: 'TDS', type: 'percentage', suffix: '%' },
       ]
     },
@@ -62,7 +64,8 @@ export default function PayrollSchedulesPage() {
       label: 'Others',
       icon: '📋',
       components: [
-        { value: 'bonus', label: 'Bonus', type: 'percentage', suffix: '%' },
+        { value: 'bonus', label: 'Bonus', type: 'percentage', suffix: '%', description: 'Percentage of Basic + DA' },
+        { value: 'incentive', label: 'Incentive', type: 'fixed', suffix: '₹' },
         { value: 'leaves', label: 'Leaves', type: 'fixed', suffix: 'days' },
       ]
     }

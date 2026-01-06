@@ -28,6 +28,11 @@ export async function POST(request) {
       da_year = new Date().getFullYear(),
       pf_applicable = true,
       esic_applicable = true,
+      pt_applicable = false,
+      mlwf_applicable = false,
+      retention_applicable = false,
+      bonus_applicable = false,
+      incentive_applicable = false,
       // Additional breakdown fields
       basic_plus_da,
       da,
@@ -35,10 +40,16 @@ export async function POST(request) {
       hra,
       conveyance,
       call_allowance,
+      bonus,
+      incentive,
       pf_employee,
       esic_employee,
       pf_employer,
       esic_employer,
+      pt,
+      mlwf,
+      mlwf_employer,
+      retention,
       total_earnings,
       total_deductions,
       net_pay,
@@ -113,6 +124,17 @@ export async function POST(request) {
       { name: 'net_pay', definition: 'DECIMAL(12, 2)' },
       { name: 'employer_cost', definition: 'DECIMAL(12, 2)' },
       { name: 'is_manual_override', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'pt_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'mlwf_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'retention_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'bonus_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'incentive_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'bonus', definition: 'DECIMAL(12, 2)' },
+      { name: 'incentive', definition: 'DECIMAL(12, 2)' },
+      { name: 'pt', definition: 'DECIMAL(12, 2)' },
+      { name: 'mlwf', definition: 'DECIMAL(12, 2)' },
+      { name: 'mlwf_employer', definition: 'DECIMAL(12, 2)' },
+      { name: 'retention', definition: 'DECIMAL(12, 2)' },
     ];
     
     for (const col of columnsToAdd) {
@@ -156,27 +178,39 @@ export async function POST(request) {
     console.log('Inserting/Updating salary profile...');
     const [result] = await db.query(
       `INSERT INTO employee_salary_profile 
-       (employee_id, gross, gross_salary, other_allowances, effective_from, da_year, pf_applicable, esic_applicable,
-        basic_plus_da, da, basic, hra, conveyance, call_allowance, 
-        pf_employee, esic_employee, pf_employer, esic_employer,
+       (employee_id, gross, gross_salary, other_allowances, effective_from, da_year, 
+        pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable,
+        basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
+        pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention,
         total_earnings, total_deductions, net_pay, employer_cost, is_manual_override) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
         gross = VALUES(gross),
         gross_salary = VALUES(gross_salary),
         other_allowances = VALUES(other_allowances),
         pf_applicable = VALUES(pf_applicable),
         esic_applicable = VALUES(esic_applicable),
+        pt_applicable = VALUES(pt_applicable),
+        mlwf_applicable = VALUES(mlwf_applicable),
+        retention_applicable = VALUES(retention_applicable),
+        bonus_applicable = VALUES(bonus_applicable),
+        incentive_applicable = VALUES(incentive_applicable),
         basic_plus_da = VALUES(basic_plus_da),
         da = VALUES(da),
         basic = VALUES(basic),
         hra = VALUES(hra),
         conveyance = VALUES(conveyance),
         call_allowance = VALUES(call_allowance),
+        bonus = VALUES(bonus),
+        incentive = VALUES(incentive),
         pf_employee = VALUES(pf_employee),
         esic_employee = VALUES(esic_employee),
         pf_employer = VALUES(pf_employer),
         esic_employer = VALUES(esic_employer),
+        pt = VALUES(pt),
+        mlwf = VALUES(mlwf),
+        mlwf_employer = VALUES(mlwf_employer),
+        retention = VALUES(retention),
         total_earnings = VALUES(total_earnings),
         total_deductions = VALUES(total_deductions),
         net_pay = VALUES(net_pay),
@@ -192,16 +226,27 @@ export async function POST(request) {
         da_year, 
         pf_applicable ? 1 : 0, 
         esic_applicable ? 1 : 0,
+        pt_applicable ? 1 : 0,
+        mlwf_applicable ? 1 : 0,
+        retention_applicable ? 1 : 0,
+        bonus_applicable ? 1 : 0,
+        incentive_applicable ? 1 : 0,
         parseFloat(basic_plus_da) || null, 
         parseFloat(da) || null, 
         parseFloat(basic) || null, 
         parseFloat(hra) || null, 
         parseFloat(conveyance) || null, 
         parseFloat(call_allowance) || null,
+        parseFloat(bonus) || null,
+        parseFloat(incentive) || null,
         parseFloat(pf_employee) || null, 
         parseFloat(esic_employee) || null, 
         parseFloat(pf_employer) || null, 
         parseFloat(esic_employer) || null,
+        parseFloat(pt) || null,
+        parseFloat(mlwf) || null,
+        parseFloat(mlwf_employer) || null,
+        parseFloat(retention) || null,
         parseFloat(total_earnings) || null, 
         parseFloat(total_deductions) || null, 
         parseFloat(net_pay) || null, 
@@ -262,6 +307,54 @@ export async function GET(request) {
     db = await dbConnect();
     
     try {
+      // First, ensure all required columns exist (same as POST method)
+      const columnsToAdd = [
+        { name: 'gross', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+        { name: 'gross_salary', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+        { name: 'other_allowances', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+        { name: 'effective_from', definition: 'DATE' },
+        { name: 'da_year', definition: 'INT' },
+        { name: 'pf_applicable', definition: 'TINYINT(1) DEFAULT 1' },
+        { name: 'esic_applicable', definition: 'TINYINT(1) DEFAULT 1' },
+        { name: 'basic_plus_da', definition: 'DECIMAL(12, 2)' },
+        { name: 'da', definition: 'DECIMAL(12, 2)' },
+        { name: 'basic', definition: 'DECIMAL(12, 2)' },
+        { name: 'hra', definition: 'DECIMAL(12, 2)' },
+        { name: 'conveyance', definition: 'DECIMAL(12, 2)' },
+        { name: 'call_allowance', definition: 'DECIMAL(12, 2)' },
+        { name: 'pf_employee', definition: 'DECIMAL(12, 2)' },
+        { name: 'esic_employee', definition: 'DECIMAL(12, 2)' },
+        { name: 'pf_employer', definition: 'DECIMAL(12, 2)' },
+        { name: 'esic_employer', definition: 'DECIMAL(12, 2)' },
+        { name: 'total_earnings', definition: 'DECIMAL(12, 2)' },
+        { name: 'total_deductions', definition: 'DECIMAL(12, 2)' },
+        { name: 'net_pay', definition: 'DECIMAL(12, 2)' },
+        { name: 'employer_cost', definition: 'DECIMAL(12, 2)' },
+        { name: 'is_manual_override', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'pt_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'mlwf_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'retention_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'bonus_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'incentive_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'bonus', definition: 'DECIMAL(12, 2)' },
+        { name: 'incentive', definition: 'DECIMAL(12, 2)' },
+        { name: 'pt', definition: 'DECIMAL(12, 2)' },
+        { name: 'mlwf', definition: 'DECIMAL(12, 2)' },
+        { name: 'mlwf_employer', definition: 'DECIMAL(12, 2)' },
+        { name: 'retention', definition: 'DECIMAL(12, 2)' },
+      ];
+      
+      for (const col of columnsToAdd) {
+        try {
+          await db.query(`ALTER TABLE employee_salary_profile ADD COLUMN ${col.name} ${col.definition}`);
+        } catch (alterErr) {
+          // Column already exists - ignore error code 1060
+          if (alterErr.code !== 'ER_DUP_FIELDNAME' && alterErr.errno !== 1060) {
+            // Ignore other errors too (e.g., table doesn't exist yet)
+          }
+        }
+      }
+      
       // Get all salary profiles for this employee, ordered by effective_from descending
       const [profiles] = await db.query(
         `SELECT 
@@ -284,6 +377,17 @@ export async function GET(request) {
           esic_employee,
           pf_employer,
           esic_employer,
+          pt,
+          mlwf,
+          mlwf_employer,
+          retention,
+          bonus,
+          incentive,
+          pt_applicable,
+          mlwf_applicable,
+          retention_applicable,
+          bonus_applicable,
+          incentive_applicable,
           total_earnings,
           total_deductions,
           net_pay,
