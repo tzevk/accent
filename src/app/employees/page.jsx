@@ -3670,7 +3670,7 @@ export default function EmployeesPage() {
                             <input type="text" value={formData.aadhar || ''} onChange={(e) => setFormData({ ...formData, aadhar: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Gratuity No</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">PF number</label>
                             <input type="text" value={formData.gratuity_no || ''} onChange={(e) => setFormData({ ...formData, gratuity_no: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                           </div>
                           <div>
