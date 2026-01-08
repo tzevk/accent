@@ -153,12 +153,15 @@ export default function EmployeesPage() {
   };
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [workplaces, setWorkplaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('list'); // Keep for add/edit/view modes
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedWorkplace, setSelectedWorkplace] = useState('');
+  const [selectedEmploymentStatus, setSelectedEmploymentStatus] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({});
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -1508,7 +1511,9 @@ export default function EmployeesPage() {
         limit: 100,
         ...(s && { search: s }),
         ...(selectedDepartment && { department: selectedDepartment }),
-        ...(selectedStatus && { status: selectedStatus })
+        ...(selectedStatus && { status: selectedStatus }),
+        ...(selectedWorkplace && { workplace: selectedWorkplace }),
+        ...(selectedEmploymentStatus && { employment_status: selectedEmploymentStatus })
       });
       // Add a client-side timeout to avoid hanging forever on network issues
       const controller = new AbortController();
@@ -1534,6 +1539,7 @@ export default function EmployeesPage() {
         const sorted = Array.isArray(data.employees) ? [...data.employees].sort(sortByIdNumber) : (data.employees || []);
         setEmployees(sorted);
         setDepartments(data.departments);
+        setWorkplaces(data.workplaces || []);
         setPagination(data.pagination);
       } else {
         console.error('Error fetching employees:', data.error);
@@ -1545,7 +1551,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, selectedDepartment, selectedStatus]);
+  }, [currentPage, searchTerm, selectedDepartment, selectedStatus, selectedWorkplace, selectedEmploymentStatus]);
 
   useEffect(() => {
     fetchEmployees();
@@ -1737,7 +1743,7 @@ export default function EmployeesPage() {
             <>
               {/* Filters */}
               <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                   {/* Search */}
                   <div className="relative">
                     <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -1776,12 +1782,27 @@ export default function EmployeesPage() {
                     <option value="terminated">Terminated</option>
                   </select>
 
+
+
+                  {/* Employment Status Filter (Resigned/Employed) */}
+                  <select
+                    value={selectedEmploymentStatus}
+                    onChange={(e) => setSelectedEmploymentStatus(e.target.value)}
+                    className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">All Employees</option>
+                    <option value="employed">Employed</option>
+                    <option value="resigned">Resigned</option>
+                  </select>
+
                   {/* Clear Filters */}
                   <button
                     onClick={() => {
                       setSearchTerm('');
                       setSelectedDepartment('');
                       setSelectedStatus('');
+                      setSelectedWorkplace('');
+                      setSelectedEmploymentStatus('');
                       setCurrentPage(1);
                     }}
                     className="px-4 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center"
@@ -1842,6 +1863,9 @@ export default function EmployeesPage() {
                               Position
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
+                              Branch
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
                               Hire Date
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100">
@@ -1876,6 +1900,9 @@ export default function EmployeesPage() {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">{employee.position || '-'}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">{employee.workplace || '-'}</div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">{formatDate(employee.hire_date)}</div>
@@ -2183,6 +2210,14 @@ export default function EmployeesPage() {
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
                             <option value="terminated">Terminated</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Branch</label>
+                          <select value={formData.workplace || ''} onChange={(e) => setFormData({ ...formData, workplace: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="">Select Branch</option>
+                            <option value="Malvan">Malvan</option>
+                            <option value="Mumbai">Mumbai</option>
                           </select>
                         </div>
                       </div>
@@ -2723,6 +2758,14 @@ export default function EmployeesPage() {
                               <option value="active">Active</option>
                               <option value="inactive">Inactive</option>
                               <option value="terminated">Terminated</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Branch</label>
+                            <select value={formData.workplace || ''} onChange={(e) => setFormData({ ...formData, workplace: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
+                              <option value="">Select Branch</option>
+                              <option value="Malvan">Malvan</option>
+                              <option value="Mumbai">Mumbai</option>
                             </select>
                           </div>
                         </div>

@@ -127,6 +127,8 @@ export async function GET(request) {
     const search = searchParams.get('search') || '';
     const department = searchParams.get('department') || '';
     const status = searchParams.get('status') || '';
+    const workplace = searchParams.get('workplace') || '';
+    const employment_status = searchParams.get('employment_status') || '';
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 10;
     const offset = (page - 1) * limit;
@@ -155,6 +157,21 @@ export async function GET(request) {
     if (status) {
       whereClause += ' AND e.status = ?';
       params.push(status);
+    }
+
+    if (workplace) {
+      whereClause += ' AND e.workplace = ?';
+      params.push(workplace);
+    }
+
+    if (employment_status) {
+      if (employment_status === 'employed') {
+        // Employed = active status and no exit_date
+        whereClause += ' AND (e.exit_date IS NULL OR e.exit_date = \'\')';
+      } else if (employment_status === 'resigned') {
+        // Resigned = has exit_date
+        whereClause += ' AND e.exit_date IS NOT NULL AND e.exit_date != \'\'';
+      }
     }
 
     // Get total count for pagination
@@ -187,9 +204,15 @@ export async function GET(request) {
       'SELECT DISTINCT department FROM employees WHERE department IS NOT NULL ORDER BY department'
     );
 
+    // Get unique workplaces for filter options
+    const [workplaces] = await connection.execute(
+      'SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != \'\' ORDER BY workplace'
+    );
+
     return NextResponse.json({
       employees,
       departments: departments.map(d => d.department),
+      workplaces: workplaces.map(w => w.workplace),
       pagination: {
         current: page,
         total: Math.ceil(total / limit),

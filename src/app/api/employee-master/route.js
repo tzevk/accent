@@ -23,6 +23,7 @@ export async function GET(request) {
         last_name,
         email,
         department,
+        workplace,
         status,
         CONCAT(first_name, ' ', last_name) as full_name
        FROM employees 
