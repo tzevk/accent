@@ -32,6 +32,9 @@ export default function SignIn() {
   };
 
   useEffect(() => {
+    // Clear any stale session cache when signin page loads
+    clearSessionCache();
+    
     const platform = navigator.userAgent;
     const windowsDetected = platform.includes('Windows');
     setIsWindows(windowsDetected);
@@ -65,35 +68,8 @@ export default function SignIn() {
         // Clear cached session data to ensure fresh session is loaded
         clearSessionCache();
         
-        // Wait for cookies to be set
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // Verify session is actually established before redirecting
-        // Keep checking until we get authenticated or timeout
-        let sessionVerified = false;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          try {
-            const sessionCheck = await fetch('/api/session', { 
-              credentials: 'include',
-              cache: 'no-store',
-              headers: { 'Cache-Control': 'no-cache, no-store' }
-            });
-            const sessionData = await sessionCheck.json();
-            
-            if (sessionData.authenticated && sessionData.user) {
-              sessionVerified = true;
-              break;
-            }
-          } catch (err) {
-            console.warn('Session check attempt failed:', err);
-          }
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-        
-        if (!sessionVerified) {
-          console.warn('Session verification incomplete, proceeding with redirect anyway');
-        }
+        // Short wait for cookies to be set, then redirect immediately
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // All users go through the gate route after login
         // Gate will determine the correct destination based on role/permissions

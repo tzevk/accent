@@ -36,6 +36,7 @@ export default function EmployeeAttendancePage() {
   // Current month/year for calendar
   const [currentDate, setCurrentDate] = useState(new Date());
   const [attendanceData, setAttendanceData] = useState({});
+  const [holidays, setHolidays] = useState([]);
   
   // Get current month's days
   const currentYear = currentDate.getFullYear();
@@ -78,11 +79,40 @@ export default function EmployeeAttendancePage() {
     return Object.entries(weekMap).map(([num, days]) => ({ weekNumber: parseInt(num), days }));
   }, [daysInMonth]);
 
+  // Fetch holidays for the current month
+  const fetchHolidays = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/masters/holidays?year=${currentYear}`);
+      const data = await res.json();
+      if (res.ok && data.data) {
+        setHolidays(data.data);
+        return data.data;
+      }
+      return [];
+    } catch (err) {
+      console.error('Error fetching holidays:', err);
+      return [];
+    }
+  }, [currentYear]);
+
   // Fetch employees
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
+      // Fetch holidays first
+      const holidayList = await fetchHolidays();
+      
+      // Create a set of holiday dates for quick lookup (only for current month)
+      const holidayDates = new Set(
+        holidayList
+          .filter(h => {
+            const hDate = new Date(h.date);
+            return hDate.getMonth() === currentMonth && hDate.getFullYear() === currentYear;
+          })
+          .map(h => h.date.split('T')[0])
+      );
+      
       const res = await fetch('/api/employees?limit=1000&status=active');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch employees');
@@ -100,13 +130,18 @@ export default function EmployeeAttendancePage() {
           weeklyOff: 0,
           present: 0,
           absent: 0,
-          privilegedLeave: 0
+          privilegedLeave: 0,
+          holiday: 0
         };
         
         // Set default attendance for each day
         daysInMonth.forEach(day => {
-          // Default: Sunday = weekly off, other days = present
-          if (day.isSunday) {
+          // Check if this day is a holiday first
+          if (holidayDates.has(day.fullDate)) {
+            initialAttendance[emp.id].days[day.fullDate] = 'H'; // Holiday
+            initialAttendance[emp.id].holiday++;
+          } else if (day.isSunday) {
+            // Default: Sunday = weekly off
             initialAttendance[emp.id].days[day.fullDate] = 'WO'; // Weekly Off
             initialAttendance[emp.id].weeklyOff++;
           } else if (day.isSaturday) {
@@ -133,7 +168,7 @@ export default function EmployeeAttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [daysInMonth]);
+  }, [daysInMonth, fetchHolidays, currentMonth, currentYear]);
 
   useEffect(() => {
     fetchEmployees();
@@ -402,6 +437,13 @@ export default function EmployeeAttendancePage() {
                 >
                   Today
                 </button>
+                <Link
+                  href="/employees/attendance/holiday-master"
+                  className="px-4 py-2 text-sm bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <CalendarDaysIcon className="h-4 w-4" />
+                  Holiday Master
+                </Link>
                 <button
                   onClick={saveAttendance}
                   disabled={saving}

@@ -1607,7 +1607,7 @@ function QuotationForm({ proposalData, setProposalData }) {
           <div className="space-y-4 flex-1">
             <Text label="Duration" placeholder="e.g., 6 months, 120 days…" value={proposalData.duration} onChange={v => set('duration', v)} />
             <DateField label="Target Date" value={proposalData.target_date} onChange={v => set('target_date', v)} />
-            <Text label="Lead ID" value={String(proposalData.lead_id ?? '')} onChange={v => set('lead_id', v)} readOnly />
+            <Text label="Lead ID" value={String(proposalData.lead_id ?? '')} onChange={v => set('lead_id', v)} disabled />
           </div>
         </div>
 
@@ -1625,19 +1625,19 @@ function QuotationForm({ proposalData, setProposalData }) {
           <div className="space-y-4 flex-1">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Site Visit</label>
-              <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" rows={2} value={proposalData.site_visit || ''} />
+              <textarea disabled className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" rows={2} value={proposalData.site_visit || ''} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Validity</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.quotation_validity || ''} />
+              <input disabled type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.quotation_validity || ''} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Delivery</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.mode_of_delivery || ''} />
+              <input disabled type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.mode_of_delivery || ''} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Revision</label>
-              <input readOnly type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.revision || ''} />
+              <input disabled type="text" className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm" value={proposalData.revision || ''} />
             </div>
           </div>
         </div>
@@ -1718,7 +1718,7 @@ function QuotationForm({ proposalData, setProposalData }) {
             </div>
           </div>
           <div className="flex-1">
-            <textarea readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm min-h-[150px]" value={proposalData.exclusions || ''} />
+            <textarea disabled className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm min-h-[150px]" value={proposalData.exclusions || ''} />
           </div>
         </div>
       </div>
@@ -2464,7 +2464,7 @@ function Section({ title, subtitle }) {
   );
 }
 
-function Text({ label, value, onChange = () => {}, placeholder = '', required = false, readOnly = false }) {
+function Text({ label, value, onChange = () => {}, placeholder = '', required = false, disabled = false }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
@@ -2474,8 +2474,8 @@ function Text({ label, value, onChange = () => {}, placeholder = '', required = 
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        readOnly={readOnly}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent ${readOnly ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+        disabled={disabled}
+        className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
       />
     </div>
   );
@@ -2552,7 +2552,7 @@ function ProposalIdField({ label, value, onChange }) {
         <input
           type="text"
           value={pref}
-          readOnly
+          disabled
           className="flex-1 px-3 py-2 border border-gray-300 rounded-l bg-gray-100 cursor-not-allowed"
         />
         <input

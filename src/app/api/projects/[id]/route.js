@@ -26,8 +26,8 @@ export async function GET(request, { params }) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  // Check if user has full projects:read permission
-  const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  // Only super admins can see all projects; everyone else must be in project team
+  const canSeeAllProjects = user.is_super_admin;
   
   const { id } = await params;
   // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
@@ -120,8 +120,8 @@ export async function GET(request, { params }) {
 
     const project = rows[0];
     
-    // If user doesn't have full access, check if they're in the project team
-    if (!hasFullAccess) {
+    // Check if user is in project team (unless super admin)
+    if (!canSeeAllProjects) {
       const isTeamMember = isUserInProjectTeam(project.project_team, user.id, user.email);
       if (!isTeamMember) {
         console.log(`[Projects API] User ${user.email} denied access to project ${id} - not a team member`);

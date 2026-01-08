@@ -52,27 +52,14 @@ export async function dbConnect() {
         });
         
         pool.on('acquire', (connection) => {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📥 Connection %d acquired', connection.threadId);
-          }
+          // Connection acquired - no logging for performance
         });
         
         pool.on('release', (connection) => {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📤 Connection %d released', connection.threadId);
-          }
+          // Connection released - no logging for performance
         });
         
-        // Log pool stats every 30 seconds in development
-        if (process.env.NODE_ENV === 'development') {
-          setInterval(() => {
-            const stats = getPoolStats();
-            if (stats && stats.totalConnections > 0) {
-              console.log('🔌 Pool stats:', stats);
-            }
-          }, 30000);
-        }
-        
+        // Pool stats logging disabled for performance
         lastError = undefined;
         break; // success
       } catch (err) {

@@ -2,60 +2,40 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearSessionCache } from '@/context/SessionContext';
+import { useSession } from '@/context/SessionContext';
 
 /**
  * Gate Route - Intermediate authentication checkpoint
  * 
- * This route acts as a "gate" after login to:
- * 1. Call a single endpoint to verify session and get user role
- * 2. Redirect to the appropriate dashboard based on role
- * 
- * Rule: Show ONLY a loader until we know exactly where to send the user
+ * Uses SessionContext to avoid duplicate API calls.
+ * The session is already being fetched by SessionContext,
+ * so we just wait for it and redirect based on role.
  */
 export default function GatePage() {
   const router = useRouter();
+  const { user, loading, authenticated } = useSession();
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        // Clear any stale session cache first
-        clearSessionCache();
-        
-        // Call single endpoint to get session info including is_super_admin
-        const response = await fetch('/api/session', {
-          credentials: 'include',
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store' }
-        });
-        
-        const data = await response.json();
-        
-        // Not authenticated - redirect to signin
-        if (!data.authenticated || !data.user) {
-          router.replace('/signin');
-          return;
-        }
-        
-        // Check if super admin
-        const isSuperAdmin = data.user.is_super_admin === true || data.user.is_super_admin === 1;
-        
-        if (isSuperAdmin) {
-          // Super admin goes to admin dashboard
-          router.replace('/admin/dashboard');
-        } else {
-          // Regular users go to user dashboard
-          router.replace('/user/dashboard');
-        }
-      } catch (error) {
-        console.error('Gate session check failed:', error);
-        // On error, redirect to signin
-        router.replace('/signin');
-      }
-    };
+    // Wait for session to load
+    if (loading) return;
 
-    checkSession();
-  }, [router]);
+    // Not authenticated - redirect to signin
+    if (!authenticated || !user) {
+      router.replace('/signin');
+      return;
+    }
+
+    // Check if super admin
+    const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+
+    if (isSuperAdmin) {
+      // Super admin goes to admin dashboard
+      router.replace('/admin/dashboard');
+    } else {
+      // Regular users go to user dashboard
+      router.replace('/user/dashboard');
+    }
+  }, [loading, authenticated, user, router]);
 
   // Always show only a neutral loader - no dashboard UI
   return (

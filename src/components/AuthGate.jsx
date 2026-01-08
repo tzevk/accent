@@ -28,7 +28,6 @@ export default function AuthGate() {
     // Redirect to signin if not authenticated
     if (!authenticated && !redirecting) {
       setRedirecting(true);
-      console.log('AuthGate: User not authenticated, redirecting to signin');
       const from = encodeURIComponent(pathname || '/');
       router.replace(`/signin?from=${from}`);
     }

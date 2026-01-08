@@ -1714,11 +1714,30 @@ export default function MessagesPage() {
                                   {msg.attachments.map((att, attIdx) => (
                                     <a
                                       key={attIdx}
-                                      href={att.file_path || att.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group"
+                                      href={`/api/messages/attachments/${att.id}`}
+                                      download={att.original_name || att.name}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        // Use fetch to download the file properly
+                                        e.preventDefault();
+                                        fetch(`/api/messages/attachments/${att.id}`)
+                                          .then(res => {
+                                            if (!res.ok) throw new Error('Download failed');
+                                            return res.blob();
+                                          })
+                                          .then(blob => {
+                                            const url = window.URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = att.original_name || att.name || 'attachment';
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            window.URL.revokeObjectURL(url);
+                                            a.remove();
+                                          })
+                                          .catch(err => console.error('Download error:', err));
+                                      }}
+                                      className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group cursor-pointer"
                                     >
                                       <div className="p-1.5 bg-gray-100 rounded">
                                         <DocumentIcon className="h-4 w-4 text-gray-500" />

@@ -29,8 +29,8 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Check if user has full projects:read permission
-    const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.READ);
+    // Only super admins can see all projects; everyone else sees only their team's projects
+    const canSeeAllProjects = user.is_super_admin;
     
     const db = await dbConnect();
     
@@ -141,14 +141,16 @@ export async function GET(request) {
     
     await db.end();
     
-    // If user doesn't have full access, filter to only projects they're assigned to
+    // Filter to only projects where user is in the team (unless super admin)
     let filteredRows = rows;
-    if (!hasFullAccess) {
-      console.log('[Projects API] User does not have full access, filtering by team membership');
+    if (!canSeeAllProjects) {
+      console.log('[Projects API] Filtering projects by team membership for user:', user.email);
       filteredRows = rows.filter(project => 
         isUserInProjectTeam(project.project_team, user.id, user.email)
       );
-      console.log(`[Projects API] Filtered from ${rows.length} to ${filteredRows.length} projects for user ${user.email}`);
+      console.log(`[Projects API] User ${user.email} can see ${filteredRows.length} out of ${rows.length} projects`);
+    } else {
+      console.log('[Projects API] Super admin - showing all', rows.length, 'projects');
     }
     
     return NextResponse.json({ success: true, data: filteredRows });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from '@/context/SessionContext';
-import { RESOURCES, PERMISSIONS } from '@/utils/rbac';
+import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 
 // Re-export useSession as useSessionRBAC for backward compatibility
 export function useSessionRBAC() {

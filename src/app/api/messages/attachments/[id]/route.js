@@ -10,7 +10,6 @@ import path from 'path';
  * Download an attachment (with security check)
  */
 export async function GET(request, { params }) {
-  let db;
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
@@ -20,33 +19,43 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const attachmentId = parseInt(id);
 
-    db = await dbConnect();
+    const db = await dbConnect();
 
     // Get attachment with message info
     const [attachments] = await db.execute(`
       SELECT 
         a.*,
         m.sender_id,
-        m.receiver_id
+        m.receiver_id,
+        m.conversation_id
       FROM message_attachments a
       JOIN messages m ON a.message_id = m.id
       WHERE a.id = ?
     `, [attachmentId]);
 
     if (attachments.length === 0) {
-      await db.end();
       return NextResponse.json({ success: false, error: 'Attachment not found' }, { status: 404 });
     }
 
     const attachment = attachments[0];
 
-    // Security check: Only sender or receiver can download
-    if (attachment.sender_id !== currentUser.id && attachment.receiver_id !== currentUser.id) {
-      await db.end();
+    // Security check: User must be sender, receiver, or member of conversation
+    let hasAccess = false;
+    
+    if (attachment.sender_id === currentUser.id || attachment.receiver_id === currentUser.id) {
+      hasAccess = true;
+    } else if (attachment.conversation_id) {
+      // Check if user is member of the conversation
+      const [membership] = await db.execute(
+        'SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
+        [attachment.conversation_id, currentUser.id]
+      );
+      hasAccess = membership.length > 0;
+    }
+    
+    if (!hasAccess) {
       return NextResponse.json({ success: false, error: 'Access denied' }, { status: 403 });
     }
-
-    await db.end();
 
     // Read file
     const filePath = path.join(process.cwd(), 'private', 'message-attachments', attachment.file_name);
@@ -60,15 +69,14 @@ export async function GET(request, { params }) {
     // Return file with proper headers
     return new NextResponse(fileBuffer, {
       headers: {
-        'Content-Type': attachment.file_type,
-        'Content-Disposition': `attachment; filename="${attachment.original_name}"`,
-        'Content-Length': attachment.file_size.toString()
+        'Content-Type': attachment.file_type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(attachment.original_name || 'attachment')}"`,
+        'Content-Length': (attachment.file_size || fileBuffer.length).toString()
       }
     });
 
   } catch (error) {
     console.error('Error downloading attachment:', error);
-    if (db) try { await db.end(); } catch {}
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to download attachment',

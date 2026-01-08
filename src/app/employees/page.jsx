@@ -543,7 +543,6 @@ export default function EmployeesPage() {
         if (activeDA) {
           daAmount = parseFloat(activeDA.value) || 0;
           setCurrentDA(daAmount);
-          console.log('DA fetched from schedules:', daAmount);
           return daAmount;
         }
       }
@@ -557,7 +556,6 @@ export default function EmployeesPage() {
         if (daData.success && daData.data) {
           daAmount = parseFloat(daData.data.da_amount) || 0;
           setCurrentDA(daAmount);
-          console.log('DA fetched from da-schedule:', daAmount);
         }
       }
       
@@ -681,19 +679,14 @@ export default function EmployeesPage() {
   const fetchBonus = async () => {
     try {
       const currentDate = new Date().toISOString().split('T')[0];
-      console.log('Fetching bonus from API:', `/api/payroll/schedules?component_type=bonus&active_only=true&date=${currentDate}`);
       const schedulesRes = await fetch(`/api/payroll/schedules?component_type=bonus&active_only=true&date=${currentDate}`);
       const schedulesData = await schedulesRes.json();
-      console.log('Bonus API response:', schedulesData);
       
       if (schedulesData.success && schedulesData.data && schedulesData.data.length > 0) {
         // Bonus rate is stored as percentage (e.g., 8.33 for 8.33%)
         const bonusRate = parseFloat(schedulesData.data[0].value) || 0;
-        console.log('Bonus rate fetched:', bonusRate);
         setCurrentBonus(bonusRate);
         return bonusRate;
-      } else {
-        console.log('No bonus data found in API response');
       }
     } catch (err) {
       console.error('Error fetching Bonus:', err);

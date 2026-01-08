@@ -33,6 +33,8 @@ export async function POST(req) {
 
   res.cookies.set('auth', '', { ...baseCookie, maxAge: 0 })
   res.cookies.set('user_id', '', { ...baseCookie, maxAge: 0 })
+  res.cookies.set('is_super_admin', '', { ...baseCookie, maxAge: 0 })
+  res.cookies.set('session_permissions', '', { ...baseCookie, maxAge: 0 })
 
   return res
 }

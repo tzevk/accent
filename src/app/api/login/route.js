@@ -1,6 +1,58 @@
 import { dbConnect } from '@/utils/database'
 import { NextResponse } from 'next/server'
 import { logActivity } from '@/utils/activity-logger'
+import { getDefaultPermissionsForLevel, mergePermissions } from '@/utils/rbac'
+
+// Helper to safely parse JSON
+function safeParse(json, fallback = []) {
+  try {
+    if (!json) return fallback;
+    if (typeof json === 'object') return json;
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
+
+// Fetch user permissions from database
+async function getUserPermissions(db, userId) {
+  try {
+    const [rows] = await db.execute(
+      `SELECT 
+        u.permissions AS user_permissions,
+        u.is_super_admin,
+        r.permissions AS role_permissions,
+        r.role_hierarchy
+       FROM users u
+       LEFT JOIN roles_master r ON u.role_id = r.id
+       WHERE u.id = ?
+       LIMIT 1`,
+      [userId]
+    );
+    
+    if (!rows || rows.length === 0) return { permissions: [], isSuperAdmin: false };
+    
+    const row = rows[0];
+    const userPermissions = safeParse(row.user_permissions, []);
+    let rolePermissions = safeParse(row.role_permissions, []);
+    
+    // If role has no explicit permissions but has hierarchy level, derive defaults
+    if ((!rolePermissions || rolePermissions.length === 0) && typeof row.role_hierarchy === 'number') {
+      try {
+        rolePermissions = getDefaultPermissionsForLevel(row.role_hierarchy) || [];
+      } catch {}
+    }
+    
+    const mergedPermissions = mergePermissions(rolePermissions, userPermissions);
+    return {
+      permissions: mergedPermissions,
+      isSuperAdmin: !!row.is_super_admin
+    };
+  } catch (error) {
+    console.error('Failed to fetch user permissions:', error);
+    return { permissions: [], isSuperAdmin: false };
+  }
+}
 
 
 export async function POST(req) {
@@ -76,24 +128,32 @@ export async function POST(req) {
       }
     } catch (err) {
       console.error('Login query failed:', err)
+      if (db) {
+        try { await db.end() } catch {}
+      }
       return NextResponse.json(
         { success: false, message: 'Server error' },
         { status: 500 }
       )
-    } finally {
-      if (db) {
-        try { await db.end() } catch {}
-      }
     }
 
     if (rows.length > 0) {
-      // Minimal auth: set an httpOnly cookie to mark authenticated session
-      // Note: For production, sign this value (HMAC/JWT). This is a simple presence check.
       const user = rows[0];
+      const userId = user.id;
+      const isSuperAdmin = user.is_super_admin === 1 || user.is_super_admin === true;
+      
+      // Fetch user permissions before closing DB connection
+      const { permissions } = await getUserPermissions(db, userId);
+      
+      // Now close the DB connection
+      if (db) {
+        try { await db.end() } catch {}
+      }
+      
       const res = NextResponse.json({ 
         success: true, 
         message: 'Login successful',
-        is_super_admin: user.is_super_admin === 1 || user.is_super_admin === true
+        is_super_admin: isSuperAdmin
       })
       const isProd = process.env.NODE_ENV === 'production'
       
@@ -107,7 +167,6 @@ export async function POST(req) {
       })
       
       // Also set user_id for server-side RBAC resolution
-      const userId = rows[0].id
       res.cookies.set('user_id', String(userId), {
         httpOnly: true,
         sameSite: 'lax',
@@ -117,7 +176,6 @@ export async function POST(req) {
       })
       
       // Set is_super_admin cookie for middleware routing
-      const isSuperAdmin = user.is_super_admin === 1 || user.is_super_admin === true;
       res.cookies.set('is_super_admin', isSuperAdmin ? '1' : '0', {
         httpOnly: true,
         sameSite: 'lax',
@@ -126,7 +184,31 @@ export async function POST(req) {
         priority: 'high'
       })
       
+      // Store permissions in session cookie (Base64 encoded JSON)
+      // This allows fast permission checks without DB queries
+      const permissionsData = JSON.stringify({
+        p: permissions,           // permissions array
+        sa: isSuperAdmin,         // is_super_admin flag
+        ts: Date.now()            // timestamp for cache invalidation
+      });
+      const encodedPermissions = Buffer.from(permissionsData).toString('base64');
+      
+      res.cookies.set('session_permissions', encodedPermissions, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isProd,
+        path: '/',
+        priority: 'high',
+        // Permissions cookie expires in 24 hours - will be refreshed on next login
+        maxAge: 60 * 60 * 24
+      })
+      
       return res
+    }
+    
+    // Close DB connection for failed login
+    if (db) {
+      try { await db.end() } catch {}
     }
 
     return NextResponse.json(

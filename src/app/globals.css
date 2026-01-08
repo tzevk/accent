@@ -233,11 +233,11 @@ textarea::placeholder {
 
 /* Sidebar hover expansion and layout padding without styled-jsx */
 @media (min-width: 640px) {
-  .content-with-sidebar { padding-left: 64px; padding-top: 64px; }
+  .content-with-sidebar { padding-left: 80px; padding-top: 64px; }
   /* Expand content padding only when the actual sidebar is hovered */
-  .group\/sidebar:hover + .content-with-sidebar { padding-left: 260px; }
+  .group\/sidebar:hover + .content-with-sidebar { padding-left: 276px; }
   /* When pinned via data attribute, keep content padded */
-  .group\/sidebar[data-pinned="true"] + .content-with-sidebar { padding-left: 260px; }
+  .group\/sidebar[data-pinned="true"] + .content-with-sidebar { padding-left: 276px; }
 }
 
 /* Utilities for showing label content only when sidebar is hovered */

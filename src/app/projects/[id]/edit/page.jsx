@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
@@ -103,7 +103,10 @@ const TABS = [
   { id: 'query_log', label: 'Query Log' },
   { id: 'assumption', label: 'Assumption' },
   { id: 'lessons_learnt', label: 'Lessons Learnt' },
-  { id: 'discussion', label: 'Discussion' }
+  { id: 'discussion', label: 'Discussion' },
+  { id: 'quotation', label: 'Quotation', requiresPermission: 'quotations' },
+  { id: 'purchase_order', label: 'Purchase Order', requiresPermission: 'purchase_orders' },
+  { id: 'invoice', label: 'Invoice', requiresPermission: 'invoices' }
 ];
 
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
@@ -193,7 +196,15 @@ function EditProjectForm() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id;
-  const { user: sessionUser } = useSession();
+  const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
+  
+  // Permission checks for financial documents
+  const canViewQuotations = can(RESOURCES.QUOTATIONS, PERMISSIONS.READ) || can(RESOURCES.QUOTATIONS, PERMISSIONS.UPDATE);
+  const canEditQuotations = can(RESOURCES.QUOTATIONS, PERMISSIONS.UPDATE);
+  const canViewPurchaseOrders = can(RESOURCES.PURCHASE_ORDERS, PERMISSIONS.READ) || can(RESOURCES.PURCHASE_ORDERS, PERMISSIONS.UPDATE);
+  const canEditPurchaseOrders = can(RESOURCES.PURCHASE_ORDERS, PERMISSIONS.UPDATE);
+  const canViewInvoices = can(RESOURCES.INVOICES, PERMISSIONS.READ) || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
+  const canEditInvoices = can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
 
   const [activeTab, setActiveTab] = useState('general');
   const [companies, setCompanies] = useState([]);
@@ -406,6 +417,55 @@ function EditProjectForm() {
     timeRequired: '',
     actualTimeRequired: ''
   });
+
+  // Quotation tab state
+  const [quotationData, setQuotationData] = useState({
+    quotation_number: '',
+    quotation_date: '',
+    client_name: '',
+    enquiry_number: '',
+    enquiry_quantity: '',
+    scope_of_work: '',
+    gross_amount: '',
+    gst_percentage: 18,
+    gst_amount: '',
+    net_amount: ''
+  });
+  const [quotationSaving, setQuotationSaving] = useState(false);
+
+  // Purchase Order tab state
+  const [purchaseOrderData, setPurchaseOrderData] = useState({
+    po_number: '',
+    po_date: '',
+    client_name: '',
+    vendor_name: '',
+    delivery_date: '',
+    scope_of_work: '',
+    gross_amount: '',
+    gst_percentage: 18,
+    gst_amount: '',
+    net_amount: '',
+    payment_terms: '',
+    remarks: ''
+  });
+  const [purchaseOrderSaving, setPurchaseOrderSaving] = useState(false);
+
+  // Invoice tab state
+  const [invoiceData, setInvoiceData] = useState({
+    invoice_number: '',
+    invoice_date: '',
+    client_name: '',
+    po_number: '',
+    po_date: '',
+    po_amount: '',
+    total_invoiced: 0,
+    balance_amount: '',
+    scope_of_work: '',
+    payment_due_date: ''
+  });
+  const [invoices, setInvoices] = useState([]);
+  const [invoiceSaving, setInvoiceSaving] = useState(false);
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState('');
 
   // Fetch all required data
   useEffect(() => {
@@ -1036,6 +1096,277 @@ function EditProjectForm() {
     console.log('[handleChange]', name, '=', value);
     setForm({ ...form, [name]: value });
   };
+
+  // Quotation Form Handlers
+  const handleQuotationChange = (e) => {
+    if (!canEditQuotations) return; // Prevent changes if no edit permission
+    const { name, value } = e.target;
+    setQuotationData(prev => {
+      const updated = { ...prev, [name]: value };
+      
+      // Auto-calculate GST and net amount when gross amount changes
+      if (name === 'gross_amount') {
+        const gross = parseFloat(value) || 0;
+        const gstRate = parseFloat(prev.gst_percentage) || 18;
+        const gstAmount = (gross * gstRate) / 100;
+        updated.gst_amount = gstAmount.toFixed(2);
+        updated.net_amount = (gross + gstAmount).toFixed(2);
+      }
+      
+      // Recalculate if GST percentage changes
+      if (name === 'gst_percentage') {
+        const gross = parseFloat(prev.gross_amount) || 0;
+        const gstRate = parseFloat(value) || 18;
+        const gstAmount = (gross * gstRate) / 100;
+        updated.gst_amount = gstAmount.toFixed(2);
+        updated.net_amount = (gross + gstAmount).toFixed(2);
+      }
+      
+      return updated;
+    });
+  };
+
+  const saveQuotation = async () => {
+    setQuotationSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/quotation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quotationData)
+      });
+      const json = await res.json();
+      if (json?.success) {
+        alert('Quotation saved successfully!');
+      } else {
+        alert('Failed to save quotation: ' + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error saving quotation:', error);
+      alert('Error saving quotation');
+    } finally {
+      setQuotationSaving(false);
+    }
+  };
+
+  // Sync quotation data from project form fields (database values)
+  const syncQuotationFromProject = useCallback(async () => {
+    const projectValue = parseFloat(form.project_value) || 0;
+    const gstRate = quotationData.gst_percentage || 18;
+    const gstAmount = (projectValue * gstRate) / 100;
+    const netAmount = projectValue + gstAmount;
+    
+    // Get scope - try scope_of_work first, then fall back to description
+    const scopeText = form.scope_of_work || form.description || '';
+    
+    // Fetch existing quotation data and next quotation number from API
+    let existingQuotation = null;
+    let nextQuotationNumber = '';
+    try {
+      const res = await fetch(`/api/projects/${id}/quotation`);
+      const json = await res.json();
+      if (json?.success) {
+        existingQuotation = json.data;
+        nextQuotationNumber = json.nextQuotationNumber || '';
+      }
+    } catch (err) {
+      console.warn('Failed to fetch quotation data:', err);
+    }
+    
+    setQuotationData(prev => ({
+      ...prev,
+      quotation_number: existingQuotation?.quotation_number || prev.quotation_number || nextQuotationNumber,
+      quotation_date: existingQuotation?.quotation_date || prev.quotation_date || new Date().toISOString().split('T')[0],
+      client_name: existingQuotation?.client_name || form.client_name || '',
+      enquiry_number: existingQuotation?.enquiry_number || form.proposal_id || '',
+      enquiry_quantity: existingQuotation?.enquiry_quantity || form.unit_qty || '',
+      scope_of_work: existingQuotation?.scope_of_work || scopeText,
+      gross_amount: existingQuotation?.gross_amount || projectValue || '',
+      gst_percentage: existingQuotation?.gst_percentage || prev.gst_percentage || 18,
+      gst_amount: existingQuotation?.gst_amount || (projectValue > 0 ? gstAmount.toFixed(2) : ''),
+      net_amount: existingQuotation?.net_amount || (projectValue > 0 ? netAmount.toFixed(2) : '')
+    }));
+  }, [form.project_value, form.proposal_id, form.unit_qty, form.scope_of_work, form.description, form.client_name, quotationData.gst_percentage, id]);
+
+  // Auto-sync when switching to quotation tab (after project data is loaded)
+  useEffect(() => {
+    if (activeTab === 'quotation' && !loading && id) {
+      syncQuotationFromProject();
+    }
+  }, [activeTab, loading, id, syncQuotationFromProject]);
+
+  // Purchase Order Form Handlers
+  const handlePurchaseOrderChange = (e) => {
+    if (!canEditPurchaseOrders) return; // Prevent changes if no edit permission
+    const { name, value } = e.target;
+    setPurchaseOrderData(prev => {
+      const updated = { ...prev, [name]: value };
+      
+      // Auto-calculate GST and net amount when gross amount changes
+      if (name === 'gross_amount') {
+        const gross = parseFloat(value) || 0;
+        const gstRate = parseFloat(prev.gst_percentage) || 18;
+        const gstAmount = (gross * gstRate) / 100;
+        updated.gst_amount = gstAmount.toFixed(2);
+        updated.net_amount = (gross + gstAmount).toFixed(2);
+      }
+      
+      // Recalculate if GST percentage changes
+      if (name === 'gst_percentage') {
+        const gross = parseFloat(prev.gross_amount) || 0;
+        const gstRate = parseFloat(value) || 18;
+        const gstAmount = (gross * gstRate) / 100;
+        updated.gst_amount = gstAmount.toFixed(2);
+        updated.net_amount = (gross + gstAmount).toFixed(2);
+      }
+      
+      return updated;
+    });
+  };
+
+  const savePurchaseOrder = async () => {
+    setPurchaseOrderSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/purchase-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(purchaseOrderData)
+      });
+      const json = await res.json();
+      if (json?.success) {
+        alert('Purchase Order saved successfully!');
+      } else {
+        alert('Failed to save purchase order: ' + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error saving purchase order:', error);
+      alert('Error saving purchase order');
+    } finally {
+      setPurchaseOrderSaving(false);
+    }
+  };
+
+  // Sync purchase order data - only client name from project
+  const syncPurchaseOrderFromProject = useCallback(() => {
+    setPurchaseOrderData(prev => ({
+      ...prev,
+      po_number: prev.po_number || `PO-${String(id).padStart(5, '0')}`,
+      po_date: prev.po_date || new Date().toISOString().split('T')[0],
+      client_name: form.client_name || ''
+    }));
+  }, [form.client_name, id]);
+
+  // Auto-sync when switching to purchase order tab (after project data is loaded)
+  useEffect(() => {
+    if (activeTab === 'purchase_order' && !loading && id) {
+      syncPurchaseOrderFromProject();
+    }
+  }, [activeTab, loading, id, syncPurchaseOrderFromProject]);
+
+  // Invoice Handlers
+  const handleInvoiceChange = (e) => {
+    if (!canEditInvoices) return; // Prevent changes if no edit permission
+    const { name, value } = e.target;
+    setInvoiceData(prev => {
+      const updated = { ...prev, [name]: value };
+      return updated;
+    });
+  };
+
+  const saveInvoice = async () => {
+    setInvoiceSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoiceData)
+      });
+      const json = await res.json();
+      if (json?.success) {
+        alert('Invoice saved successfully!');
+        // Refresh invoices list - this will also update nextInvoiceNumber
+        await fetchInvoices();
+        // Reset form for new invoice - invoice_number will be set via syncInvoiceFromProject after fetchInvoices
+        setInvoiceData(prev => ({
+          ...prev,
+          invoice_number: '',
+          invoice_date: new Date().toISOString().split('T')[0],
+          invoice_amount: '',
+          scope_of_work: '',
+          payment_due_date: '',
+          remarks: ''
+        }));
+      } else {
+        alert('Failed to save invoice: ' + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+      alert('Error saving invoice');
+    } finally {
+      setInvoiceSaving(false);
+    }
+  };
+
+  const fetchInvoices = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${id}/invoice`);
+      const json = await res.json();
+      if (json?.success) {
+        setInvoices(json.invoices || []);
+        if (json.nextInvoiceNumber) {
+          setNextInvoiceNumber(json.nextInvoiceNumber);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+    }
+  }, [id]);
+
+  // Sync invoice data from project and purchase order
+  const syncInvoiceFromProject = useCallback(() => {
+    const totalInvoiced = invoices.reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0);
+    const poAmount = parseFloat(purchaseOrderData.net_amount) || 0;
+    const balanceAmount = poAmount - totalInvoiced;
+
+    setInvoiceData(prev => ({
+      ...prev,
+      invoice_number: prev.invoice_number || nextInvoiceNumber || `INV-${String(id).padStart(5, '0')}-${(invoices.length + 1).toString().padStart(2, '0')}`,
+      invoice_date: prev.invoice_date || new Date().toISOString().split('T')[0],
+      client_name: form.client_name || '',
+      po_number: purchaseOrderData.po_number || '',
+      po_date: purchaseOrderData.po_date || '',
+      po_amount: purchaseOrderData.net_amount || '',
+      total_invoiced: totalInvoiced,
+      balance_amount: balanceAmount > 0 ? balanceAmount.toFixed(2) : '0.00',
+      scope_of_work: prev.scope_of_work || form.scope_of_work || form.description || ''
+    }));
+  }, [form.client_name, form.scope_of_work, form.description, purchaseOrderData, invoices, id, nextInvoiceNumber]);
+
+  // Auto-sync when switching to invoice tab
+  useEffect(() => {
+    if (activeTab === 'invoice' && !loading && id) {
+      // Ensure invoice list and nextInvoiceNumber are loaded before syncing
+      fetchInvoices().then(() => {
+        syncInvoiceFromProject();
+      });
+    }
+  }, [activeTab, loading, id, fetchInvoices, syncInvoiceFromProject]);
+
+  // Recalculate balance when invoices change
+  useEffect(() => {
+    if (activeTab === 'invoice') {
+      syncInvoiceFromProject();
+    }
+  }, [invoices, activeTab, syncInvoiceFromProject]);
+
+  // Apply next invoice number as soon as it's available and field is empty
+  useEffect(() => {
+    if (activeTab === 'invoice' && nextInvoiceNumber && !invoiceData.invoice_number) {
+      setInvoiceData(prev => ({
+        ...prev,
+        invoice_number: nextInvoiceNumber
+      }));
+    }
+  }, [activeTab, nextInvoiceNumber, invoiceData.invoice_number]);
 
   // Input Document List Management with Categories and Full Details
   const addInputDocument = () => {
@@ -2202,6 +2533,13 @@ function EditProjectForm() {
                     const isAdmin = sessionUser?.is_super_admin || sessionUser?.role_info?.hierarchy <= 2;
                     if (tab.adminOnly && !isAdmin) return false;
                     if (tab.userOnly && isAdmin) return false;
+                    
+                    // Filter tabs based on permissions
+                    if (tab.requiresPermission) {
+                      const hasAnyPermission = can(tab.requiresPermission, PERMISSIONS.READ) || can(tab.requiresPermission, PERMISSIONS.UPDATE);
+                      if (!hasAnyPermission) return false;
+                    }
+                    
                     return true;
                   }).map((tab, index) => {
                     const isActive = activeTab === tab.id;
@@ -3278,7 +3616,7 @@ function EditProjectForm() {
                                   <input 
                                     type="text" 
                                     value={m.meeting_no || ''} 
-                                    readOnly
+                                    disabled
                                     className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50" 
                                   />
                                 </td>
@@ -4485,6 +4823,702 @@ function EditProjectForm() {
               </section>
             )}
 
+            {/* Quotation Tab */}
+            {activeTab === 'quotation' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-black">Project Quotation</h2>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {canEditQuotations ? 'Quotation details fetched from project data' : 'View-only mode - You have read permission only'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {canEditQuotations && (
+                      <button
+                        type="button"
+                        onClick={syncQuotationFromProject}
+                        className="px-3 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-md hover:bg-gray-200 flex items-center gap-2 border border-gray-300"
+                        title="Refresh data from project fields"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Sync from Project
+                      </button>
+                    )}
+                    {canEditQuotations && (
+                      <button
+                        type="button"
+                        onClick={saveQuotation}
+                        disabled={quotationSaving}
+                        className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                      {quotationSaving ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <CheckIcon className="h-4 w-4" />
+                          Save Quotation
+                        </>
+                      )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="px-6 py-5 space-y-6">
+                    {/* Row 1: Quotation Number, Date & Client Name */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">
+                          Quotation Number <span className="text-gray-400 text-[10px]">(auto-generated)</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="quotation_number"
+                          value={quotationData.quotation_number}
+                          onChange={handleQuotationChange}
+                          placeholder="QTN-00001"
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">Quotation Date</label>
+                        <input
+                          type="date"
+                          name="quotation_date"
+                          value={quotationData.quotation_date}
+                          onChange={handleQuotationChange}
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">
+                          Client Name <span className="text-gray-400 text-[10px]">(from Project)</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="client_name"
+                          value={quotationData.client_name}
+                          onChange={handleQuotationChange}
+                          placeholder="Client Name"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-gray-50"
+                          disabled
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Enquiry Number & Quantity */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">
+                          Enquiry Number <span className="text-gray-400 text-[10px]">(from Proposal ID)</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="enquiry_number"
+                          value={quotationData.enquiry_number}
+                          onChange={handleQuotationChange}
+                          placeholder="ENQ-001"
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">
+                          Enquiry Quantity <span className="text-gray-400 text-[10px]">(from Unit/Qty)</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="enquiry_quantity"
+                          value={quotationData.enquiry_quantity}
+                          onChange={handleQuotationChange}
+                          placeholder="e.g., 100 units"
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 3: Scope of Work */}
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Scope of Work <span className="text-gray-400 text-[10px]">(from Project Scope/Description)</span>
+                      </label>
+                      <textarea
+                        name="scope_of_work"
+                        value={quotationData.scope_of_work}
+                        onChange={handleQuotationChange}
+                        rows={4}
+                        placeholder="Scope of work will be fetched from project data..."
+                        disabled={!canEditQuotations}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent resize-y ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+
+                    {/* Row 4: Amount Section */}
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-4">Amount Details <span className="text-gray-400 text-[10px] font-normal">(from Project Value)</span></h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-black mb-1">Gross Amount (₹)</label>
+                          <input
+                            type="number"
+                            name="gross_amount"
+                            value={quotationData.gross_amount}
+                            onChange={handleQuotationChange}
+                            placeholder="0.00"
+                            step="0.01"
+                            min="0"
+                            disabled={!canEditQuotations}
+                            className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-black mb-1">GST @ {quotationData.gst_percentage}% (₹)</label>
+                          <input
+                            type="number"
+                            name="gst_amount"
+                            value={quotationData.gst_amount}
+                            disabled
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-black mb-1">Net Amount (₹)</label>
+                          <input
+                            type="number"
+                            name="net_amount"
+                            value={quotationData.net_amount}
+                            disabled
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-700 font-semibold cursor-not-allowed"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">GST Percentage</label>
+                        <select
+                          name="gst_percentage"
+                          value={quotationData.gst_percentage}
+                          onChange={handleQuotationChange}
+                          disabled={!canEditQuotations}
+                          className={`w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        >
+                          <option value="0">0%</option>
+                          <option value="5">5%</option>
+                          <option value="12">12%</option>
+                          <option value="18">18%</option>
+                          <option value="28">28%</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Summary Card */}
+                    {quotationData.net_amount && parseFloat(quotationData.net_amount) > 0 && (
+                      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">Total Quotation Value</p>
+                            <p className="text-2xl font-bold text-[#7F2487]">₹{parseFloat(quotationData.net_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">Gross: ₹{parseFloat(quotationData.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-xs text-gray-500">GST ({quotationData.gst_percentage}%): ₹{parseFloat(quotationData.gst_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+              </section>
+            )}
+
+            {/* Purchase Order Tab */}
+            {activeTab === 'purchase_order' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-black">Purchase Order</h2>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {canEditPurchaseOrders ? 'Enter purchase order details' : 'View-only mode - You have read permission only'}
+                    </p>
+                  </div>
+                  {canEditPurchaseOrders && (
+                    <button
+                      type="button"
+                      onClick={savePurchaseOrder}
+                      disabled={purchaseOrderSaving}
+                      className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                    {purchaseOrderSaving ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <CheckIcon className="h-4 w-4" />
+                        Save PO
+                      </>
+                    )}
+                    </button>
+                  )}
+                </div>
+                
+                <div className="px-6 py-5 space-y-6">
+                  {/* Row 1: PO Number, Date & Client Name */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        PO Number <span className="text-gray-400 text-[10px]">(auto-generated)</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="po_number"
+                        value={purchaseOrderData.po_number}
+                        onChange={handlePurchaseOrderChange}
+                        placeholder="PO-00001"
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">PO Date</label>
+                      <input
+                        type="date"
+                        name="po_date"
+                        value={purchaseOrderData.po_date}
+                        onChange={handlePurchaseOrderChange}
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Client Name <span className="text-gray-400 text-[10px]">(from Project)</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="client_name"
+                        value={purchaseOrderData.client_name}
+                        onChange={handlePurchaseOrderChange}
+                        placeholder="Client Name"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-gray-50"
+                        disabled
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 2: Vendor Name & Delivery Date */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Vendor Name</label>
+                      <input
+                        type="text"
+                        name="vendor_name"
+                        value={purchaseOrderData.vendor_name}
+                        onChange={handlePurchaseOrderChange}
+                        placeholder="Vendor/Supplier Name"
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Delivery Date</label>
+                      <input
+                        type="date"
+                        name="delivery_date"
+                        value={purchaseOrderData.delivery_date}
+                        onChange={handlePurchaseOrderChange}
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 3: Scope of Work */}
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Scope of Work</label>
+                    <textarea
+                      name="scope_of_work"
+                      value={purchaseOrderData.scope_of_work}
+                      onChange={handlePurchaseOrderChange}
+                      rows={4}
+                      placeholder="Enter scope of work for this purchase order..."
+                      disabled={!canEditPurchaseOrders}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent resize-y ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                    />
+                  </div>
+
+                  {/* Row 4: Amount Section */}
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4">Amount Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">Gross Amount (₹)</label>
+                        <input
+                          type="number"
+                          name="gross_amount"
+                          value={purchaseOrderData.gross_amount}
+                          onChange={handlePurchaseOrderChange}
+                          placeholder="0.00"
+                          step="0.01"
+                          min="0"
+                          disabled={!canEditPurchaseOrders}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">GST @ {purchaseOrderData.gst_percentage}% (₹)</label>
+                        <input
+                          type="number"
+                          name="gst_amount"
+                          value={purchaseOrderData.gst_amount}
+                          disabled
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-black mb-1">Net Amount (₹)</label>
+                        <input
+                          type="number"
+                          name="net_amount"
+                          value={purchaseOrderData.net_amount}
+                          disabled
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-700 font-semibold cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">GST Percentage</label>
+                      <select
+                        name="gst_percentage"
+                        value={purchaseOrderData.gst_percentage}
+                        onChange={handlePurchaseOrderChange}
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      >
+                        <option value="0">0%</option>
+                        <option value="5">5%</option>
+                        <option value="12">12%</option>
+                        <option value="18">18%</option>
+                        <option value="28">28%</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Row 5: Payment Terms & Remarks */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Payment Terms</label>
+                      <input
+                        type="text"
+                        name="payment_terms"
+                        value={purchaseOrderData.payment_terms}
+                        onChange={handlePurchaseOrderChange}
+                        placeholder="e.g., Net 30, Advance, etc."
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Remarks</label>
+                      <input
+                        type="text"
+                        name="remarks"
+                        value={purchaseOrderData.remarks}
+                        onChange={handlePurchaseOrderChange}
+                        placeholder="Any additional remarks..."
+                        disabled={!canEditPurchaseOrders}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Summary Card */}
+                  {purchaseOrderData.net_amount && parseFloat(purchaseOrderData.net_amount) > 0 && (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wide">Total PO Value</p>
+                          <p className="text-2xl font-bold text-blue-700">₹{parseFloat(purchaseOrderData.net_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500">Gross: ₹{parseFloat(purchaseOrderData.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                          <p className="text-xs text-gray-500">GST ({purchaseOrderData.gst_percentage}%): ₹{parseFloat(purchaseOrderData.gst_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Invoice Tab */}
+            {activeTab === 'invoice' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-black">Invoice</h2>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {canEditInvoices ? 'Create and manage project invoices' : 'View-only mode - You have read permission only'}
+                    </p>
+                  </div>
+                  {canEditInvoices && (
+                    <button
+                      type="button"
+                      onClick={saveInvoice}
+                      disabled={invoiceSaving}
+                      className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                    {invoiceSaving ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <CheckIcon className="h-4 w-4" />
+                        Save Invoice
+                      </>
+                    )}
+                    </button>
+                  )}
+                </div>
+                
+                <div className="px-6 py-5 space-y-6">
+                  {/* PO Information Summary (Read-only from PO) */}
+                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                    <h3 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                      <DocumentTextIcon className="h-4 w-4" />
+                      Purchase Order Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-blue-700 mb-1">PO Number</label>
+                        <p className="text-sm font-semibold text-gray-800 bg-white px-3 py-2 rounded border border-blue-200">
+                          {invoiceData.po_number || '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-blue-700 mb-1">PO Date</label>
+                        <p className="text-sm text-gray-800 bg-white px-3 py-2 rounded border border-blue-200">
+                          {invoiceData.po_date ? new Date(invoiceData.po_date).toLocaleDateString('en-IN') : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-blue-700 mb-1">PO Amount (₹)</label>
+                        <p className="text-sm font-semibold text-gray-800 bg-white px-3 py-2 rounded border border-blue-200">
+                          {invoiceData.po_amount ? parseFloat(invoiceData.po_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-blue-700 mb-1">Balance Amount (₹)</label>
+                        <p className={`text-sm font-bold bg-white px-3 py-2 rounded border ${parseFloat(invoiceData.balance_amount) > 0 ? 'text-green-600 border-green-200' : 'text-gray-600 border-blue-200'}`}>
+                          {invoiceData.balance_amount ? parseFloat(invoiceData.balance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 1: Invoice Number, Date & Client Name */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Invoice Number <span className="text-gray-400 text-[10px]">(auto-generated)</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="invoice_number"
+                        value={invoiceData.invoice_number}
+                        onChange={handleInvoiceChange}
+                        placeholder="INV-00001-01"
+                        disabled={!canEditInvoices}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Invoice Date</label>
+                      <input
+                        type="date"
+                        name="invoice_date"
+                        value={invoiceData.invoice_date}
+                        onChange={handleInvoiceChange}
+                        disabled={!canEditInvoices}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Client Name <span className="text-gray-400 text-[10px]">(from Project)</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="client_name"
+                        value={invoiceData.client_name}
+                        onChange={handleInvoiceChange}
+                        placeholder="Client Name"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-gray-50"
+                        disabled
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 2: Invoice Amount & Payment Due Date */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Invoice Amount (₹)</label>
+                      <input
+                        type="number"
+                        name="invoice_amount"
+                        value={invoiceData.invoice_amount || ''}
+                        onChange={handleInvoiceChange}
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                        max={parseFloat(invoiceData.balance_amount) || undefined}
+                        disabled={!canEditInvoices}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                      {parseFloat(invoiceData.balance_amount) > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">Max: ₹{parseFloat(invoiceData.balance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-black mb-1">Payment Due Date</label>
+                      <input
+                        type="date"
+                        name="payment_due_date"
+                        value={invoiceData.payment_due_date}
+                        onChange={handleInvoiceChange}
+                        disabled={!canEditInvoices}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 3: Scope of Work */}
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Scope of Work</label>
+                    <textarea
+                      name="scope_of_work"
+                      value={invoiceData.scope_of_work}
+                      onChange={handleInvoiceChange}
+                      rows={3}
+                      placeholder="Description of work covered in this invoice..."
+                      disabled={!canEditInvoices}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent resize-y ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                    />
+                  </div>
+
+                  {/* Row 4: Remarks */}
+                  <div>
+                    <label className="block text-xs font-medium text-black mb-1">Remarks</label>
+                    <input
+                      type="text"
+                      name="remarks"
+                      value={invoiceData.remarks || ''}
+                      onChange={handleInvoiceChange}
+                      placeholder="Any additional remarks..."
+                      disabled={!canEditInvoices}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                    />
+                  </div>
+
+                  {/* Previous Invoices List */}
+                  {invoices.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                        <DocumentTextIcon className="h-4 w-4" />
+                        Previous Invoices ({invoices.length})
+                      </h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-300">
+                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Invoice #</th>
+                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Date</th>
+                              <th className="text-right py-2 px-2 text-xs font-semibold text-gray-600">Amount (₹)</th>
+                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Due Date</th>
+                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {invoices.map((inv, idx) => (
+                              <tr key={inv.id || idx} className="border-b border-gray-200 hover:bg-white">
+                                <td className="py-2 px-2 font-medium text-gray-800">{inv.invoice_number}</td>
+                                <td className="py-2 px-2 text-gray-600">{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-IN') : '-'}</td>
+                                <td className="py-2 px-2 text-right font-semibold text-gray-800">
+                                  {parseFloat(inv.invoice_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-2 px-2 text-gray-600">{inv.payment_due_date ? new Date(inv.payment_due_date).toLocaleDateString('en-IN') : '-'}</td>
+                                <td className="py-2 px-2">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                    inv.status === 'paid' ? 'bg-green-100 text-green-800' :
+                                    inv.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {inv.status || 'pending'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-gray-100">
+                              <td colSpan="2" className="py-2 px-2 font-semibold text-gray-700">Total Invoiced</td>
+                              <td className="py-2 px-2 text-right font-bold text-gray-800">
+                                ₹{invoices.reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td colSpan="2"></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Card */}
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">PO Amount</p>
+                        <p className="text-lg font-bold text-blue-700">₹{parseFloat(invoiceData.po_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Total Invoiced</p>
+                        <p className="text-lg font-bold text-purple-700">₹{parseFloat(invoiceData.total_invoiced || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Balance</p>
+                        <p className={`text-lg font-bold ${parseFloat(invoiceData.balance_amount) > 0 ? 'text-green-700' : 'text-gray-500'}`}>
+                          ₹{parseFloat(invoiceData.balance_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* My Activities Tab - Personalized user manhours tracking */}
             {activeTab === 'my_activities' && (
               <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -5589,7 +6623,7 @@ function EditProjectForm() {
                                   <input
                                     type="number"
                                     value={member.manhours}
-                                    readOnly
+                                    disabled
                                     className="w-20 px-2 py-1 text-xs border border-gray-300 rounded bg-gray-50"
                                   />
                                 </td>

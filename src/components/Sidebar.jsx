@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
@@ -11,17 +11,13 @@ import {
   UserGroupIcon,
   DocumentTextIcon,
   BuildingOfficeIcon,
-  ClipboardDocumentListIcon,
-  BriefcaseIcon,
   ShieldCheckIcon,
-  ArrowRightOnRectangleIcon,
   ChatBubbleLeftRightIcon,
-  CheckCircleIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  TicketIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
-  const router = useRouter();
   const pathname = usePathname();
   const { user, can, RESOURCES, PERMISSIONS, loading: rbacLoading } = useSessionRBAC();
   const isSignin = pathname.startsWith('/signin');
@@ -93,19 +89,19 @@ export default function Sidebar() {
   const NavRow = ({ icon: Icon, label, href = '#', active = false, badge, caret }) => (
     <Link
       href={href}
-      className={`group/nav-row flex items-center h-11 rounded-xl px-3 text-sm font-medium transition-colors ${
+      className={`group/nav-row flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
         active ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
       }`}
       title={label}
     >
-      <Icon className={`h-5 w-5 transition-colors ${active ? 'text-white' : 'text-[#64126D] group-hover/nav-row:text-[#64126D]'}`} />
-      <span className={`ml-3 hidden sidebar-open:inline ${
+      <Icon className={`h-[18px] w-[18px] transition-colors ${active ? 'text-white' : 'text-[#64126D] group-hover/nav-row:text-[#64126D]'}`} />
+      <span className={`ml-2.5 hidden sidebar-open:inline ${
         active ? 'text-white' : 'text-gray-900 group-hover/nav-row:text-[#64126D]'
       } group-hover/nav-row:text-inherit transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}>
         {label}
       </span>
       {badge ? (
-        <span className="ml-auto hidden sidebar-open:inline-flex items-center text-[10px] font-semibold rounded-full px-2 py-0.5 bg-purple-100 text-[#64126D]">
+        <span className="ml-auto hidden sidebar-open:inline-flex items-center text-[10px] font-semibold rounded-full px-1.5 py-0.5 bg-purple-100 text-[#64126D]">
           {badge}
         </span>
       ) : null}
@@ -123,10 +119,24 @@ export default function Sidebar() {
       className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px]' : 'w-[64px] hover:w-[260px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
     >
       <div className="h-full flex flex-col">
-        {/* Top spacing to replace removed brand block */}
-        <div className="px-3 pt-2 pb-2" />
+        {/* Pin/Unpin control - at the top */}
+        <div className="px-2.5 pt-2 pb-1.5">
+          <button
+            type="button"
+            onClick={() => setPinned((p) => !p)}
+            className={`group/nav-row w-full flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+              'text-[#64126D] hover:bg-purple-50'
+            }`}
+            title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+          >
+            <MapPinIcon className={`h-[18px] w-[18px] ${pinned ? 'text-[#64126D] fill-[#64126D]' : 'text-[#64126D]'}`} />
+            <span className="ml-2.5 hidden sidebar-open:inline text-gray-900">
+              {pinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
+            </span>
+          </button>
+        </div>
 
-        <div className="px-3 pb-2">
+        <div className="px-2.5 pb-2">
           {/* PAGES header */}
           <div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
             <span>PAGES</span>
@@ -139,8 +149,6 @@ export default function Sidebar() {
               href={isAdmin ? '/admin/dashboard' : '/user/dashboard'} 
               active={pathname === '/dashboard' || pathname === '/admin/dashboard' || pathname === '/user/dashboard'} 
             />
-            {/* Work Logs - always visible (users log their own work) */}
-            <NavRow icon={BriefcaseIcon} label="Work Logs" href="/work-logs" active={pathname.startsWith('/work-logs')} />
             {/* Messages - always visible with unread badge */}
             <NavRow 
               icon={ChatBubbleLeftRightIcon} 
@@ -149,10 +157,17 @@ export default function Sidebar() {
               active={pathname.startsWith('/messages')} 
               badge={unreadMessages > 0 ? unreadMessages : null}
             />
+            {/* Support Tickets - always visible for reporting issues */}
+            <NavRow 
+              icon={TicketIcon} 
+              label="Support Tickets" 
+              href="/tickets" 
+              active={pathname.startsWith('/tickets')} 
+            />
           </div>
         </div>
 
-        <div className="px-3 pt-4 pb-2">
+        <div className="px-2.5 pt-3.5 pb-2">
           {/* MASTERS header */}
           <div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
             <span>MASTERS</span>
@@ -179,58 +194,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* ADMIN section - only show for Admin users */}
-        {isAdmin && (
-          <div className="px-3 pt-4 pb-2">
-            <div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
-              <span>ADMIN</span>
-            </div>
-            <div className="space-y-1 mt-1">
-              <NavRow icon={UserGroupIcon} label="Live Monitoring" href="/admin/live-monitoring" active={pathname.startsWith('/admin/live-monitoring')} />
-              <NavRow icon={ClipboardDocumentListIcon} label="Admin Logs" href="/admin/activity-logs" active={pathname.startsWith('/admin/activity-logs')} />
-              <NavRow icon={CheckCircleIcon} label="All Todos" href="/admin/todos" active={pathname.startsWith('/admin/todos')} />
-            </div>
-          </div>
-        )}
-
-        <div className="mt-auto px-3 pt-4 pb-4">
-          {/* Pin/Unpin control */}
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setPinned((p) => !p)}
-              className={`group/nav-row w-full flex items-center h-11 rounded-xl px-3 text-sm font-medium transition-colors ${
-                'text-[#64126D] hover:bg-purple-50'
-              }`}
-              title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
-            >
-              <MapPinIcon className={`h-5 w-5 ${pinned ? 'text-[#64126D] fill-[#64126D]' : 'text-[#64126D]'}`} />
-              <span className="ml-3 hidden sidebar-open:inline text-gray-900">
-                {pinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
-              </span>
-            </button>
-          </div>
-          {/* Logout button */}
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="group/nav-row w-full flex items-center h-11 rounded-xl px-3 text-sm font-medium text-[#64126D] hover:bg-purple-50"
-              title="Sign out"
-            >
-              <ArrowRightOnRectangleIcon className="h-5 w-5 text-[#64126D]" />
-              <span className="ml-3 hidden sidebar-open:inline text-gray-900">Sign out</span>
-            </button>
-          </div>
         </div>
-      </div>
     </aside>
   );
-  async function handleLogout() {
-    try {
-      await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-    } catch {}
-    router.push('/signin');
-  }
 }
 

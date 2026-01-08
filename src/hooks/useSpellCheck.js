@@ -14,11 +14,11 @@ export function useSpellCheck() {
         element.tagName === 'INPUT' && 
         ['text', 'email', 'search', ''].includes(element.type || '')
       ) {
-        element.setAttribute('spellcheck', 'true');
+        element.spellcheck = true;
       } else if (element.tagName === 'TEXTAREA') {
-        element.setAttribute('spellcheck', 'true');
+        element.spellcheck = true;
       } else if (element.contentEditable === 'true') {
-        element.setAttribute('spellcheck', 'true');
+        element.spellcheck = true;
       }
     };
 

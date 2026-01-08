@@ -33,10 +33,6 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
   // Get activities for selected discipline
   const selectedDiscipline = disciplines.find(d => String(d.id) === String(selectedDisciplineId));
   const availableActivities = selectedDiscipline?.activities || [];
-  
-  // Debug log
-  console.log('[ActivityAssignmentModal] Selected discipline:', selectedDisciplineId, selectedDiscipline?.function_name);
-  console.log('[ActivityAssignmentModal] Available activities:', availableActivities.length, availableActivities.map(a => a.activity_name));
 
   // Load users and existing assignments when modal opens
   useEffect(() => {
@@ -57,12 +53,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
 
       // Load all disciplines with activities from Activity Master
       const activityMasterRes = await fetchJSON('/api/activity-master');
-      console.log('[ActivityAssignmentModal] Activity Master Response:', activityMasterRes);
       if (activityMasterRes.success && activityMasterRes.data) {
-        console.log('[ActivityAssignmentModal] Disciplines loaded:', activityMasterRes.data.length);
-        activityMasterRes.data.forEach(d => {
-          console.log(`  - ${d.function_name}: ${d.activities?.length || 0} activities`);
-        });
         setDisciplines(activityMasterRes.data);
       }
 

@@ -11,22 +11,17 @@ export async function GET(req) {
     const hasUserId = !!req?.cookies?.get?.('user_id')?.value;
 
     if (!hasSession || !hasUserId) {
-      console.log('[Session API] No auth cookies found');
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
     const user = await getCurrentUser(req);
     if (!user) {
-      console.log('[Session API] getCurrentUser returned null');
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
     return NextResponse.json({ authenticated: true, user });
   } catch (error) {
-    console.error('[Session API] Error:', error);
-    return NextResponse.json({ 
-      authenticated: false, 
-      error: error.message 
-    }, { status: 500 });
+    console.error('[Session] Error:', error.message);
+    return NextResponse.json({ authenticated: false }, { status: 500 });
   }
 }

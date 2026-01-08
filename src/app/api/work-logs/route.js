@@ -73,7 +73,7 @@ export async function GET(request) {
     // Get total count
     const countQuery = query.replace('wl.*, u.username, u.full_name, u.email', 'COUNT(*) as total');
     const [countResult] = await db.execute(countQuery, params);
-    const total = countResult[0].total;
+    const total = countResult?.[0]?.total || 0;
 
     // Get paginated results
     query += ` ORDER BY wl.log_date DESC, wl.created_at DESC LIMIT ? OFFSET ?`;

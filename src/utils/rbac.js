@@ -19,6 +19,11 @@ export const RESOURCES = {
   MESSAGES: 'messages',
   PROFILE: 'profile',
   
+  // Project Financial Documents
+  QUOTATIONS: 'quotations',
+  PURCHASE_ORDERS: 'purchase_orders',
+  INVOICES: 'invoices',
+  
   // Masters
   ACTIVITIES: 'activities',
   SOFTWARE: 'software',
@@ -26,6 +31,7 @@ export const RESOURCES = {
   ROLES: 'roles',
   
   // Admin
+  ADMIN: 'admin',
   SETTINGS: 'settings',
   ADMIN_MONITORING: 'admin_monitoring',
   ADMIN_ACTIVITY_LOGS: 'admin_activity_logs',
@@ -70,6 +76,24 @@ export const PERMISSION_DESCRIPTIONS = {
     [PERMISSIONS.DELETE]: 'Delete projects',
     [PERMISSIONS.APPROVE]: 'Approve project proposals and changes',
     [PERMISSIONS.ASSIGN]: 'Assign project team members'
+  },
+  [RESOURCES.QUOTATIONS]: {
+    [PERMISSIONS.READ]: 'View project quotations (read-only)',
+    [PERMISSIONS.CREATE]: 'Create new quotations',
+    [PERMISSIONS.UPDATE]: 'Edit and save quotations',
+    [PERMISSIONS.DELETE]: 'Delete quotations'
+  },
+  [RESOURCES.PURCHASE_ORDERS]: {
+    [PERMISSIONS.READ]: 'View purchase orders (read-only)',
+    [PERMISSIONS.CREATE]: 'Create new purchase orders',
+    [PERMISSIONS.UPDATE]: 'Edit and save purchase orders',
+    [PERMISSIONS.DELETE]: 'Delete purchase orders'
+  },
+  [RESOURCES.INVOICES]: {
+    [PERMISSIONS.READ]: 'View invoices (read-only)',
+    [PERMISSIONS.CREATE]: 'Create new invoices',
+    [PERMISSIONS.UPDATE]: 'Edit and save invoices',
+    [PERMISSIONS.DELETE]: 'Delete invoices'
   },
   [RESOURCES.EMPLOYEES]: {
     [PERMISSIONS.READ]: 'View employee profiles',

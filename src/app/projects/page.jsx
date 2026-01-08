@@ -431,6 +431,7 @@ function ProjectsInner() {
                           onChange={(e) => setQuery(e.target.value)}
                           placeholder="Search by project or client name..."
                           className="w-full pl-11 pr-4 py-2.5 text-sm rounded-lg border border-gray-300 focus:outline-none focus:border-[#64126D] focus:ring-1 focus:ring-[#64126D]"
+                          spellCheck={true}
                         />
                         <svg className="absolute left-4 top-3.5 h-5 w-5 transition-colors duration-300" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#8b5cf6' }}><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l3.386 3.387a1 1 0 01-1.414 1.414l-3.386-3.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
                       </div>

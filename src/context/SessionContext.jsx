@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { hasPermission, RESOURCES, PERMISSIONS } from '@/utils/rbac';
+import { checkPermission, RESOURCES, PERMISSIONS } from '@/utils/permissions';
 
 const SessionContext = createContext({
   user: null,
@@ -18,6 +18,9 @@ let sessionCache = null;
 let sessionCacheTime = 0;
 const CACHE_TTL = 30000; // 30 seconds
 
+// Flag to force next fetch to bypass cache
+let forceNextFetch = false;
+
 export function SessionProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,8 +29,15 @@ export function SessionProvider({ children }) {
   const mountedRef = useRef(true);
 
   const fetchSession = useCallback(async (force = false) => {
-    // Clear cache when forcing refresh
     const now = Date.now();
+    
+    // Check if we need to force fetch (cache was invalidated)
+    if (forceNextFetch) {
+      force = true;
+      forceNextFetch = false;
+    }
+    
+    // Clear cache when forcing refresh
     if (force) {
       sessionCache = null;
       sessionCacheTime = 0;
@@ -111,7 +121,7 @@ export function SessionProvider({ children }) {
     return (resource, permission) => {
       if (!user) return false;
       try {
-        return hasPermission(user, resource, permission);
+        return checkPermission(user, resource, permission);
       } catch {
         return false;
       }
@@ -143,8 +153,9 @@ export function useSession() {
   return useContext(SessionContext);
 }
 
-// Clear session cache (call on logout)
+// Clear session cache - next fetch will get fresh data
 export function clearSessionCache() {
   sessionCache = null;
   sessionCacheTime = 0;
+  forceNextFetch = true;
 }

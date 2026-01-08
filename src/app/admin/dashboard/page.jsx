@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 import { fetchJSON } from '@/utils/http';
+import { useSession } from '@/context/SessionContext';
 import { 
   UserGroupIcon,
   DocumentTextIcon,
@@ -27,17 +27,14 @@ import {
 /**
  * Admin Dashboard - Protected route
  * 
- * Protection: Never renders admin UI until we confirm user is super admin
- * - Initial state: checking = true (shows loader)
- * - Fetches /api/session to verify super admin status
- * - If not super admin → redirects to /user/dashboard, renders nothing
- * - Only renders admin UI once confirmed
+ * Uses SessionContext for consistent auth state.
+ * Redirects non-super-admins to user dashboard.
  */
 export default function AdminDashboard() {
   const router = useRouter();
+  const { user, loading: sessionLoading, authenticated } = useSession();
   
-  // Protection state - starts as checking
-  const [checking, setChecking] = useState(true);
+  // Protection state
   const [isAuthorized, setIsAuthorized] = useState(false);
   
   // Dashboard data states
@@ -62,50 +59,27 @@ export default function AdminDashboard() {
     activity: { followupsThisWeek: 0, followupsPrevWeek: 0 }
   });
 
-  // Step 1: Check authorization FIRST before anything else
+  // Check authorization and start fetching data as soon as possible
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/api/session', {
-          credentials: 'include',
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store' }
-        });
-        
-        const data = await response.json();
-        
-        // Not authenticated
-        if (!data.authenticated || !data.user) {
-          router.replace('/signin');
-          return;
-        }
-        
-        // Check if super admin
-        const isSuperAdmin = data.user.is_super_admin === true || data.user.is_super_admin === 1;
-        
-        if (!isSuperAdmin) {
-          // NOT authorized - redirect to user dashboard immediately
-          router.replace('/user/dashboard');
-          return;
-        }
-        
-        // Authorized - allow rendering
-        setIsAuthorized(true);
-        setChecking(false);
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        router.replace('/signin');
-      }
-    };
+    // Wait for session to load
+    if (sessionLoading) return;
 
-    checkAuth();
-  }, [router]);
+    // Not authenticated - AuthGate will handle redirect
+    if (!authenticated || !user) return;
 
-  // Step 2: Only fetch data AFTER authorization is confirmed
-  useEffect(() => {
-    if (!isAuthorized) return;
+    // Check if super admin
+    const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+
+    if (!isSuperAdmin) {
+      // NOT authorized - redirect to user dashboard
+      router.replace('/user/dashboard');
+      return;
+    }
+
+    // Authorized - immediately start fetching data
+    setIsAuthorized(true);
     fetchStats();
-  }, [isAuthorized]);
+  }, [sessionLoading, authenticated, user, router]);
 
   const fetchStats = async () => {
     try {
@@ -338,7 +312,7 @@ export default function AdminDashboard() {
   };
 
   // PROTECTION: While checking, show ONLY loader - no admin UI
-  if (checking || !isAuthorized) {
+  if (sessionLoading || !isAuthorized) {
     return (
       <LoadingSpinner 
         message="Loading Admin Dashboard" 
@@ -351,9 +325,8 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      <Sidebar />
       
-      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20 sm:pl-20">
+      <main className="px-6 py-6">
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
@@ -602,7 +575,7 @@ export default function AdminDashboard() {
 
         {/* Projects Overview */}
         <AdminProjectsOverview />
-      </div>
+      </main>
     </div>
   );
 }

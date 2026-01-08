@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from '@/context/SessionContext';
 
 /**
  * Dashboard Route - Redirector
@@ -10,46 +11,28 @@ import { useRouter } from 'next/navigation';
  * - Super admins → /admin/dashboard (protected)
  * - Regular users → /user/dashboard (protected)
  * 
- * The actual dashboard UI and protection logic is in the specific routes.
- * This ensures no wrong dashboard ever flashes.
+ * Uses SessionContext for consistent auth state.
  */
 export default function DashboardRedirect() {
   const router = useRouter();
+  const { user, loading, authenticated } = useSession();
 
   useEffect(() => {
-    const checkAndRedirect = async () => {
-      try {
-        // Call session endpoint to determine user type
-        const response = await fetch('/api/session', {
-          credentials: 'include',
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store' }
-        });
-        
-        const data = await response.json();
-        
-        // Not authenticated
-        if (!data.authenticated || !data.user) {
-          router.replace('/signin');
-          return;
-        }
-        
-        // Check if super admin
-        const isSuperAdmin = data.user.is_super_admin === true || data.user.is_super_admin === 1;
-        
-        if (isSuperAdmin) {
-          router.replace('/admin/dashboard');
-        } else {
-          router.replace('/user/dashboard');
-        }
-      } catch (error) {
-        console.error('Dashboard redirect failed:', error);
-        router.replace('/signin');
-      }
-    };
+    // Wait for session to load
+    if (loading) return;
 
-    checkAndRedirect();
-  }, [router]);
+    // Not authenticated - AuthGate will handle redirect
+    if (!authenticated || !user) return;
+
+    // Redirect based on user type
+    const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+    
+    if (isSuperAdmin) {
+      router.replace('/admin/dashboard');
+    } else {
+      router.replace('/user/dashboard');
+    }
+  }, [loading, authenticated, user, router]);
 
   // Always show only a neutral loader - never any dashboard UI
   return (
