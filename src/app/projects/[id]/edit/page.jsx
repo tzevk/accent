@@ -2654,20 +2654,13 @@ function EditProjectForm() {
                                 value={form.project_id} 
                                 onChange={handleChange} 
                                 placeholder="Enter project number"
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
+                                readOnly
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  background: 'rgba(249, 250, 251, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
+                                  color: '#6b7280',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
-                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
                             </div>
@@ -2681,20 +2674,13 @@ function EditProjectForm() {
                                 value={form.name} 
                                 onChange={handleChange} 
                                 placeholder="Enter project name"
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
+                                readOnly
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  background: 'rgba(249, 250, 251, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
+                                  color: '#6b7280',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
-                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
                             </div>
@@ -2714,11 +2700,12 @@ function EditProjectForm() {
                                     client_name: company ? company.company_name : prev.client_name
                                   }));
                                 }}
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300"
+                                disabled
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed"
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  background: 'rgba(249, 250, 251, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
+                                  color: '#6b7280',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                               >
@@ -2735,20 +2722,13 @@ function EditProjectForm() {
                                 value={form.client_name} 
                                 onChange={handleChange} 
                                 placeholder="Or enter company name manually"
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
+                                readOnly
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  background: 'rgba(249, 250, 251, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
+                                  color: '#6b7280',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
-                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
                             </div>
@@ -2761,20 +2741,13 @@ function EditProjectForm() {
                                 name="start_date" 
                                 value={form.start_date} 
                                 onChange={handleChange} 
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
+                                readOnly
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  background: 'rgba(249, 250, 251, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
+                                  color: '#6b7280',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
-                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
                             </div>
@@ -2787,20 +2760,13 @@ function EditProjectForm() {
                                 name="end_date" 
                                 value={form.end_date} 
                                 onChange={handleChange} 
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300" 
+                                readOnly
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.95)',
+                                  background: 'rgba(249, 250, 251, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#0f172a',
+                                  color: '#6b7280',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.borderColor = '#8b5cf6';
-                                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 8px rgba(15, 23, 42, 0.04)';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.borderColor = 'rgba(139, 92, 246, 0.15)';
-                                  e.target.style.boxShadow = '0 2px 4px rgba(15, 23, 42, 0.02)';
                                 }}
                               />
                             </div>
@@ -2812,7 +2778,8 @@ function EditProjectForm() {
                                 name="contract_type" 
                                 value={form.contract_type} 
                                 onChange={handleChange} 
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400"
+                                disabled
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
                               >
                                 <option value="">Select Type</option>
                                 {TYPE_OPTIONS.map((type) => (
@@ -2829,7 +2796,8 @@ function EditProjectForm() {
                                 onChange={handleChange} 
                                 step="0.1" 
                                 placeholder="0.0"
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400" 
+                                readOnly
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed" 
                               />
                             </div>
                           </div>
@@ -2880,7 +2848,8 @@ function EditProjectForm() {
                               onChange={handleChange} 
                               rows={4} 
                               placeholder="List the key deliverables for this project..."
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent transition-all bg-white hover:border-gray-400 resize-y" 
+                              readOnly
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-y bg-gray-50 cursor-not-allowed" 
                             />
                           </div>
                         </div>
@@ -2929,7 +2898,8 @@ function EditProjectForm() {
                             <select
                               value={newInputDocument.category}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, category: e.target.value }))}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              disabled
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             >
                               <option value="lot">Lot</option>
                               <option value="sublot">Sub-lot</option>
@@ -2948,9 +2918,10 @@ function EditProjectForm() {
                                   setNewInputDocument(prev => ({ ...prev, subLot: e.target.value }));
                                 }
                               }}
-                              disabled={newInputDocument.category !== 'lot' && newInputDocument.category !== 'sublot'}
+                              readOnly
+                              disabled
                               placeholder={newInputDocument.category === 'lot' ? 'LOT-001' : newInputDocument.category === 'sublot' ? 'SL-001' : 'N/A'}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] disabled:bg-gray-50 disabled:text-gray-400"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed text-gray-400"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -2958,7 +2929,8 @@ function EditProjectForm() {
                               type="date"
                               value={newInputDocument.date_received}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: e.target.value }))}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -2968,7 +2940,8 @@ function EditProjectForm() {
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, description: e.target.value }))}
                               onKeyPress={handleInputDocumentKeyPress}
                               placeholder="Description*"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -2977,7 +2950,8 @@ function EditProjectForm() {
                               value={newInputDocument.drawing_number}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, drawing_number: e.target.value }))}
                               placeholder="DWG-XXX"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -2986,7 +2960,8 @@ function EditProjectForm() {
                               value={newInputDocument.sheet_number}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, sheet_number: e.target.value }))}
                               placeholder="SH-001"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -2995,7 +2970,8 @@ function EditProjectForm() {
                               value={newInputDocument.revision_number}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, revision_number: e.target.value }))}
                               placeholder="Rev-A"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3004,7 +2980,8 @@ function EditProjectForm() {
                               value={newInputDocument.unit_qty}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, unit_qty: e.target.value }))}
                               placeholder="10 pcs"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3013,7 +2990,8 @@ function EditProjectForm() {
                               value={newInputDocument.document_sent_by}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, document_sent_by: e.target.value }))}
                               placeholder="Sender"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3022,7 +3000,8 @@ function EditProjectForm() {
                               value={newInputDocument.remarks}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, remarks: e.target.value }))}
                               placeholder="Notes"
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                              readOnly
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                             />
                           </td>
                           <td className="py-2 px-2 text-center">
@@ -3050,7 +3029,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                disabled
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               >
                                 <option value="lot">Lot</option>
                                 <option value="sublot">Sub-lot</option>
@@ -3073,9 +3053,10 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                disabled={doc.category !== 'lot' && doc.category !== 'sublot'}
+                                readOnly
+                                disabled
                                 placeholder={doc.category === 'lot' ? 'LOT-001' : doc.category === 'sublot' ? 'SL-001' : 'N/A'}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] disabled:bg-gray-50 disabled:text-gray-400"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed text-gray-400"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3089,7 +3070,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3103,7 +3085,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3117,7 +3100,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3131,7 +3115,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3145,7 +3130,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3159,7 +3145,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3173,7 +3160,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3187,7 +3175,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                readOnly
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
                               />
                             </td>
                             <td className="py-2 px-2 text-center">
@@ -3242,7 +3231,8 @@ function EditProjectForm() {
                               setSelectedSoftware('');
                               setSelectedSoftwareVersion('');
                             }}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                            disabled
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                           >
                             <option value="">Select Category</option>
                             {softwareCategories.map((cat) => (
@@ -3258,8 +3248,8 @@ function EditProjectForm() {
                               setSelectedSoftware(e.target.value);
                               setSelectedSoftwareVersion('');
                             }}
-                            disabled={!selectedSoftwareCategory}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            disabled
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                           >
                             <option value="">Select Software</option>
                             {availableSoftware.map((sw) => (
@@ -3272,8 +3262,8 @@ function EditProjectForm() {
                           <select
                             value={selectedSoftwareVersion}
                             onChange={(e) => setSelectedSoftwareVersion(e.target.value)}
-                            disabled={!selectedSoftware}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            disabled
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
                           >
                             <option value="">Select Version</option>
                             {availableVersions.map((ver) => (
@@ -3391,7 +3381,8 @@ function EditProjectForm() {
                             value={teamMemberSearch}
                             onChange={(e) => setTeamMemberSearch(e.target.value)}
                             placeholder="Search users by name, email, or department..."
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7F2487] focus:border-transparent text-sm"
+                            readOnly
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 cursor-not-allowed"
                           />
                         </div>
 
@@ -3494,7 +3485,8 @@ function EditProjectForm() {
                                       <select
                                         value={member.role}
                                         onChange={(e) => updateTeamMemberRole(member.id, e.target.value)}
-                                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+                                        disabled
+                                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-gray-50 cursor-not-allowed"
                                       >
                                         <option value="Team Member">Team Member</option>
                                         <option value="Project Lead">Project Lead</option>
@@ -3625,7 +3617,8 @@ function EditProjectForm() {
                                     type="date" 
                                     value={m.meeting_date || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'meeting_date', e.target.value)} 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    readOnly
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -3633,7 +3626,8 @@ function EditProjectForm() {
                                     type="text" 
                                     value={m.meeting_title || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'meeting_title', e.target.value)} 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    readOnly
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -3649,7 +3643,8 @@ function EditProjectForm() {
                                     type="text" 
                                     value={m.client_representative || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'client_representative', e.target.value)} 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    readOnly
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -3657,7 +3652,8 @@ function EditProjectForm() {
                                     type="text" 
                                     value={m.meeting_location || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'meeting_location', e.target.value)} 
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                                    readOnly
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -3667,7 +3663,8 @@ function EditProjectForm() {
                                     onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateKickoffMeeting)}
                                     rows={3}
                                     placeholder="Enter points (press Enter for new bullet)&#10;Project timeline&#10;Budget discussion&#10;Next steps"
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
+                                    readOnly
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded resize-y min-h-[60px] font-mono bg-gray-50 cursor-not-allowed" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -3677,7 +3674,8 @@ function EditProjectForm() {
                                     onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateKickoffMeeting, 'persons_involved')}
                                     rows={3}
                                     placeholder="Enter participants (press Enter for new bullet)&#10;John Doe&#10;Jane Smith&#10;Bob Johnson"
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
+                                    readOnly
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded resize-y min-h-[60px] font-mono bg-gray-50 cursor-not-allowed" 
                                   />
                                 </td>
                                 <td className="py-2 px-2 text-center">
@@ -4886,8 +4884,9 @@ function EditProjectForm() {
                           value={quotationData.quotation_number}
                           onChange={handleQuotationChange}
                           placeholder="QTN-00001"
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                          readOnly
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
                         />
                       </div>
                       <div>
@@ -4897,8 +4896,9 @@ function EditProjectForm() {
                           name="quotation_date"
                           value={quotationData.quotation_date}
                           onChange={handleQuotationChange}
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                          readOnly
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
                         />
                       </div>
                       <div>
@@ -4929,8 +4929,9 @@ function EditProjectForm() {
                           value={quotationData.enquiry_number}
                           onChange={handleQuotationChange}
                           placeholder="ENQ-001"
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                          readOnly
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
                         />
                       </div>
                       <div>
@@ -4943,8 +4944,9 @@ function EditProjectForm() {
                           value={quotationData.enquiry_quantity}
                           onChange={handleQuotationChange}
                           placeholder="e.g., 100 units"
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                          readOnly
+                          disabled
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
                         />
                       </div>
                     </div>
@@ -4960,8 +4962,9 @@ function EditProjectForm() {
                         onChange={handleQuotationChange}
                         rows={4}
                         placeholder="Scope of work will be fetched from project data..."
-                        disabled={!canEditQuotations}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent resize-y ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                        readOnly
+                        disabled
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y bg-gray-100 cursor-not-allowed text-gray-500"
                       />
                     </div>
 
@@ -4979,8 +4982,9 @@ function EditProjectForm() {
                             placeholder="0.00"
                             step="0.01"
                             min="0"
-                            disabled={!canEditQuotations}
-                            className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                            readOnly
+                            disabled
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
                           />
                         </div>
                         <div>
@@ -5012,8 +5016,8 @@ function EditProjectForm() {
                           name="gst_percentage"
                           value={quotationData.gst_percentage}
                           onChange={handleQuotationChange}
-                          disabled={!canEditQuotations}
-                          className={`w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditQuotations ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
+                          disabled
+                          className="w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
                         >
                           <option value="0">0%</option>
                           <option value="5">5%</option>
