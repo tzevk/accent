@@ -10,17 +10,13 @@ async function ensureTicketsTable() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       ticket_number VARCHAR(20) UNIQUE NOT NULL,
       user_id INT NOT NULL,
-      title VARCHAR(255) NOT NULL,
+      subject VARCHAR(255) NOT NULL,
       description TEXT NOT NULL,
-      category ENUM('login_issues', 'performance', 'bug_report', 'feature_request', 'data_issue', 'access_permission', 'other') DEFAULT 'other',
-      priority ENUM('low', 'medium', 'high', 'critical') DEFAULT 'medium',
-      status ENUM('open', 'in_progress', 'pending_info', 'resolved', 'closed') DEFAULT 'open',
-      screenshots JSON,
-      browser_info VARCHAR(255),
-      page_url VARCHAR(500),
-      steps_to_reproduce TEXT,
-      expected_behavior TEXT,
-      actual_behavior TEXT,
+      category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
+      priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
+      status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
+      routed_to ENUM('hr', 'admin') NOT NULL,
+      attachment_url VARCHAR(500),
       assigned_to INT,
       resolution_notes TEXT,
       resolved_at DATETIME,
@@ -30,6 +26,8 @@ async function ensureTicketsTable() {
       INDEX idx_user_id (user_id),
       INDEX idx_status (status),
       INDEX idx_priority (priority),
+      INDEX idx_routed_to (routed_to),
+      INDEX idx_category (category),
       INDEX idx_created_at (created_at)
     )
   `);
@@ -47,6 +45,19 @@ async function ensureTicketsTable() {
       INDEX idx_ticket_id (ticket_id)
     )
   `);
+}
+
+// Route ticket based on category
+function routeTicketByCategory(category) {
+  const hrCategories = ['payroll', 'leave', 'policy', 'confidential'];
+  const adminCategories = ['access_cards', 'seating', 'maintenance', 'general_request'];
+  
+  if (hrCategories.includes(category)) {
+    return 'hr';
+  } else if (adminCategories.includes(category)) {
+    return 'admin';
+  }
+  return 'admin'; // Default to admin
 }
 
 // Generate unique ticket number
@@ -85,6 +96,7 @@ export async function GET(request) {
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
     const category = searchParams.get('category');
+    const routedTo = searchParams.get('routed_to');
     const showAll = searchParams.get('all') === 'true';
     
     const connection = await dbConnect();
@@ -125,9 +137,14 @@ export async function GET(request) {
       params.push(category);
     }
     
+    if (routedTo) {
+      query += ` AND t.routed_to = ?`;
+      params.push(routedTo);
+    }
+    
     query += ` ORDER BY 
       CASE t.priority 
-        WHEN 'critical' THEN 1 
+        WHEN 'urgent' THEN 1 
         WHEN 'high' THEN 2 
         WHEN 'medium' THEN 3 
         WHEN 'low' THEN 4 
@@ -136,13 +153,7 @@ export async function GET(request) {
     
     const [tickets] = await connection.execute(query, params);
     
-    // Parse screenshots JSON
-    const parsedTickets = tickets.map(ticket => ({
-      ...ticket,
-      screenshots: ticket.screenshots ? JSON.parse(ticket.screenshots) : []
-    }));
-    
-    return NextResponse.json({ success: true, data: parsedTickets });
+    return NextResponse.json({ success: true, data: tickets });
   } catch (error) {
     console.error('Error fetching tickets:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -161,47 +172,40 @@ export async function POST(request) {
     
     const body = await request.json();
     const {
-      title,
+      subject,
       description,
-      category = 'other',
+      category = 'general_request',
       priority = 'medium',
-      screenshots = [],
-      browser_info,
-      page_url,
-      steps_to_reproduce,
-      expected_behavior,
-      actual_behavior
+      attachment_url
     } = body;
     
-    if (!title || !description) {
+    if (!subject || !description) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Title and description are required' 
+        error: 'Subject and description are required' 
       }, { status: 400 });
     }
     
     const connection = await dbConnect();
     const ticketNumber = await generateTicketNumber(connection);
     
+    // Auto-route ticket based on category
+    const routedTo = routeTicketByCategory(category);
+    
     const [result] = await connection.execute(
       `INSERT INTO support_tickets (
-        ticket_number, user_id, title, description, category, priority,
-        screenshots, browser_info, page_url, steps_to_reproduce,
-        expected_behavior, actual_behavior
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ticket_number, user_id, subject, description, category, priority,
+        routed_to, attachment_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         ticketNumber,
         session.user.id,
-        title,
+        subject,
         description,
         category,
         priority,
-        JSON.stringify(screenshots),
-        browser_info || null,
-        page_url || null,
-        steps_to_reproduce || null,
-        expected_behavior || null,
-        actual_behavior || null
+        routedTo,
+        attachment_url || null
       ]
     );
     
@@ -213,11 +217,8 @@ export async function POST(request) {
     
     return NextResponse.json({ 
       success: true, 
-      data: {
-        ...tickets[0],
-        screenshots: screenshots
-      },
-      message: `Ticket ${ticketNumber} created successfully`
+      data: tickets[0],
+      message: `Ticket ${ticketNumber} created successfully. Routed to ${routedTo.toUpperCase()}.`
     });
   } catch (error) {
     console.error('Error creating ticket:', error);
@@ -309,10 +310,7 @@ export async function PUT(request) {
     
     return NextResponse.json({ 
       success: true, 
-      data: {
-        ...updated[0],
-        screenshots: updated[0].screenshots ? JSON.parse(updated[0].screenshots) : []
-      }
+      data: updated[0]
     });
   } catch (error) {
     console.error('Error updating ticket:', error);

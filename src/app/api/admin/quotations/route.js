@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
-// GET - Fetch quotations
+// GET - Fetch quotations (from both quotations and project_quotations tables)
 export async function GET(request) {
   // RBAC check
   const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
@@ -14,11 +14,12 @@ export async function GET(request) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
     const status = searchParams.get('status');
+    const source = searchParams.get('source'); // 'all', 'quotations', 'projects'
     const offset = (page - 1) * limit;
 
     connection = await dbConnect();
 
-    // Check if table exists, create if not
+    // Check if quotations table exists, create if not
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS quotations (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -46,67 +47,171 @@ export async function GET(request) {
       )
     `);
 
-    // Ensure status column exists (for tables created before status was added)
+    // Check if project_quotations table exists, create if not
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS project_quotations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL,
+        quotation_number VARCHAR(100),
+        quotation_date DATE,
+        enquiry_number VARCHAR(100),
+        enquiry_quantity VARCHAR(255),
+        scope_of_work TEXT,
+        gross_amount DECIMAL(15, 2) DEFAULT 0,
+        gst_percentage DECIMAL(5, 2) DEFAULT 18,
+        gst_amount DECIMAL(15, 2) DEFAULT 0,
+        net_amount DECIMAL(15, 2) DEFAULT 0,
+        status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_project_id (project_id)
+      )
+    `);
+
+    // Add status column to project_quotations if it doesn't exist
     try {
       await connection.execute(`
-        ALTER TABLE quotations 
-        ADD COLUMN IF NOT EXISTS status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'
+        ALTER TABLE project_quotations 
+        ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'
       `);
     } catch (alterError) {
-      // Column might already exist or DB doesn't support IF NOT EXISTS, ignore
-      if (!alterError.message.includes('Duplicate column')) {
-        console.log('Note: Could not add status column (may already exist)');
+      // Column might already exist, ignore
+    }
+
+    // Add subject column to quotations if it doesn't exist
+    try {
+      await connection.execute(`ALTER TABLE quotations ADD COLUMN subject VARCHAR(500)`);
+    } catch (alterError) {
+      // Column might already exist, ignore
+    }
+
+    // Add total column to quotations if it doesn't exist
+    try {
+      await connection.execute(`ALTER TABLE quotations ADD COLUMN total DECIMAL(15, 2) DEFAULT 0`);
+    } catch (alterError) {
+      // Column might already exist, ignore
+    }
+
+    // Add valid_until column to quotations if it doesn't exist
+    try {
+      await connection.execute(`ALTER TABLE quotations ADD COLUMN valid_until DATE`);
+    } catch (alterError) {
+      // Column might already exist, ignore
+    }
+
+    // Add status column to quotations if it doesn't exist
+    try {
+      await connection.execute(`ALTER TABLE quotations ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'`);
+    } catch (alterError) {
+      // Column might already exist, ignore
+    }
+
+    // Build combined query using UNION to get from both tables
+    let allQuotations = [];
+    
+    // Query from quotations table
+    if (!source || source === 'all' || source === 'quotations') {
+      let query1 = `
+        SELECT 
+          id,
+          quotation_number,
+          client_name,
+          NULL as client_email,
+          subject,
+          total,
+          created_at,
+          valid_until,
+          status,
+          'quotations' as source
+        FROM quotations WHERE 1=1
+      `;
+      const params1 = [];
+      
+      if (status && status !== 'all') {
+        query1 += ' AND status = ?';
+        params1.push(status);
       }
+      
+      const [quotations] = await connection.execute(query1, params1);
+      allQuotations = [...allQuotations, ...quotations];
     }
 
-    // Build query
-    let query = 'SELECT * FROM quotations WHERE 1=1';
-    const params = [];
-
-    if (status && status !== 'all') {
-      query += ' AND status = ?';
-      params.push(status);
+    // Query from project_quotations table (joined with projects for client name)
+    if (!source || source === 'all' || source === 'projects') {
+      // Query from project_quotations table without projects join to avoid table structure issues
+      let query2 = `
+        SELECT 
+          pq.id,
+          pq.quotation_number,
+          COALESCE(pq.client_name, pq.enquiry_number) as client_name,
+          NULL as client_email,
+          pq.scope_of_work as subject,
+          pq.net_amount as total,
+          pq.created_at,
+          DATE_ADD(pq.quotation_date, INTERVAL 30 DAY) as valid_until,
+          COALESCE(pq.status, 'draft') as status,
+          'project' as source,
+          pq.project_id,
+          NULL as project_name
+        FROM project_quotations pq
+        WHERE pq.quotation_number IS NOT NULL AND pq.quotation_number != ''
+      `;
+      const params2 = [];
+      
+      if (status && status !== 'all') {
+        query2 += ' AND pq.status = ?';
+        params2.push(status);
+      }
+      
+      const [projectQuotations] = await connection.execute(query2, params2);
+      
+      // Try to fetch project names separately if projects table exists
+      try {
+        for (let q of projectQuotations) {
+          if (q.project_id) {
+            const [projects] = await connection.execute(
+              'SELECT name, client_name FROM projects WHERE id = ? LIMIT 1',
+              [q.project_id]
+            );
+            if (projects.length > 0) {
+              q.project_name = projects[0].name;
+              if (!q.client_name || q.client_name === q.enquiry_number) {
+                q.client_name = projects[0].client_name || q.client_name;
+              }
+              if (!q.subject) {
+                q.subject = projects[0].name;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Projects table might not exist or have different structure, ignore
+      }
+      
+      allQuotations = [...allQuotations, ...projectQuotations];
     }
+
+    // Sort by created_at descending
+    allQuotations.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     // Get total count
-    const countQuery = query.replace('*', 'COUNT(*) as total');
-    const [countResult] = await connection.execute(countQuery, params);
-    const total = countResult?.[0]?.total || 0;
+    const total = allQuotations.length;
 
-    // Get paginated results
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    // Paginate
+    const paginatedQuotations = allQuotations.slice(offset, offset + limit);
 
-    const [quotations] = await connection.execute(query, params);
-
-    // Parse JSON items for each quotation
-    const parsedQuotations = quotations.map(q => ({
-      ...q,
-      items: typeof q.items === 'string' ? JSON.parse(q.items) : q.items
-    }));
-
-    // Get stats - wrap in try-catch in case status column doesn't exist
-    let stats = { total: 0, draft: 0, sent: 0, approved: 0, rejected: 0 };
-    try {
-      const [statsResult] = await connection.execute(`
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
-          SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
-          SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
-          SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
-        FROM quotations
-      `);
-      stats = statsResult[0] || stats;
-    } catch (statsError) {
-      // If stats query fails, just return default stats with total count
-      console.log('Stats query failed, using default:', statsError.message);
-      stats.total = total;
-    }
+    // Calculate stats from combined data
+    const stats = {
+      total: allQuotations.length,
+      draft: allQuotations.filter(q => q.status === 'draft' || !q.status).length,
+      sent: allQuotations.filter(q => q.status === 'sent').length,
+      approved: allQuotations.filter(q => q.status === 'approved').length,
+      rejected: allQuotations.filter(q => q.status === 'rejected').length
+    };
 
     return NextResponse.json({
       success: true,
-      data: parsedQuotations,
+      data: paginatedQuotations,
       stats,
       pagination: {
         page,

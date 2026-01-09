@@ -427,18 +427,6 @@ export default function Proposals() {
                             >
                               <EyeIcon className="h-4 w-4" />
                             </button>
-                            <button
-                              onClick={() => downloadProposal(proposal.id)}
-                              disabled={downloadingId === proposal.id}
-                              className="p-2 text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
-                              title="Download PDF Quotation"
-                            >
-                              {downloadingId === proposal.id ? (
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700"></div>
-                              ) : (
-                                <ArrowDownTrayIcon className="h-4 w-4" />
-                              )}
-                            </button>
                             <button 
                               onClick={() => router.push(`/proposals/${proposal.id}/edit`)}
                               className="p-2 text-[#64126D] hover:text-[#86288F] hover:bg-purple-50 rounded-lg transition-colors"

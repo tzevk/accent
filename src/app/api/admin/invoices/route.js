@@ -115,3 +115,105 @@ export async function GET(request) {
     if (connection) await connection.end();
   }
 }
+
+// Helper function to generate invoice number
+function generateInvoiceNumber(count) {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const num = (count + 1).toString().padStart(4, '0');
+  return `INV-${year}${month}-${num}`;
+}
+
+// POST - Create new invoice
+export async function POST(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.WRITE);
+  if (authResult.authorized === false) return authResult.response;
+
+  let connection;
+  try {
+    const body = await request.json();
+    
+    const {
+      client_name,
+      client_email,
+      client_phone,
+      client_address,
+      description,
+      items,
+      subtotal,
+      tax_rate,
+      tax_amount,
+      discount,
+      total,
+      amount_paid,
+      balance_due,
+      notes,
+      terms,
+      due_date,
+      status
+    } = body;
+
+    if (!client_name) {
+      return NextResponse.json(
+        { success: false, message: 'Client name is required' },
+        { status: 400 }
+      );
+    }
+
+    connection = await dbConnect();
+
+    // Get count for invoice number generation
+    const [countResult] = await connection.execute('SELECT COUNT(*) as count FROM invoices');
+    const count = countResult[0]?.count || 0;
+    const invoiceNumber = generateInvoiceNumber(count);
+
+    // Insert invoice
+    const [result] = await connection.execute(
+      `INSERT INTO invoices (
+        invoice_number, client_name, client_email, client_phone, client_address,
+        description, items, subtotal, tax_rate, tax_amount, discount, total,
+        amount_paid, balance_due, notes, terms, due_date, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        invoiceNumber,
+        client_name,
+        client_email || null,
+        client_phone || null,
+        client_address || null,
+        description || null,
+        JSON.stringify(items || []),
+        subtotal || 0,
+        tax_rate || 18,
+        tax_amount || 0,
+        discount || 0,
+        total || 0,
+        amount_paid || 0,
+        balance_due || total || 0,
+        notes || null,
+        terms || null,
+        due_date || null,
+        status || 'draft'
+      ]
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: 'Invoice created successfully',
+      data: {
+        id: result.insertId,
+        invoice_number: invoiceNumber
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to create invoice', error: error.message },
+      { status: 500 }
+    );
+  } finally {
+    if (connection) await connection.end();
+  }
+}

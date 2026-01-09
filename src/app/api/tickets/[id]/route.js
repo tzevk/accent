@@ -10,7 +10,12 @@ export async function GET(request, { params }) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { id } = params;
+    const { id } = await params;
+    
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Ticket ID is required' }, { status: 400 });
+    }
+    
     const connection = await dbConnect();
     
     // Fetch ticket
@@ -56,7 +61,6 @@ export async function GET(request, { params }) {
       success: true, 
       data: {
         ...ticket,
-        screenshots: ticket.screenshots ? JSON.parse(ticket.screenshots) : [],
         comments: comments.map(c => ({
           ...c,
           attachments: c.attachments ? JSON.parse(c.attachments) : []
@@ -77,7 +81,10 @@ export async function POST(request, { params }) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { id } = params;
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Ticket ID is required' }, { status: 400 });
+    }
     const body = await request.json();
     const { comment, attachments = [], is_internal = false } = body;
     
@@ -109,10 +116,10 @@ export async function POST(request, { params }) {
       [id, session.user.id, comment, is_internal && session.user.is_super_admin, JSON.stringify(attachments)]
     );
     
-    // Update ticket status if it was pending info
-    if (ticket.status === 'pending_info' && ticket.user_id === session.user.id) {
+    // Update ticket status if it was waiting for employee
+    if (ticket.status === 'waiting_for_employee' && ticket.user_id === session.user.id) {
       await connection.execute(
-        `UPDATE support_tickets SET status = 'open' WHERE id = ?`,
+        `UPDATE support_tickets SET status = 'in_progress' WHERE id = ?`,
         [id]
       );
     }
@@ -144,7 +151,10 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { id } = params;
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Ticket ID is required' }, { status: 400 });
+    }
     const connection = await dbConnect();
     
     const [tickets] = await connection.execute(
@@ -160,8 +170,8 @@ export async function DELETE(request, { params }) {
     const isOwner = ticket.user_id === session.user.id;
     const isAdmin = session.user.is_super_admin;
     
-    // Only admin can delete, or owner if ticket is still open and unassigned
-    if (!isAdmin && (!isOwner || ticket.status !== 'open' || ticket.assigned_to)) {
+    // Only admin can delete, or owner if ticket is still new and unassigned
+    if (!isAdmin && (!isOwner || ticket.status !== 'new' || ticket.assigned_to)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
     }
     

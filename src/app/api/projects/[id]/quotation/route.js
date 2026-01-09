@@ -45,6 +45,7 @@ export async function GET(request, { params }) {
         project_id INT NOT NULL,
         quotation_number VARCHAR(100),
         quotation_date DATE,
+        client_name VARCHAR(255),
         enquiry_number VARCHAR(100),
         enquiry_quantity VARCHAR(255),
         scope_of_work TEXT,
@@ -58,6 +59,13 @@ export async function GET(request, { params }) {
         UNIQUE KEY unique_project (project_id)
       )
     `);
+
+    // Add client_name column if it doesn't exist
+    try {
+      await connection.execute('ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)');
+    } catch (e) {
+      // Column already exists
+    }
 
     // Fetch quotation for this project
     const [rows] = await connection.execute(
@@ -101,6 +109,7 @@ export async function POST(request, { params }) {
     const {
       quotation_number,
       quotation_date,
+      client_name,
       enquiry_number,
       enquiry_quantity,
       scope_of_work,
@@ -119,6 +128,7 @@ export async function POST(request, { params }) {
         project_id INT NOT NULL,
         quotation_number VARCHAR(100),
         quotation_date DATE,
+        client_name VARCHAR(255),
         enquiry_number VARCHAR(100),
         enquiry_quantity VARCHAR(255),
         scope_of_work TEXT,
@@ -133,6 +143,13 @@ export async function POST(request, { params }) {
       )
     `);
 
+    // Add client_name column if it doesn't exist
+    try {
+      await connection.execute('ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)');
+    } catch (e) {
+      // Column already exists
+    }
+
     // Check if quotation already exists for this project
     const [existing] = await connection.execute(
       'SELECT id FROM project_quotations WHERE project_id = ?',
@@ -145,6 +162,7 @@ export async function POST(request, { params }) {
         `UPDATE project_quotations SET
           quotation_number = ?,
           quotation_date = ?,
+          client_name = ?,
           enquiry_number = ?,
           enquiry_quantity = ?,
           scope_of_work = ?,
@@ -157,6 +175,7 @@ export async function POST(request, { params }) {
         [
           quotation_number,
           quotation_date || null,
+          client_name || null,
           enquiry_number,
           enquiry_quantity,
           scope_of_work,
@@ -171,14 +190,15 @@ export async function POST(request, { params }) {
       // Insert new quotation
       await connection.execute(
         `INSERT INTO project_quotations (
-          project_id, quotation_number, quotation_date, enquiry_number,
+          project_id, quotation_number, quotation_date, client_name, enquiry_number,
           enquiry_quantity, scope_of_work, gross_amount, gst_percentage,
           gst_amount, net_amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           quotation_number,
           quotation_date || null,
+          client_name || null,
           enquiry_number,
           enquiry_quantity,
           scope_of_work,
