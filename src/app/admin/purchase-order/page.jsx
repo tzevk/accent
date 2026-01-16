@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import { 
@@ -10,10 +11,13 @@ import {
   ArrowPathIcon,
   ArrowDownTrayIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  PencilSquareIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 
 export default function PurchaseOrderPage() {
+  const router = useRouter();
   const { user, loading: authLoading } = useSessionRBAC();
   
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -33,6 +37,11 @@ export default function PurchaseOrderPage() {
     completed: 0,
     cancelled: 0
   });
+
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingPO, setDeletingPO] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Fetch purchase orders
   const fetchPurchaseOrders = useCallback(async (page = 1) => {
@@ -120,20 +129,50 @@ export default function PurchaseOrderPage() {
   // Handle download
   const handleDownload = async (purchaseOrder) => {
     try {
-      const res = await fetch(`/api/admin/purchase-orders/download?id=${purchaseOrder.id}`);
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${purchaseOrder.po_number}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
+      // Open in new window for print/save as PDF
+      window.open(`/api/admin/purchase-orders/download?id=${purchaseOrder.id}`, '_blank');
     } catch (error) {
       console.error('Error downloading purchase order:', error);
+      alert('Failed to download purchase order');
+    }
+  };
+
+  // Handle Edit - Navigate to edit page
+  const handleEdit = (po) => {
+    router.push(`/admin/purchase-order/edit/${po.id}`);
+  };
+
+  // Handle Delete
+  const handleDelete = (po) => {
+    setDeletingPO(po);
+    setShowDeleteConfirm(true);
+  };
+
+  // Confirm Delete
+  const confirmDelete = async () => {
+    if (!deletingPO) return;
+    
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/admin/purchase-orders?id=${deletingPO.id}`, {
+        method: 'DELETE'
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        alert(data.message || 'Purchase order deleted successfully');
+        setShowDeleteConfirm(false);
+        setDeletingPO(null);
+        fetchPurchaseOrders(pagination.page);
+      } else {
+        alert(data.message || 'Failed to delete purchase order');
+      }
+    } catch (error) {
+      console.error('Error deleting purchase order:', error);
+      alert('Failed to delete purchase order');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -258,7 +297,7 @@ export default function PurchaseOrderPage() {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Delivery Date</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Download</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -281,13 +320,27 @@ export default function PurchaseOrderPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleEdit(po)}
+                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <PencilSquareIcon className="h-5 w-5" />
+                          </button>
                           <button
                             onClick={() => handleDownload(po)}
                             className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                             title="Download PDF"
                           >
                             <ArrowDownTrayIcon className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(po)}
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <TrashIcon className="h-5 w-5" />
                           </button>
                         </div>
                       </td>
@@ -325,6 +378,41 @@ export default function PurchaseOrderPage() {
           )}
         </div>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && deletingPO && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <TrashIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Delete Purchase Order</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete purchase order <strong>{deletingPO.po_number}</strong>?
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setDeletingPO(null); }}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

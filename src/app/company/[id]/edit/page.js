@@ -41,7 +41,10 @@ export default function EditCompany({ params }) {
     contact_person: '',
     designation: '',
     mobile_number: '',
-    sector: ''
+    sector: '',
+    gstin: '',
+    pan_number: '',
+    company_profile: ''
   });
 
   useEffect(() => {
@@ -75,7 +78,10 @@ export default function EditCompany({ params }) {
             contact_person: companyData.contact_person || '',
             designation: companyData.designation || '',
             mobile_number: companyData.mobile_number || '',
-            sector: companyData.sector || ''
+            sector: companyData.sector || '',
+            gstin: companyData.gstin || '',
+            pan_number: companyData.pan_number || '',
+            company_profile: companyData.company_profile || ''
           });
         } else {
           console.error('Error fetching company:', result.error);
@@ -620,8 +626,56 @@ export default function EditCompany({ params }) {
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <h2 className="text-xl font-bold text-gray-900">Additional Information</h2>
-                        <p className="text-gray-600 text-sm mt-1">Notes and other details</p>
+                        <p className="text-gray-600 text-sm mt-1">Registration, profile and other details</p>
                       </div>
+                    </div>
+
+                    {/* Registration Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          GSTIN
+                        </label>
+                        <input
+                          type="text"
+                          name="gstin"
+                          value={formData.gstin}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., 22AAAAA0000A1Z5"
+                          maxLength={15}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          PAN Number
+                        </label>
+                        <input
+                          type="text"
+                          name="pan_number"
+                          value={formData.pan_number}
+                          onChange={handleFormChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                          placeholder="e.g., AAAAA0000A"
+                          maxLength={10}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Company Profile */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company Profile
+                      </label>
+                      <textarea
+                        name="company_profile"
+                        value={formData.company_profile}
+                        onChange={handleFormChange}
+                        rows={5}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
+                        placeholder="Detailed company profile, history, services offered, etc."
+                      />
                     </div>
 
                     <div>
@@ -632,7 +686,7 @@ export default function EditCompany({ params }) {
                         name="notes"
                         value={formData.notes}
                         onChange={handleFormChange}
-                        rows={6}
+                        rows={4}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent text-sm"
                         placeholder="Additional notes about this company..."
                       />

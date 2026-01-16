@@ -73,7 +73,9 @@ async function importCompaniesFromData(companies, fileType) {
       const optionalFields = [
         'industry', 'company_size', 'website', 'phone', 'email', 
         'address', 'city', 'state', 'country', 'postal_code', 
-        'description', 'founded_year', 'revenue', 'notes'
+        'description', 'founded_year', 'revenue', 'notes',
+        'location', 'contact_person', 'designation', 'mobile_number', 'sector',
+        'gstin', 'pan_number', 'company_profile'
       ];
 
       optionalFields.forEach(field => {

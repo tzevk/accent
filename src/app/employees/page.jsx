@@ -388,6 +388,41 @@ export default function EmployeesPage() {
     }
   };
 
+  // Delete employee
+  const handleDelete = async (employee) => {
+    if (!employee?.id) return;
+    
+    if (!confirm(`Are you sure you want to delete ${employee.first_name} ${employee.last_name}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/employees?id=${employee.id}`, {
+        method: 'DELETE'
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete employee');
+      }
+      
+      setSuccessMessage('Employee deleted successfully!');
+      // Refresh the employee list
+      await fetchEmployees();
+      
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      setFormErrors({ general: error.message || 'Failed to delete employee. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Add Employee sub-tabs (like Projects edit tabs)
   const addSubTabOrder = ['personal','contact','work','academic','govt','bank','attendance'];
   const [addSubTab, setAddSubTab] = useState('personal');

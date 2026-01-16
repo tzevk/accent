@@ -84,56 +84,44 @@ function generateInvoiceHTML(data) {
   }
   items = items || [];
 
+  // Calculate amounts
+  const subtotal = parseFloat(data.subtotal) || 0;
+  const cgstRate = 9;
+  const sgstRate = 9;
+  const cgstAmount = subtotal * cgstRate / 100;
+  const sgstAmount = subtotal * sgstRate / 100;
+  const totalGst = cgstAmount + sgstAmount;
+  const totalAfterTax = subtotal + totalGst;
+
   // Generate items rows
   let itemsHTML = '';
   if (items.length > 0) {
     items.forEach((item, index) => {
       const qty = parseFloat(item.quantity) || 1;
       const rate = parseFloat(item.rate) || parseFloat(item.unit_price) || 0;
-      const amount = qty * rate;
+      const amount = item.amount > 0 ? parseFloat(item.amount) : qty * rate;
+      const rowBg = index % 2 === 0 ? 'background: #fff;' : 'background: #fafafa;';
       itemsHTML += `
-        <tr>
-          <td style="border: 1px solid #000; padding: 8px; text-align: center;">${index + 1}</td>
-          <td style="border: 1px solid #000; padding: 8px;">${item.description || item.name || '-'}</td>
-          <td style="border: 1px solid #000; padding: 8px; text-align: center;">${qty}</td>
-          <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(rate)}</td>
-          <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(amount)}</td>
+        <tr style="${rowBg}">
+          <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center; color: #666;">${index + 1}</td>
+          <td style="border: 1px solid #eee; padding: 10px 8px; color: #1a1a1a;">${item.description || item.name || '-'}</td>
+          <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center;">${qty}</td>
+          <td style="border: 1px solid #eee; padding: 10px 8px; text-align: right;">${formatCurrency(rate).replace('₹', '')}</td>
+          <td style="border: 1px solid #eee; padding: 10px 8px; text-align: right; font-weight: 500;">${formatCurrency(amount).replace('₹', '')}</td>
         </tr>
       `;
     });
   } else {
     itemsHTML = `
       <tr>
-        <td style="border: 1px solid #000; padding: 8px; text-align: center;">1</td>
-        <td style="border: 1px solid #000; padding: 8px;">${data.description || '-'}</td>
-        <td style="border: 1px solid #000; padding: 8px; text-align: center;">1</td>
-        <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(data.subtotal)}</td>
-        <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(data.subtotal)}</td>
+        <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center; color: #666;">1</td>
+        <td style="border: 1px solid #eee; padding: 10px 8px; color: #1a1a1a;">${data.description || '-'}</td>
+        <td style="border: 1px solid #eee; padding: 10px 8px; text-align: center;">1</td>
+        <td style="border: 1px solid #eee; padding: 10px 8px; text-align: right;">${formatCurrency(subtotal).replace('₹', '')}</td>
+        <td style="border: 1px solid #eee; padding: 10px 8px; text-align: right; font-weight: 500;">${formatCurrency(subtotal).replace('₹', '')}</td>
       </tr>
     `;
   }
-
-  const subtotal = parseFloat(data.subtotal) || 0;
-  const taxRate = parseFloat(data.tax_rate) || 18;
-  const taxAmount = parseFloat(data.tax_amount) || (subtotal * taxRate / 100);
-  const discount = parseFloat(data.discount) || 0;
-  const total = parseFloat(data.total) || (subtotal + taxAmount - discount);
-  const amountPaid = parseFloat(data.amount_paid) || 0;
-  const balanceDue = parseFloat(data.balance_due) || (total - amountPaid);
-  
-  const amountInWords = amountToWords(total);
-
-  // Status badge
-  const getStatusBadge = (status) => {
-    const styles = {
-      draft: 'background: #f3f4f6; color: #374151;',
-      sent: 'background: #dbeafe; color: #1d4ed8;',
-      paid: 'background: #dcfce7; color: #15803d;',
-      overdue: 'background: #fee2e2; color: #dc2626;',
-      cancelled: 'background: #f3f4f6; color: #6b7280;'
-    };
-    return `<span style="padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; ${styles[status] || styles.draft}">${(status || 'draft').toUpperCase()}</span>`;
-  };
 
   return `
 <!DOCTYPE html>
@@ -141,215 +129,266 @@ function generateInvoiceHTML(data) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice - ${data.invoice_number || 'Draft'}</title>
+  <title>Tax Invoice - ${data.invoice_number || 'Draft'}</title>
   <style>
     @media print {
       body { margin: 0; padding: 0; }
       .no-print { display: none !important; }
-      .invoice-page { page-break-after: always; }
     }
-    @page { size: A4; margin: 15mm; }
+    @page { size: A4; margin: 10mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
-      font-family: Arial, sans-serif; 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
       font-size: 11px; 
-      line-height: 1.4; 
-      color: #000; 
-      background: white; 
+      line-height: 1.5; 
+      color: #1a1a1a; 
+      background: #f5f5f5; 
       padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      -webkit-font-smoothing: antialiased;
     }
-    .container { 
+    .invoice-container { 
       width: 100%; 
-      max-width: 750px; 
+      max-width: 800px; 
       margin: 0 auto; 
       background: white;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      border-radius: 4px;
+      overflow: hidden;
     }
-    .print-button { position: fixed; bottom: 20px; right: 20px; background: #000; color: white; border: none; padding: 12px 24px; border-radius: 4px; font-size: 13px; cursor: pointer; z-index: 1000; }
-    .print-button:hover { background: #333; }
-    table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; }
+    .print-button { 
+      position: fixed; 
+      bottom: 20px; 
+      right: 20px; 
+      background: linear-gradient(135deg, #1a1a1a 0%, #333 100%); 
+      color: white; 
+      border: none; 
+      padding: 14px 28px; 
+      border-radius: 6px; 
+      font-size: 13px; 
+      font-weight: 500;
+      cursor: pointer; 
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      transition: all 0.2s ease;
+    }
+    .print-button:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    }
+    table { border-collapse: collapse; }
+    .section-header {
+      background: #f8f8f8;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 10px;
+      color: #555;
+    }
+    .label-cell {
+      color: #666;
+      font-size: 10px;
+    }
+    .value-cell {
+      color: #1a1a1a;
+      font-weight: 500;
+    }
+    .highlight-row {
+      background: #fafafa;
+    }
+    .total-row {
+      background: #f0f0f0;
+      font-weight: 600;
+    }
+    .amount-words {
+      background: linear-gradient(135deg, #f8f8f8 0%, #f0f0f0 100%);
+      font-style: italic;
+      letter-spacing: 0.3px;
+    }
   </style>
 </head>
 <body>
-  <div class="container invoice-page">
-    <!-- Header with Logo -->
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 15px;">
-      <div style="display: flex; align-items: center;">
-        <img src="/accent-logo.png" alt="Accent Logo" style="height: 50px; margin-right: 15px;" onerror="this.style.display='none'"/>
-        <div>
-          <div style="font-size: 18px; font-weight: bold;">ACCENT TECHNO SOLUTIONS PVT. LTD.</div>
-          <div style="font-size: 10px; color: #666; margin-top: 4px;">Engineering Excellence</div>
-        </div>
-      </div>
-      <div style="text-align: right;">
-        <div style="font-size: 24px; font-weight: bold; color: #333;">INVOICE</div>
-        ${getStatusBadge(data.status)}
-      </div>
-    </div>
-
-    <!-- Invoice Details and Client Info -->
-    <table style="width: 100%; border: 2px solid #000; border-collapse: collapse; margin-bottom: 20px;">
+  <div class="invoice-container">
+    <!-- Main Invoice Table -->
+    <table style="width: 100%; border: 1px solid #ddd;">
+      
+      <!-- Title Row -->
       <tr>
-        <td style="border: 1px solid #000; padding: 0; vertical-align: top; width: 50%;">
-          <div style="padding: 10px; border-bottom: 1px solid #000; font-weight: bold; background: #f5f5f5;">Bill To:</div>
-          <div style="padding: 10px;">
-            <strong>${data.client_name || ''}</strong><br>
-            ${data.client_address ? data.client_address.replace(/\n/g, '<br>') : ''}
-            ${data.client_email ? `<br>Email: ${data.client_email}` : ''}
-            ${data.client_phone ? `<br>Phone: ${data.client_phone}` : ''}
-          </div>
+        <td colspan="5" style="border-bottom: 2px solid #333; padding: 16px; text-align: center; font-weight: 700; font-size: 16px; letter-spacing: 2px; background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);">
+          TAX INVOICE
         </td>
-        <td style="border: 1px solid #000; padding: 0; vertical-align: top; width: 50%;">
+      </tr>
+
+      <!-- Header Section: Client Info & Invoice Details -->
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 0; width: 50%; vertical-align: top;">
           <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="border-bottom: 1px solid #000; padding: 8px; font-weight: bold; background: #f5f5f5;">Invoice No.</td>
-              <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 8px;">${data.invoice_number || ''}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; width: 80px; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">To,</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;"></td>
             </tr>
             <tr>
-              <td style="border-bottom: 1px solid #000; padding: 8px; font-weight: bold;">Invoice Date</td>
-              <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 8px;">${formatDate(data.created_at)}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">Name</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; font-weight: 600; color: #1a1a1a;">: ${data.client_name || ''}</td>
             </tr>
             <tr>
-              <td style="border-bottom: 1px solid #000; padding: 8px; font-weight: bold;">Due Date</td>
-              <td style="border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 8px;">${formatDate(data.due_date)}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">Address</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${data.client_address || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 8px; font-weight: bold;">Status</td>
-              <td style="border-left: 1px solid #000; padding: 8px;">${(data.status || 'draft').toUpperCase()}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">PAN No.</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${data.client_pan || ''}</td>
+            </tr>
+            <tr>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">GSTIN</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${data.client_gstin || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; color: #666; font-size: 10px;">State</td>
+              <td style="padding: 8px 10px;">: ${data.client_state || ''} &nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #666;">State Code:</span> ${data.client_state_code || ''}</td>
+            </tr>
+          </table>
+        </td>
+        <td colspan="3" style="border: 1px solid #ddd; padding: 0; width: 50%; vertical-align: top;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; width: 115px; color: #666; font-size: 10px;">Invoice No.</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; font-weight: 600; color: #1a1a1a;">: ${data.invoice_number || ''}</td>
+            </tr>
+            <tr>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">Date of Invoice</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${formatDate(data.created_at)}</td>
+            </tr>
+            <tr>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">PO Number</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${data.po_number || ''}</td>
+            </tr>
+            <tr>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">PO Date</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${formatDate(data.po_date)}</td>
+            </tr>
+            <tr>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">Original PO Value</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: ${data.po_value ? formatCurrency(data.po_value).replace('₹', '') : ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; color: #666; font-size: 10px;">Balance PO Value</td>
+              <td style="padding: 8px 10px;">: ${data.balance_po_value ? formatCurrency(data.balance_po_value).replace('₹', '') : ''}</td>
             </tr>
           </table>
         </td>
       </tr>
-    </table>
 
-    <!-- Items Table -->
-    <table style="width: 100%; border: 2px solid #000; border-collapse: collapse; margin-bottom: 20px;">
-      <thead>
-        <tr style="background: #f5f5f5;">
-          <th style="border: 1px solid #000; padding: 10px; text-align: center; width: 50px;">Sr.</th>
-          <th style="border: 1px solid #000; padding: 10px; text-align: left;">Description</th>
-          <th style="border: 1px solid #000; padding: 10px; text-align: center; width: 60px;">Qty</th>
-          <th style="border: 1px solid #000; padding: 10px; text-align: center; width: 100px;">Rate</th>
-          <th style="border: 1px solid #000; padding: 10px; text-align: center; width: 100px;">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemsHTML}
-      </tbody>
-    </table>
-
-    <!-- Totals Section -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+      <!-- Kind Attn Row -->
       <tr>
-        <td style="width: 60%; vertical-align: top; padding-right: 20px;">
-          <div style="border: 2px solid #000; padding: 10px;">
-            <div style="font-weight: bold; margin-bottom: 5px;">Amount in Words:</div>
-            <div style="font-style: italic;">${amountInWords}</div>
-          </div>
+        <td colspan="5" style="border: 1px solid #ddd; padding: 10px 12px; background: #fafafa;">
+          <span style="color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Kind Attn.</span> : <strong>${data.kind_attn || ''}</strong>
         </td>
-        <td style="width: 40%; vertical-align: top;">
-          <table style="width: 100%; border: 2px solid #000; border-collapse: collapse;">
+      </tr>
+
+      <!-- Items Table Header -->
+      <tr>
+        <th style="border: 1px solid #ddd; padding: 10px 8px; text-align: center; width: 50px; background: #f5f5f5; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #555;">Sr. No.</th>
+        <th style="border: 1px solid #ddd; padding: 10px 8px; text-align: center; background: #f5f5f5; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #555;">Description</th>
+        <th style="border: 1px solid #ddd; padding: 10px 8px; text-align: center; width: 60px; background: #f5f5f5; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #555;">Unit</th>
+        <th style="border: 1px solid #ddd; padding: 10px 8px; text-align: center; width: 90px; background: #f5f5f5; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #555;">Charges</th>
+        <th style="border: 1px solid #ddd; padding: 10px 8px; text-align: center; width: 90px; background: #f5f5f5; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #555;">Amount</th>
+      </tr>
+
+      <!-- Items Rows -->
+      ${itemsHTML}
+
+      <!-- Bottom Section: Tax Details & Totals -->
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 0; vertical-align: top;" rowspan="6">
+          <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">Subtotal</td>
-              <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(subtotal)}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; width: 110px; color: #666; font-size: 10px;">GSTIN</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: 27AAHCA5765M1ZD</td>
             </tr>
             <tr>
-              <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">GST @ ${taxRate}%</td>
-              <td style="border: 1px solid #000; padding: 8px; text-align: right;">${formatCurrency(taxAmount)}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">PAN NO</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">: AAHCA5765M</td>
             </tr>
-            ${discount > 0 ? `
             <tr>
-              <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">Discount</td>
-              <td style="border: 1px solid #000; padding: 8px; text-align: right; color: green;">- ${formatCurrency(discount)}</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px; color: #666; font-size: 10px;">Service Category</td>
+              <td style="border-bottom: 1px solid #eee; padding: 8px 10px;">:</td>
             </tr>
-            ` : ''}
-            <tr style="background: #f5f5f5;">
-              <td style="border: 1px solid #000; padding: 10px; font-weight: bold; font-size: 12px;">Total</td>
-              <td style="border: 1px solid #000; padding: 10px; text-align: right; font-weight: bold; font-size: 12px;">${formatCurrency(total)}</td>
-            </tr>
-            ${amountPaid > 0 ? `
             <tr>
-              <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">Amount Paid</td>
-              <td style="border: 1px solid #000; padding: 8px; text-align: right; color: green;">${formatCurrency(amountPaid)}</td>
+              <td style="padding: 8px 10px; color: #666; font-size: 10px;">Tan No</td>
+              <td style="padding: 8px 10px;">:</td>
             </tr>
-            <tr style="background: #fff3cd;">
-              <td style="border: 1px solid #000; padding: 8px; font-weight: bold;">Balance Due</td>
-              <td style="border: 1px solid #000; padding: 8px; text-align: right; font-weight: bold; color: #dc2626;">${formatCurrency(balanceDue)}</td>
-            </tr>
-            ` : ''}
           </table>
         </td>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 10px 12px; text-align: right; background: #fafafa;"><strong>Total Amount Before Tax >></strong></td>
+        <td style="border: 1px solid #ddd; padding: 10px 12px; text-align: right; background: #fafafa; font-weight: 500;">${formatCurrency(subtotal).replace('₹', '')}</td>
       </tr>
-    </table>
-
-    <!-- Bank Details -->
-    <table style="width: 100%; border: 2px solid #000; border-collapse: collapse; margin-bottom: 20px;">
       <tr>
-        <td style="border: 1px solid #000; padding: 0; width: 50%;">
-          <div style="padding: 8px; font-weight: bold; background: #f5f5f5; border-bottom: 1px solid #000;">Bank Details:</div>
-          <div style="padding: 10px; font-size: 10px; line-height: 1.6;">
-            <strong>Bank Name:</strong> HDFC Bank<br>
-            <strong>Account Name:</strong> Accent Techno Solutions Pvt. Ltd.<br>
-            <strong>Account No:</strong> 50200012345678<br>
-            <strong>IFSC Code:</strong> HDFC0001234<br>
-            <strong>Branch:</strong> Mumbai
+        <td colspan="2" style="border: 1px solid #ddd; padding: 8px 12px; text-align: right; color: #555;">Add : CGST @ 9% >></td>
+        <td style="border: 1px solid #ddd; padding: 8px 12px; text-align: right;">${formatCurrency(cgstAmount).replace('₹', '')}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 8px 12px; text-align: right; color: #555;">Add : SGST @ 9% >></td>
+        <td style="border: 1px solid #ddd; padding: 8px 12px; text-align: right;">${formatCurrency(sgstAmount).replace('₹', '')}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 8px 12px; text-align: right; color: #555;">Add : IGST @ 18% >></td>
+        <td style="border: 1px solid #ddd; padding: 8px 12px; text-align: right; color: #999;">-</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 8px 12px; text-align: right; color: #555;">Total Amount : GST >></td>
+        <td style="border: 1px solid #ddd; padding: 8px 12px; text-align: right;">${formatCurrency(totalGst).replace('₹', '')}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 12px; text-align: right; background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%);"><strong style="font-size: 12px;">Total Amount After Tax >></strong></td>
+        <td style="border: 1px solid #ddd; padding: 12px; text-align: right; background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%);"><strong style="font-size: 13px;">${formatCurrency(totalAfterTax).replace('₹', '')}</strong></td>
+      </tr>
+
+      <!-- Amount in Words -->
+      <tr>
+        <td colspan="5" style="border: 1px solid #ddd; padding: 12px 14px; background: linear-gradient(135deg, #f8f8f8 0%, #f0f0f0 100%);">
+          <span style="color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Amount in Words:</span> <em style="font-style: italic; letter-spacing: 0.3px; margin-left: 8px;">${amountToWords(totalAfterTax)}</em>
+        </td>
+      </tr>
+
+      <!-- Payment Terms & Conditions -->
+      <tr>
+        <td colspan="5" style="border: 1px solid #ddd; padding: 12px 14px;">
+          <div style="font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #555; margin-bottom: 8px;">Payment Terms & Conditions:</div>
+          <div style="margin-left: 15px; color: #333; line-height: 1.6;">
+            <div>1. a) Payment shall be made within 30 days from the receipt of invoice.</div>
+            <div style="margin-left: 15px;">b) Interest @ 18% will be charged on delayed payment.</div>
+            <div>2. Subject to Mumbai Jurisdiction.</div>
           </div>
         </td>
-        <td style="border: 1px solid #000; padding: 0; width: 50%;">
-          <div style="padding: 8px; font-weight: bold; background: #f5f5f5; border-bottom: 1px solid #000;">Company Details:</div>
-          <div style="padding: 10px; font-size: 10px; line-height: 1.6;">
-            <strong>GST No:</strong> 27AABCA1234A1Z5<br>
-            <strong>PAN No:</strong> AABCA1234A<br>
-            <strong>CIN:</strong> U72200MH2020PTC123456
+      </tr>
+
+      <!-- Bank Details & Signature -->
+      <tr>
+        <td colspan="2" style="border: 1px solid #ddd; padding: 14px; vertical-align: top; background: #fafafa;">
+          <div style="margin-bottom: 10px; line-height: 1.5;">
+            Cheque/Demand Draft/Wire Transfer for requisite amount to be drawn in<br>
+            favor of <strong>"Accent Techno Solutions Pvt. Ltd"</strong> payable at Mumbai.
+          </div>
+          <div style="margin-top: 12px;">
+            <strong style="text-decoration: underline; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Payment remittance detail</strong><br>
+            <div style="margin-top: 6px; line-height: 1.6;">
+              Bank - Axis Bank Ltd.<br>
+              Add.- City Survey No. 841 to 846, "Florence" Florence CHS LTD.<br>
+              Vakola, Mumbai - 400 055 / A/c No. 917020044935714<br>
+              SWIFT CODE: AXISINBB028, IFS CODE: UTIB0001244.
+            </div>
           </div>
         </td>
+        <td colspan="3" style="border: 1px solid #ddd; padding: 14px; vertical-align: top; text-align: center;">
+          <div style="font-weight: 600; text-align: left; font-size: 11px;">For Accent Techno Solutions Private Limited</div>
+          <div style="height: 50px;"></div>
+          <div style="font-weight: bold;">Santosh Dinkar Mestry</div>
+          <div style="font-weight: 600;">Santosh Dinkar Mestry</div>
+          <div style="color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Director</div>
+        </td>
       </tr>
-    </table>
 
-    <!-- Notes & Terms -->
-    ${data.notes || data.terms ? `
-    <table style="width: 100%; border: 2px solid #000; border-collapse: collapse; margin-bottom: 20px;">
-      ${data.notes ? `
-      <tr>
-        <td style="border: 1px solid #000; padding: 0;">
-          <div style="padding: 8px; font-weight: bold; background: #f5f5f5; border-bottom: 1px solid #000;">Notes:</div>
-          <div style="padding: 10px; white-space: pre-wrap;">${data.notes}</div>
-        </td>
-      </tr>
-      ` : ''}
-      ${data.terms ? `
-      <tr>
-        <td style="border: 1px solid #000; padding: 0;">
-          <div style="padding: 8px; font-weight: bold; background: #f5f5f5; border-bottom: 1px solid #000;">Terms & Conditions:</div>
-          <div style="padding: 10px; white-space: pre-wrap; font-size: 10px;">${data.terms}</div>
-        </td>
-      </tr>
-      ` : ''}
     </table>
-    ` : ''}
-
-    <!-- Signature Section -->
-    <table style="width: 100%; border: 2px solid #000; border-collapse: collapse;">
-      <tr>
-        <td style="width: 50%; border: 1px solid #000; padding: 15px; vertical-align: top;">
-          <div style="font-size: 11px;">Receiver's Signature with Company Seal</div>
-          <div style="height: 60px;"></div>
-        </td>
-        <td style="width: 50%; border: 1px solid #000; padding: 15px; vertical-align: top;">
-          <div style="font-weight: bold;">For Accent Techno Solutions Private Limited</div>
-          <div style="height: 40px;"></div>
-          <div style="font-weight: bold;">Authorized Signatory</div>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Footer -->
-    <div style="text-align: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #ccc; font-size: 10px; color: #666;">
-      <p>Thank you for your business!</p>
-      <p style="margin-top: 5px;">This is a computer-generated invoice and does not require a signature.</p>
-    </div>
   </div>
   
   <button class="print-button no-print" onclick="window.print()">

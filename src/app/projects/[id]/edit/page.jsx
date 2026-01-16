@@ -442,6 +442,7 @@ function EditProjectForm() {
     po_date: '',
     client_name: '',
     vendor_name: '',
+    vendor_id: '',
     delivery_date: '',
     scope_of_work: '',
     gross_amount: '',
@@ -452,6 +453,11 @@ function EditProjectForm() {
     remarks: ''
   });
   const [purchaseOrderSaving, setPurchaseOrderSaving] = useState(false);
+  
+  // Vendors state for PO dropdown
+  const [vendors, setVendors] = useState([]);
+  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [loadingVendors, setLoadingVendors] = useState(false);
 
   // Invoice tab state
   const [invoiceData, setInvoiceData] = useState({
@@ -480,6 +486,19 @@ function EditProjectForm() {
           if (companiesData.success) setCompanies(companiesData.data || []);
         } catch (err) {
           console.warn('Failed to fetch companies', err);
+        }
+
+        // Fetch vendors for Purchase Order dropdown
+        try {
+          setLoadingVendors(true);
+          const vendorsData = await fetchJSON('/api/vendors');
+          if (vendorsData.success) {
+            setVendors(vendorsData.data || []);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch vendors', err);
+        } finally {
+          setLoadingVendors(false);
         }
 
         // Fetch functions (disciplines)
@@ -1226,17 +1245,89 @@ function EditProjectForm() {
     });
   };
 
+  // Handle vendor selection from dropdown
+  const handleVendorSelect = (e) => {
+    if (!canEditPurchaseOrders) return;
+    const vendorId = e.target.value;
+    if (vendorId === '') {
+      setSelectedVendor(null);
+      setPurchaseOrderData(prev => ({
+        ...prev,
+        vendor_name: '',
+        vendor_id: ''
+      }));
+      return;
+    }
+    const vendor = vendors.find(v => v.id.toString() === vendorId);
+    setSelectedVendor(vendor || null);
+    if (vendor) {
+      setPurchaseOrderData(prev => ({
+        ...prev,
+        vendor_name: vendor.vendor_name || '',
+        vendor_id: vendor.id
+      }));
+    }
+  };
+
   const savePurchaseOrder = async () => {
+    // Validate vendor selection
+    if (!selectedVendor && !purchaseOrderData.vendor_name) {
+      alert('Please select a vendor from the dropdown');
+      return;
+    }
+
     setPurchaseOrderSaving(true);
     try {
+      // Save to project-specific purchase order
       const res = await fetch(`/api/projects/${id}/purchase-order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(purchaseOrderData)
       });
       const json = await res.json();
+      
       if (json?.success) {
-        alert('Purchase Order saved successfully!');
+        // Also save to main purchase orders table for display on Purchase Order page
+        const vendorAddress = selectedVendor ? [
+          selectedVendor.address_street,
+          selectedVendor.address_city,
+          selectedVendor.address_state,
+          selectedVendor.address_country,
+          selectedVendor.address_pin
+        ].filter(Boolean).join(', ') : '';
+
+        const mainPORes = await fetch('/api/admin/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            po_number: purchaseOrderData.po_number,
+            vendor_name: purchaseOrderData.vendor_name || selectedVendor?.vendor_name,
+            vendor_email: selectedVendor?.email || '',
+            vendor_phone: selectedVendor?.phone || '',
+            vendor_address: vendorAddress,
+            description: purchaseOrderData.scope_of_work,
+            items: [],
+            subtotal: parseFloat(purchaseOrderData.gross_amount) || 0,
+            tax_rate: parseFloat(purchaseOrderData.gst_percentage) || 18,
+            tax_amount: parseFloat(purchaseOrderData.gst_amount) || 0,
+            discount: 0,
+            total: parseFloat(purchaseOrderData.net_amount) || 0,
+            notes: purchaseOrderData.remarks,
+            terms: purchaseOrderData.payment_terms,
+            delivery_date: purchaseOrderData.delivery_date || null,
+            status: 'pending',
+            project_id: id
+          })
+        });
+        
+        const mainPOJson = await mainPORes.json();
+        
+        if (mainPOJson?.success) {
+          alert('Purchase Order saved successfully!');
+        } else {
+          // Project PO saved but main PO failed - still consider partial success
+          alert('Purchase Order saved to project. Note: ' + (mainPOJson?.message || 'Could not sync to main PO list'));
+        }
       } else {
         alert('Failed to save purchase order: ' + (json?.error || 'Unknown error'));
       }
@@ -1250,13 +1341,22 @@ function EditProjectForm() {
 
   // Sync purchase order data - only client name from project
   const syncPurchaseOrderFromProject = useCallback(() => {
-    setPurchaseOrderData(prev => ({
-      ...prev,
-      po_number: prev.po_number || `PO-${String(id).padStart(5, '0')}`,
-      po_date: prev.po_date || new Date().toISOString().split('T')[0],
-      client_name: form.client_name || ''
-    }));
-  }, [form.client_name, id]);
+    setPurchaseOrderData(prev => {
+      // If vendor_id exists in previous data, find and set the selected vendor
+      if (prev.vendor_id && vendors.length > 0) {
+        const vendor = vendors.find(v => v.id === prev.vendor_id || v.id.toString() === prev.vendor_id.toString());
+        if (vendor) {
+          setSelectedVendor(vendor);
+        }
+      }
+      return {
+        ...prev,
+        po_number: prev.po_number || `PO-${String(id).padStart(5, '0')}`,
+        po_date: prev.po_date || new Date().toISOString().split('T')[0],
+        client_name: form.client_name || ''
+      };
+    });
+  }, [form.client_name, id, vendors]);
 
   // Auto-sync when switching to purchase order tab (after project data is loaded)
   useEffect(() => {
@@ -5169,16 +5269,24 @@ function EditProjectForm() {
                   {/* Row 2: Vendor Name & Delivery Date */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium text-black mb-1">Vendor Name</label>
-                      <input
-                        type="text"
-                        name="vendor_name"
-                        value={purchaseOrderData.vendor_name}
-                        onChange={handlePurchaseOrderChange}
-                        placeholder="Vendor/Supplier Name"
-                        disabled={!canEditPurchaseOrders}
+                      <label className="block text-xs font-medium text-black mb-1">
+                        Vendor Name <span className="text-gray-400 text-[10px]">(from Vendor Master)</span>
+                      </label>
+                      <select
+                        value={selectedVendor?.id || purchaseOrderData.vendor_id || ''}
+                        onChange={handleVendorSelect}
+                        disabled={!canEditPurchaseOrders || loadingVendors}
                         className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
+                      >
+                        <option value="">
+                          {loadingVendors ? 'Loading vendors...' : '-- Select a Vendor --'}
+                        </option>
+                        {vendors.map((vendor) => (
+                          <option key={vendor.id} value={vendor.id}>
+                            {vendor.vendor_name} {vendor.vendor_id ? `(${vendor.vendor_id})` : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-black mb-1">Delivery Date</label>
@@ -5192,6 +5300,45 @@ function EditProjectForm() {
                       />
                     </div>
                   </div>
+
+                  {/* Selected Vendor Details */}
+                  {selectedVendor && (
+                    <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                      <h3 className="text-xs font-semibold text-purple-900 mb-3">Selected Vendor Details</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                        <div>
+                          <span className="text-purple-600">Vendor Name:</span>
+                          <p className="font-medium text-gray-900">{selectedVendor.vendor_name || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-purple-600">Email:</span>
+                          <p className="font-medium text-gray-900">{selectedVendor.email || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-purple-600">Phone:</span>
+                          <p className="font-medium text-gray-900">{selectedVendor.phone || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-purple-600">GST/VAT ID:</span>
+                          <p className="font-medium text-gray-900">{selectedVendor.gst_vat_tax_id || '-'}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-purple-600">Address:</span>
+                          <p className="font-medium text-gray-900">
+                            {[selectedVendor.address_street, selectedVendor.address_city, selectedVendor.address_state, selectedVendor.address_country].filter(Boolean).join(', ') || '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-purple-600">Contact Person:</span>
+                          <p className="font-medium text-gray-900">{selectedVendor.contact_person || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="text-purple-600">Vendor Type:</span>
+                          <p className="font-medium text-gray-900">{selectedVendor.vendor_type || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Row 3: Scope of Work */}
                   <div>
@@ -5307,6 +5454,33 @@ function EditProjectForm() {
                           <p className="text-xs text-gray-500">GST ({purchaseOrderData.gst_percentage}%): ₹{parseFloat(purchaseOrderData.gst_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Save Purchase Order Button */}
+                  {canEditPurchaseOrders && (
+                    <div className="flex justify-end pt-4 border-t border-gray-200">
+                      <button
+                        type="button"
+                        onClick={savePurchaseOrder}
+                        disabled={purchaseOrderSaving}
+                        className="px-6 py-3 bg-gradient-to-r from-[#7F2487] to-[#9a2fa3] text-white text-sm font-medium rounded-lg hover:from-[#6a1f72] hover:to-[#7F2487] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg transition-all"
+                      >
+                        {purchaseOrderSaving ? (
+                          <>
+                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Saving Purchase Order...
+                          </>
+                        ) : (
+                          <>
+                            <CheckIcon className="h-5 w-5" />
+                            Save Purchase Order
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>

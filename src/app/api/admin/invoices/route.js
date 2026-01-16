@@ -27,6 +27,15 @@ export async function GET(request) {
         client_email VARCHAR(255),
         client_phone VARCHAR(50),
         client_address TEXT,
+        client_pan VARCHAR(20),
+        client_gstin VARCHAR(20),
+        client_state VARCHAR(100),
+        client_state_code VARCHAR(10),
+        kind_attn VARCHAR(255),
+        po_number VARCHAR(100),
+        po_date DATE,
+        po_value DECIMAL(15, 2),
+        balance_po_value DECIMAL(15, 2),
         description VARCHAR(500),
         items JSON,
         subtotal DECIMAL(15, 2) DEFAULT 0,
@@ -48,6 +57,27 @@ export async function GET(request) {
         INDEX idx_due_date (due_date)
       )
     `);
+
+    // Add new columns if they don't exist (for existing tables)
+    const newColumns = [
+      { name: 'client_pan', definition: 'VARCHAR(20) AFTER client_address' },
+      { name: 'client_gstin', definition: 'VARCHAR(20) AFTER client_pan' },
+      { name: 'client_state', definition: 'VARCHAR(100) AFTER client_gstin' },
+      { name: 'client_state_code', definition: 'VARCHAR(10) AFTER client_state' },
+      { name: 'kind_attn', definition: 'VARCHAR(255) AFTER client_state_code' },
+      { name: 'po_number', definition: 'VARCHAR(100) AFTER kind_attn' },
+      { name: 'po_date', definition: 'DATE AFTER po_number' },
+      { name: 'po_value', definition: 'DECIMAL(15, 2) AFTER po_date' },
+      { name: 'balance_po_value', definition: 'DECIMAL(15, 2) AFTER po_value' }
+    ];
+
+    for (const col of newColumns) {
+      try {
+        await connection.execute(`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`);
+      } catch (alterError) {
+        // Column likely already exists, ignore
+      }
+    }
 
     // Build query
     let query = 'SELECT * FROM invoices WHERE 1=1';
@@ -140,6 +170,15 @@ export async function POST(request) {
       client_email,
       client_phone,
       client_address,
+      client_pan,
+      client_gstin,
+      client_state,
+      client_state_code,
+      kind_attn,
+      po_number,
+      po_date,
+      po_value,
+      balance_po_value,
       description,
       items,
       subtotal,
@@ -173,15 +212,26 @@ export async function POST(request) {
     const [result] = await connection.execute(
       `INSERT INTO invoices (
         invoice_number, client_name, client_email, client_phone, client_address,
+        client_pan, client_gstin, client_state, client_state_code, kind_attn,
+        po_number, po_date, po_value, balance_po_value,
         description, items, subtotal, tax_rate, tax_amount, discount, total,
         amount_paid, balance_due, notes, terms, due_date, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         invoiceNumber,
         client_name,
         client_email || null,
         client_phone || null,
         client_address || null,
+        client_pan || null,
+        client_gstin || null,
+        client_state || null,
+        client_state_code || null,
+        kind_attn || null,
+        po_number || null,
+        po_date || null,
+        po_value || null,
+        balance_po_value || null,
         description || null,
         JSON.stringify(items || []),
         subtotal || 0,

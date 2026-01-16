@@ -120,7 +120,10 @@ export async function POST(request) {
       contact_person,
       designation,
       mobile_number,
-      sector
+      sector,
+      gstin,
+      pan_number,
+      company_profile
     } = data;
 
     if (!company_name) {
@@ -157,6 +160,9 @@ export async function POST(request) {
         designation VARCHAR(100),
         mobile_number VARCHAR(20),
         sector VARCHAR(100),
+        gstin VARCHAR(20),
+        pan_number VARCHAR(15),
+        company_profile TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
@@ -175,15 +181,15 @@ export async function POST(request) {
         company_id, company_name, industry, company_size, website, phone, email,
         address, city, state, country, postal_code, description,
         founded_year, revenue, notes, location, contact_person, designation,
-        mobile_number, sector
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        mobile_number, sector, gstin, pan_number, company_profile
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         company_id || null, company_name, industry || null, company_size || null, 
         website || null, phone || null, email || null, address || null, 
         city || null, state || null, country || null, postal_code || null, 
         description || null, founded_year || null, revenue || null, notes || null,
         location || null, contact_person || null, designation || null,
-        mobile_number || null, sector || null
+        mobile_number || null, sector || null, gstin || null, pan_number || null, company_profile || null
       ]
     );
     // Fetch the created company
