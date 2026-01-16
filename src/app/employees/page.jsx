@@ -149,7 +149,9 @@ export default function EmployeesPage() {
     notes: '',
     // System Role assignment (maps to roles_master.id and role_name)
     system_role_id: '',
-    system_role_name: ''
+    system_role_name: '',
+    // Deputation company
+    deputation_company_id: ''
   };
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -174,6 +176,8 @@ export default function EmployeesPage() {
   const [roles, setRoles] = useState([]);
   // Users from user master for username dropdown
   const [users, setUsers] = useState([]);
+  // Companies for deputation dropdown
+  const [companies, setCompanies] = useState([]);
   // Safe wrapper for opening the view form
   const openViewForm = (employee) => {
     if (!employee) return;
@@ -303,13 +307,23 @@ export default function EmployeesPage() {
       // Refresh the employee list
       await fetchEmployees();
       
-      // Reset form and go back to list
-      setTimeout(() => {
-        setActiveTab('list');
-        setSelectedEmployee(null);
-        setFormData(defaultFormData);
-        setSuccessMessage('');
-      }, 1500);
+      // If editing, stay on the same page; if adding new, go back to list
+      if (selectedEmployee) {
+        // Update selectedEmployee with latest data and stay on edit page
+        const updatedEmployee = result.data || { ...selectedEmployee, ...formData };
+        setSelectedEmployee(updatedEmployee);
+        setTimeout(() => {
+          setSuccessMessage('');
+        }, 2000);
+      } else {
+        // Reset form and go back to list for new employee
+        setTimeout(() => {
+          setActiveTab('list');
+          setSelectedEmployee(null);
+          setFormData(defaultFormData);
+          setSuccessMessage('');
+        }, 1500);
+      }
 
     } catch (error) {
       console.error('Error saving employee:', error);
@@ -1636,6 +1650,20 @@ export default function EmployeesPage() {
     loadUsers();
   }, []);
 
+  // Load companies for deputation dropdown
+  useEffect(() => {
+    const loadCompanies = async () => {
+      try {
+        const res = await fetch('/api/companies');
+        const json = await res.json();
+        if (res.ok && json?.success) {
+          setCompanies(json.data || []);
+        }
+      } catch {}
+    };
+    loadCompanies();
+  }, []);
+
   // Fetch DA on component mount so it's available for all profiles
   useEffect(() => {
     fetchCurrentDA();
@@ -2077,7 +2105,7 @@ export default function EmployeesPage() {
                   </div>
                   <div className="overflow-y-auto">
                     {employees.map(emp => (
-                      <div key={emp.id} onClick={() => openViewForm(emp)} role="button" tabIndex={0} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer focus:outline-none" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openViewForm(emp); }}>
+                      <div key={emp.id} onClick={() => openEditForm_safe(emp)} role="button" tabIndex={0} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer focus:outline-none" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openEditForm_safe(emp); }}>
                         <div className="flex items-center">
                           <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
                           <div className="ml-3 min-w-0">
@@ -2255,6 +2283,30 @@ export default function EmployeesPage() {
                             <option value="Mumbai">Mumbai</option>
                           </select>
                         </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Employee Type</label>
+                          <select value={formData.employee_type || ''} onChange={(e) => setFormData({ ...formData, employee_type: e.target.value, deputation_company_id: e.target.value !== 'Deputation' ? '' : formData.deputation_company_id })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="">Select</option>
+                            <option value="Payroll">Payroll</option>
+                            <option value="Contract">Contract</option>
+                            <option value="Deputation">Deputation</option>
+                          </select>
+                        </div>
+                        {formData.employee_type === 'Deputation' && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                            <select 
+                              value={formData.deputation_company_id || ''} 
+                              onChange={(e) => setFormData({ ...formData, deputation_company_id: e.target.value })} 
+                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            >
+                              <option value="">Select Company</option>
+                              {companies.map((company) => (
+                                <option key={company.id} value={company.id}>{company.company_name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                     </div>
                     )}
@@ -2312,15 +2364,6 @@ export default function EmployeesPage() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
                           <input type="text" value={formData.position || ''} onChange={(e) => setFormData({ ...formData, position: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Employee Type</label>
-                          <select value={formData.employee_type || ''} onChange={(e) => setFormData({ ...formData, employee_type: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
-                            <option value="">Select</option>
-                            <option value="Permanent">Permanent</option>
-                            <option value="Contract">Contract</option>
-                            <option value="Intern">Intern</option>
-                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Grade</label>
@@ -2539,11 +2582,7 @@ export default function EmployeesPage() {
                         className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
                           selectedEmployee?.id === emp.id ? 'bg-purple-50 border-purple-200' : ''
                         }`}
-                        onClick={() => {
-                          setSelectedEmployee(emp);
-                          setFormData(emp);
-                          setEditSubTab('personal');
-                        }}
+                        onClick={() => openEditForm_safe(emp)}
                       >
                         <div className="flex items-center">
                           <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
@@ -2743,6 +2782,30 @@ export default function EmployeesPage() {
                             </select>
                           </div>
                           <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Employee Type</label>
+                          <select value={formData.employee_type || ''} onChange={(e) => setFormData({ ...formData, employee_type: e.target.value, deputation_company_id: e.target.value !== 'Deputation' ? '' : formData.deputation_company_id })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="">Select</option>
+                            <option value="Payroll">Payroll</option>
+                            <option value="Contract">Contract</option>
+                            <option value="Deputation">Deputation</option>
+                          </select>
+                        </div>
+                        {formData.employee_type === 'Deputation' && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Company Name *</label>
+                            <select 
+                              value={formData.deputation_company_id || ''} 
+                              onChange={(e) => setFormData({ ...formData, deputation_company_id: e.target.value })} 
+                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            >
+                              <option value="">Select Company</option>
+                              {companies.map((company) => (
+                                <option key={company.id} value={company.id}>{company.company_name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                          <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">System Role</label>
                             <select
                               value={formData.system_role_id || ''}
@@ -2860,15 +2923,6 @@ export default function EmployeesPage() {
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
                             <input type="text" value={formData.position || ''} onChange={(e) => setFormData({ ...formData, position: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Employee Type</label>
-                            <select value={formData.employee_type || ''} onChange={(e) => setFormData({ ...formData, employee_type: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">
-                              <option value="">Select</option>
-                              <option value="Permanent">Permanent</option>
-                              <option value="Contract">Contract</option>
-                              <option value="Intern">Intern</option>
-                            </select>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Grade</label>
@@ -4323,12 +4377,9 @@ export default function EmployeesPage() {
                       </button>
 
                       <div className="flex space-x-4">
-                        {editSubTabOrder.indexOf(editSubTab) === editSubTabOrder.length - 1 ? (
-                          <>
-                            <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
-                            <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Updating...' : 'Update Employee'}</button>
-                          </>
-                        ) : (
+                        <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button type="submit" disabled={loading || profileLocked} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Saving...' : 'Save'}</button>
+                        {editSubTabOrder.indexOf(editSubTab) < editSubTabOrder.length - 1 && (
                           <button
                             type="button"
                             onClick={async () => {

@@ -14,8 +14,10 @@ import {
   Bars3Icon,
   XMarkIcon,
   UserCircleIcon,
-  ChevronDownIcon,  // Still used for Admin dropdown
-  ShieldCheckIcon
+  ChevronDownIcon,
+  ShieldCheckIcon,
+  ChartBarIcon,
+  DocumentCurrencyDollarIcon
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
@@ -26,6 +28,11 @@ const navigationConfig = [
   { name: 'Leads', href: '/leads', icon: UserGroupIcon, resource: 'leads' },
   { name: 'Proposals', href: '/proposals', icon: DocumentTextIcon, resource: 'proposals' },
   { name: 'Projects', href: '/projects', icon: BriefcaseIcon, resource: 'projects' },
+];
+
+// Reports menu items
+const reportsMenuConfig = [
+  { name: 'Salary Slip', href: '/reports', icon: DocumentCurrencyDollarIcon, resource: 'reports' },
 ];
 
 // Admin menu items with their resource keys
@@ -47,6 +54,7 @@ export default function Navbar() {
   const isSignin = pathname.startsWith('/signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+  const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
   const { loading: userLoading, user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
@@ -78,6 +86,19 @@ export default function Navbar() {
   // Check if admin menu should be visible
   const showAdminMenu = adminMenuItems.length > 0;
 
+  // Filter reports menu items based on permissions
+  const reportsMenuItems = useMemo(() => {
+    if (userLoading || !user) return []; // Hide reports while loading
+    if (user.is_super_admin) return reportsMenuConfig; // Super admin sees all
+    
+    return reportsMenuConfig.filter(item => {
+      return can(item.resource, PERMISSIONS.READ);
+    });
+  }, [user, userLoading, can, PERMISSIONS]);
+
+  // Check if reports menu should be visible
+  const showReportsMenu = reportsMenuItems.length > 0;
+
   // Handle scroll effect
   useEffect(() => {
     const handleScroll = () => {
@@ -96,6 +117,7 @@ export default function Navbar() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsAdminMenuOpen(false);
+    setIsReportsMenuOpen(false);
   }, [pathname]);
 
   // Close dropdowns when clicking outside
@@ -104,10 +126,13 @@ export default function Navbar() {
       if (isAdminMenuOpen && !e.target.closest('.admin-dropdown')) {
         setIsAdminMenuOpen(false);
       }
+      if (isReportsMenuOpen && !e.target.closest('.reports-dropdown')) {
+        setIsReportsMenuOpen(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [isAdminMenuOpen]);
+  }, [isAdminMenuOpen, isReportsMenuOpen]);
 
   const handleSignOut = async () => {
     // Clear session cache immediately to prevent stale data
@@ -200,6 +225,75 @@ export default function Navbar() {
                 );
               })}
               
+              {/* Reports Dropdown - Only show if user has reports permissions */}
+              {showReportsMenu && (
+              <div className="relative reports-dropdown">
+                <button
+                  onClick={() => setIsReportsMenuOpen(!isReportsMenuOpen)}
+                  className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
+                    pathname.startsWith('/reports')
+                      ? 'text-white shadow-lg'
+                      : 'text-white/90 hover:text-white'
+                  }`}
+                  style={{
+                    background: pathname.startsWith('/reports')
+                      ? 'rgba(255, 255, 255, 0.2)'
+                      : isReportsMenuOpen
+                        ? 'rgba(255, 255, 255, 0.1)'
+                        : 'transparent'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!pathname.startsWith('/reports')) {
+                      e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!pathname.startsWith('/reports') && !isReportsMenuOpen) {
+                      e.target.style.background = 'transparent';
+                    }
+                  }}
+                >
+                  <ChartBarIcon className={`h-5 w-5 transition-transform duration-200 ${
+                    pathname.startsWith('/reports') ? '' : 'group-hover:scale-110'
+                  }`} />
+                  <span className="font-medium">Reports</span>
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${
+                    isReportsMenuOpen ? 'rotate-180' : ''
+                  }`} />
+                  {pathname.startsWith('/reports') && (
+                    <div
+                      className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 rounded-full"
+                      style={{ backgroundColor: '#FFFFFF' }}
+                    />
+                  )}
+                </button>
+
+                {/* Reports Dropdown Menu */}
+                {isReportsMenuOpen && (
+                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
+                    {reportsMenuItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          onClick={() => setIsReportsMenuOpen(false)}
+                          className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+                            pathname === item.href
+                              ? 'text-purple-700 bg-purple-50 font-medium'
+                              : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {item.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              )}
+
               {/* Admin Dropdown - Only show if user has admin permissions */}
               {showAdminMenu && (
               <div className="relative admin-dropdown">
@@ -334,7 +428,30 @@ export default function Navbar() {
                 );
               })}
               
-              {/* Masters removed on mobile too */}
+              {/* Reports Section on Mobile */}
+              {showReportsMenu && (
+                <div className="pt-2 mt-2 border-t border-white/10">
+                  <p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">Reports</p>
+                  {reportsMenuItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[.98] ${
+                          isActive
+                            ? 'bg-white/20 text-white'
+                            : 'text-white/90 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                        <span>{item.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
               
               {/* Mobile Profile Section */}
               <div className="pt-4 mt-4 border-t border-white/20">

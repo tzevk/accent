@@ -155,7 +155,7 @@ export async function getEmployeeAttendance(employeeId, month) {
 }
 
 /**
- * Get employee's current salary profile
+ * Get employee's current salary profile from salary_structures table
  * @param {number} employeeId - Employee ID
  * @param {Date} forDate - Date to check (defaults to today)
  * @returns {Promise<object|null>} Salary profile or null
@@ -163,22 +163,49 @@ export async function getEmployeeAttendance(employeeId, month) {
 export async function getEmployeeSalaryProfile(employeeId, forDate = new Date()) {
   const db = await dbConnect();
   
+  // Format date for MySQL
+  const dateStr = typeof forDate === 'string' ? forDate : forDate.toISOString().split('T')[0];
+  
   try {
+    // First try the salary_structures table (newer) - simplified query
     const [rows] = await db.execute(
+      `SELECT 
+        ss.*,
+        ss.ctc as gross_salary,
+        ss.basic_salary as basic_plus_da,
+        ss.pf_applicable,
+        ss.esic_applicable,
+        ss.pt_applicable,
+        ss.mlwf_applicable,
+        ss.standard_working_days
+       FROM salary_structures ss
+       WHERE ss.employee_id = ? 
+         AND ss.is_active = 1
+       ORDER BY ss.effective_from DESC
+       LIMIT 1`,
+      [employeeId]
+    );
+    
+    if (rows.length > 0) {
+      db.release();
+      return rows[0];
+    }
+    
+    // Fallback to employee_salary_profile table (legacy)
+    const [legacyRows] = await db.execute(
       `SELECT * 
        FROM employee_salary_profile 
        WHERE employee_id = ? 
-         AND is_active = 1 
-         AND ? >= effective_from 
-         AND (effective_to IS NULL OR ? <= effective_to)
+         AND is_active = 1
+       ORDER BY effective_from DESC
        LIMIT 1`,
-      [employeeId, forDate, forDate]
+      [employeeId]
     );
     
-    await db.end();
-    return rows.length > 0 ? rows[0] : null;
+    db.release();
+    return legacyRows.length > 0 ? legacyRows[0] : null;
   } catch (error) {
-    await db.end();
+    db.release();
     console.error('Error getting employee salary profile:', error);
     return null;
   }
@@ -196,7 +223,8 @@ export async function calculateEmployeePayroll(employeeId, month) {
   const profile = await getEmployeeSalaryProfile(employeeId, month);
   
   if (!profile) {
-    throw new Error(`No active salary profile found for employee ${employeeId}`);
+    // Return null instead of throwing - let caller handle missing profile
+    return null;
   }
   
   // Get current DA
@@ -420,6 +448,10 @@ export async function calculateEmployeePayroll(employeeId, month) {
 export async function generatePayrollSlip(employeeId, month) {
   const payroll = await calculateEmployeePayroll(employeeId, month);
   
+  if (!payroll) {
+    throw new Error(`No active salary profile found for employee ${employeeId}. Please set up salary structure first.`);
+  }
+  
   const db = await dbConnect();
   
   try {
@@ -452,6 +484,9 @@ export async function generatePayrollSlip(employeeId, month) {
     }
     
     // Insert payroll slip with attendance data
+    // Helper to convert undefined to null
+    const n = (val) => val === undefined ? null : val;
+    
     const [result] = await db.execute(
       `INSERT INTO payroll_slips (
         month, employee_id, gross, da_used, da, basic, hra, conveyance, call_allowance,
@@ -465,19 +500,49 @@ export async function generatePayrollSlip(employeeId, month) {
         payment_status, remarks
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        payroll.month, payroll.employee_id, payroll.gross, payroll.da_used, payroll.da,
-        payroll.basic, payroll.hra, payroll.conveyance, payroll.call_allowance,
-        payroll.other_allowances, payroll.bonus, payroll.incentive, payroll.total_earnings,
-        payroll.pf_employee, payroll.esic_employee, payroll.pt, payroll.mlwf, payroll.retention,
-        payroll.lwf, payroll.tds, payroll.other_deductions, payroll.total_deductions, payroll.net_pay,
-        payroll.pf_employer, payroll.esic_employer, payroll.mlwf_employer, payroll.insurance,
-        payroll.gratuity, payroll.pf_admin, payroll.edli, payroll.total_employer_contributions,
-        payroll.employer_cost,
-        payroll.attendance.standard_working_days, payroll.attendance.days_present,
-        payroll.attendance.days_absent, payroll.attendance.days_leave, payroll.attendance.payable_days,
-        payroll.attendance.lop_days, payroll.lop_deduction, payroll.attendance.overtime_hours,
-        payroll.full_month.gross,
-        payroll.payment_status, payroll.remarks
+        payroll.month, 
+        payroll.employee_id, 
+        n(payroll.gross) || 0, 
+        n(payroll.da_used) || 0, 
+        n(payroll.da_used) || 0, // da = da_used
+        n(payroll.basic) || 0, 
+        n(payroll.hra) || 0, 
+        n(payroll.conveyance) || 0, 
+        n(payroll.call_allowance) || 0,
+        n(payroll.other_allowances) || 0, 
+        n(payroll.bonus) || 0, 
+        n(payroll.incentive) || 0, 
+        n(payroll.total_earnings) || 0,
+        n(payroll.pf_employee) || 0, 
+        n(payroll.esic_employee) || 0, 
+        n(payroll.pt) || 0, 
+        n(payroll.mlwf) || 0, 
+        n(payroll.retention) || 0,
+        n(payroll.lwf) || 0, 
+        n(payroll.tds) || 0, 
+        n(payroll.other_deductions) || 0, 
+        n(payroll.total_deductions) || 0, 
+        n(payroll.net_pay) || 0,
+        n(payroll.pf_employer) || 0, 
+        n(payroll.esic_employer) || 0, 
+        n(payroll.mlwf_employer) || 0, 
+        n(payroll.insurance) || 0,
+        n(payroll.gratuity) || 0, 
+        n(payroll.pf_admin) || 0, 
+        n(payroll.edli) || 0, 
+        n(payroll.total_employer_contributions) || 0,
+        n(payroll.employer_cost) || 0,
+        n(payroll.attendance?.standard_working_days) || 26, 
+        n(payroll.attendance?.days_present) || 0,
+        n(payroll.attendance?.days_absent) || 0, 
+        n(payroll.attendance?.days_leave) || 0, 
+        n(payroll.attendance?.payable_days) || 26,
+        n(payroll.attendance?.lop_days) || 0, 
+        n(payroll.lop_deduction) || 0, 
+        n(payroll.attendance?.overtime_hours) || 0,
+        n(payroll.full_month?.gross) || 0,
+        payroll.payment_status || 'pending', 
+        payroll.remarks || null
       ]
     );
     
@@ -508,16 +573,29 @@ export async function generateMonthlyPayroll(month) {
   const db = await dbConnect();
   
   try {
-    // Get all employees with active salary profiles
-    const [employees] = await db.execute(
-      `SELECT DISTINCT esp.employee_id, e.name 
+    // Get all employees with active salary structures (newer table)
+    const [ssEmployees] = await db.execute(
+      `SELECT DISTINCT ss.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name 
+       FROM salary_structures ss
+       JOIN employees e ON e.id = ss.employee_id
+       WHERE (e.status = 'active' OR e.status IS NULL)
+         AND ss.is_active = 1`,
+      []
+    );
+    
+    // Get all employees with active salary profiles (legacy table) not already in salary_structures
+    const [espEmployees] = await db.execute(
+      `SELECT DISTINCT esp.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name 
        FROM employee_salary_profile esp
        JOIN employees e ON e.id = esp.employee_id
-       WHERE esp.is_active = 1 
-         AND ? >= esp.effective_from 
-         AND (esp.effective_to IS NULL OR ? <= esp.effective_to)`,
-      [month, month]
+       WHERE (e.status = 'active' OR e.status IS NULL)
+         AND esp.is_active = 1
+         AND esp.employee_id NOT IN (SELECT employee_id FROM salary_structures WHERE is_active = 1)`,
+      []
     );
+    
+    // Combine both lists
+    const employees = [...ssEmployees, ...espEmployees];
     
     await db.end();
     

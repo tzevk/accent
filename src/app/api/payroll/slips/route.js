@@ -23,7 +23,12 @@ export async function GET(request) {
     const db = await dbConnect();
     
     let query = `
-      SELECT ps.*, e.name as employee_name, e.employee_code
+      SELECT ps.*, 
+             CONCAT(e.first_name, ' ', e.last_name) as employee_name, 
+             e.employee_id as employee_code,
+             e.department,
+             e.grade as designation,
+             e.joining_date
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
       WHERE 1=1
@@ -45,7 +50,7 @@ export async function GET(request) {
       params.push(payment_status);
     }
     
-    query += ` ORDER BY ps.month DESC, ps.employee_id`;
+    query += ` ORDER BY ps.month DESC, e.first_name ASC`;
     
     const [rows] = await db.execute(query, params);
     
@@ -112,6 +117,56 @@ export async function PUT(request) {
     console.error('PUT /api/payroll/slips error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update payroll slip', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE - Delete a payroll slip or all slips
+ */
+export async function DELETE(request) {
+  // RBAC check
+  const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.DELETE);
+  if (authResult.authorized === false) return authResult.response;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const all = searchParams.get('all');
+    
+    const db = await dbConnect();
+    
+    if (all === 'true') {
+      // Delete all payroll slips
+      const [result] = await db.execute('DELETE FROM payroll_slips');
+      await db.end();
+      
+      return NextResponse.json({
+        success: true,
+        message: `All payroll slips deleted successfully (${result.affectedRows} records)`
+      });
+    }
+    
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    await db.execute('DELETE FROM payroll_slips WHERE id = ?', [id]);
+    
+    await db.end();
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Payroll slip deleted successfully'
+    });
+  } catch (error) {
+    console.error('DELETE /api/payroll/slips error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete payroll slip', details: error.message },
       { status: 500 }
     );
   }

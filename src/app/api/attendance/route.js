@@ -168,21 +168,25 @@ export async function POST(request) {
           status,
           record.overtime_hours || 0,
           record.is_weekly_off ? 1 : 0,
-          record.remarks || null
+          record.remarks || null,
+          record.in_time || null,
+          record.out_time || null
         );
-        placeholders.push('(?, ?, ?, ?, ?, ?)');
+        placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?)');
       }
       
       // Use query instead of execute for better performance with dynamic queries
       const batchQuery = `
         INSERT INTO employee_attendance 
-          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks)
+          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks, in_time, out_time)
         VALUES ${placeholders.join(', ')}
         ON DUPLICATE KEY UPDATE
           status = VALUES(status),
           overtime_hours = VALUES(overtime_hours),
           is_weekly_off = VALUES(is_weekly_off),
           remarks = VALUES(remarks),
+          in_time = VALUES(in_time),
+          out_time = VALUES(out_time),
           updated_at = CURRENT_TIMESTAMP
       `;
       

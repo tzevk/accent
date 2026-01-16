@@ -4979,7 +4979,7 @@ function EditProjectForm() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-xs font-medium text-black mb-1">
-                          Quotation Number <span className="text-gray-400 text-[10px]">(auto-generated)</span>
+                          Quotation Number
                         </label>
                         <input
                           type="text"
@@ -4987,9 +4987,9 @@ function EditProjectForm() {
                           value={quotationData.quotation_number}
                           onChange={handleQuotationChange}
                           placeholder="QTN-00001"
-                          readOnly
-                          disabled
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
+                          readOnly={!canEditQuotations}
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                         />
                       </div>
                       <div>
@@ -4999,14 +4999,14 @@ function EditProjectForm() {
                           name="quotation_date"
                           value={quotationData.quotation_date}
                           onChange={handleQuotationChange}
-                          readOnly
-                          disabled
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
+                          readOnly={!canEditQuotations}
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-black mb-1">
-                          Client Name <span className="text-gray-400 text-[10px]">(from Project)</span>
+                          Client Name
                         </label>
                         <input
                           type="text"
@@ -5014,8 +5014,9 @@ function EditProjectForm() {
                           value={quotationData.client_name}
                           onChange={handleQuotationChange}
                           placeholder="Client Name"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-gray-50"
-                          disabled
+                          readOnly={!canEditQuotations}
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-50 cursor-not-allowed'}`}
                         />
                       </div>
                     </div>
@@ -5024,7 +5025,7 @@ function EditProjectForm() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-medium text-black mb-1">
-                          Enquiry Number <span className="text-gray-400 text-[10px]">(from Proposal ID)</span>
+                          Enquiry Number
                         </label>
                         <input
                           type="text"
@@ -5032,14 +5033,14 @@ function EditProjectForm() {
                           value={quotationData.enquiry_number}
                           onChange={handleQuotationChange}
                           placeholder="ENQ-001"
-                          readOnly
-                          disabled
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
+                          readOnly={!canEditQuotations}
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-black mb-1">
-                          Enquiry Quantity <span className="text-gray-400 text-[10px]">(from Unit/Qty)</span>
+                          Enquiry Quantity
                         </label>
                         <input
                           type="text"
@@ -5047,9 +5048,9 @@ function EditProjectForm() {
                           value={quotationData.enquiry_quantity}
                           onChange={handleQuotationChange}
                           placeholder="e.g., 100 units"
-                          readOnly
-                          disabled
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
+                          readOnly={!canEditQuotations}
+                          disabled={!canEditQuotations}
+                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                         />
                       </div>
                     </div>
@@ -5057,23 +5058,23 @@ function EditProjectForm() {
                     {/* Row 3: Scope of Work */}
                     <div>
                       <label className="block text-xs font-medium text-black mb-1">
-                        Scope of Work <span className="text-gray-400 text-[10px]">(from Project Scope/Description)</span>
+                        Scope of Work
                       </label>
                       <textarea
                         name="scope_of_work"
                         value={quotationData.scope_of_work}
                         onChange={handleQuotationChange}
                         rows={4}
-                        placeholder="Scope of work will be fetched from project data..."
-                        readOnly
-                        disabled
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y bg-gray-100 cursor-not-allowed text-gray-500"
+                        placeholder="Enter scope of work..."
+                        readOnly={!canEditQuotations}
+                        disabled={!canEditQuotations}
+                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                       />
                     </div>
 
                     {/* Row 4: Amount Section */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-4">Amount Details <span className="text-gray-400 text-[10px] font-normal">(from Project Value)</span></h3>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-4">Amount Details</h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-xs font-medium text-black mb-1">Gross Amount (₹)</label>
@@ -5085,9 +5086,9 @@ function EditProjectForm() {
                             placeholder="0.00"
                             step="0.01"
                             min="0"
-                            readOnly
-                            disabled
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
+                            readOnly={!canEditQuotations}
+                            disabled={!canEditQuotations}
+                            className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                           />
                         </div>
                         <div>
@@ -5119,8 +5120,8 @@ function EditProjectForm() {
                           name="gst_percentage"
                           value={quotationData.gst_percentage}
                           onChange={handleQuotationChange}
-                          disabled
-                          className="w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed text-gray-500"
+                          disabled={!canEditQuotations}
+                          className={`w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
                         >
                           <option value="0">0%</option>
                           <option value="5">5%</option>

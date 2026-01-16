@@ -29,7 +29,7 @@ async function ensureEmployeesTable(connection) {
     ['username', "VARCHAR(50) UNIQUE"],
     ['middle_name', "VARCHAR(50)"],
     ['gender', "ENUM('Male','Female','Other')"],
-    ['employee_type', "ENUM('Permanent','Contract','Intern')"],
+    ['employee_type', "ENUM('Payroll','Contract','Deputation')"],
     ['grade', "VARCHAR(50)"],
     ['workplace', "VARCHAR(100)"],
     ['level', "VARCHAR(50)"],
@@ -72,6 +72,7 @@ async function ensureEmployeesTable(connection) {
     ['biometric_code', "VARCHAR(50)"],
     ['exit_date', "DATE"],
     ['exit_reason', "TEXT"],
+    ['deputation_company_id', "INT"],
   ];
 
   const existing = await getExistingColumns(connection);
@@ -85,6 +86,13 @@ async function ensureEmployeesTable(connection) {
         // Ignore individual failures to avoid blocking; inserts/updates will intersect with existing columns
       }
     }
+  }
+
+  // Update employee_type ENUM to include new values (Payroll, Contract, Deputation)
+  try {
+    await connection.execute(`ALTER TABLE employees MODIFY COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')`);
+  } catch {
+    // Ignore if modification fails
   }
 }
 

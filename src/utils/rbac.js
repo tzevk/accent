@@ -113,6 +113,12 @@ export const PERMISSION_DESCRIPTIONS = {
     [PERMISSIONS.CREATE]: 'Create new roles',
     [PERMISSIONS.UPDATE]: 'Modify role permissions',
     [PERMISSIONS.DELETE]: 'Delete roles'
+  },
+  [RESOURCES.REPORTS]: {
+    [PERMISSIONS.READ]: 'View reports and analytics',
+    [PERMISSIONS.CREATE]: 'Create custom reports',
+    [PERMISSIONS.EXPORT]: 'Export report data',
+    [PERMISSIONS.DELETE]: 'Delete saved reports'
   }
 };
 

@@ -29,7 +29,7 @@ export default function EmployeeAttendancePage() {
     startDate: '',
     endDate: '',
     inTime: '09:00',
-    outTime: '18:00',
+    outTime: '17:30',
     reason: ''
   });
   
@@ -131,6 +131,10 @@ export default function EmployeeAttendancePage() {
           present: 0,
           absent: 0,
           privilegedLeave: 0,
+          casualLeave: 0,
+          sickLeave: 0,
+          lwp: 0,
+          halfDay: 0,
           holiday: 0
         };
         
@@ -145,9 +149,9 @@ export default function EmployeeAttendancePage() {
             initialAttendance[emp.id].days[day.fullDate] = 'WO'; // Weekly Off
             initialAttendance[emp.id].weeklyOff++;
           } else if (day.isSaturday) {
-            // Check if 1st or 3rd Saturday (weekly off)
+            // Check if 2nd or 4th Saturday (weekly off)
             const saturdayOfMonth = Math.ceil(day.date / 7);
-            if (saturdayOfMonth === 1 || saturdayOfMonth === 3) {
+            if (saturdayOfMonth === 2 || saturdayOfMonth === 4) {
               initialAttendance[emp.id].days[day.fullDate] = 'WO';
               initialAttendance[emp.id].weeklyOff++;
             } else {
@@ -182,7 +186,7 @@ export default function EmployeeAttendancePage() {
       startDate: fullDate,
       endDate: fullDate,
       inTime: '09:00',
-      outTime: '18:00',
+      outTime: '17:30',
       reason: ''
     });
     setShowModal(true);
@@ -223,24 +227,34 @@ export default function EmployeeAttendancePage() {
     setAttendanceData(prev => {
       const empData = { ...prev[employeeId] };
       const oldStatus = empData.days[fullDate];
-      empData.days[fullDate] = newStatus;
+      
+      // Create new days object to trigger re-render
+      empData.days = { ...empData.days, [fullDate]: newStatus };
       
       // Store extra data if provided
-      if (!empData.dayDetails) empData.dayDetails = {};
-      empData.dayDetails[fullDate] = { ...empData.dayDetails[fullDate], ...extraData, status: newStatus };
+      empData.dayDetails = { ...empData.dayDetails, [fullDate]: { ...(empData.dayDetails?.[fullDate] || {}), ...extraData, status: newStatus } };
       
-      // Update counts
+      // Update counts - decrement old status
       if (oldStatus === 'P') empData.present--;
       if (oldStatus === 'A') empData.absent--;
       if (oldStatus === 'PL') empData.privilegedLeave--;
-      if (oldStatus === 'OT') empData.overtime--;
+      if (oldStatus === 'CL') empData.casualLeave = (empData.casualLeave || 1) - 1;
+      if (oldStatus === 'SL') empData.sickLeave = (empData.sickLeave || 1) - 1;
+      if (oldStatus === 'LWP') empData.lwp = (empData.lwp || 1) - 1;
+      if (oldStatus === 'HD') empData.halfDay = (empData.halfDay || 1) - 1;
+      if (oldStatus === 'OT') empData.overtime = (empData.overtime || 8) - 8; // Subtract 8 hours
       if (oldStatus === 'WO') empData.weeklyOff--;
       if (oldStatus === 'H') empData.holiday = (empData.holiday || 1) - 1;
       
+      // Update counts - increment new status
       if (newStatus === 'P') empData.present++;
       if (newStatus === 'A') empData.absent++;
       if (newStatus === 'PL') empData.privilegedLeave++;
-      if (newStatus === 'OT') empData.overtime++;
+      if (newStatus === 'CL') empData.casualLeave = (empData.casualLeave || 0) + 1;
+      if (newStatus === 'SL') empData.sickLeave = (empData.sickLeave || 0) + 1;
+      if (newStatus === 'LWP') empData.lwp = (empData.lwp || 0) + 1;
+      if (newStatus === 'HD') empData.halfDay = (empData.halfDay || 0) + 1;
+      if (newStatus === 'OT') empData.overtime = (empData.overtime || 0) + 8; // Add 8 hours
       if (newStatus === 'WO') empData.weeklyOff++;
       if (newStatus === 'H') empData.holiday = (empData.holiday || 0) + 1;
       
@@ -288,17 +302,46 @@ export default function EmployeeAttendancePage() {
       const attendance_records = [];
       const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
       
+      // Standard out time for overtime calculation (17:30 = 17.5 hours)
+      const STANDARD_OUT_TIME = 17.5;
+      
+      // Helper to convert time string to decimal hours
+      const timeToDecimal = (timeStr) => {
+        if (!timeStr) return 0;
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours + (minutes / 60);
+      };
+      
       Object.values(attendanceData).forEach(empData => {
         Object.entries(empData.days).forEach(([dateKey, status]) => {
           // Skip empty or undefined statuses
           if (!status || status === '-') return;
           
+          // Get day details if available (contains in_time, out_time)
+          const dayDetail = empData.dayDetails?.[dateKey] || {};
+          
+          // Calculate overtime hours based on out_time if available
+          let overtimeHours = 0;
+          if (dayDetail.outTime && (status === 'P' || status === 'OT')) {
+            const outTimeDecimal = timeToDecimal(dayDetail.outTime);
+            if (outTimeDecimal > STANDARD_OUT_TIME) {
+              overtimeHours = parseFloat((outTimeDecimal - STANDARD_OUT_TIME).toFixed(2));
+            }
+          }
+          
+          // OT status means worked extra 8 hours
+          if (status === 'OT') {
+            overtimeHours = 8;
+          }
+          
           attendance_records.push({
             employee_id: empData.id,
             attendance_date: dateKey,
             status: status,
-            overtime_hours: status === 'OT' ? 2 : 0, // Default 2 hours OT
-            is_weekly_off: status === 'WO'
+            overtime_hours: overtimeHours,
+            is_weekly_off: status === 'WO',
+            in_time: dayDetail.inTime || null,
+            out_time: dayDetail.outTime || null
           });
         });
       });
@@ -354,20 +397,30 @@ export default function EmployeeAttendancePage() {
                 updated[empSummary.employee_id].days[dateKey] = dayData.status;
               });
               
-              // Recalculate counts
-              let present = 0, absent = 0, pl = 0, ot = 0, wo = 0;
+              // Recalculate all counts
+              let present = 0, absent = 0, pl = 0, cl = 0, sl = 0, lwp = 0, hd = 0, ot = 0, wo = 0, holiday = 0;
               Object.values(updated[empSummary.employee_id].days).forEach(status => {
                 if (status === 'P') present++;
                 if (status === 'A') absent++;
                 if (status === 'PL') pl++;
-                if (status === 'OT') { ot++; present++; }
+                if (status === 'CL') cl++;
+                if (status === 'SL') sl++;
+                if (status === 'LWP') lwp++;
+                if (status === 'HD') hd++;
+                if (status === 'OT') { ot += 8; present++; } // 8 hours per OT day
                 if (status === 'WO') wo++;
+                if (status === 'H') holiday++;
               });
               updated[empSummary.employee_id].present = present;
               updated[empSummary.employee_id].absent = absent;
               updated[empSummary.employee_id].privilegedLeave = pl;
+              updated[empSummary.employee_id].casualLeave = cl;
+              updated[empSummary.employee_id].sickLeave = sl;
+              updated[empSummary.employee_id].lwp = lwp;
+              updated[empSummary.employee_id].halfDay = hd;
               updated[empSummary.employee_id].overtime = ot;
               updated[empSummary.employee_id].weeklyOff = wo;
+              updated[empSummary.employee_id].holiday = holiday;
             }
           });
           return updated;
@@ -554,6 +607,10 @@ export default function EmployeeAttendancePage() {
                     <th className="px-3 py-3 text-center text-xs font-semibold text-green-600 uppercase tracking-wider bg-green-50">P</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-red-600 uppercase tracking-wider bg-red-50">A</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-blue-600 uppercase tracking-wider bg-blue-50">PL</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-cyan-600 uppercase tracking-wider bg-cyan-50">CL</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-pink-600 uppercase tracking-wider bg-pink-50">SL</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-rose-600 uppercase tracking-wider bg-rose-50">LWP</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-yellow-600 uppercase tracking-wider bg-yellow-50">HD</th>
                   </tr>
                   {/* Day Headers */}
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -579,6 +636,10 @@ export default function EmployeeAttendancePage() {
                     <th className="bg-green-50"></th>
                     <th className="bg-red-50"></th>
                     <th className="bg-blue-50"></th>
+                    <th className="bg-cyan-50"></th>
+                    <th className="bg-pink-50"></th>
+                    <th className="bg-rose-50"></th>
+                    <th className="bg-yellow-50"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -626,6 +687,18 @@ export default function EmployeeAttendancePage() {
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-blue-600 bg-blue-50/50">
                         {empData.privilegedLeave || 0}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-cyan-600 bg-cyan-50/50">
+                        {empData.casualLeave || 0}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-pink-600 bg-pink-50/50">
+                        {empData.sickLeave || 0}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-rose-600 bg-rose-50/50">
+                        {empData.lwp || 0}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-yellow-600 bg-yellow-50/50">
+                        {empData.halfDay || 0}
                       </td>
                     </tr>
                   ))}

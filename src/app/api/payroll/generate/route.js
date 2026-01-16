@@ -21,7 +21,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { employee_id, month, all, preview } = body;
+    const { employee_id, employee_ids, month, all, preview } = body;
     
     if (!month) {
       return NextResponse.json(
@@ -61,19 +61,52 @@ export async function POST(request) {
       });
     }
     
-    // Generate for single employee
-    if (employee_id) {
-      const slip = await generatePayrollSlip(employee_id, month);
+    // Generate for multiple employees
+    if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
+      const results = { success: 0, failed: 0, errors: [] };
+      
+      for (const empId of employee_ids) {
+        try {
+          await generatePayrollSlip(empId, month);
+          results.success++;
+        } catch (err) {
+          results.failed++;
+          results.errors.push({ employee_id: empId, error: err.message });
+        }
+      }
       
       return NextResponse.json({
         success: true,
-        message: 'Payroll slip generated successfully',
-        data: slip
-      }, { status: 201 });
+        message: `Payroll generation completed for ${employee_ids.length} employees`,
+        results
+      });
+    }
+    
+    // Generate for single employee
+    if (employee_id) {
+      try {
+        const slip = await generatePayrollSlip(employee_id, month);
+        
+        return NextResponse.json({
+          success: true,
+          message: 'Payroll slip generated successfully',
+          data: slip
+        }, { status: 201 });
+      } catch (genError) {
+        // Check if it's a "no salary profile" error
+        if (genError.message.includes('No active salary profile')) {
+          return NextResponse.json({
+            success: false,
+            error: genError.message,
+            suggestion: 'Please set up a salary structure for this employee before generating payroll.'
+          }, { status: 400 });
+        }
+        throw genError;
+      }
     }
     
     return NextResponse.json(
-      { success: false, error: 'Either employee_id or all=true must be provided' },
+      { success: false, error: 'Either employee_id, employee_ids array, or all=true must be provided' },
       { status: 400 }
     );
     
