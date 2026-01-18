@@ -5,9 +5,10 @@ import { useSession } from '@/context/SessionContext';
 
 // Constants - REDUCED frequency for better performance
 const IDLE_THRESHOLD = 5 * 60 * 1000; // 5 minutes of no activity = idle
-const HEARTBEAT_INTERVAL = 60 * 1000; // Send heartbeat every 60 seconds (was 30)
-const IDLE_CHECK_INTERVAL = 30 * 1000; // Check for idle every 30 seconds (was 10)
-const BATCH_INTERVAL = 10 * 1000; // Batch activities every 10 seconds
+const HEARTBEAT_INTERVAL = 120 * 1000; // Send heartbeat every 120 seconds (was 60)
+const IDLE_CHECK_INTERVAL = 60 * 1000; // Check for idle every 60 seconds (was 30)
+const BATCH_INTERVAL = 30 * 1000; // Batch activities every 30 seconds (was 10)
+const SKIP_INITIAL_PAGE_VIEW = true; // Don't track page view on initial load
 
 /**
  * Activity Tracker Hook - Optimized for performance
@@ -196,16 +197,20 @@ export function useActivityTracker() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Track initial page view
-    trackPageView(window.location.pathname);
+    // Track initial page - but don't send API call immediately
+    // Just store the path, will be sent on next actual user interaction or heartbeat
+    currentPageRef.current = window.location.pathname;
+    pageStartTimeRef.current = Date.now();
 
-    // Set up intervals
-    heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
-    idleCheckIntervalRef.current = setInterval(checkIdle, IDLE_CHECK_INTERVAL);
-    batchIntervalRef.current = setInterval(flushActivityBatch, BATCH_INTERVAL);
+    // Set up intervals - but delay start to not interfere with page load
+    setTimeout(() => {
+      heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+      idleCheckIntervalRef.current = setInterval(checkIdle, IDLE_CHECK_INTERVAL);
+      batchIntervalRef.current = setInterval(flushActivityBatch, BATCH_INTERVAL);
+    }, 5000); // Wait 5 seconds after mount before starting intervals
 
-    // Send initial session start
-    sendActivityData({
+    // Don't send initial session start immediately - queue it for the first batch
+    queueActivityData({
       actionType: 'status_change',
       resourceType: 'session',
       description: 'Session started',

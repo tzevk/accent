@@ -3,6 +3,8 @@ import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 // POST /api/payroll/salary-profile - Create/Update employee salary profile
+// If `id` is provided, it updates that specific profile
+// If `id` is not provided, it creates a new profile
 export async function POST(request) {
   let db;
   try {
@@ -21,10 +23,12 @@ export async function POST(request) {
     console.log('Received salary profile data:', JSON.stringify(body, null, 2));
     
     const { 
+      id, // If provided, update existing profile; otherwise create new
       employee_id, 
       gross_salary, 
       other_allowances = 0, 
       effective_from = new Date().toISOString().split('T')[0],
+      effective_to = null,
       da_year = new Date().getFullYear(),
       pf_applicable = true,
       esic_applicable = true,
@@ -120,6 +124,7 @@ export async function POST(request) {
       { name: 'gross_salary', definition: 'DECIMAL(12, 2) DEFAULT 0' },
       { name: 'other_allowances', definition: 'DECIMAL(12, 2) DEFAULT 0' },
       { name: 'effective_from', definition: 'DATE' },
+      { name: 'effective_to', definition: 'DATE' },
       { name: 'da_year', definition: 'INT' },
       { name: 'pf_applicable', definition: 'TINYINT(1) DEFAULT 1' },
       { name: 'esic_applicable', definition: 'TINYINT(1) DEFAULT 1' },
@@ -202,131 +207,109 @@ export async function POST(request) {
       );
     }
 
-    // Insert or Update salary profile record (use ON DUPLICATE KEY UPDATE for existing records)
-    console.log('Inserting/Updating salary profile...');
-    const [result] = await db.query(
-      `INSERT INTO employee_salary_profile 
-       (employee_id, gross, gross_salary, other_allowances, effective_from, da_year, 
-        pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
-        basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
-        pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
-        total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
-        salary_type, hourly_rate, std_hours_per_day, ot_multiplier, daily_rate, std_working_days,
-        contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-        gross = VALUES(gross),
-        gross_salary = VALUES(gross_salary),
-        other_allowances = VALUES(other_allowances),
-        pf_applicable = VALUES(pf_applicable),
-        esic_applicable = VALUES(esic_applicable),
-        pt_applicable = VALUES(pt_applicable),
-        mlwf_applicable = VALUES(mlwf_applicable),
-        retention_applicable = VALUES(retention_applicable),
-        bonus_applicable = VALUES(bonus_applicable),
-        incentive_applicable = VALUES(incentive_applicable),
-        insurance_applicable = VALUES(insurance_applicable),
-        basic_plus_da = VALUES(basic_plus_da),
-        da = VALUES(da),
-        basic = VALUES(basic),
-        hra = VALUES(hra),
-        conveyance = VALUES(conveyance),
-        call_allowance = VALUES(call_allowance),
-        bonus = VALUES(bonus),
-        incentive = VALUES(incentive),
-        pf_employee = VALUES(pf_employee),
-        esic_employee = VALUES(esic_employee),
-        pf_employer = VALUES(pf_employer),
-        esic_employer = VALUES(esic_employer),
-        pt = VALUES(pt),
-        mlwf = VALUES(mlwf),
-        mlwf_employer = VALUES(mlwf_employer),
-        retention = VALUES(retention),
-        insurance = VALUES(insurance),
-        total_earnings = VALUES(total_earnings),
-        total_deductions = VALUES(total_deductions),
-        net_pay = VALUES(net_pay),
-        employer_cost = VALUES(employer_cost),
-        is_manual_override = VALUES(is_manual_override),
-        salary_type = VALUES(salary_type),
-        hourly_rate = VALUES(hourly_rate),
-        std_hours_per_day = VALUES(std_hours_per_day),
-        ot_multiplier = VALUES(ot_multiplier),
-        daily_rate = VALUES(daily_rate),
-        std_working_days = VALUES(std_working_days),
-        contract_amount = VALUES(contract_amount),
-        contract_duration = VALUES(contract_duration),
-        contract_end_date = VALUES(contract_end_date),
-        lumpsum_amount = VALUES(lumpsum_amount),
-        lumpsum_description = VALUES(lumpsum_description),
-        updated_at = CURRENT_TIMESTAMP`,
-      [
-        employee_id, 
-        parseFloat(gross_salary) || 0,  // gross (legacy column)
-        parseFloat(gross_salary) || 0,  // gross_salary 
-        parseFloat(other_allowances) || 0, 
-        effective_from, 
-        da_year, 
-        pf_applicable ? 1 : 0, 
-        esic_applicable ? 1 : 0,
-        pt_applicable ? 1 : 0,
-        mlwf_applicable ? 1 : 0,
-        retention_applicable ? 1 : 0,
-        bonus_applicable ? 1 : 0,
-        incentive_applicable ? 1 : 0,
-        insurance_applicable ? 1 : 0,
-        parseFloat(basic_plus_da) || null, 
-        parseFloat(da) || null, 
-        parseFloat(basic) || null, 
-        parseFloat(hra) || null, 
-        parseFloat(conveyance) || null, 
-        parseFloat(call_allowance) || null,
-        parseFloat(bonus) || null,
-        parseFloat(incentive) || null,
-        parseFloat(pf_employee) || null, 
-        parseFloat(esic_employee) || null, 
-        parseFloat(pf_employer) || null, 
-        parseFloat(esic_employer) || null,
-        parseFloat(pt) || null,
-        parseFloat(mlwf) || null,
-        parseFloat(mlwf_employer) || null,
-        parseFloat(retention) || null,
-        parseFloat(insurance) || null,
-        parseFloat(total_earnings) || null, 
-        parseFloat(total_deductions) || null, 
-        parseFloat(net_pay) || null, 
-        parseFloat(employer_cost) || null,
-        is_manual_override ? 1 : 0,
-        // New salary type fields
-        salary_type || 'monthly',
-        parseFloat(hourly_rate) || null,
-        parseFloat(std_hours_per_day) || 8,
-        parseFloat(ot_multiplier) || 1.5,
-        parseFloat(daily_rate) || null,
-        parseInt(std_working_days) || 26,
-        parseFloat(contract_amount) || null,
-        contract_duration || 'monthly',
-        contract_end_date || null,
-        parseFloat(lumpsum_amount) || null,
-        lumpsum_description || null
-      ]
-    );
+    let result;
+    let isUpdate = false;
+    
+    // Prepare common values array
+    const values = [
+      parseFloat(gross_salary) || 0,  // gross (legacy column)
+      parseFloat(gross_salary) || 0,  // gross_salary 
+      parseFloat(other_allowances) || 0, 
+      effective_from,
+      effective_to || null,
+      da_year, 
+      pf_applicable ? 1 : 0, 
+      esic_applicable ? 1 : 0,
+      pt_applicable ? 1 : 0,
+      mlwf_applicable ? 1 : 0,
+      retention_applicable ? 1 : 0,
+      bonus_applicable ? 1 : 0,
+      incentive_applicable ? 1 : 0,
+      insurance_applicable ? 1 : 0,
+      parseFloat(basic_plus_da) || null, 
+      parseFloat(da) || null, 
+      parseFloat(basic) || null, 
+      parseFloat(hra) || null, 
+      parseFloat(conveyance) || null, 
+      parseFloat(call_allowance) || null,
+      parseFloat(bonus) || null,
+      parseFloat(incentive) || null,
+      parseFloat(pf_employee) || null, 
+      parseFloat(esic_employee) || null, 
+      parseFloat(pf_employer) || null, 
+      parseFloat(esic_employer) || null,
+      parseFloat(pt) || null,
+      parseFloat(mlwf) || null,
+      parseFloat(mlwf_employer) || null,
+      parseFloat(retention) || null,
+      parseFloat(insurance) || null,
+      parseFloat(total_earnings) || null, 
+      parseFloat(total_deductions) || null, 
+      parseFloat(net_pay) || null, 
+      parseFloat(employer_cost) || null,
+      is_manual_override ? 1 : 0,
+      salary_type || 'monthly',
+      parseFloat(hourly_rate) || null,
+      parseFloat(std_hours_per_day) || 8,
+      parseFloat(ot_multiplier) || 1.5,
+      parseFloat(daily_rate) || null,
+      parseInt(std_working_days) || 26,
+      parseFloat(contract_amount) || null,
+      contract_duration || 'monthly',
+      contract_end_date || null,
+      parseFloat(lumpsum_amount) || null,
+      lumpsum_description || null
+    ];
+
+    if (id) {
+      // UPDATE existing salary profile by ID
+      console.log('Updating existing salary profile with ID:', id);
+      [result] = await db.query(
+        `UPDATE employee_salary_profile SET
+          gross = ?, gross_salary = ?, other_allowances = ?, effective_from = ?, effective_to = ?, da_year = ?,
+          pf_applicable = ?, esic_applicable = ?, pt_applicable = ?, mlwf_applicable = ?,
+          retention_applicable = ?, bonus_applicable = ?, incentive_applicable = ?, insurance_applicable = ?,
+          basic_plus_da = ?, da = ?, basic = ?, hra = ?, conveyance = ?, call_allowance = ?, bonus = ?, incentive = ?,
+          pf_employee = ?, esic_employee = ?, pf_employer = ?, esic_employer = ?, pt = ?, mlwf = ?, mlwf_employer = ?,
+          retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
+          is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, ot_multiplier = ?,
+          daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
+          lumpsum_amount = ?, lumpsum_description = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND employee_id = ?`,
+        [...values, id, employee_id]
+      );
+      isUpdate = result.affectedRows > 0;
+    } else {
+      // INSERT new salary profile
+      console.log('Creating new salary profile for employee:', employee_id);
+      [result] = await db.query(
+        `INSERT INTO employee_salary_profile 
+         (employee_id, gross, gross_salary, other_allowances, effective_from, effective_to, da_year, 
+          pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
+          basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
+          pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
+          total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
+          salary_type, hourly_rate, std_hours_per_day, ot_multiplier, daily_rate, std_working_days,
+          contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [employee_id, ...values]
+      );
+    }
     
     console.log('Insert/Update result:', result);
-    
-    const isUpdate = result.affectedRows === 2; // ON DUPLICATE KEY UPDATE returns 2 for updates
     
     if (db) db.release();
 
     return NextResponse.json({
       success: true,
-      message: isUpdate ? 'Salary profile updated successfully' : 'Salary profile saved successfully',
+      message: isUpdate ? 'Salary profile updated successfully' : 'Salary profile created successfully',
       data: {
-        id: result.insertId || null,
+        id: id || result.insertId || null,
         employee_id,
         gross_salary,
         other_allowances,
         effective_from,
+        effective_to,
         da_year,
         pf_applicable,
         esic_applicable
@@ -370,6 +353,7 @@ export async function GET(request) {
         { name: 'gross_salary', definition: 'DECIMAL(12, 2) DEFAULT 0' },
         { name: 'other_allowances', definition: 'DECIMAL(12, 2) DEFAULT 0' },
         { name: 'effective_from', definition: 'DATE' },
+        { name: 'effective_to', definition: 'DATE' },
         { name: 'da_year', definition: 'INT' },
         { name: 'pf_applicable', definition: 'TINYINT(1) DEFAULT 1' },
         { name: 'esic_applicable', definition: 'TINYINT(1) DEFAULT 1' },
@@ -422,7 +406,8 @@ export async function GET(request) {
           COALESCE(gross_salary, gross) as gross_salary,
           gross,
           other_allowances, 
-          effective_from, 
+          effective_from,
+          effective_to,
           da_year,
           pf_applicable, 
           esic_applicable,

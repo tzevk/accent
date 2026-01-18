@@ -1,17 +1,40 @@
 import { NextResponse } from 'next/server';
 import { getPoolStats, dbConnect } from '@/utils/database';
+import { ensureSchema, isSchemaInitialized } from '@/utils/schema-init';
 
-export async function GET() {
+// Track if we've done initialization on this instance
+let serverInitialized = false;
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const initSchema = searchParams.get('init') === 'true';
+  
   try {
     const stats = getPoolStats();
     
     // Test connection
     let dbOk = false;
     let db;
+    let schemaStatus = 'unknown';
+    
     try {
       db = await dbConnect();
       const [rows] = await db.execute('SELECT 1');
       dbOk = rows.length > 0;
+      
+      // Initialize schema on first health check or if explicitly requested
+      if (dbOk && (initSchema || !serverInitialized)) {
+        try {
+          await ensureSchema();
+          serverInitialized = true;
+          schemaStatus = 'initialized';
+        } catch (schemaErr) {
+          console.error('Schema init error:', schemaErr);
+          schemaStatus = 'error';
+        }
+      } else {
+        schemaStatus = isSchemaInitialized() ? 'initialized' : 'pending';
+      }
     } catch (err) {
       console.error('Health check DB error:', err);
     } finally {
@@ -23,7 +46,8 @@ export async function GET() {
       status: dbOk ? 'healthy' : 'degraded',
       database: {
         connected: dbOk,
-        pool: stats || { message: 'Pool not initialized' }
+        pool: stats || { message: 'Pool not initialized' },
+        schema: schemaStatus
       },
       timestamp: new Date().toISOString()
     });

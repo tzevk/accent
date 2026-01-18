@@ -227,12 +227,35 @@ export default function EmployeeAttendancePage() {
     setAttendanceData(prev => {
       const empData = { ...prev[employeeId] };
       const oldStatus = empData.days[fullDate];
+      const oldDayDetail = empData.dayDetails?.[fullDate] || {};
       
       // Create new days object to trigger re-render
       empData.days = { ...empData.days, [fullDate]: newStatus };
       
-      // Store extra data if provided
-      empData.dayDetails = { ...empData.dayDetails, [fullDate]: { ...(empData.dayDetails?.[fullDate] || {}), ...extraData, status: newStatus } };
+      // Calculate overtime hours from times (standard out time is 17:30 = 17.5 hours)
+      const STANDARD_OUT_TIME = 17.5;
+      let newOvertimeHours = 0;
+      if (extraData.outTime && (newStatus === 'P' || newStatus === 'OT')) {
+        const [hours, minutes] = extraData.outTime.split(':').map(Number);
+        const outTimeDecimal = hours + (minutes / 60);
+        if (outTimeDecimal > STANDARD_OUT_TIME) {
+          newOvertimeHours = parseFloat((outTimeDecimal - STANDARD_OUT_TIME).toFixed(2));
+        }
+      }
+      
+      // Store extra data if provided including calculated overtime
+      empData.dayDetails = { 
+        ...empData.dayDetails, 
+        [fullDate]: { 
+          ...(empData.dayDetails?.[fullDate] || {}), 
+          ...extraData, 
+          status: newStatus,
+          overtimeHours: newOvertimeHours
+        } 
+      };
+      
+      // Get old overtime hours for this day
+      const oldOvertimeHours = oldDayDetail.overtimeHours || 0;
       
       // Update counts - decrement old status
       if (oldStatus === 'P') empData.present--;
@@ -242,7 +265,7 @@ export default function EmployeeAttendancePage() {
       if (oldStatus === 'SL') empData.sickLeave = (empData.sickLeave || 1) - 1;
       if (oldStatus === 'LWP') empData.lwp = (empData.lwp || 1) - 1;
       if (oldStatus === 'HD') empData.halfDay = (empData.halfDay || 1) - 1;
-      if (oldStatus === 'OT') empData.overtime = (empData.overtime || 8) - 8; // Subtract 8 hours
+      if (oldStatus === 'OT' || oldStatus === 'P') empData.overtime = (empData.overtime || oldOvertimeHours) - oldOvertimeHours;
       if (oldStatus === 'WO') empData.weeklyOff--;
       if (oldStatus === 'H') empData.holiday = (empData.holiday || 1) - 1;
       
@@ -254,7 +277,7 @@ export default function EmployeeAttendancePage() {
       if (newStatus === 'SL') empData.sickLeave = (empData.sickLeave || 0) + 1;
       if (newStatus === 'LWP') empData.lwp = (empData.lwp || 0) + 1;
       if (newStatus === 'HD') empData.halfDay = (empData.halfDay || 0) + 1;
-      if (newStatus === 'OT') empData.overtime = (empData.overtime || 0) + 8; // Add 8 hours
+      if (newStatus === 'OT' || newStatus === 'P') empData.overtime = (empData.overtime || 0) + newOvertimeHours;
       if (newStatus === 'WO') empData.weeklyOff++;
       if (newStatus === 'H') empData.holiday = (empData.holiday || 0) + 1;
       
@@ -392,14 +415,24 @@ export default function EmployeeAttendancePage() {
           const updated = { ...prev };
           data.summary.forEach(empSummary => {
             if (updated[empSummary.employee_id]) {
-              // Update days from saved data
+              // Update days and dayDetails from saved data
               Object.entries(empSummary.days).forEach(([dateKey, dayData]) => {
                 updated[empSummary.employee_id].days[dateKey] = dayData.status;
+                // Store overtime_hours from saved data
+                if (!updated[empSummary.employee_id].dayDetails) {
+                  updated[empSummary.employee_id].dayDetails = {};
+                }
+                updated[empSummary.employee_id].dayDetails[dateKey] = {
+                  ...updated[empSummary.employee_id].dayDetails[dateKey],
+                  overtimeHours: parseFloat(dayData.overtime_hours || 0),
+                  status: dayData.status
+                };
               });
               
               // Recalculate all counts
               let present = 0, absent = 0, pl = 0, cl = 0, sl = 0, lwp = 0, hd = 0, ot = 0, wo = 0, holiday = 0;
-              Object.values(updated[empSummary.employee_id].days).forEach(status => {
+              Object.entries(updated[empSummary.employee_id].days).forEach(([dateKey, status]) => {
+                const dayDetail = updated[empSummary.employee_id].dayDetails?.[dateKey] || {};
                 if (status === 'P') present++;
                 if (status === 'A') absent++;
                 if (status === 'PL') pl++;
@@ -407,7 +440,7 @@ export default function EmployeeAttendancePage() {
                 if (status === 'SL') sl++;
                 if (status === 'LWP') lwp++;
                 if (status === 'HD') hd++;
-                if (status === 'OT') { ot += 8; present++; } // 8 hours per OT day
+                if (status === 'OT' || status === 'P') ot += (dayDetail.overtimeHours || 0);
                 if (status === 'WO') wo++;
                 if (status === 'H') holiday++;
               });
@@ -418,7 +451,7 @@ export default function EmployeeAttendancePage() {
               updated[empSummary.employee_id].sickLeave = sl;
               updated[empSummary.employee_id].lwp = lwp;
               updated[empSummary.employee_id].halfDay = hd;
-              updated[empSummary.employee_id].overtime = ot;
+              updated[empSummary.employee_id].overtime = parseFloat(ot.toFixed(2));
               updated[empSummary.employee_id].weeklyOff = wo;
               updated[empSummary.employee_id].holiday = holiday;
             }

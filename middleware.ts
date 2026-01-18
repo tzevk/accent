@@ -20,40 +20,54 @@ function isPublicPath(pathname: string) {
   return publicPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
 }
 
+/**
+ * Middleware - Single source of truth for authentication
+ * 
+ * This is the ONLY place where auth is enforced:
+ * 1. Public routes are allowed through
+ * 2. Authenticated users on /signin are redirected to their dashboard
+ * 3. Unauthenticated users are redirected to /signin
+ * 4. Non-admins trying to access /admin/* are redirected to /user/dashboard
+ */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+  
+  // Get auth cookies
+  const auth = req.cookies.get('auth')?.value
+  const userId = req.cookies.get('user_id')?.value
+  const isAdmin = req.cookies.get('is_super_admin')?.value === '1'
+  
+  // Check if user is authenticated (both cookies must be present)
+  const isAuthenticated = !!(auth && userId)
 
-  // allow public routes
+  // Allow public routes
   if (isPublicPath(pathname)) {
-    // If user is already authenticated and tries to access /signin, redirect to appropriate dashboard
-    if (pathname === '/signin') {
-      const authToken = req.cookies.get('auth')?.value
-      const userId = req.cookies.get('user_id')?.value
-      const isSuperAdmin = req.cookies.get('is_super_admin')?.value
-      // Only redirect if BOTH cookies are present (full session)
-      if (authToken && userId) {
-        const url = req.nextUrl.clone()
-        // Super admin goes to admin dashboard
-        url.pathname = isSuperAdmin === '1' ? '/admin/productivity' : '/dashboard'
-        return NextResponse.redirect(url)
-      }
+    // If authenticated user tries to access /signin, redirect to their dashboard
+    if (pathname === '/signin' && isAuthenticated) {
+      const url = req.nextUrl.clone()
+      url.pathname = isAdmin ? '/admin/dashboard' : '/user/dashboard'
+      return NextResponse.redirect(url)
     }
     return NextResponse.next()
   }
 
-  // All other routes require auth
-  const authToken = req.cookies.get('auth')?.value
-  const userId = req.cookies.get('user_id')?.value
-  
-  // Both cookies must be present for valid session
-  if (!authToken || !userId) {
-    // If it's an API request, return 401 JSON instead of redirect
+  // All other routes require authentication
+  if (!isAuthenticated) {
+    // API requests get 401 JSON response
     if (pathname.startsWith('/api')) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
     }
+    // Page requests redirect to signin
     const url = req.nextUrl.clone()
     url.pathname = '/signin'
     url.searchParams.set('from', pathname)
+    return NextResponse.redirect(url)
+  }
+
+  // Admin route protection - non-admins cannot access /admin/*
+  if (pathname.startsWith('/admin') && !isAdmin) {
+    const url = req.nextUrl.clone()
+    url.pathname = '/user/dashboard'
     return NextResponse.redirect(url)
   }
 
@@ -69,13 +83,13 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes)
+     * - api (API routes) - handled separately in middleware
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|public|uploads).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public|uploads).*)',
   ],
 }
 

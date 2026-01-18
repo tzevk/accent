@@ -31,11 +31,11 @@ export default function Proposals() {
   const fetchProposals = async () => {
     try {
       setLoading(true);
-      // API call will be implemented when you provide the form fields
-      const response = await fetch('/api/proposals');
+      // Use optimized /api/proposals/list endpoint for better TTFB
+      const response = await fetch('/api/proposals/list');
       if (response.ok) {
         const data = await response.json();
-        setProposals(data.proposals || []);
+        setProposals(data.data || []);
       }
     } catch (error) {
       console.error('Error fetching proposals:', error);

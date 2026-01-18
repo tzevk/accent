@@ -177,7 +177,8 @@ function ProjectsInner() {
 
   const fetchProjects = async () => {
     try {
-      const result = await fetchJSON('/api/projects');
+      // Use optimized /api/projects/list endpoint for better TTFB
+      const result = await fetchJSON('/api/projects/list');
       if (result.success) setProjects(result.data);
       else console.error('Error fetching projects:', result.error);
     } catch (error) {

@@ -1,15 +1,9 @@
-import { redirect } from 'next/navigation'
-import { requireServerAuth } from '@/utils/server-auth'
-
-export const dynamic = 'force-dynamic'
-
-export default async function VendorsLayout({ children }) {
-  // Use proper JWT authentication with user permissions loading
-  const auth = await requireServerAuth('/vendors')
-  
-  if (!auth.authenticated) {
-    redirect(auth.redirectTo)
-  }
-  
+/**
+ * Vendors Layout
+ * 
+ * Authentication is handled by middleware - no redirects here.
+ * This layout just passes through children.
+ */
+export default function VendorsLayout({ children }) {
   return children
 }

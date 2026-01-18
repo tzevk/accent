@@ -575,7 +575,8 @@ function EditProjectForm() {
     const fetchProject = async () => {
       try {
         console.log('[fetchProject] Fetching project data for ID:', id);
-        const result = await fetchJSON(`/api/projects/${id}`);
+        // Use optimized /api/projects/{id}/detail endpoint for better TTFB
+        const result = await fetchJSON(`/api/projects/${id}/detail`);
         console.log('[fetchProject] API response success:', result.success);
         
         if (result.success && result.data) {

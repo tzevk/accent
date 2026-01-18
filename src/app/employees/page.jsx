@@ -212,6 +212,7 @@ export default function EmployeesPage() {
       
       // Reset all salary-related states for new employee profile
       setSavedSalaryProfiles([]);
+      setEditingSalaryProfileId(null); // Reset editing state when switching employees
       setPreviewBreakdown(null);
       setManualValues({
         basic_plus_da: '',
@@ -455,13 +456,15 @@ export default function EmployeesPage() {
   
   // New Salary Preview State (using core payroll tables)
   const [salaryPreview, setSalaryPreview] = useState({
-    salary_type: 'monthly', // monthly, hourly, daily, contract, lumpsum
+    salary_type: 'monthly', // monthly, hourly, daily, contract, lumpsum, custom
     gross: '',
     hourly_rate: '',
     daily_rate: '',
     contract_amount: '',
     lumpsum_amount: '',
     other_allowances: '',
+    effective_from: new Date().toISOString().split('T')[0],
+    effective_to: '',
     pf_applicable: true,
     esic_applicable: false,
     pt_applicable: false,
@@ -469,7 +472,8 @@ export default function EmployeesPage() {
     retention_applicable: false,
     bonus_applicable: false,
     incentive_applicable: false,
-    insurance_applicable: false
+    insurance_applicable: false,
+    custom_components: [] // For custom salary type: [{name: 'Basic', amount: 10000, type: 'earning'}, ...]
   });
   const [currentDA, setCurrentDA] = useState(0);
   const [currentPT, setCurrentPT] = useState(0);
@@ -1215,6 +1219,7 @@ export default function EmployeesPage() {
   const [salaryProfileSaving, setSalaryProfileSaving] = useState(false);
   const [salaryProfileSuccess, setSalaryProfileSuccess] = useState('');
   const [savedSalaryProfiles, setSavedSalaryProfiles] = useState([]);
+  const [editingSalaryProfileId, setEditingSalaryProfileId] = useState(null); // ID of profile being edited
   const [loadingSavedProfiles, setLoadingSavedProfiles] = useState(false);
   const [deletingSalaryProfile, setDeletingSalaryProfile] = useState(false);
   
@@ -1342,6 +1347,10 @@ export default function EmployeesPage() {
       
       // Refresh the list
       await fetchSavedSalaryProfiles(selectedEmployee.id);
+      // If we were editing this profile, reset the form
+      if (editingSalaryProfileId === profileId) {
+        handleResetSalaryForm();
+      }
       setSalaryProfileSuccess('Salary profile deleted successfully');
       setTimeout(() => setSalaryProfileSuccess(''), 3000);
     } catch (err) {
@@ -1350,6 +1359,116 @@ export default function EmployeesPage() {
     } finally {
       setDeletingSalaryProfile(false);
     }
+  };
+  
+  // Function to edit an existing salary profile - load it into the form
+  const handleEditSalaryProfile = (profile) => {
+    setEditingSalaryProfileId(profile.id);
+    
+    // Parse custom components if salary_type is custom
+    let customComponents = [];
+    if (profile.salary_type === 'custom' && profile.lumpsum_description) {
+      try {
+        customComponents = JSON.parse(profile.lumpsum_description);
+      } catch (e) {
+        console.error('Failed to parse custom components:', e);
+      }
+    }
+    
+    setSalaryPreview({
+      salary_type: profile.salary_type || 'monthly',
+      gross: profile.gross_salary || profile.gross || '',
+      hourly_rate: profile.hourly_rate || '',
+      daily_rate: profile.daily_rate || '',
+      contract_amount: profile.contract_amount || '',
+      lumpsum_amount: profile.lumpsum_amount || '',
+      lumpsum_description: profile.salary_type === 'custom' ? '' : (profile.lumpsum_description || ''),
+      contract_duration: profile.contract_duration || 'monthly',
+      contract_end_date: profile.contract_end_date ? profile.contract_end_date.split('T')[0] : '',
+      std_hours_per_day: profile.std_hours_per_day || 8,
+      std_working_days: profile.std_working_days || 26,
+      ot_multiplier: profile.ot_multiplier || 1.5,
+      other_allowances: profile.other_allowances || '',
+      effective_from: profile.effective_from ? profile.effective_from.split('T')[0] : new Date().toISOString().split('T')[0],
+      effective_to: profile.effective_to ? profile.effective_to.split('T')[0] : '',
+      pf_applicable: !!profile.pf_applicable,
+      esic_applicable: !!profile.esic_applicable,
+      pt_applicable: !!profile.pt_applicable,
+      mlwf_applicable: !!profile.mlwf_applicable,
+      retention_applicable: !!profile.retention_applicable,
+      bonus_applicable: !!profile.bonus_applicable,
+      incentive_applicable: !!profile.incentive_applicable,
+      insurance_applicable: !!profile.insurance_applicable,
+      custom_components: customComponents
+    });
+    // If monthly, recalculate preview with the loaded gross
+    if (profile.salary_type === 'monthly' || !profile.salary_type) {
+      calculateSalaryPreview(profile.gross_salary || profile.gross, profile.other_allowances || 0);
+    }
+    // Set manual values if available
+    setManualValues({
+      basic_plus_da: profile.basic_plus_da || '',
+      da: profile.da || '',
+      hra: profile.hra || '',
+      conveyance: profile.conveyance || '',
+      call_allowance: profile.call_allowance || '',
+      pf_employee: profile.pf_employee || '',
+      esic_employee: profile.esic_employee || '',
+      pf_employer: profile.pf_employer || '',
+      esic_employer: profile.esic_employer || '',
+      retention: profile.retention || '',
+      insurance: profile.insurance || ''
+    });
+    setCurrentRetention(parseFloat(profile.retention) || 0);
+    setCurrentInsurance(parseFloat(profile.insurance) || 0);
+  };
+  
+  // Function to reset salary form for adding a new profile
+  const handleResetSalaryForm = () => {
+    setEditingSalaryProfileId(null);
+    setSalaryPreview({
+      salary_type: 'monthly',
+      gross: '',
+      hourly_rate: '',
+      daily_rate: '',
+      contract_amount: '',
+      lumpsum_amount: '',
+      lumpsum_description: '',
+      contract_duration: 'monthly',
+      contract_end_date: '',
+      std_hours_per_day: 8,
+      std_working_days: 26,
+      ot_multiplier: 1.5,
+      other_allowances: '',
+      effective_from: new Date().toISOString().split('T')[0],
+      effective_to: '',
+      pf_applicable: true,
+      esic_applicable: false,
+      pt_applicable: false,
+      mlwf_applicable: false,
+      retention_applicable: false,
+      bonus_applicable: false,
+      incentive_applicable: false,
+      insurance_applicable: false,
+      custom_components: []
+    });
+    setManualValues({
+      basic_plus_da: '',
+      da: '',
+      hra: '',
+      conveyance: '',
+      call_allowance: '',
+      pf_employee: '',
+      esic_employee: '',
+      pf_employer: '',
+      esic_employer: '',
+      retention: '',
+      insurance: ''
+    });
+    setPreviewBreakdown(null);
+    setCurrentRetention(0);
+    setCurrentInsurance(0);
+    setPreviewError('');
   };
   
   const handleSaveSalaryProfile = async () => {
@@ -1393,10 +1512,13 @@ export default function EmployeesPage() {
       const currentYear = new Date().getFullYear();
       
       // Build payload based on salary type
+      // Include id if we're editing an existing profile
       let payload = {
+        ...(editingSalaryProfileId ? { id: editingSalaryProfileId } : {}),
         employee_id: selectedEmployee.id,
         salary_type: salaryType,
-        effective_from: currentDate,
+        effective_from: salaryPreview.effective_from || currentDate,
+        effective_to: salaryPreview.effective_to || null,
         da_year: currentYear,
         is_manual_override: false
       };
@@ -1483,6 +1605,26 @@ export default function EmployeesPage() {
           net_pay: lumpsumAmount,
           employer_cost: lumpsumAmount,
         };
+      } else if (salaryType === 'custom') {
+        // Calculate totals from custom components
+        const components = salaryPreview.custom_components || [];
+        const totalEarnings = components
+          .filter(c => c.type === 'earning')
+          .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+        const totalDeductions = components
+          .filter(c => c.type === 'deduction')
+          .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+        const netPay = totalEarnings - totalDeductions;
+        
+        payload = {
+          ...payload,
+          gross_salary: totalEarnings,
+          total_earnings: totalEarnings,
+          total_deductions: totalDeductions,
+          net_pay: netPay,
+          employer_cost: totalEarnings,
+          lumpsum_description: JSON.stringify(components), // Store components as JSON in lumpsum_description field
+        };
       }
       
       console.log('Sending salary profile:', payload);
@@ -1500,10 +1642,14 @@ export default function EmployeesPage() {
         throw new Error(data.error || 'Failed to save salary profile');
       }
       
-      setSalaryProfileSuccess('✓ Salary profile saved successfully!');
+      const isUpdate = !!editingSalaryProfileId;
+      setSalaryProfileSuccess(isUpdate ? '✓ Salary profile updated!' : '✓ New salary profile created!');
       
       // Refresh saved profiles to show the new/updated record
       await fetchSavedSalaryProfiles(selectedEmployee.id);
+      
+      // Reset form after successful save
+      handleResetSalaryForm();
       
       // Auto clear success message after 4 seconds
       setTimeout(() => setSalaryProfileSuccess(''), 4000);
@@ -1567,7 +1713,8 @@ export default function EmployeesPage() {
       // Add a client-side timeout to avoid hanging forever on network issues
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 12000);
-      const response = await fetch(`/api/employees?${params}`, { signal: controller.signal });
+      // Use optimized /api/employees/list endpoint for better TTFB
+      const response = await fetch(`/api/employees/list?${params}`, { signal: controller.signal });
       clearTimeout(t);
       const data = await response.json();
 
@@ -2959,34 +3106,9 @@ export default function EmployeesPage() {
                     {/* Salary Structure */}
                     {editSubTab === 'salary' && (
                       <div className="space-y-6">
-                        
-                        {/* Link to Attendance for Monthly Payroll */}
-                        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                              </div>
-                              <div>
-                                <h4 className="text-sm font-semibold text-blue-900">Monthly Payroll Linked to Attendance</h4>
-                                <p className="text-xs text-blue-600">Salary is calculated based on days present. Manage attendance to generate monthly payroll.</p>
-                              </div>
-                            </div>
-                            <a
-                              href="/employees/attendance"
-                              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                              </svg>
-                              Manage Attendance
-                            </a>
-                          </div>
-                        </div>
 
-                        {/* SECTION 1: Current Salary Profile Summary */}
+
+                        {/* SECTION 1: Salary Structure History - Shows ALL profiles as a set */}
                         {savedSalaryProfiles.length > 0 && (
                           <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">
                             <div className="flex items-center justify-between mb-4">
@@ -2994,120 +3116,138 @@ export default function EmployeesPage() {
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                Current Salary Profile
-                                {savedSalaryProfiles[0]?.salary_type && savedSalaryProfiles[0]?.salary_type !== 'monthly' && (
-                                  <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-purple-200 text-purple-800 rounded-full capitalize">
-                                    {savedSalaryProfiles[0].salary_type}
-                                  </span>
-                                )}
-                              </h4>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-purple-600">
-                                  Effective: {savedSalaryProfiles[0]?.effective_from ? new Date(savedSalaryProfiles[0].effective_from).toLocaleDateString('en-IN') : '-'}
+                                Salary Structure History
+                                <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-purple-200 text-purple-800 rounded-full">
+                                  {savedSalaryProfiles.length} {savedSalaryProfiles.length === 1 ? 'record' : 'records'}
                                 </span>
-                                <button
-                                  onClick={() => handleDeleteSalaryProfile(savedSalaryProfiles[0]?.id)}
-                                  disabled={deletingSalaryProfile}
-                                  className="px-2 py-1 text-xs bg-red-50 text-red-600 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1 disabled:opacity-50"
-                                >
-                                  {deletingSalaryProfile ? (
-                                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                  ) : (
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  )}
-                                  Delete
-                                </button>
-                              </div>
+                              </h4>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {/* Show different cards based on salary type */}
-                              {(!savedSalaryProfiles[0]?.salary_type || savedSalaryProfiles[0]?.salary_type === 'monthly') ? (
-                                <>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Gross</p>
-                                    <p className="text-xl font-bold text-gray-900">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
+                            
+                            {/* List of all salary profiles */}
+                            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                              {savedSalaryProfiles.map((profile, index) => {
+                                const isCurrentlyActive = !profile.effective_to || new Date(profile.effective_to) >= new Date();
+                                const isBeingEdited = editingSalaryProfileId === profile.id;
+                                
+                                return (
+                                  <div 
+                                    key={profile.id} 
+                                    className={`bg-white rounded-xl p-4 shadow-sm border-2 transition-all ${
+                                      isBeingEdited ? 'border-purple-500 ring-2 ring-purple-200' : 
+                                      isCurrentlyActive && index === 0 ? 'border-green-300' : 'border-gray-100'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-4">
+                                      {/* Left side - Profile info */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full capitalize ${
+                                            profile.salary_type === 'monthly' ? 'bg-blue-100 text-blue-700' :
+                                            profile.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' :
+                                            profile.salary_type === 'daily' ? 'bg-green-100 text-green-700' :
+                                            profile.salary_type === 'contract' ? 'bg-purple-100 text-purple-700' :
+                                            profile.salary_type === 'custom' ? 'bg-indigo-100 text-indigo-700' :
+                                            profile.salary_type === 'lumpsum' ? 'bg-pink-100 text-pink-700' :
+                                            'bg-gray-100 text-gray-700'
+                                          }`}>
+                                            {profile.salary_type || 'monthly'}
+                                          </span>
+                                          {isCurrentlyActive && index === 0 && (
+                                            <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+                                              ✓ Active
+                                            </span>
+                                          )}
+                                          {isBeingEdited && (
+                                            <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-full animate-pulse">
+                                              Editing...
+                                            </span>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Amount display based on salary type */}
+                                        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                                          {(!profile.salary_type || profile.salary_type === 'monthly') && (
+                                            <>
+                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.gross_salary || 0)}</span>
+                                              <span className="text-sm text-gray-500">Gross/month</span>
+                                              <span className="text-sm text-green-600 font-medium">• Net: ₹{formatCurrency(profile.net_pay || 0)}</span>
+                                            </>
+                                          )}
+                                          {profile.salary_type === 'hourly' && (
+                                            <>
+                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.hourly_rate || 0)}/hr</span>
+                                              <span className="text-sm text-gray-500">{profile.std_hours_per_day || 8} hrs/day</span>
+                                            </>
+                                          )}
+                                          {profile.salary_type === 'daily' && (
+                                            <>
+                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.daily_rate || 0)}/day</span>
+                                              <span className="text-sm text-gray-500">{profile.std_working_days || 26} days/month</span>
+                                            </>
+                                          )}
+                                          {profile.salary_type === 'contract' && (
+                                            <>
+                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.contract_amount || profile.gross_salary || 0)}</span>
+                                              <span className="text-sm text-gray-500 capitalize">{profile.contract_duration?.replace('_', ' ') || 'Monthly'}</span>
+                                            </>
+                                          )}
+                                          {profile.salary_type === 'lumpsum' && (
+                                            <>
+                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.lumpsum_amount || profile.gross_salary || 0)}</span>
+                                              <span className="text-sm text-gray-500">Lumpsum</span>
+                                            </>
+                                          )}
+                                          {profile.salary_type === 'custom' && (
+                                            <>
+                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.gross_salary || 0)}</span>
+                                              <span className="text-sm text-gray-500">Earnings</span>
+                                              <span className="text-sm text-green-600 font-medium">• Net: ₹{formatCurrency(profile.net_pay || 0)}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Date range */}
+                                        <p className="text-xs text-gray-500 mt-2">
+                                          <span className="font-medium">Effective:</span> {profile.effective_from ? new Date(profile.effective_from).toLocaleDateString('en-IN') : '-'}
+                                          {profile.effective_to ? (
+                                            <> → {new Date(profile.effective_to).toLocaleDateString('en-IN')}</>
+                                          ) : (
+                                            <span className="text-green-600 font-medium"> → Ongoing</span>
+                                          )}
+                                        </p>
+                                      </div>
+                                      
+                                      {/* Right side - Actions */}
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <button
+                                          onClick={() => handleEditSalaryProfile(profile)}
+                                          disabled={isBeingEdited}
+                                          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                                            isBeingEdited 
+                                              ? 'bg-purple-100 text-purple-700 cursor-default' 
+                                              : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                                          }`}
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                          </svg>
+                                          {isBeingEdited ? 'Editing' : 'Edit'}
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteSalaryProfile(profile.id)}
+                                          disabled={deletingSalaryProfile}
+                                          className="px-3 py-1.5 text-xs bg-red-50 text-red-600 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1 disabled:opacity-50"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Basic + DA</p>
-                                    <p className="text-xl font-bold text-gray-900">₹{formatCurrency(parseFloat(savedSalaryProfiles[0]?.basic_plus_da || 0) + parseFloat(savedSalaryProfiles[0]?.da || 0))}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">In Hand</p>
-                                    <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.net_pay || 0)}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Employer Cost</p>
-                                    <p className="text-xl font-bold text-blue-600">₹{formatCurrency(savedSalaryProfiles[0]?.employer_cost || 0)}</p>
-                                  </div>
-                                </>
-                              ) : savedSalaryProfiles[0]?.salary_type === 'hourly' ? (
-                                <>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">⏰ Hourly Rate</p>
-                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.hourly_rate || 0)}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Hours/Day</p>
-                                    <p className="text-xl font-bold text-gray-900">{savedSalaryProfiles[0]?.std_hours_per_day || 8}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Est. Monthly</p>
-                                    <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">OT Multiplier</p>
-                                    <p className="text-xl font-bold text-gray-700">{savedSalaryProfiles[0]?.ot_multiplier || 1.5}x</p>
-                                  </div>
-                                </>
-                              ) : savedSalaryProfiles[0]?.salary_type === 'daily' ? (
-                                <>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">📆 Daily Rate</p>
-                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.daily_rate || 0)}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Working Days</p>
-                                    <p className="text-xl font-bold text-gray-900">{savedSalaryProfiles[0]?.std_working_days || 26}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Est. Monthly</p>
-                                    <p className="text-xl font-bold text-green-600">₹{formatCurrency(savedSalaryProfiles[0]?.gross_salary || 0)}</p>
-                                  </div>
-                                </>
-                              ) : savedSalaryProfiles[0]?.salary_type === 'contract' ? (
-                                <>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">📝 Contract Amount</p>
-                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.contract_amount || savedSalaryProfiles[0]?.gross_salary || 0)}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</p>
-                                    <p className="text-lg font-bold text-gray-900 capitalize">{savedSalaryProfiles[0]?.contract_duration?.replace('_', ' ') || 'Monthly'}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">End Date</p>
-                                    <p className="text-lg font-bold text-orange-600">
-                                      {savedSalaryProfiles[0]?.contract_end_date ? new Date(savedSalaryProfiles[0].contract_end_date).toLocaleDateString('en-IN') : 'Not Set'}
-                                    </p>
-                                  </div>
-                                </>
-                              ) : savedSalaryProfiles[0]?.salary_type === 'lumpsum' ? (
-                                <>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">💰 Lumpsum Amount</p>
-                                    <p className="text-xl font-bold text-indigo-600">₹{formatCurrency(savedSalaryProfiles[0]?.lumpsum_amount || savedSalaryProfiles[0]?.gross_salary || 0)}</p>
-                                  </div>
-                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center col-span-2">
-                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Description</p>
-                                    <p className="text-sm font-medium text-gray-700">{savedSalaryProfiles[0]?.lumpsum_description || 'One-time payment'}</p>
-                                  </div>
-                                </>
-                              ) : null}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -3129,13 +3269,38 @@ export default function EmployeesPage() {
                           </div>
                         )}
 
-                        {/* SECTION 2: Edit Salary Structure */}
-                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                        {/* SECTION 2: Edit/Add Salary Structure */}
+                        <div className={`bg-white border-2 rounded-xl p-4 ${editingSalaryProfileId ? 'border-purple-300' : 'border-gray-200'}`}>
                           <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-4">
-                              <h4 className="text-lg font-semibold text-gray-900">
-                                {savedSalaryProfiles.length > 0 ? 'Update Salary Structure' : 'Create Salary Structure'}
+                              <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                {editingSalaryProfileId ? (
+                                  <>
+                                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    Edit Salary Structure
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                    Add New Salary Structure
+                                  </>
+                                )}
                               </h4>
+                              {editingSalaryProfileId && (
+                                <button
+                                  onClick={handleResetSalaryForm}
+                                  className="px-3 py-1.5 text-xs bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg border border-gray-300 transition-colors flex items-center gap-1"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  Cancel Edit
+                                </button>
+                              )}
                             </div>
                             <a 
                               href="/admin/payroll-schedules" 
@@ -3161,7 +3326,8 @@ export default function EmployeesPage() {
                                   { value: 'hourly', label: 'Hourly',  desc: 'Paid per hour worked' },
                                   { value: 'daily', label: 'Daily', desc: 'Paid per day worked' },
                                   { value: 'contract', label: 'Contract', desc: 'Fixed contract amount' },
-                                  { value: 'lumpsum', label: 'Lumpsum', desc: 'One-time payment' }
+                                  { value: 'lumpsum', label: 'Lumpsum', desc: 'One-time payment' },
+                                  { value: 'custom', label: 'Custom', desc: 'Build your own structure' }
                                 ].map((type) => (
                                   <button
                                     key={type.value}
@@ -3186,7 +3352,31 @@ export default function EmployeesPage() {
                                 {salaryPreview.salary_type === 'daily' && '💡 Payment based on days worked. Common for casual/temporary workers'}
                                 {salaryPreview.salary_type === 'contract' && '💡 Fixed amount for the contract duration. No statutory deductions'}
                                 {salaryPreview.salary_type === 'lumpsum' && '💡 One-time payment for specific work. No recurring salary structure'}
+                                {salaryPreview.salary_type === 'custom' && '💡 Build your own salary structure with custom earnings and deductions'}
                               </p>
+                            </div>
+
+                            {/* Effective Date Range */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Effective From *</label>
+                                <input 
+                                  type="date" 
+                                  value={salaryPreview.effective_from} 
+                                  onChange={(e) => setSalaryPreview({ ...salaryPreview, effective_from: e.target.value })}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Effective To <span className="text-gray-400 text-xs">(Optional - leave blank for ongoing)</span></label>
+                                <input 
+                                  type="date" 
+                                  value={salaryPreview.effective_to} 
+                                  onChange={(e) => setSalaryPreview({ ...salaryPreview, effective_to: e.target.value })}
+                                  min={salaryPreview.effective_from}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                />
+                              </div>
                             </div>
 
                             {/* Monthly Salary Fields */}
@@ -3255,56 +3445,42 @@ export default function EmployeesPage() {
 
                             {/* Hourly Rate Fields */}
                             {salaryPreview.salary_type === 'hourly' && (
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Hourly Rate (₹) *</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryPreview.hourly_rate} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, hourly_rate: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="Enter hourly rate"
-                                  />
+                              <div className="space-y-4 mb-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Hourly Rate (₹) *</label>
+                                    <input 
+                                      type="number" 
+                                      value={salaryPreview.hourly_rate} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, hourly_rate: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Hours/Day</label>
+                                    <input 
+                                      type="number" 
+                                      value={salaryPreview.std_hours_per_day || '8'} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, std_hours_per_day: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                                      placeholder="8"
+                                    />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Std Hours/Day</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryPreview.std_hours_per_day || '8'} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, std_hours_per_day: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="8"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">OT Multiplier</label>
-                                  <select 
-                                    value={salaryPreview.ot_multiplier || '1.5'} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, ot_multiplier: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                  >
-                                    <option value="1">1x (No OT)</option>
-                                    <option value="1.5">1.5x</option>
-                                    <option value="2">2x</option>
-                                  </select>
-                                </div>
-                                <div className="md:col-span-3 bg-blue-50 rounded-lg p-3">
-                                  <p className="text-sm text-blue-800">
-                                    <strong>Estimated Monthly:</strong> ₹{formatCurrency((parseFloat(salaryPreview.hourly_rate) || 0) * (parseFloat(salaryPreview.std_hours_per_day) || 8) * 26)} 
-                                    <span className="text-xs text-blue-600 ml-2">(based on 26 working days)</span>
-                                  </p>
-                                </div>
-                                <div className="md:col-span-3 mt-3">
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center justify-between">
+                                  <div>
+                                    <p className="text-xs text-orange-600 font-medium">Est. Monthly (26 days)</p>
+                                    <p className="text-lg font-bold text-orange-700">₹{formatCurrency((parseFloat(salaryPreview.hourly_rate) || 0) * (parseFloat(salaryPreview.std_hours_per_day) || 8) * 26)}</p>
+                                  </div>
                                   <button
                                     onClick={handleSaveSalaryProfile}
                                     disabled={salaryProfileSaving || !salaryPreview.hourly_rate}
-                                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                    className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
+                                      editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'
+                                    }`}
                                   >
-                                    {salaryProfileSaving ? (
-                                      <><span className="animate-spin">⏳</span> Saving...</>
-                                    ) : (
-                                      <><span></span> Save Hourly Rate Profile</>
-                                    )}
+                                    {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update' : '+ Add'}
                                   </button>
                                 </div>
                               </div>
@@ -3312,44 +3488,42 @@ export default function EmployeesPage() {
 
                             {/* Daily Rate Fields */}
                             {salaryPreview.salary_type === 'daily' && (
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Daily Rate (₹) *</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryPreview.daily_rate} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, daily_rate: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="Enter daily rate"
-                                  />
+                              <div className="space-y-4 mb-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Daily Rate (₹) *</label>
+                                    <input 
+                                      type="number" 
+                                      value={salaryPreview.daily_rate} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, daily_rate: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" 
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Days/Month</label>
+                                    <input 
+                                      type="number" 
+                                      value={salaryPreview.std_working_days || '26'} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, std_working_days: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" 
+                                      placeholder="26"
+                                    />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Std Working Days/Month</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryPreview.std_working_days || '26'} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, std_working_days: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="26"
-                                  />
-                                </div>
-                                <div className="md:col-span-3 bg-green-50 rounded-lg p-3">
-                                  <p className="text-sm text-green-800">
-                                    <strong>Estimated Monthly:</strong> ₹{formatCurrency((parseFloat(salaryPreview.daily_rate) || 0) * (parseFloat(salaryPreview.std_working_days) || 26))} 
-                                    <span className="text-xs text-green-600 ml-2">(if all days worked)</span>
-                                  </p>
-                                </div>
-                                <div className="md:col-span-3 mt-3">
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
+                                  <div>
+                                    <p className="text-xs text-green-600 font-medium">Est. Monthly</p>
+                                    <p className="text-lg font-bold text-green-700">₹{formatCurrency((parseFloat(salaryPreview.daily_rate) || 0) * (parseFloat(salaryPreview.std_working_days) || 26))}</p>
+                                  </div>
                                   <button
                                     onClick={handleSaveSalaryProfile}
                                     disabled={salaryProfileSaving || !salaryPreview.daily_rate}
-                                    className="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                    className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
+                                      editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                                    }`}
                                   >
-                                    {salaryProfileSaving ? (
-                                      <><span className="animate-spin">⏳</span> Saving...</>
-                                    ) : (
-                                      <><span></span> Save Daily Rate Profile</>
-                                    )}
+                                    {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update' : '+ Add'}
                                   </button>
                                 </div>
                               </div>
@@ -3357,56 +3531,52 @@ export default function EmployeesPage() {
 
                             {/* Contract Amount Fields */}
                             {salaryPreview.salary_type === 'contract' && (
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract Amount (₹) *</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryPreview.contract_amount} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_amount: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="Enter contract amount"
-                                  />
+                              <div className="space-y-4 mb-3">
+                                <div className="grid grid-cols-3 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₹) *</label>
+                                    <input 
+                                      type="number" 
+                                      value={salaryPreview.contract_amount} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_amount: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Duration</label>
+                                    <select 
+                                      value={salaryPreview.contract_duration || 'monthly'} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_duration: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                    >
+                                      <option value="monthly">Monthly</option>
+                                      <option value="quarterly">Quarterly</option>
+                                      <option value="half_yearly">6 Months</option>
+                                      <option value="yearly">Yearly</option>
+                                      <option value="project">Project</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                                    <input 
+                                      type="date" 
+                                      value={salaryPreview.contract_end_date || ''} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_end_date: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
+                                    />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract Duration</label>
-                                  <select 
-                                    value={salaryPreview.contract_duration || 'monthly'} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_duration: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                  >
-                                    <option value="monthly">Per Month</option>
-                                    <option value="quarterly">Per Quarter</option>
-                                    <option value="half_yearly">Per 6 Months</option>
-                                    <option value="yearly">Per Year</option>
-                                    <option value="project">Per Project</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Contract End Date</label>
-                                  <input 
-                                    type="date" 
-                                    value={salaryPreview.contract_end_date || ''} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_end_date: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                  />
-                                </div>
-                                <div className="md:col-span-3 bg-amber-50 rounded-lg p-3">
-                                  <p className="text-sm text-amber-800">
-                                    <strong>Note:</strong> Contract workers are typically not covered under PF/ESIC. TDS may apply based on income.
-                                  </p>
-                                </div>
-                                <div className="md:col-span-3 mt-3">
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
+                                  <p className="text-xs text-amber-700">💡 No PF/ESIC. TDS may apply.</p>
                                   <button
                                     onClick={handleSaveSalaryProfile}
                                     disabled={salaryProfileSaving || !salaryPreview.contract_amount}
-                                    className="w-full px-4 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                    className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
+                                      editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'
+                                    }`}
                                   >
-                                    {salaryProfileSaving ? (
-                                      <><span className="animate-spin">⏳</span> Saving...</>
-                                    ) : (
-                                      <><span></span> Save Contract Profile</>
-                                    )}
+                                    {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update' : '+ Add'}
                                   </button>
                                 </div>
                               </div>
@@ -3414,43 +3584,421 @@ export default function EmployeesPage() {
 
                             {/* Lumpsum Amount Fields */}
                             {salaryPreview.salary_type === 'lumpsum' && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Lumpsum Amount (₹) *</label>
-                                  <input 
-                                    type="number" 
-                                    value={salaryPreview.lumpsum_amount} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, lumpsum_amount: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="Enter lumpsum amount"
-                                  />
+                              <div className="space-y-4 mb-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₹) *</label>
+                                    <input 
+                                      type="number" 
+                                      value={salaryPreview.lumpsum_amount} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, lumpsum_amount: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                                    <input 
+                                      type="text" 
+                                      value={salaryPreview.lumpsum_description || ''} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, lumpsum_description: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                      placeholder="e.g., Bonus"
+                                    />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Description</label>
-                                  <input 
-                                    type="text" 
-                                    value={salaryPreview.lumpsum_description || ''} 
-                                    onChange={(e) => setSalaryPreview({ ...salaryPreview, lumpsum_description: e.target.value })}
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
-                                    placeholder="e.g., Project completion bonus"
-                                  />
-                                </div>
-                                <div className="md:col-span-2 bg-purple-50 rounded-lg p-3">
-                                  <p className="text-sm text-purple-800">
-                                    <strong>Note:</strong> Lumpsum payments are one-time. No recurring salary or statutory deductions.
-                                  </p>
-                                </div>
-                                <div className="md:col-span-2 mt-3">
+                                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+                                  <p className="text-xs text-purple-700">💰 One-time payment. No recurring.</p>
                                   <button
                                     onClick={handleSaveSalaryProfile}
                                     disabled={salaryProfileSaving || !salaryPreview.lumpsum_amount}
-                                    className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                                    className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
+                                      editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'
+                                    }`}
                                   >
-                                    {salaryProfileSaving ? (
-                                      <><span className="animate-spin">⏳</span> Saving...</>
-                                    ) : (
-                                      <><span></span> Save Lumpsum Profile</>
+                                    {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update' : '+ Add'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Custom Salary Structure Fields - 3 Column System (Fixed Earnings/Deductions like Monthly) */}
+                            {salaryPreview.salary_type === 'custom' && (
+                              <div className="space-y-4 mb-3">
+                                {/* 3 COLUMNS SIDE BY SIDE */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  {/* COLUMN 1: EARNINGS (Fixed like Monthly) */}
+                                  <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                                    <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                      </svg>
+                                      Earnings
+                                    </h5>
+                                    <div className="space-y-2">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Basic</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_basic || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_basic: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">DA</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_da || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_da: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">HRA</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_hra || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_hra: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Conveyance</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_conveyance || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_conveyance: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Call Allowance</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_call_allowance || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_call_allowance: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Incentive</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_incentive || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_incentive: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Other</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_other_allowances || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_other_allowances: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="border-t border-green-300 pt-2 mt-2">
+                                        <div className="flex justify-between font-semibold">
+                                          <span className="text-green-900">Total Earnings</span>
+                                          <span className="text-green-900">₹{formatCurrency(
+                                            (parseFloat(salaryPreview.custom_basic) || 0) +
+                                            (parseFloat(salaryPreview.custom_da) || 0) +
+                                            (parseFloat(salaryPreview.custom_hra) || 0) +
+                                            (parseFloat(salaryPreview.custom_conveyance) || 0) +
+                                            (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+                                            (parseFloat(salaryPreview.custom_incentive) || 0) +
+                                            (parseFloat(salaryPreview.custom_other_allowances) || 0)
+                                          )}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* COLUMN 2: DEDUCTIONS (Fixed like Monthly) */}
+                                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                                    <h5 className="text-sm font-semibold text-red-800 mb-3 flex items-center gap-2">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                      </svg>
+                                      Deductions
+                                    </h5>
+                                    <div className="space-y-2">
+                                      <div className="flex justify-between items-center text-sm text-gray-500 mb-2">
+                                        <span>From Earnings:</span>
+                                        <span>₹{formatCurrency(
+                                          (parseFloat(salaryPreview.custom_basic) || 0) +
+                                          (parseFloat(salaryPreview.custom_da) || 0) +
+                                          (parseFloat(salaryPreview.custom_hra) || 0) +
+                                          (parseFloat(salaryPreview.custom_conveyance) || 0) +
+                                          (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+                                          (parseFloat(salaryPreview.custom_incentive) || 0) +
+                                          (parseFloat(salaryPreview.custom_other_allowances) || 0)
+                                        )}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Emp PF</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_pf_employee || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_pf_employee: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Emp ESIC</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_esic_employee || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_esic_employee: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">PT</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_pt || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_pt: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">MLWF</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_mlwf || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_mlwf: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Retention</span>
+                                        <input
+                                          type="number"
+                                          value={salaryPreview.custom_retention || ''}
+                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_retention: e.target.value })}
+                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div className="border-t border-red-300 pt-2 mt-2">
+                                        <div className="flex justify-between font-semibold">
+                                          <span className="text-red-900">Total Deductions</span>
+                                          <span className="text-red-900">₹{formatCurrency(
+                                            (parseFloat(salaryPreview.custom_pf_employee) || 0) +
+                                            (parseFloat(salaryPreview.custom_esic_employee) || 0) +
+                                            (parseFloat(salaryPreview.custom_pt) || 0) +
+                                            (parseFloat(salaryPreview.custom_mlwf) || 0) +
+                                            (parseFloat(salaryPreview.custom_retention) || 0)
+                                          )}</span>
+                                        </div>
+                                      </div>
+                                      <div className="border-t-2 border-green-400 pt-2 mt-2">
+                                        <div className="flex justify-between font-bold text-base">
+                                          <span className="text-green-700">Net Pay</span>
+                                          <span className="text-green-700">₹{formatCurrency(
+                                            ((parseFloat(salaryPreview.custom_basic) || 0) +
+                                            (parseFloat(salaryPreview.custom_da) || 0) +
+                                            (parseFloat(salaryPreview.custom_hra) || 0) +
+                                            (parseFloat(salaryPreview.custom_conveyance) || 0) +
+                                            (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+                                            (parseFloat(salaryPreview.custom_incentive) || 0) +
+                                            (parseFloat(salaryPreview.custom_other_allowances) || 0)) -
+                                            ((parseFloat(salaryPreview.custom_pf_employee) || 0) +
+                                            (parseFloat(salaryPreview.custom_esic_employee) || 0) +
+                                            (parseFloat(salaryPreview.custom_pt) || 0) +
+                                            (parseFloat(salaryPreview.custom_mlwf) || 0) +
+                                            (parseFloat(salaryPreview.custom_retention) || 0))
+                                          )}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* COLUMN 3: EMPLOYER COST / CTC (Dynamic - can add custom items) */}
+                                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                                    <div className="flex items-center justify-between mb-3">
+                                      <h5 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                        </svg>
+                                        CTC / Employer
+                                      </h5>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newComponent = { id: Date.now(), name: '', amount: '', type: 'employer' };
+                                          setSalaryPreview({
+                                            ...salaryPreview,
+                                            custom_components: [...(salaryPreview.custom_components || []), newComponent]
+                                          });
+                                        }}
+                                        className="p-1 bg-blue-600 text-white hover:bg-blue-700 rounded"
+                                        title="Add Employer Cost"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600">Total Earnings</span>
+                                        <span className="text-sm font-medium text-gray-900">₹{formatCurrency(
+                                          (parseFloat(salaryPreview.custom_basic) || 0) +
+                                          (parseFloat(salaryPreview.custom_da) || 0) +
+                                          (parseFloat(salaryPreview.custom_hra) || 0) +
+                                          (parseFloat(salaryPreview.custom_conveyance) || 0) +
+                                          (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+                                          (parseFloat(salaryPreview.custom_incentive) || 0) +
+                                          (parseFloat(salaryPreview.custom_other_allowances) || 0)
+                                        )}</span>
+                                      </div>
+                                      <div className="border-t border-blue-200 pt-2 mt-2">
+                                        <p className="text-xs text-gray-500 mb-2">Employer Contributions:</p>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-sm text-gray-600">Empr PF</span>
+                                          <input
+                                            type="number"
+                                            value={salaryPreview.custom_pf_employer || ''}
+                                            onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_pf_employer: e.target.value })}
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            placeholder="0"
+                                          />
+                                        </div>
+                                        <div className="flex justify-between items-center mt-2">
+                                          <span className="text-sm text-gray-600">Empr ESIC</span>
+                                          <input
+                                            type="number"
+                                            value={salaryPreview.custom_esic_employer || ''}
+                                            onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_esic_employer: e.target.value })}
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            placeholder="0"
+                                          />
+                                        </div>
+                                        <div className="flex justify-between items-center mt-2">
+                                          <span className="text-sm text-gray-600">Empr MLWF</span>
+                                          <input
+                                            type="number"
+                                            value={salaryPreview.custom_mlwf_employer || ''}
+                                            onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_mlwf_employer: e.target.value })}
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            placeholder="0"
+                                          />
+                                        </div>
+                                        <div className="flex justify-between items-center mt-2">
+                                          <span className="text-sm text-gray-600">Bonus</span>
+                                          <input
+                                            type="number"
+                                            value={salaryPreview.custom_bonus || ''}
+                                            onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_bonus: e.target.value })}
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            placeholder="0"
+                                          />
+                                        </div>
+                                        <div className="flex justify-between items-center mt-2">
+                                          <span className="text-sm text-gray-600">Insurance</span>
+                                          <input
+                                            type="number"
+                                            value={salaryPreview.custom_insurance || ''}
+                                            onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_insurance: e.target.value })}
+                                            className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            placeholder="0"
+                                          />
+                                        </div>
+                                        {/* Dynamic employer cost items */}
+                                        {(salaryPreview.custom_components || []).filter(c => c.type === 'employer').map((comp) => (
+                                          <div key={comp.id} className="flex justify-between items-center mt-2 gap-1">
+                                            <input
+                                              type="text"
+                                              value={comp.name}
+                                              onChange={(e) => {
+                                                const updated = [...salaryPreview.custom_components];
+                                                const idx = salaryPreview.custom_components.findIndex(c => c.id === comp.id);
+                                                updated[idx].name = e.target.value;
+                                                setSalaryPreview({ ...salaryPreview, custom_components: updated });
+                                              }}
+                                              placeholder="Name"
+                                              className="flex-1 min-w-0 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            />
+                                            <input
+                                              type="number"
+                                              value={comp.amount}
+                                              onChange={(e) => {
+                                                const updated = [...salaryPreview.custom_components];
+                                                const idx = salaryPreview.custom_components.findIndex(c => c.id === comp.id);
+                                                updated[idx].amount = e.target.value;
+                                                setSalaryPreview({ ...salaryPreview, custom_components: updated });
+                                              }}
+                                              placeholder="0"
+                                              className="w-20 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = salaryPreview.custom_components.filter(c => c.id !== comp.id);
+                                                setSalaryPreview({ ...salaryPreview, custom_components: updated });
+                                              }}
+                                              className="p-0.5 text-gray-400 hover:text-red-500 rounded"
+                                            >
+                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="border-t-2 border-blue-400 pt-2 mt-2">
+                                        <div className="flex justify-between font-bold text-base">
+                                          <span className="text-blue-800">Total CTC</span>
+                                          <span className="text-blue-800">₹{formatCurrency(
+                                            ((parseFloat(salaryPreview.custom_basic) || 0) +
+                                            (parseFloat(salaryPreview.custom_da) || 0) +
+                                            (parseFloat(salaryPreview.custom_hra) || 0) +
+                                            (parseFloat(salaryPreview.custom_conveyance) || 0) +
+                                            (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+                                            (parseFloat(salaryPreview.custom_incentive) || 0) +
+                                            (parseFloat(salaryPreview.custom_other_allowances) || 0)) +
+                                            ((parseFloat(salaryPreview.custom_pf_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_esic_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_bonus) || 0) +
+                                            (parseFloat(salaryPreview.custom_insurance) || 0) +
+                                            ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)))
+                                          )}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Save Button */}
+                                <div className="flex justify-end">
+                                  <button
+                                    onClick={handleSaveSalaryProfile}
+                                    disabled={salaryProfileSaving || !(
+                                      (parseFloat(salaryPreview.custom_basic) || 0) > 0 ||
+                                      (parseFloat(salaryPreview.custom_da) || 0) > 0 ||
+                                      (parseFloat(salaryPreview.custom_hra) || 0) > 0
                                     )}
+                                    className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
+                                      editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                                    }`}
+                                  >
+                                    {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update Custom Profile' : '+ Add Custom Profile'}
                                   </button>
                                 </div>
                               </div>
@@ -4232,7 +4780,9 @@ export default function EmployeesPage() {
                                   type="button"
                                   onClick={handleSaveSalaryProfile}
                                   disabled={salaryProfileSaving}
-                                  className="px-6 py-2 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                  className={`px-6 py-2 text-sm rounded-lg text-white transition-colors disabled:opacity-50 flex items-center gap-2 ${
+                                    editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                                  }`}
                                 >
                                   {salaryProfileSaving && (
                                     <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -4240,7 +4790,7 @@ export default function EmployeesPage() {
                                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
                                   )}
-                                  Save Salary Profile
+                                  {editingSalaryProfileId ? 'Update Salary Profile' : '+ Add New Salary Profile'}
                                 </button>
                               </div>
                             </>

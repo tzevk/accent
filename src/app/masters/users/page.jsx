@@ -154,9 +154,10 @@ function UsersTabContent() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Use optimized /api/employees/list and /api/users/list endpoints for better TTFB
       const [empRes, usersRes] = await Promise.all([
-        fetch('/api/employees?limit=1000'),
-        fetch('/api/users?limit=1000')
+        fetch('/api/employees/list?limit=1000'),
+        fetch('/api/users/list?limit=1000')
       ]);
       
       const empData = await empRes.json();

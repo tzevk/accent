@@ -35,13 +35,12 @@ export default function SignIn() {
     // Clear any stale session cache when signin page loads
     clearSessionCache();
     
+    // Platform detection for styling only - NO auth checks here
     const platform = navigator.userAgent;
     const windowsDetected = platform.includes('Windows');
     setIsWindows(windowsDetected);
     
     if (windowsDetected) {
-      // Keep original gradient on Windows as requested; only apply size scaling
-      
       // Windows-specific scaling to make form appear smaller and more comfortable
       setPlatformStyles({
         transform: 'scale(0.85)',
@@ -68,12 +67,14 @@ export default function SignIn() {
         // Clear cached session data to ensure fresh session is loaded
         clearSessionCache();
         
-        // Short wait for cookies to be set, then redirect immediately
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // All users go through the gate route after login
-        // Gate will determine the correct destination based on role/permissions
-        router.replace('/gate');
+        // Redirect directly based on API response - no intermediate route
+        // Do NOT read cookies or check session - trust the API response
+        // Wrap in microtask to ensure cookies are fully set before navigation
+        setTimeout(() => {
+          router.replace(
+            data.is_super_admin ? '/admin/dashboard' : '/user/dashboard'
+          );
+        }, 0);
       }
       else setError(data?.message || 'Invalid credentials');
     } catch (e) {

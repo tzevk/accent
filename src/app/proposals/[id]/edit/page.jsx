@@ -189,7 +189,8 @@ Dispute Resolution
         } catch {
           // ignore
         }
-        const res = await fetch(`/api/proposals/${proposalId}`);
+        // Use optimized /api/proposals/{id}/detail endpoint for better TTFB
+        const res = await fetch(`/api/proposals/${proposalId}/detail`);
         const data = await res.json();
 
         if (data?.success && data?.proposal) {

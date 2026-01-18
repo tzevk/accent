@@ -110,11 +110,17 @@ export default function Leads() {
         ...(cityFilter && { city: cityFilter })
       });
 
-      const result = await fetchJSON(`/api/leads?${params}`);
+      // Use optimized leads list API with parallel queries and caching
+      const result = await fetchJSON(`/api/leads/list?${params}`);
       
       if (result.success) {
         setLeads(result.data.leads);
         setStats(result.data.stats);
+        
+        // Log performance for debugging
+        if (result._meta?.queryTimeMs) {
+          console.log(`Leads loaded in ${result._meta.queryTimeMs}ms`);
+        }
       }
     } catch (error) {
       console.error('Error fetching leads:', error);

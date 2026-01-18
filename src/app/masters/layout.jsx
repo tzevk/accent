@@ -1,15 +1,9 @@
-import { redirect } from 'next/navigation'
-import { requireServerAuth } from '@/utils/server-auth'
-
-export const dynamic = 'force-dynamic'
-
-export default async function MastersLayout({ children }) {
-  // Use proper JWT authentication with user permissions loading
-  const auth = await requireServerAuth('/masters')
-  
-  if (!auth.authenticated) {
-    redirect(auth.redirectTo)
-  }
-  
+/**
+ * Masters Layout
+ * 
+ * Authentication is handled by middleware - no redirects here.
+ * This layout just passes through children.
+ */
+export default function MastersLayout({ children }) {
   return children
 }

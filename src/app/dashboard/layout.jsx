@@ -1,15 +1,9 @@
-import { redirect } from 'next/navigation'
-import { requireServerAuth } from '@/utils/server-auth'
-
-export const dynamic = 'force-dynamic'
-
-export default async function DashboardLayout({ children }) {
-  // Use proper JWT authentication with user permissions loading
-  const auth = await requireServerAuth('/dashboard')
-  
-  if (!auth.authenticated) {
-    redirect(auth.redirectTo)
-  }
-  
+/**
+ * Dashboard Layout
+ * 
+ * Authentication is handled by middleware - no redirects here.
+ * This layout just passes through children.
+ */
+export default function DashboardLayout({ children }) {
   return children
 }

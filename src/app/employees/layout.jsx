@@ -1,15 +1,9 @@
-import { redirect } from 'next/navigation'
-import { requireServerAuth } from '@/utils/server-auth'
-
-export const dynamic = 'force-dynamic'
-
-export default async function EmployeesLayout({ children }) {
-  // Use proper JWT authentication with user permissions loading
-  const auth = await requireServerAuth('/employees')
-  
-  if (!auth.authenticated) {
-    redirect(auth.redirectTo)
-  }
-  
+/**
+ * Employees Layout
+ * 
+ * Authentication is handled by middleware - no redirects here.
+ * This layout just passes through children.
+ */
+export default function EmployeesLayout({ children }) {
   return children
 }

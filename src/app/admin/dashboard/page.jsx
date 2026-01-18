@@ -85,179 +85,92 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
       
-      let leadsData = { success: false, data: null };
-      let proposalsData = { success: false, data: [] };
-      let companiesData = { success: false, data: [] };
-      let projectsData = { success: false, data: [] };
+      // Use optimized dashboard-stats API with parallel queries
+      // This replaces 6+ sequential API calls with 2 parallel calls
+      const [dashboardRes, manhoursRes] = await Promise.all([
+        fetchJSON('/api/admin/dashboard-stats'),
+        fetchJSON('/api/admin/manhours-stats')
+      ]);
       
-      try { leadsData = await fetchJSON('/api/leads?limit=1'); } catch {}
-      try { proposalsData = await fetchJSON('/api/proposals'); } catch {}
-      try { companiesData = await fetchJSON('/api/companies'); } catch {}
-      try { projectsData = await fetchJSON('/api/projects'); } catch {}
-
-      const proposals = proposalsData.proposals || proposalsData.data || [];
-      const proposalStats = {
-        total: proposals.length,
-        pending: proposals.filter(p => p.status === 'pending').length,
-        approved: proposals.filter(p => p.status === 'approved').length,
-        draft: proposals.filter(p => p.status === 'draft').length
-      };
-      
-      const projects = projectsData.data || [];
-      const projectStats = {
-        total: projects.length,
-        in_progress: projects.filter(p => p.status === 'in-progress').length,
-        completed: projects.filter(p => p.status === 'completed').length
-      };
-      
-      setStats({
-        leads: leadsData.data?.stats || { total_leads: 0, under_discussion: 0, active_leads: 0, closed_won: 0 },
-        proposals: proposalStats,
-        companies: { total: companiesData.data?.length || 0 },
-        projects: projectStats
-      });
-
-      // Calculate deltas
-      const now = new Date();
-      const last7Start = new Date(now);
-      last7Start.setDate(now.getDate() - 7);
-      const prev7Start = new Date(now);
-      prev7Start.setDate(now.getDate() - 14);
-
-      const leadsArr = leadsData.data?.leads || [];
-      const proposalsArr = proposals;
-      const companiesArr = companiesData.data || [];
-      const projectsArr = projects;
-
-      const pickDate = (item) => item?.created_at ? new Date(item.created_at) : null;
-      const inRange = (d, start, end) => d && d >= start && d < end;
-
-      const countInRange = (arr, s, e) => arr.filter(it => inRange(pickDate(it), s, e)).length;
-
-      setDeltas({
-        leads: countInRange(leadsArr, last7Start, now) - countInRange(leadsArr, prev7Start, last7Start),
-        proposals: countInRange(proposalsArr, last7Start, now) - countInRange(proposalsArr, prev7Start, last7Start),
-        companies: countInRange(companiesArr, last7Start, now) - countInRange(companiesArr, prev7Start, last7Start),
-        projects: countInRange(projectsArr, last7Start, now) - countInRange(projectsArr, prev7Start, last7Start)
-      });
-
-      // Build series for charts
-      const lastNDays = (n) => {
-        const arr = [];
-        const base = new Date();
-        for (let i = n - 1; i >= 0; i--) {
-          const d = new Date(base);
-          d.setDate(base.getDate() - i);
-          d.setHours(0, 0, 0, 0);
-          arr.push(d);
-        }
-        return arr;
-      };
-      const days = lastNDays(7);
-      const dayKey = (d) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-      const bucketCounts = (arr) => {
-        const buckets = Object.fromEntries(days.map(d => [dayKey(d), 0]));
-        arr.forEach(it => {
-          const d = pickDate(it);
-          if (!d) return;
-          const k = dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
-          if (k in buckets) buckets[k]++;
+      if (dashboardRes.success && dashboardRes.data) {
+        const { stats: apiStats, deltas: apiDeltas, series, activity } = dashboardRes.data;
+        
+        setStats({
+          leads: apiStats.leads,
+          proposals: apiStats.proposals,
+          companies: apiStats.companies,
+          projects: apiStats.projects
         });
-        return Object.values(buckets);
-      };
-
-      setAnalytics(prev => ({
-        ...prev,
-        series: {
-          leads: bucketCounts(leadsArr),
-          proposals: bucketCounts(proposalsArr),
-          companies: bucketCounts(companiesArr),
-          projects: bucketCounts(projectsArr)
+        
+        setDeltas(apiDeltas);
+        
+        setAnalytics(prev => ({
+          ...prev,
+          series,
+          activity
+        }));
+        
+        // Log performance improvement
+        if (dashboardRes.data._meta?.queryTimeMs) {
+          console.log(`Dashboard stats loaded in ${dashboardRes.data._meta.queryTimeMs}ms`);
         }
-      }));
-
-      // Fetch manhours data from work logs and activity assignments
-      try {
-        // Get work logs for last 30 days
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const workLogsRes = await fetch(`/api/work-logs?start_date=${thirtyDaysAgo.toISOString().split('T')[0]}&limit=1000`);
-        const workLogsData = await workLogsRes.json();
-        
-        // Get all activity assignments for manhours
-        const assignmentsRes = await fetch('/api/projects?include_assignments=true&limit=100');
-        const assignmentsData = await assignmentsRes.json();
-        
-        let totalEstimated = 0;
-        let totalActual = 0;
-        const projectManhours = [];
-        
-        // Calculate from projects and their assignments
-        const allProjects = assignmentsData.data || [];
-        for (const project of allProjects) {
-          const projEstimated = parseFloat(project.budget) || 0; // budget often holds estimated hours
-          let projActual = 0;
-          
-          // Sum actual hours from work logs for this project
-          if (workLogsData.success && workLogsData.data) {
-            projActual = workLogsData.data
-              .filter(log => log.project_id === project.project_id)
-              .reduce((sum, log) => sum + (parseFloat(log.hours_worked) || 0), 0);
-          }
-          
-          totalEstimated += projEstimated;
-          totalActual += projActual;
-          
-          if (projEstimated > 0 || projActual > 0) {
-            projectManhours.push({
-              name: project.name || 'Unnamed',
-              estimated: projEstimated,
-              actual: projActual,
-              efficiency: projEstimated > 0 ? Math.round((projActual / projEstimated) * 100) : 0
-            });
-          }
-        }
-        
-        // Build weekly trend for manhours (last 4 weeks)
-        const weeklyTrend = [];
-        const weeks = 4;
-        for (let w = weeks - 1; w >= 0; w--) {
-          const weekEnd = new Date();
-          weekEnd.setDate(weekEnd.getDate() - (w * 7));
-          const weekStart = new Date(weekEnd);
-          weekStart.setDate(weekStart.getDate() - 7);
-          
-          let weekActual = 0;
-          if (workLogsData.success && workLogsData.data) {
-            weekActual = workLogsData.data
-              .filter(log => {
-                const logDate = new Date(log.log_date);
-                return logDate >= weekStart && logDate < weekEnd;
-              })
-              .reduce((sum, log) => sum + (parseFloat(log.hours_worked) || 0), 0);
-          }
-          
-          weeklyTrend.push({
-            week: `W${weeks - w}`,
-            hours: Math.round(weekActual * 10) / 10
-          });
-        }
-        
+      }
+      
+      if (manhoursRes.success && manhoursRes.data) {
         setManhours({
-          estimated: Math.round(totalEstimated),
-          actual: Math.round(totalActual * 10) / 10,
-          byProject: projectManhours.sort((a, b) => b.actual - a.actual).slice(0, 5),
-          weeklyTrend
+          estimated: manhoursRes.data.estimated,
+          actual: manhoursRes.data.actual,
+          byProject: manhoursRes.data.byProject,
+          weeklyTrend: manhoursRes.data.weeklyTrend
         });
-      } catch (err) {
-        console.error('Error fetching manhours:', err);
+        
+        if (manhoursRes.data._meta?.queryTimeMs) {
+          console.log(`Manhours stats loaded in ${manhoursRes.data._meta.queryTimeMs}ms`);
+        }
       }
 
     } catch (error) {
       console.error('Error fetching stats:', error);
+      
+      // Fallback to individual API calls if optimized endpoint fails
+      try {
+        console.log('Falling back to individual API calls...');
+        await fetchStatsFallback();
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Fallback function for backward compatibility
+  const fetchStatsFallback = async () => {
+    const [leadsData, proposalsData, companiesData, projectsData] = await Promise.all([
+      fetchJSON('/api/leads?limit=1').catch(() => ({ success: false })),
+      fetchJSON('/api/proposals').catch(() => ({ success: false, data: [] })),
+      fetchJSON('/api/companies').catch(() => ({ success: false, data: [] })),
+      fetchJSON('/api/projects').catch(() => ({ success: false, data: [] }))
+    ]);
+    
+    const proposals = proposalsData.proposals || proposalsData.data || [];
+    const projects = projectsData.data || [];
+    
+    setStats({
+      leads: leadsData.data?.stats || { total_leads: 0, under_discussion: 0, active_leads: 0, closed_won: 0 },
+      proposals: {
+        total: proposals.length,
+        pending: proposals.filter(p => p.status === 'pending').length,
+        approved: proposals.filter(p => p.status === 'approved').length,
+        draft: proposals.filter(p => p.status === 'draft').length
+      },
+      companies: { total: companiesData.data?.length || 0 },
+      projects: {
+        total: projects.length,
+        in_progress: projects.filter(p => p.status === 'in-progress').length,
+        completed: projects.filter(p => p.status === 'completed').length
+      }
+    });
   };
 
   const fmtNum = new Intl.NumberFormat('en-IN');
