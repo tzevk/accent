@@ -14,7 +14,9 @@ import {
   ShieldCheckIcon,
   ChatBubbleLeftRightIcon,
   CurrencyDollarIcon,
-  TicketIcon
+  TicketIcon,
+  BanknotesIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
