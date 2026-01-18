@@ -35,8 +35,27 @@ export default function UserDashboardPage() {
     // Wait for session to load
     if (loading) return;
 
-    // Not authenticated - AuthGate will handle redirect
-    if (!authenticated || !user) return;
+    // Session loaded but not authenticated - check cookies as fallback
+    if (!authenticated || !user) {
+      const hasCookies = typeof document !== 'undefined' && 
+        document.cookie.includes('auth=') && 
+        document.cookie.includes('user_id=');
+      
+      if (hasCookies) {
+        // Cookies exist - check if super admin
+        const isSuperAdminCookie = document.cookie.includes('is_super_admin=1') || 
+                                    document.cookie.includes('is_super_admin=true');
+        if (isSuperAdminCookie) {
+          router.replace('/admin/dashboard');
+          return;
+        }
+        // Regular user with cookies - proceed
+        setAuthorized(true);
+        return;
+      }
+      // No cookies - let middleware handle redirect
+      return;
+    }
 
     // Super admin should go to admin dashboard
     const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;

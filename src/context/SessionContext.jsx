@@ -69,6 +69,28 @@ export function SessionProvider({ children }) {
       });
       
       if (!res.ok) {
+        // On 401, check if we have cookies as a fallback
+        // This handles the race condition where cookies are set but /api/session hasn't seen them yet
+        const hasCookies = typeof document !== 'undefined' && 
+          document.cookie.includes('auth=') && 
+          document.cookie.includes('user_id=');
+        
+        if (hasCookies) {
+          // Cookies exist but session API failed - retry once after short delay
+          await new Promise(r => setTimeout(r, 100));
+          const retryRes = await fetch('/api/session', { credentials: 'include' });
+          if (retryRes.ok) {
+            const data = await retryRes.json();
+            sessionCache = { authenticated: data.authenticated || false, user: data.user || null };
+            sessionCacheTime = Date.now();
+            if (mountedRef.current) {
+              setUser(data.user || null);
+              setAuthenticated(data.authenticated || false);
+            }
+            return sessionCache;
+          }
+        }
+        
         sessionCache = { authenticated: false, user: null };
         sessionCacheTime = now;
         if (mountedRef.current) {

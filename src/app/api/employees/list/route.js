@@ -119,10 +119,11 @@ export async function GET(request) {
       ]);
 
       const [employees] = employeesResult;
-      const [[{ total }]] = countResult;
+      const countRow = countResult?.[0]?.[0] || {};
+      const total = Number(countRow.total) || 0;
       const [departments] = departmentsResult;
       const [workplaces] = workplacesResult;
-      const [[stats]] = statsResult;
+      const statsRow = statsResult?.[0]?.[0] || {};
 
       const queryTime = Date.now() - startTime;
 
@@ -138,10 +139,10 @@ export async function GET(request) {
           totalRecords: total
         },
         stats: {
-          total: Number(stats.total) || 0,
-          active: Number(stats.active) || 0,
-          inactive: Number(stats.inactive) || 0,
-          resigned: Number(stats.resigned) || 0
+          total: Number(statsRow.total) || 0,
+          active: Number(statsRow.active) || 0,
+          inactive: Number(statsRow.inactive) || 0,
+          resigned: Number(statsRow.resigned) || 0
         },
         _meta: {
           queryTimeMs: queryTime
@@ -154,7 +155,9 @@ export async function GET(request) {
       return response;
       
     } finally {
-      db.release();
+      if (db && typeof db.release === 'function') {
+        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+      }
     }
     
   } catch (error) {

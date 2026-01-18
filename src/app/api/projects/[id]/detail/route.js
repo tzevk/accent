@@ -173,7 +173,9 @@ export async function GET(request, { params }) {
       return response;
 
     } finally {
-      db.release();
+      if (db && typeof db.release === 'function') {
+        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+      }
     }
 
   } catch (error) {

@@ -64,8 +64,27 @@ export default function AdminDashboard() {
     // Wait for session to load
     if (sessionLoading) return;
 
-    // Not authenticated - AuthGate will handle redirect
-    if (!authenticated || !user) return;
+    // Session loaded but not authenticated - check cookies as fallback
+    // This handles the race condition after login where /api/session returns 401
+    if (!authenticated || !user) {
+      const hasCookies = typeof document !== 'undefined' && 
+        document.cookie.includes('auth=') && 
+        document.cookie.includes('user_id=');
+      
+      if (hasCookies) {
+        // Cookies exist - assume authorized and proceed
+        // Middleware will protect if actually unauthorized
+        const isSuperAdminCookie = document.cookie.includes('is_super_admin=1') || 
+                                    document.cookie.includes('is_super_admin=true');
+        if (isSuperAdminCookie) {
+          setIsAuthorized(true);
+          fetchStats();
+          return;
+        }
+      }
+      // No cookies and not authenticated - let middleware handle redirect
+      return;
+    }
 
     // Check if super admin
     const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;

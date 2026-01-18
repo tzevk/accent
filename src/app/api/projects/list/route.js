@@ -104,7 +104,15 @@ export async function GET(request) {
       ]);
 
       let [projects] = projectsResult;
-      const [[stats]] = statsResult;
+      const statsRow = statsResult?.[0]?.[0] || {};
+      const stats = {
+        total: Number(statsRow.total) || 0,
+        in_progress: Number(statsRow.in_progress) || 0,
+        completed: Number(statsRow.completed) || 0,
+        new_projects: Number(statsRow.new_projects) || 0,
+        on_hold: Number(statsRow.on_hold) || 0,
+        total_budget: Number(statsRow.total_budget) || 0
+      };
 
       // Filter by team membership if not super admin
       if (!user.is_super_admin) {
@@ -140,14 +148,7 @@ export async function GET(request) {
       const response = NextResponse.json({
         success: true,
         data: projects,
-        stats: {
-          total: Number(stats.total) || 0,
-          in_progress: Number(stats.in_progress) || 0,
-          completed: Number(stats.completed) || 0,
-          new_projects: Number(stats.new_projects) || 0,
-          on_hold: Number(stats.on_hold) || 0,
-          total_budget: Number(stats.total_budget) || 0
-        },
+        stats,
         _meta: {
           queryTimeMs: queryTime,
           filtered: projects.length
@@ -160,13 +161,15 @@ export async function GET(request) {
       return response;
       
     } finally {
-      db.release();
+      if (db && typeof db.release === 'function') {
+        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+      }
     }
     
   } catch (error) {
-    console.error('Projects list error:', error);
+    console.error('Projects list error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch projects' },
+      { success: false, error: 'Failed to fetch projects', details: error?.message, stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined },
       { status: 500 }
     );
   }

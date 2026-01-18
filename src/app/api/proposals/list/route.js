@@ -81,7 +81,16 @@ export async function GET(request) {
       ]);
 
       let [proposals] = proposalsResult;
-      const [[stats]] = statsResult;
+      const statsRow = statsResult?.[0]?.[0] || {};
+      const stats = {
+        total: Number(statsRow.total) || 0,
+        draft: Number(statsRow.draft) || 0,
+        sent: Number(statsRow.sent) || 0,
+        approved: Number(statsRow.approved) || 0,
+        rejected: Number(statsRow.rejected) || 0,
+        pending: Number(statsRow.pending) || 0,
+        total_value: Number(statsRow.total_value) || 0
+      };
 
       // Apply filters
       if (search) {
@@ -105,15 +114,7 @@ export async function GET(request) {
       const response = NextResponse.json({
         success: true,
         data: proposals,
-        stats: {
-          total: Number(stats.total) || 0,
-          draft: Number(stats.draft) || 0,
-          sent: Number(stats.sent) || 0,
-          approved: Number(stats.approved) || 0,
-          rejected: Number(stats.rejected) || 0,
-          pending: Number(stats.pending) || 0,
-          total_value: Number(stats.total_value) || 0
-        },
+        stats,
         _meta: {
           queryTimeMs: queryTime,
           filtered: proposals.length
@@ -126,13 +127,15 @@ export async function GET(request) {
       return response;
       
     } finally {
-      db.release();
+      if (db && typeof db.release === 'function') {
+        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+      }
     }
     
   } catch (error) {
-    console.error('Proposals list error:', error);
+    console.error('Proposals list error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch proposals' },
+      { success: false, error: 'Failed to fetch proposals', details: error?.message, stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined },
       { status: 500 }
     );
   }
