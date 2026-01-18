@@ -17,15 +17,27 @@ import { hasPermission } from '@/utils/rbac';
  */
 export async function GET(request) {
   const startTime = Date.now();
+  let db;
   
   try {
-    // Auth check
-    const user = await getCurrentUser(request);
+    // Auth check - wrap in try-catch since getCurrentUser can throw on DB errors
+    let user;
+    try {
+      user = await getCurrentUser(request);
+    } catch (authErr) {
+      console.error('Auth check failed:', authErr?.message);
+      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+    }
+    
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Permission check
+    // Permission check - ensure user object is valid before checking permissions
+    if (!user.id) {
+      return NextResponse.json({ success: false, error: 'Invalid user session' }, { status: 401 });
+    }
+    
     const canReadProposals = user.is_super_admin || hasPermission(user, 'proposals', 'read');
     if (!canReadProposals) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
@@ -35,62 +47,59 @@ export async function GET(request) {
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     try {
-      // Execute queries in parallel
-      const [proposalsResult, statsResult] = await Promise.all([
-        // 1. Proposals query - select only needed fields for list view
-        db.execute(`
-          SELECT 
-            id,
-            proposal_id,
-            title,
-            client_name,
-            company_name,
-            status,
-            amount,
-            created_by,
-            created_at,
-            valid_until,
-            sent_date
-          FROM proposals
-          ORDER BY created_at DESC
-        `).catch(() => {
-          // Fallback with basic fields if some columns don't exist
-          return db.execute(`
-            SELECT 
-              id, proposal_id, title, client_name, status, amount, created_at
-            FROM proposals
-            ORDER BY created_at DESC
+      // Execute queries with full error handling
+      let proposals = [];
+      let stats = { total: 0, draft: 0, sent: 0, approved: 0, rejected: 0, pending: 0, total_value: 0 };
+      
+      try {
+        // Use SELECT * to get all available columns (schema may vary)
+        const [proposalsResult] = await db.execute(`
+          SELECT * FROM proposals ORDER BY created_at DESC
+        `);
+        proposals = proposalsResult || [];
+      } catch (queryErr) {
+        console.warn('Proposals query failed:', queryErr?.message);
+        try {
+          // Minimal fallback - only id, status, created_at are guaranteed
+          const [fallbackResult] = await db.execute(`
+            SELECT id, status, created_at FROM proposals ORDER BY created_at DESC
           `);
-        }),
-        
-        // 2. Stats query - single query with conditional counts
-        db.execute(`
+          proposals = fallbackResult || [];
+        } catch (fallbackErr) {
+          console.error('Fallback query also failed:', fallbackErr?.message);
+          proposals = [];
+        }
+      }
+      
+      try {
+        // Stats query - only use status which should exist
+        const [statsResult] = await db.execute(`
           SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN LOWER(status) = 'draft' THEN 1 ELSE 0 END) as draft,
-            SUM(CASE WHEN LOWER(status) = 'sent' THEN 1 ELSE 0 END) as sent,
-            SUM(CASE WHEN LOWER(status) = 'approved' OR LOWER(status) = 'accepted' THEN 1 ELSE 0 END) as approved,
-            SUM(CASE WHEN LOWER(status) = 'rejected' THEN 1 ELSE 0 END) as rejected,
-            SUM(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END) as pending,
-            SUM(COALESCE(amount, 0)) as total_value
+            SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'draft' THEN 1 ELSE 0 END) as draft,
+            SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'sent' THEN 1 ELSE 0 END) as sent,
+            SUM(CASE WHEN LOWER(COALESCE(status,'')) IN ('approved', 'accepted') THEN 1 ELSE 0 END) as approved,
+            SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'rejected' THEN 1 ELSE 0 END) as rejected,
+            SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'pending' THEN 1 ELSE 0 END) as pending
           FROM proposals
-        `)
-      ]);
-
-      let [proposals] = proposalsResult;
-      const statsRow = statsResult?.[0]?.[0] || {};
-      const stats = {
-        total: Number(statsRow.total) || 0,
-        draft: Number(statsRow.draft) || 0,
-        sent: Number(statsRow.sent) || 0,
-        approved: Number(statsRow.approved) || 0,
-        rejected: Number(statsRow.rejected) || 0,
-        pending: Number(statsRow.pending) || 0,
-        total_value: Number(statsRow.total_value) || 0
-      };
+        `);
+        const statsRow = statsResult?.[0] || {};
+        stats = {
+          total: Number(statsRow.total) || 0,
+          draft: Number(statsRow.draft) || 0,
+          sent: Number(statsRow.sent) || 0,
+          approved: Number(statsRow.approved) || 0,
+          rejected: Number(statsRow.rejected) || 0,
+          pending: Number(statsRow.pending) || 0,
+          total_value: 0
+        };
+      } catch (statsErr) {
+        console.warn('Stats query failed:', statsErr?.message);
+        // Keep default stats
+      }
 
       // Apply filters
       if (search) {
@@ -127,9 +136,7 @@ export async function GET(request) {
       return response;
       
     } finally {
-      if (db && typeof db.release === 'function') {
-        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
-      }
+      // Release handled in outer finally
     }
     
   } catch (error) {
@@ -138,5 +145,10 @@ export async function GET(request) {
       { success: false, error: 'Failed to fetch proposals', details: error?.message, stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined },
       { status: 500 }
     );
+  } finally {
+    // Always release DB connection
+    if (db && typeof db.release === 'function') {
+      try { db.release(); } catch (e) { /* ignore */ }
+    }
   }
 }

@@ -123,7 +123,7 @@ export async function getCurrentUser(request) {
        LIMIT 1`,
       [userId]
     );
-    await db.end();
+    db.release();
 
     if (!rows || rows.length === 0) return null;
 
