@@ -3,6 +3,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import AuthGate from "@/components/AuthGate";
 import ActivityTracker from "@/components/ActivityTracker";
+import AutoRefresh from "@/components/AutoRefresh";
 import { SessionProvider } from "@/context/SessionContext";
 import { SpellCheckProvider } from "@/hooks/useSpellCheck";
 
@@ -33,6 +34,7 @@ export default function RootLayout({ children }) {
             <Sidebar />
             <AuthGate />
             <ActivityTracker />
+            <AutoRefresh timeout={30000} />
             <div className="content-with-sidebar">
               {children}
             </div>
