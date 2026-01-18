@@ -47,15 +47,27 @@ export async function GET(request) {
       )
     `);
     
-    // Get last voucher number
+    // Get current month number (01-12)
+    const now = new Date();
+    const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const monthPattern = `C-${currentMonth}|`;
+    
+    // Get last voucher number for current month
     const [lastVoucher] = await db.execute(
-      `SELECT voucher_number FROM cash_vouchers ORDER BY id DESC LIMIT 1`
+      `SELECT voucher_number FROM cash_vouchers 
+       WHERE voucher_number LIKE ? 
+       ORDER BY id DESC LIMIT 1`,
+      [`C-${currentMonth}|%`]
     );
     
-    let voucherNumber = 'CV-0001';
+    let voucherNumber = `${monthPattern}001`;
     if (lastVoucher.length > 0 && lastVoucher[0].voucher_number) {
-      const lastNum = parseInt(lastVoucher[0].voucher_number.replace('CV-', '')) || 0;
-      voucherNumber = `CV-${String(lastNum + 1).padStart(4, '0')}`;
+      // Extract the serial number from format C-MM|XXX
+      const match = lastVoucher[0].voucher_number.match(/C-\d{2}\|(\d+)/);
+      if (match) {
+        const lastNum = parseInt(match[1]) || 0;
+        voucherNumber = `${monthPattern}${String(lastNum + 1).padStart(3, '0')}`;
+      }
     }
 
     return NextResponse.json({

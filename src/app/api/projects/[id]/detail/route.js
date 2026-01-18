@@ -59,32 +59,20 @@ export async function GET(request, { params }) {
     }
 
     const isSuperAdmin = user.is_super_admin;
-    const projectIdInt = parseInt(id, 10);
-    const isNumericId = !Number.isNaN(projectIdInt);
 
     const db = await dbConnect();
     
     try {
-      // Single query to find project - try all possible ID columns
+      // Single query to find project - try project_id first, then project_code
       let project = null;
       
-      if (isNumericId) {
-        // Try numeric id first, then text columns
-        const [rows] = await db.execute(`
-          SELECT * FROM projects 
-          WHERE id = ? OR project_id = ? OR project_code = ?
-          LIMIT 1
-        `, [projectIdInt, id, id]);
-        project = rows[0];
-      } else {
-        // Text-only lookup
-        const [rows] = await db.execute(`
-          SELECT * FROM projects 
-          WHERE project_id = ? OR project_code = ?
-          LIMIT 1
-        `, [id, id]);
-        project = rows[0];
-      }
+      // Always try text-based lookup first since project_id is the primary identifier
+      const [rows] = await db.execute(`
+        SELECT * FROM projects 
+        WHERE project_id = ? OR project_code = ?
+        LIMIT 1
+      `, [id, id]);
+      project = rows[0];
 
       if (!project) {
         return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });

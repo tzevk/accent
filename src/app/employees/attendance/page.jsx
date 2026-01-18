@@ -118,6 +118,7 @@ export default function EmployeeAttendancePage() {
       if (!res.ok) throw new Error(data.error || 'Failed to fetch employees');
       
       const employeeList = data.employees || data.data || [];
+      
       setEmployees(employeeList);
       
       // Initialize attendance data for all employees
@@ -135,7 +136,10 @@ export default function EmployeeAttendancePage() {
           sickLeave: 0,
           lwp: 0,
           halfDay: 0,
-          holiday: 0
+          holiday: 0,
+          monthlyHours: 0,
+          stdInTime: '09:00',
+          stdOutTime: '17:30'
         };
         
         // Set default attendance for each day
@@ -180,13 +184,14 @@ export default function EmployeeAttendancePage() {
 
   // Open modal for attendance
   const openAttendanceModal = (employeeId, fullDate, currentStatus, employeeName) => {
+    const empData = attendanceData[employeeId] || {};
     setSelectedCell({ employeeId, fullDate, currentStatus, employeeName });
     setModalData({
       attendanceType: currentStatus || 'P',
       startDate: fullDate,
       endDate: fullDate,
-      inTime: '09:00',
-      outTime: '17:30',
+      inTime: empData.stdInTime || '09:00',
+      outTime: empData.stdOutTime || '17:30',
       reason: ''
     });
     setShowModal(true);
@@ -418,14 +423,21 @@ export default function EmployeeAttendancePage() {
               // Update days and dayDetails from saved data
               Object.entries(empSummary.days).forEach(([dateKey, dayData]) => {
                 updated[empSummary.employee_id].days[dateKey] = dayData.status;
-                // Store overtime_hours from saved data
+                // Store overtime_hours and in/out times from saved data
                 if (!updated[empSummary.employee_id].dayDetails) {
                   updated[empSummary.employee_id].dayDetails = {};
                 }
+                // Format time to HH:MM if it's in HH:MM:SS format
+                const formatTime = (time) => {
+                  if (!time) return null;
+                  return time.toString().substring(0, 5);
+                };
                 updated[empSummary.employee_id].dayDetails[dateKey] = {
                   ...updated[empSummary.employee_id].dayDetails[dateKey],
                   overtimeHours: parseFloat(dayData.overtime_hours || 0),
-                  status: dayData.status
+                  status: dayData.status,
+                  inTime: formatTime(dayData.in_time),
+                  outTime: formatTime(dayData.out_time)
                 };
               });
               
@@ -523,13 +535,6 @@ export default function EmployeeAttendancePage() {
                 >
                   Today
                 </button>
-                <Link
-                  href="/employees/attendance/holiday-master"
-                  className="px-4 py-2 text-sm bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition-colors flex items-center gap-2"
-                >
-                  <CalendarDaysIcon className="h-4 w-4" />
-                  Holiday Master
-                </Link>
                 <button
                   onClick={saveAttendance}
                   disabled={saving}
@@ -644,6 +649,7 @@ export default function EmployeeAttendancePage() {
                     <th className="px-3 py-3 text-center text-xs font-semibold text-pink-600 uppercase tracking-wider bg-pink-50">SL</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-rose-600 uppercase tracking-wider bg-rose-50">LWP</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-yellow-600 uppercase tracking-wider bg-yellow-50">HD</th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wider bg-indigo-50" title="Monthly Working Hours">Hrs</th>
                   </tr>
                   {/* Day Headers */}
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -673,6 +679,7 @@ export default function EmployeeAttendancePage() {
                     <th className="bg-pink-50"></th>
                     <th className="bg-rose-50"></th>
                     <th className="bg-yellow-50"></th>
+                    <th className="bg-indigo-50"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -732,6 +739,36 @@ export default function EmployeeAttendancePage() {
                       </td>
                       <td className="px-3 py-3 text-center text-sm font-semibold text-yellow-600 bg-yellow-50/50">
                         {empData.halfDay || 0}
+                      </td>
+                      <td className="px-3 py-3 text-center text-sm font-semibold text-indigo-600 bg-indigo-50/50" title="Monthly Working Hours">
+                        {(() => {
+                          let totalHours = 0;
+                          const defaultInTime = empData.stdInTime || '09:00';
+                          const defaultOutTime = empData.stdOutTime || '17:30';
+                          
+                          // Calculate hours for each day
+                          Object.entries(empData.days || {}).forEach(([dateKey, status]) => {
+                            // Only count hours for Present (P) and Half Day (HD) statuses
+                            if (status === 'P' || status === 'HD' || status === 'OT') {
+                              const dayDetail = empData.dayDetails?.[dateKey] || {};
+                              const inTime = dayDetail.inTime || defaultInTime;
+                              const outTime = dayDetail.outTime || defaultOutTime;
+                              
+                              const [inH, inM] = inTime.split(':').map(Number);
+                              const [outH, outM] = outTime.split(':').map(Number);
+                              const inDecimal = inH + (inM / 60);
+                              const outDecimal = outH + (outM / 60);
+                              
+                              if (outDecimal > inDecimal) {
+                                let hours = outDecimal - inDecimal;
+                                if (status === 'HD') hours = hours / 2; // Half day = half hours
+                                totalHours += hours;
+                              }
+                            }
+                          });
+                          
+                          return totalHours.toFixed(1);
+                        })()}
                       </td>
                     </tr>
                   ))}

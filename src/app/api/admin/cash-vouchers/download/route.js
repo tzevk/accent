@@ -262,6 +262,10 @@ export async function GET(request) {
           <div class="value" style="text-align: center;">${formatDate(voucher.voucher_date)}</div>
         </div>
         <div class="row">
+          <div class="label" style="width: 60px;">PROJECT:</div>
+          <div class="value">${voucher.project_number || ''}</div>
+        </div>
+        <div class="row">
           <div class="label" style="width: 60px;">PAID TO:</div>
           <div class="value">${voucher.paid_to || ''}</div>
         </div>

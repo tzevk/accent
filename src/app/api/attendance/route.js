@@ -80,7 +80,9 @@ export async function GET(request) {
         status: record.status,
         overtime_hours: record.overtime_hours,
         is_weekly_off: record.is_weekly_off,
-        remarks: record.remarks
+        remarks: record.remarks,
+        in_time: record.in_time,
+        out_time: record.out_time
       };
 
       // Update totals

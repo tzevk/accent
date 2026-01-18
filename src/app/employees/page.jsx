@@ -231,8 +231,23 @@ export default function EmployeesPage() {
         esic_employer: ''
       });
       setSalaryPreview({
+        salary_type: 'monthly',
         gross: '',
+        hourly_rate: '',
+        daily_rate: '',
+        contract_amount: '',
+        lumpsum_amount: '',
+        lumpsum_description: '',
+        contract_duration: 'monthly',
+        contract_end_date: '',
+        std_hours_per_day: 8,
+        std_in_time: '09:00',
+        std_out_time: '17:30',
+        std_working_days: 26,
+        ot_multiplier: 1.5,
         other_allowances: '',
+        effective_from: new Date().toISOString().split('T')[0],
+        effective_to: '',
         pf_applicable: true,
         esic_applicable: false,
         pt_applicable: false,
@@ -240,7 +255,8 @@ export default function EmployeesPage() {
         retention_applicable: false,
         bonus_applicable: false,
         incentive_applicable: false,
-        insurance_applicable: false
+        insurance_applicable: false,
+        custom_components: []
       });
       setSalaryProfileSuccess('');
       setPreviewError('');
@@ -473,7 +489,9 @@ export default function EmployeesPage() {
     bonus_applicable: false,
     incentive_applicable: false,
     insurance_applicable: false,
-    custom_components: [] // For custom salary type: [{name: 'Basic', amount: 10000, type: 'earning'}, ...]
+    custom_components: [], // For custom salary type: [{name: 'Basic', amount: 10000, type: 'earning'}, ...]
+    custom_hourly_rate: '', // For custom salary type hourly rate
+    custom_monthly_hours: '160' // Standard 160 hours/month
   });
   const [currentDA, setCurrentDA] = useState(0);
   const [currentPT, setCurrentPT] = useState(0);
@@ -1253,6 +1271,8 @@ export default function EmployeesPage() {
             salary_type: savedProfile.salary_type || 'monthly',
             hourly_rate: savedProfile.hourly_rate || '',
             std_hours_per_day: savedProfile.std_hours_per_day || 8,
+            std_in_time: savedProfile.std_in_time ? savedProfile.std_in_time.substring(0, 5) : '09:00',
+            std_out_time: savedProfile.std_out_time ? savedProfile.std_out_time.substring(0, 5) : '17:30',
             ot_multiplier: savedProfile.ot_multiplier || 1.5,
             daily_rate: savedProfile.daily_rate || '',
             std_working_days: savedProfile.std_working_days || 26,
@@ -1260,7 +1280,10 @@ export default function EmployeesPage() {
             contract_duration: savedProfile.contract_duration || 'monthly',
             contract_end_date: savedProfile.contract_end_date || '',
             lumpsum_amount: savedProfile.lumpsum_amount || '',
-            lumpsum_description: savedProfile.lumpsum_description || ''
+            lumpsum_description: savedProfile.lumpsum_description || '',
+            effective_from: savedProfile.effective_from ? savedProfile.effective_from.split('T')[0] : new Date().toISOString().split('T')[0],
+            effective_to: savedProfile.effective_to ? savedProfile.effective_to.split('T')[0] : '',
+            custom_components: []
           });
           
           // Load the saved breakdown values directly (frozen/fixed)
@@ -1437,6 +1460,8 @@ export default function EmployeesPage() {
       contract_duration: 'monthly',
       contract_end_date: '',
       std_hours_per_day: 8,
+      std_in_time: '09:00',
+      std_out_time: '17:30',
       std_working_days: 26,
       ot_multiplier: 1.5,
       other_allowances: '',
@@ -1520,7 +1545,9 @@ export default function EmployeesPage() {
         effective_from: salaryPreview.effective_from || currentDate,
         effective_to: salaryPreview.effective_to || null,
         da_year: currentYear,
-        is_manual_override: false
+        is_manual_override: false,
+        std_in_time: salaryPreview.std_in_time || '09:00',
+        std_out_time: salaryPreview.std_out_time || '17:30'
       };
       
       if (salaryType === 'monthly') {
@@ -3352,7 +3379,7 @@ export default function EmployeesPage() {
                                 {salaryPreview.salary_type === 'daily' && '💡 Payment based on days worked. Common for casual/temporary workers'}
                                 {salaryPreview.salary_type === 'contract' && '💡 Fixed amount for the contract duration. No statutory deductions'}
                                 {salaryPreview.salary_type === 'lumpsum' && '💡 One-time payment for specific work. No recurring salary structure'}
-                                {salaryPreview.salary_type === 'custom' && '💡 Build your own salary structure with custom earnings and deductions'}
+                                {salaryPreview.salary_type === 'custom' && '💡 Build your own salary structure with hourly rate and custom earnings/deductions'}
                               </p>
                             </div>
 
@@ -3362,7 +3389,7 @@ export default function EmployeesPage() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Effective From *</label>
                                 <input 
                                   type="date" 
-                                  value={salaryPreview.effective_from} 
+                                  value={salaryPreview.effective_from || ''} 
                                   onChange={(e) => setSalaryPreview({ ...salaryPreview, effective_from: e.target.value })}
                                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
                                 />
@@ -3371,9 +3398,31 @@ export default function EmployeesPage() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Effective To <span className="text-gray-400 text-xs">(Optional - leave blank for ongoing)</span></label>
                                 <input 
                                   type="date" 
-                                  value={salaryPreview.effective_to} 
+                                  value={salaryPreview.effective_to || ''} 
                                   onChange={(e) => setSalaryPreview({ ...salaryPreview, effective_to: e.target.value })}
                                   min={salaryPreview.effective_from}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                />
+                              </div>
+                            </div>
+
+                            {/* Standard Working Times */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Standard In Time</label>
+                                <input 
+                                  type="time" 
+                                  value={salaryPreview.std_in_time || '09:00'} 
+                                  onChange={(e) => setSalaryPreview({ ...salaryPreview, std_in_time: e.target.value })}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Standard Out Time</label>
+                                <input 
+                                  type="time" 
+                                  value={salaryPreview.std_out_time || '17:30'} 
+                                  onChange={(e) => setSalaryPreview({ ...salaryPreview, std_out_time: e.target.value })}
                                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
                                 />
                               </div>
@@ -3625,6 +3674,47 @@ export default function EmployeesPage() {
                             {/* Custom Salary Structure Fields - 3 Column System (Fixed Earnings/Deductions like Monthly) */}
                             {salaryPreview.salary_type === 'custom' && (
                               <div className="space-y-4 mb-3">
+                                {/* Hourly Rate and Monthly Hours */}
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                                  <h5 className="text-sm font-semibold text-yellow-800 mb-3 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Hourly Rate & Working Hours
+                                  </h5>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Hourly Rate (₹)</label>
+                                      <input
+                                        type="number"
+                                        value={salaryPreview.custom_hourly_rate || ''}
+                                        onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_hourly_rate: e.target.value })}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                                        placeholder="0"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Monthly Hours</label>
+                                      <input
+                                        type="number"
+                                        value={salaryPreview.custom_monthly_hours || '160'}
+                                        onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_monthly_hours: e.target.value })}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                                        placeholder="160"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Calculated Gross</label>
+                                      <div className="w-full px-2 py-1.5 text-sm bg-gray-100 border border-gray-300 rounded text-gray-700 font-medium">
+                                        ₹{formatCurrency((parseFloat(salaryPreview.custom_hourly_rate) || 0) * (parseFloat(salaryPreview.custom_monthly_hours) || 160))}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-end">
+                                      <p className="text-xs text-yellow-700 italic">Standard: 160 hrs/month (8 hrs × 20 days)</p>
+                                    </div>
+                                  </div>
+                                </div>
+
                                 {/* 3 COLUMNS SIDE BY SIDE */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                   {/* COLUMN 1: EARNINGS (Fixed like Monthly) */}

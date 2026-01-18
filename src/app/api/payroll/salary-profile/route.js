@@ -42,6 +42,8 @@ export async function POST(request) {
       salary_type = 'monthly',
       hourly_rate,
       std_hours_per_day = 8,
+      std_in_time = '09:00',
+      std_out_time = '17:30',
       ot_multiplier = 1.5,
       daily_rate,
       std_working_days = 26,
@@ -160,6 +162,8 @@ export async function POST(request) {
       { name: 'salary_type', definition: "VARCHAR(20) DEFAULT 'monthly'" },
       { name: 'hourly_rate', definition: 'DECIMAL(12, 2)' },
       { name: 'std_hours_per_day', definition: 'DECIMAL(4, 1) DEFAULT 8' },
+      { name: 'std_in_time', definition: "TIME DEFAULT '09:00:00'" },
+      { name: 'std_out_time', definition: "TIME DEFAULT '17:30:00'" },
       { name: 'ot_multiplier', definition: 'DECIMAL(4, 2) DEFAULT 1.5' },
       { name: 'daily_rate', definition: 'DECIMAL(12, 2)' },
       { name: 'std_working_days', definition: 'INT DEFAULT 26' },
@@ -251,6 +255,8 @@ export async function POST(request) {
       salary_type || 'monthly',
       parseFloat(hourly_rate) || null,
       parseFloat(std_hours_per_day) || 8,
+      std_in_time || '09:00',
+      std_out_time || '17:30',
       parseFloat(ot_multiplier) || 1.5,
       parseFloat(daily_rate) || null,
       parseInt(std_working_days) || 26,
@@ -272,7 +278,7 @@ export async function POST(request) {
           basic_plus_da = ?, da = ?, basic = ?, hra = ?, conveyance = ?, call_allowance = ?, bonus = ?, incentive = ?,
           pf_employee = ?, esic_employee = ?, pf_employer = ?, esic_employer = ?, pt = ?, mlwf = ?, mlwf_employer = ?,
           retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
-          is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, ot_multiplier = ?,
+          is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, std_in_time = ?, std_out_time = ?, ot_multiplier = ?,
           daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
           lumpsum_amount = ?, lumpsum_description = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND employee_id = ?`,
@@ -289,9 +295,9 @@ export async function POST(request) {
           basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
           pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
           total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
-          salary_type, hourly_rate, std_hours_per_day, ot_multiplier, daily_rate, std_working_days,
+          salary_type, hourly_rate, std_hours_per_day, std_in_time, std_out_time, ot_multiplier, daily_rate, std_working_days,
           contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [employee_id, ...values]
       );
     }
@@ -385,6 +391,20 @@ export async function GET(request) {
         { name: 'retention', definition: 'DECIMAL(12, 2)' },
         { name: 'insurance', definition: 'DECIMAL(12, 2)' },
         { name: 'insurance_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        // Salary type columns
+        { name: 'salary_type', definition: "VARCHAR(20) DEFAULT 'monthly'" },
+        { name: 'hourly_rate', definition: 'DECIMAL(12, 2)' },
+        { name: 'std_hours_per_day', definition: 'DECIMAL(4, 1) DEFAULT 8' },
+        { name: 'std_in_time', definition: "TIME DEFAULT '09:00:00'" },
+        { name: 'std_out_time', definition: "TIME DEFAULT '17:30:00'" },
+        { name: 'ot_multiplier', definition: 'DECIMAL(4, 2) DEFAULT 1.5' },
+        { name: 'daily_rate', definition: 'DECIMAL(12, 2)' },
+        { name: 'std_working_days', definition: 'INT DEFAULT 26' },
+        { name: 'contract_amount', definition: 'DECIMAL(12, 2)' },
+        { name: 'contract_duration', definition: "VARCHAR(20) DEFAULT 'monthly'" },
+        { name: 'contract_end_date', definition: 'DATE' },
+        { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
+        { name: 'lumpsum_description', definition: 'VARCHAR(255)' },
       ];
       
       for (const col of columnsToAdd) {
@@ -399,57 +419,25 @@ export async function GET(request) {
       }
       
       // Get all salary profiles for this employee, ordered by effective_from descending
+      // Use SELECT * to avoid errors when columns don't exist yet
       const [profiles] = await db.query(
-        `SELECT 
-          id, 
-          employee_id, 
-          COALESCE(gross_salary, gross) as gross_salary,
-          gross,
-          other_allowances, 
-          effective_from,
-          effective_to,
-          da_year,
-          pf_applicable, 
-          esic_applicable,
-          basic_plus_da,
-          da,
-          basic,
-          hra,
-          conveyance,
-          call_allowance,
-          pf_employee,
-          esic_employee,
-          pf_employer,
-          esic_employer,
-          pt,
-          mlwf,
-          mlwf_employer,
-          retention,
-          bonus,
-          incentive,
-          pt_applicable,
-          mlwf_applicable,
-          retention_applicable,
-          bonus_applicable,
-          incentive_applicable,
-          insurance,
-          insurance_applicable,
-          total_earnings,
-          total_deductions,
-          net_pay,
-          employer_cost,
-          is_manual_override,
-          created_at,
-          updated_at
-         FROM employee_salary_profile 
+        `SELECT * FROM employee_salary_profile 
          WHERE employee_id = ?
          ORDER BY effective_from DESC, updated_at DESC`,
         [employee_id]
       );
+      
+      // Map profiles to ensure consistent field names
+      const mappedProfiles = profiles.map(p => ({
+        ...p,
+        gross_salary: p.gross_salary || p.gross || 0,
+        std_in_time: p.std_in_time || '09:00:00',
+        std_out_time: p.std_out_time || '17:30:00'
+      }));
 
       return NextResponse.json({
         success: true,
-        data: profiles
+        data: mappedProfiles
       });
 
     } finally {

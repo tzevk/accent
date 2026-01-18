@@ -16,7 +16,8 @@ import {
   CurrencyDollarIcon,
   TicketIcon,
   BanknotesIcon,
-  ClipboardDocumentListIcon
+  ClipboardDocumentListIcon,
+  CalendarDaysIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -26,6 +27,7 @@ export default function Sidebar() {
   const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [accountMasterExpanded, setAccountMasterExpanded] = useState(false);
   
   // Determine if user is admin - but also respect the current route
   // If we're on /user/dashboard, treat as non-admin regardless of context state
@@ -192,6 +194,45 @@ export default function Sidebar() {
             )}
             {canViewVendors && (
               <NavRow icon={BuildingOfficeIcon} label="Vendor Master" href="/vendors" active={pathname.startsWith('/vendors')} />
+            )}
+            {isAdmin && (
+              <NavRow icon={CalendarDaysIcon} label="Holiday Master" href="/masters/holidays" active={pathname.startsWith('/masters/holidays')} />
+            )}
+            {isAdmin && (
+              <>
+                <button
+                  onClick={() => setAccountMasterExpanded(!accountMasterExpanded)}
+                  className={`group/nav-row w-full flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                    pathname.startsWith('/masters/accounts') ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
+                  }`}
+                >
+                  <BanknotesIcon className={`h-[18px] w-[18px] transition-colors ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`} />
+                  <span className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-gray-900'}`}>
+                    Account Master
+                  </span>
+                  <ChevronDownIcon className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${accountMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`} />
+                </button>
+                {accountMasterExpanded && (
+                  <div className="ml-6 space-y-1 mt-1">
+                    <Link
+                      href="/masters/accounts/account-heads"
+                      className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+                        pathname === '/masters/accounts/account-heads' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                      }`}
+                    >
+                      <span className="hidden sidebar-open:inline">Account Head Master</span>
+                    </Link>
+                    <Link
+                      href="/masters/accounts/descriptions"
+                      className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+                        pathname === '/masters/accounts/descriptions' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                      }`}
+                    >
+                      <span className="hidden sidebar-open:inline">Description Master</span>
+                    </Link>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

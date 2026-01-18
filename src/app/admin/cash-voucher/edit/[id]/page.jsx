@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
@@ -13,10 +13,12 @@ import {
   CheckIcon
 } from '@heroicons/react/24/outline';
 
-export default function NewCashVoucherPage() {
+export default function EditCashVoucherPage({ params }) {
+  const { id } = use(params);
   const router = useRouter();
   const { user, loading: authLoading } = useSessionRBAC();
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [descriptions, setDescriptions] = useState([]);
@@ -28,7 +30,7 @@ export default function NewCashVoucherPage() {
     voucher_date: new Date().toISOString().split('T')[0],
     paid_to: '',
     project_number: '',
-    payment_mode: 'cash', // cash or cheque
+    payment_mode: 'cash',
     total_amount: 0,
     amount_in_words: '',
     prepared_by: '',
@@ -43,17 +45,46 @@ export default function NewCashVoucherPage() {
     { sr_no: 1, bill_date: '', bill_no: '', account_head: '', amount_rs: '', amount_ps: '', description: '' }
   ]);
 
-  // Fetch next voucher number and employees
+  // Fetch voucher data and dropdown options
   useEffect(() => {
-    const fetchVoucherNumber = async () => {
+    const fetchVoucher = async () => {
       try {
-        const res = await fetch('/api/admin/cash-vouchers/next-number');
+        const res = await fetch(`/api/admin/cash-vouchers/${id}`);
         const data = await res.json();
-        if (data.success) {
-          setFormData(prev => ({ ...prev, voucher_number: data.voucher_number }));
+        if (data.success && data.data) {
+          const voucher = data.data;
+          setFormData({
+            voucher_number: voucher.voucher_number || '',
+            voucher_date: voucher.voucher_date ? new Date(voucher.voucher_date).toISOString().split('T')[0] : '',
+            paid_to: voucher.paid_to || '',
+            project_number: voucher.project_number || '',
+            payment_mode: voucher.payment_mode || 'cash',
+            total_amount: parseFloat(voucher.total_amount) || 0,
+            amount_in_words: voucher.amount_in_words || '',
+            prepared_by: voucher.prepared_by || '',
+            checked_by: voucher.checked_by || '',
+            approved_by: voucher.approved_by_name || '',
+            receiver_signature: voucher.receiver_signature || '',
+            notes: voucher.notes || ''
+          });
+          
+          // Set line items
+          if (voucher.line_items && Array.isArray(voucher.line_items) && voucher.line_items.length > 0) {
+            setLineItems(voucher.line_items.map((item, index) => ({
+              sr_no: index + 1,
+              bill_date: item.bill_date || '',
+              bill_no: item.bill_no || '',
+              account_head: item.account_head || '',
+              amount_rs: item.amount_rs || '',
+              amount_ps: item.amount_ps || '',
+              description: item.description || ''
+            })));
+          }
         }
       } catch (error) {
-        console.error('Error fetching voucher number:', error);
+        console.error('Error fetching voucher:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -86,7 +117,6 @@ export default function NewCashVoucherPage() {
         const res = await fetch('/api/masters/descriptions');
         const data = await res.json();
         if (data.success) {
-          // Only get active descriptions
           setDescriptions((data.data || []).filter(d => d.is_active !== false));
         }
       } catch (error) {
@@ -99,7 +129,6 @@ export default function NewCashVoucherPage() {
         const res = await fetch('/api/masters/account-heads');
         const data = await res.json();
         if (data.success) {
-          // Only get active account heads
           setAccountHeads((data.data || []).filter(d => d.is_active !== false));
         }
       } catch (error) {
@@ -107,15 +136,14 @@ export default function NewCashVoucherPage() {
       }
     };
     
-    if (!authLoading && user) {
-      fetchVoucherNumber();
+    if (!authLoading && user && id) {
+      fetchVoucher();
       fetchEmployees();
       fetchProjects();
       fetchDescriptions();
       fetchAccountHeads();
-      setFormData(prev => ({ ...prev, prepared_by: user.full_name || user.username || '' }));
     }
-  }, [authLoading, user]);
+  }, [authLoading, user, id]);
 
   // Calculate total
   useEffect(() => {
@@ -149,7 +177,6 @@ export default function NewCashVoucherPage() {
     
     if (wholePart >= 10000000) {
       result += convertLessThanThousand(Math.floor(wholePart / 10000000)) + ' Crore ';
-      num = wholePart % 10000000;
     }
     if (wholePart >= 100000) {
       result += convertLessThanThousand(Math.floor((wholePart % 10000000) / 100000)) + ' Lakh ';
@@ -210,8 +237,8 @@ export default function NewCashVoucherPage() {
     setSaving(true);
     
     try {
-      const res = await fetch('/api/admin/cash-vouchers', {
-        method: 'POST',
+      const res = await fetch(`/api/admin/cash-vouchers/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
@@ -225,11 +252,11 @@ export default function NewCashVoucherPage() {
       if (data.success) {
         router.push('/admin/cash-voucher');
       } else {
-        alert('Failed to save voucher: ' + (data.error || 'Unknown error'));
+        alert('Failed to update voucher: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error('Error saving voucher:', error);
-      alert('Failed to save voucher');
+      console.error('Error updating voucher:', error);
+      alert('Failed to update voucher');
     } finally {
       setSaving(false);
     }
@@ -244,7 +271,7 @@ export default function NewCashVoucherPage() {
     }).format(amount || 0);
   };
 
-  if (authLoading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
         <Sidebar />
@@ -276,9 +303,9 @@ export default function NewCashVoucherPage() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                   <BanknotesIcon className="h-7 w-7 text-purple-600" />
-                  New Petty Cash Voucher
+                  Edit Cash Voucher
                 </h1>
-                <p className="text-sm text-gray-500 mt-1">Create a new cash/cheque payment voucher</p>
+                <p className="text-sm text-gray-500 mt-1">Edit voucher #{formData.voucher_number}</p>
               </div>
             </div>
           </div>
@@ -286,7 +313,7 @@ export default function NewCashVoucherPage() {
           {/* Voucher Form - styled like the physical form */}
           <form onSubmit={handleSubmit}>
             <div className="bg-amber-50 border-2 border-gray-800 rounded-lg overflow-hidden max-w-10xl mx-auto">
-                 {/* Header Section */}
+              {/* Header Section */}
               <div className="border-b-2 border-gray-800 flex">
                 {/* Company Info */}
                 <div className="flex-1 p-4 border-r-2 border-gray-800">
@@ -307,19 +334,32 @@ export default function NewCashVoucherPage() {
                     <input
                       type="text"
                       value={formData.voucher_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, voucher_number: e.target.value }))}
                       className="flex-1 px-3 py-2 bg-transparent border-r border-gray-800 text-lg font-bold text-purple-700"
                       readOnly
                     />
                   </div>
                   <div className="flex border-b border-gray-800">
-                    <div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-amber-100 w-24">DATE:</div>
                     <input
                       type="date"
                       value={formData.voucher_date}
                       onChange={(e) => setFormData(prev => ({ ...prev, voucher_date: e.target.value }))}
-                      className="flex-1 px-3 py-2 bg-transparent border-r border-gray-800 text-lg font-bold text-purple-700"
+                      className="w-full px-3 py-2 bg-transparent"
                     />
+                  </div>
+                  <div className="flex border-b border-gray-800">
+                    <div className="px-3 py-2 text-sm font-semibold bg-amber-100 w-24">PROJECT:</div>
+                    <select
+                      value={formData.project_number}
+                      onChange={(e) => setFormData(prev => ({ ...prev, project_number: e.target.value }))}
+                      className="flex-1 px-3 py-2 bg-transparent"
+                    >
+                      <option value="">Select Project</option>
+                      {projects.map(proj => (
+                        <option key={proj.id || proj.project_id} value={proj.project_id}>
+                          {proj.project_id}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="flex">
                     <div className="px-3 py-2 text-sm font-semibold bg-amber-100 w-24">PAID TO:</div>
@@ -336,25 +376,8 @@ export default function NewCashVoucherPage() {
                       ))}
                     </select>
                   </div>
-                                    <div className="flex border-b border-gray-800">
-                    <div className="px-3 py-2 text-sm font-semibold bg-amber-100 w-24">PROJECT:</div>
-                    <select
-                      value={formData.project_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, project_number: e.target.value }))}
-                      className="flex-1 px-3 py-2 bg-transparent"
-                    >
-                      <option value="">Select Project</option>
-                      {projects.map(proj => (
-                        <option key={proj.id || proj.project_id} value={proj.project_id}>
-                          {proj.project_id}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
-                
               </div>
-              
 
               {/* Line Items Table */}
               <div className="border-b-2 border-gray-800">
@@ -544,7 +567,7 @@ export default function NewCashVoucherPage() {
                   />
                 </div>
                 <div className="flex-1 p-4">
-                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center"> RECEIVER SIGNATURE</div>
+                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">RECEIVER SIGNATURE</div>
                   <input
                     type="text"
                     value={formData.receiver_signature}
@@ -573,12 +596,12 @@ export default function NewCashVoucherPage() {
                 {saving ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Saving...
+                    Updating...
                   </>
                 ) : (
                   <>
                     <CheckIcon className="h-5 w-5" />
-                    Save Voucher
+                    Update Voucher
                   </>
                 )}
               </button>

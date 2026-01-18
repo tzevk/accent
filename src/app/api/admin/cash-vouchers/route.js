@@ -45,6 +45,7 @@ export async function GET(request) {
         voucher_date DATE,
         voucher_type ENUM('payment', 'receipt') DEFAULT 'payment',
         paid_to VARCHAR(255),
+        project_number VARCHAR(100),
         payment_mode ENUM('cash', 'cheque') DEFAULT 'cash',
         total_amount DECIMAL(15,2) DEFAULT 0,
         amount_in_words TEXT,
@@ -66,6 +67,7 @@ export async function GET(request) {
     // Add missing columns if table already exists
     try {
       await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS paid_to VARCHAR(255)');
+      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)');
       await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15,2) DEFAULT 0');
       await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS amount_in_words TEXT');
       await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS line_items JSON');
@@ -191,16 +193,17 @@ export async function POST(request) {
 
     const [result] = await db.execute(
       `INSERT INTO cash_vouchers (
-        voucher_number, voucher_date, voucher_type, paid_to, 
+        voucher_number, voucher_date, voucher_type, paid_to, project_number,
         payment_mode, total_amount, amount_in_words, line_items,
         prepared_by, checked_by, approved_by_name, receiver_signature,
         status, notes, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         voucherNumber,
         data.voucher_date || new Date().toISOString().split('T')[0],
         data.voucher_type || 'payment',
         data.paid_to || '',
+        data.project_number || '',
         data.payment_mode || 'cash',
         data.total_amount || 0,
         data.amount_in_words || '',

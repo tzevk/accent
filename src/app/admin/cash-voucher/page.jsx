@@ -341,7 +341,7 @@ export default function CashVoucherPage() {
                               <ArrowDownTrayIcon className="h-5 w-5" />
                             </button>
                             <button
-                              onClick={() => router.push(`/admin/cash-voucher/${voucher.id}/edit`)}
+                              onClick={() => router.push(`/admin/cash-voucher/edit/${voucher.id}`)}
                               className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                               title="Edit Voucher"
                             >
