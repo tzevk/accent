@@ -44,6 +44,71 @@ export async function getCurrentDA(forDate = new Date()) {
 }
 
 /**
+ * Get employee's total working hours from attendance for a given month
+ * @param {number} employeeId - Employee ID
+ * @param {string} month - Month in YYYY-MM format
+ * @param {string} defaultInTime - Default in time (HH:MM format)
+ * @param {string} defaultOutTime - Default out time (HH:MM format)
+ * @returns {Promise<number>} Total working hours
+ */
+export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime = '09:00', defaultOutTime = '17:30') {
+  const db = await dbConnect();
+  
+  try {
+    // Get attendance records with in/out times
+    const [records] = await db.execute(
+      `SELECT 
+        status,
+        in_time,
+        out_time
+       FROM employee_attendance 
+       WHERE employee_id = ? 
+         AND DATE_FORMAT(attendance_date, '%Y-%m') = ?
+         AND status IN ('P', 'HD', 'OT')`,
+      [employeeId, month.substring(0, 7)]
+    );
+    
+    db.release();
+    
+    let totalHours = 0;
+    
+    // Helper to parse time string to decimal hours
+    const timeToDecimal = (timeStr) => {
+      if (!timeStr) return null;
+      const timePart = timeStr.toString().substring(0, 5);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      return hours + (minutes / 60);
+    };
+    
+    // Parse default times
+    const defaultIn = timeToDecimal(defaultInTime);
+    const defaultOut = timeToDecimal(defaultOutTime);
+    const defaultDailyHours = defaultOut - defaultIn;
+    
+    records.forEach(record => {
+      const inTime = timeToDecimal(record.in_time) || defaultIn;
+      const outTime = timeToDecimal(record.out_time) || defaultOut;
+      
+      let hours = outTime > inTime ? outTime - inTime : defaultDailyHours;
+      
+      // Half day = half hours
+      if (record.status === 'HD') {
+        hours = hours / 2;
+      }
+      
+      totalHours += hours;
+    });
+    
+    return totalHours;
+  } catch (error) {
+    db.release();
+    console.error('Error getting employee monthly hours:', error);
+    // Return default hours (160 for a month)
+    return 160;
+  }
+}
+
+/**
  * Get employee's attendance summary for a given month
  * @param {number} employeeId - Employee ID
  * @param {string} month - Month in YYYY-MM format

@@ -256,7 +256,28 @@ export default function EmployeesPage() {
         bonus_applicable: false,
         incentive_applicable: false,
         insurance_applicable: false,
-        custom_components: []
+        custom_components: [],
+        // Custom salary type fields
+        custom_ctc: '',
+        custom_hourly_rate: '',
+        custom_monthly_hours: '',
+        custom_basic: '',
+        custom_da: '',
+        custom_hra: '',
+        custom_conveyance: '',
+        custom_call_allowance: '',
+        custom_incentive: '',
+        custom_other_allowances: '',
+        custom_pf_employee: '',
+        custom_esic_employee: '',
+        custom_pt: '',
+        custom_mlwf: '',
+        custom_retention: '',
+        custom_pf_employer: '',
+        custom_esic_employer: '',
+        custom_mlwf_employer: '',
+        custom_bonus: '',
+        custom_insurance: ''
       });
       setSalaryProfileSuccess('');
       setPreviewError('');
@@ -802,6 +823,50 @@ export default function EmployeesPage() {
       console.error('Error fetching Insurance:', err);
     }
     return 0;
+  };
+
+  // Fetch monthly hours from attendance for custom salary calculation
+  const fetchAttendanceHours = async (employeeId) => {
+    if (!employeeId) return ''; // No employee
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const monthParam = `${year}-${month}`;
+      const res = await fetch(`/api/attendance?employee_id=${employeeId}&month=${monthParam}`);
+      const data = await res.json();
+      
+      if (data.success && data.summary) {
+        const empData = data.summary.find(e => e.employee_id == employeeId) || data.summary[0];
+        if (empData && empData.days) {
+          let totalHours = 0;
+          const defaultHours = 8.5; // Default 9:00 to 17:30
+          
+          Object.values(empData.days).forEach(dayInfo => {
+            if (['P', 'HD', 'OT'].includes(dayInfo.status)) {
+              if (dayInfo.in_time && dayInfo.out_time) {
+                totalHours += calculateHoursDiff(dayInfo.in_time, dayInfo.out_time);
+              } else {
+                totalHours += (dayInfo.status === 'HD' ? defaultHours / 2 : defaultHours);
+              }
+            }
+          });
+          return totalHours > 0 ? totalHours.toFixed(1) : '';
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching attendance hours:', err);
+    }
+    return '';
+  };
+
+  // Helper function to calculate hours difference
+  const calculateHoursDiff = (inTime, outTime) => {
+    if (!inTime || !outTime) return 8;
+    const [inH, inM] = inTime.split(':').map(Number);
+    const [outH, outM] = outTime.split(':').map(Number);
+    const diffMinutes = (outH * 60 + outM) - (inH * 60 + inM);
+    return diffMinutes > 0 ? diffMinutes / 60 : 8;
   };
 
   // Check if employee is exempt from PT
@@ -1475,7 +1540,28 @@ export default function EmployeesPage() {
       bonus_applicable: false,
       incentive_applicable: false,
       insurance_applicable: false,
-      custom_components: []
+      custom_components: [],
+      // Custom salary type fields
+      custom_ctc: '',
+      custom_hourly_rate: '',
+      custom_monthly_hours: '160',
+      custom_basic: '',
+      custom_da: '',
+      custom_hra: '',
+      custom_conveyance: '',
+      custom_call_allowance: '',
+      custom_incentive: '',
+      custom_other_allowances: '',
+      custom_pf_employee: '',
+      custom_esic_employee: '',
+      custom_pt: '',
+      custom_mlwf: '',
+      custom_retention: '',
+      custom_pf_employer: '',
+      custom_esic_employer: '',
+      custom_mlwf_employer: '',
+      custom_bonus: '',
+      custom_insurance: ''
     });
     setManualValues({
       basic_plus_da: '',
@@ -1525,6 +1611,9 @@ export default function EmployeesPage() {
       return;
     } else if (salaryType === 'lumpsum' && !salaryPreview.lumpsum_amount) {
       setPreviewError('Please enter lumpsum amount');
+      return;
+    } else if (salaryType === 'custom' && !salaryPreview.custom_ctc) {
+      setPreviewError('Please enter CTC amount');
       return;
     }
     
@@ -1633,24 +1722,78 @@ export default function EmployeesPage() {
           employer_cost: lumpsumAmount,
         };
       } else if (salaryType === 'custom') {
-        // Calculate totals from custom components
-        const components = salaryPreview.custom_components || [];
-        const totalEarnings = components
-          .filter(c => c.type === 'earning')
-          .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-        const totalDeductions = components
-          .filter(c => c.type === 'deduction')
-          .reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+        // CTC-based calculation
+        // CTC = Gross + Employer Contributions
+        // So Gross = CTC - Employer Contributions
+        const ctc = parseFloat(salaryPreview.custom_ctc) || 0;
+        const employerContributions = 
+          (parseFloat(salaryPreview.custom_pf_employer) || 0) +
+          (parseFloat(salaryPreview.custom_esic_employer) || 0) +
+          (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+          (parseFloat(salaryPreview.custom_bonus) || 0) +
+          (parseFloat(salaryPreview.custom_insurance) || 0) +
+          ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0));
+        
+        const grossSalary = ctc - employerContributions;
+        
+        // Calculate totals
+        const totalEarnings = 
+          (parseFloat(salaryPreview.custom_basic) || 0) +
+          (parseFloat(salaryPreview.custom_da) || 0) +
+          (parseFloat(salaryPreview.custom_hra) || 0) +
+          (parseFloat(salaryPreview.custom_conveyance) || 0) +
+          (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+          (parseFloat(salaryPreview.custom_incentive) || 0) +
+          (parseFloat(salaryPreview.custom_other_allowances) || 0);
+          
+        const totalDeductions = 
+          (parseFloat(salaryPreview.custom_pf_employee) || 0) +
+          (parseFloat(salaryPreview.custom_esic_employee) || 0) +
+          (parseFloat(salaryPreview.custom_pt) || 0) +
+          (parseFloat(salaryPreview.custom_mlwf) || 0) +
+          (parseFloat(salaryPreview.custom_retention) || 0);
+          
         const netPay = totalEarnings - totalDeductions;
         
         payload = {
           ...payload,
-          gross_salary: totalEarnings,
+          salary_type: 'custom',
+          // CTC and hourly rate
+          employer_cost: ctc,
+          hourly_rate: parseFloat(salaryPreview.custom_hourly_rate) || 0,
+          std_hours_per_day: (parseFloat(salaryPreview.custom_monthly_hours) || 160) / 20, // Convert monthly hours to daily
+          // Gross salary (CTC - Employer Contributions)
+          gross_salary: grossSalary,
+          // Earnings breakdown
+          basic_plus_da: (parseFloat(salaryPreview.custom_basic) || 0) + (parseFloat(salaryPreview.custom_da) || 0),
+          da: parseFloat(salaryPreview.custom_da) || 0,
+          hra: parseFloat(salaryPreview.custom_hra) || 0,
+          conveyance: parseFloat(salaryPreview.custom_conveyance) || 0,
+          call_allowance: parseFloat(salaryPreview.custom_call_allowance) || 0,
+          incentive: parseFloat(salaryPreview.custom_incentive) || 0,
+          other_allowances: parseFloat(salaryPreview.custom_other_allowances) || 0,
+          // Employee deductions
+          pf_employee: parseFloat(salaryPreview.custom_pf_employee) || 0,
+          esic_employee: parseFloat(salaryPreview.custom_esic_employee) || 0,
+          pt: parseFloat(salaryPreview.custom_pt) || 0,
+          mlwf: parseFloat(salaryPreview.custom_mlwf) || 0,
+          retention: parseFloat(salaryPreview.custom_retention) || 0,
+          // Employer contributions
+          pf_employer: parseFloat(salaryPreview.custom_pf_employer) || 0,
+          esic_employer: parseFloat(salaryPreview.custom_esic_employer) || 0,
+          mlwf_employer: parseFloat(salaryPreview.custom_mlwf_employer) || 0,
+          bonus: parseFloat(salaryPreview.custom_bonus) || 0,
+          insurance: parseFloat(salaryPreview.custom_insurance) || 0,
+          // Totals
           total_earnings: totalEarnings,
           total_deductions: totalDeductions,
           net_pay: netPay,
-          employer_cost: totalEarnings,
-          lumpsum_description: JSON.stringify(components), // Store components as JSON in lumpsum_description field
+          // Store custom components and CTC in description
+          lumpsum_description: JSON.stringify({
+            ctc: ctc,
+            monthly_hours: parseFloat(salaryPreview.custom_monthly_hours) || 160,
+            custom_components: salaryPreview.custom_components || []
+          }),
         };
       }
       
@@ -3359,7 +3502,20 @@ export default function EmployeesPage() {
                                   <button
                                     key={type.value}
                                     type="button"
-                                    onClick={() => setSalaryPreview({ ...salaryPreview, salary_type: type.value })}
+                                    onClick={async () => {
+                                      setSalaryPreview({ ...salaryPreview, salary_type: type.value });
+                                      // Fetch attendance hours when custom is selected
+                                      if (type.value === 'custom' && selectedEmployee?.id) {
+                                        const hours = await fetchAttendanceHours(selectedEmployee.id);
+                                        const hourlyRate = parseFloat(salaryPreview.custom_hourly_rate) || 0;
+                                        setSalaryPreview(prev => ({ 
+                                          ...prev, 
+                                          salary_type: 'custom',
+                                          custom_monthly_hours: hours,
+                                          custom_ctc: hourlyRate > 0 ? (hourlyRate * parseFloat(hours)).toFixed(2) : prev.custom_ctc
+                                        }));
+                                      }
+                                    }}
                                     className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
                                       salaryPreview.salary_type === type.value
                                         ? 'border-purple-500 bg-purple-50 text-purple-700'
@@ -3671,53 +3827,125 @@ export default function EmployeesPage() {
                               </div>
                             )}
 
-                            {/* Custom Salary Structure Fields - 3 Column System (Fixed Earnings/Deductions like Monthly) */}
+                            {/* Custom Salary Structure Fields - Hourly Rate Based Calculation */}
                             {salaryPreview.salary_type === 'custom' && (
                               <div className="space-y-4 mb-3">
-                                {/* Hourly Rate and Monthly Hours */}
+                                {/* Hourly Rate Input and CTC Calculation Section */}
                                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                                   <h5 className="text-sm font-semibold text-yellow-800 mb-3 flex items-center gap-2">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
-                                    Hourly Rate & Working Hours
+                                    Hourly Rate & CTC Calculation
                                   </h5>
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-600 mb-1">Hourly Rate (₹)</label>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Hourly Rate (₹) *</label>
                                       <input
                                         type="number"
+                                        step="0.01"
                                         value={salaryPreview.custom_hourly_rate || ''}
-                                        onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_hourly_rate: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
-                                        placeholder="0"
+                                        onChange={(e) => {
+                                          const hourlyRate = parseFloat(e.target.value) || 0;
+                                          const hours = parseFloat(salaryPreview.custom_monthly_hours) || 0;
+                                          const ctc = hourlyRate * hours;
+                                          
+                                          // Calculate employer costs
+                                          const employerCosts = 
+                                            (parseFloat(salaryPreview.custom_pf_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_esic_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_bonus) || 0) +
+                                            (parseFloat(salaryPreview.custom_insurance) || 0);
+                                          
+                                          // Gross = CTC - Employer Costs
+                                          const gross = ctc - employerCosts;
+                                          
+                                          // Auto-calculate earnings from Gross (standard percentages)
+                                          const basicDa = Math.round(gross * 0.30); // 30% for Basic+DA
+                                          const hra = Math.round(gross * 0.20);     // 20% for HRA
+                                          const callAllowance = Math.round(gross * 0.15); // 15% for Call Allowance
+                                          const conveyance = Math.round(gross * 0.15);    // 15% for Conveyance
+                                          const otherAllowance = Math.round(gross * 0.20); // 20% for Other
+                                          
+                                          // Auto-calculate employee deductions
+                                          // PF Employee 12% on Basic+DA (capped at ₹15,000 base)
+                                          const pfBase = Math.min(basicDa, 15000);
+                                          const pfEmployee = Math.round(pfBase * 0.12);
+                                          
+                                          // ESIC 1.75% only if Gross ≤ 21,000
+                                          const esicEmployee = gross <= 21000 ? Math.round(gross * 0.0175) : 0;
+                                          
+                                          // Professional Tax = 200 (standard)
+                                          const pt = 200;
+                                          
+                                          // MLWF = 25 (12+12+1 employee share)
+                                          const mlwf = 25;
+                                          
+                                          setSalaryPreview({ 
+                                            ...salaryPreview, 
+                                            custom_hourly_rate: e.target.value,
+                                            custom_ctc: ctc.toFixed(2),
+                                            custom_basic: basicDa.toString(),
+                                            custom_hra: hra.toString(),
+                                            custom_conveyance: conveyance.toString(),
+                                            custom_call_allowance: callAllowance.toString(),
+                                            custom_other_allowances: otherAllowance.toString(),
+                                            custom_pf_employee: pfEmployee.toString(),
+                                            custom_esic_employee: esicEmployee.toString(),
+                                            custom_pt: pt.toString(),
+                                            custom_mlwf: mlwf.toString()
+                                          });
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-yellow-400 rounded focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-yellow-100 font-semibold"
+                                        placeholder="Enter Rate"
                                       />
                                     </div>
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Monthly Hours</label>
-                                      <input
-                                        type="number"
-                                        value={salaryPreview.custom_monthly_hours || '160'}
-                                        onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_monthly_hours: e.target.value })}
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
-                                        placeholder="160"
-                                      />
+                                      <div className={`w-full px-2 py-1.5 text-sm border rounded font-medium flex items-center gap-1 ${
+                                        salaryPreview.custom_monthly_hours 
+                                          ? 'bg-blue-100 border-blue-300 text-blue-700' 
+                                          : 'bg-orange-100 border-orange-300 text-orange-700'
+                                      }`}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        {salaryPreview.custom_monthly_hours ? `${salaryPreview.custom_monthly_hours} hrs` : 'No attendance'}
+                                      </div>
+                                      <p className="text-[10px] text-blue-600 mt-0.5">From Attendance (Current Month)</p>
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Calculated CTC (₹)</label>
+                                      <div className="w-full px-2 py-1.5 text-sm bg-yellow-200 border border-yellow-400 rounded text-yellow-800 font-semibold">
+                                        ₹{formatCurrency(parseFloat(salaryPreview.custom_ctc) || 0)}
+                                      </div>
+                                      <p className="text-[10px] text-yellow-700 mt-0.5">Rate × Hours</p>
                                     </div>
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Calculated Gross</label>
-                                      <div className="w-full px-2 py-1.5 text-sm bg-gray-100 border border-gray-300 rounded text-gray-700 font-medium">
-                                        ₹{formatCurrency((parseFloat(salaryPreview.custom_hourly_rate) || 0) * (parseFloat(salaryPreview.custom_monthly_hours) || 160))}
+                                      <div className="w-full px-2 py-1.5 text-sm bg-green-100 border border-green-300 rounded text-green-700 font-semibold">
+                                        ₹{formatCurrency(
+                                          (parseFloat(salaryPreview.custom_ctc) || 0) - 
+                                          ((parseFloat(salaryPreview.custom_pf_employer) || 0) +
+                                          (parseFloat(salaryPreview.custom_esic_employer) || 0) +
+                                          (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+                                          (parseFloat(salaryPreview.custom_bonus) || 0) +
+                                          (parseFloat(salaryPreview.custom_insurance) || 0) +
+                                          ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)))
+                                        )}
                                       </div>
                                     </div>
                                     <div className="flex items-end">
-                                      <p className="text-xs text-yellow-700 italic">Standard: 160 hrs/month (8 hrs × 20 days)</p>
+                                      <p className="text-xs text-yellow-700 italic">Gross = CTC - Employer Costs</p>
                                     </div>
                                   </div>
+                                  <p className="text-xs text-gray-500 mt-2">💡 Monthly Hours fetched from Attendance Master during payroll calculation</p>
                                 </div>
 
                                 {/* 3 COLUMNS SIDE BY SIDE */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                  {/* COLUMN 1: EARNINGS (Fixed like Monthly) */}
+                                  {/* COLUMN 1: EARNINGS (Editable, based on CTC) */}
                                   <div className="bg-green-50 border border-green-200 rounded-xl p-3">
                                     <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
                                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3727,21 +3955,11 @@ export default function EmployeesPage() {
                                     </h5>
                                     <div className="space-y-2">
                                       <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-600">Basic</span>
+                                        <span className="text-sm text-gray-600">Basic + DA</span>
                                         <input
                                           type="number"
                                           value={salaryPreview.custom_basic || ''}
                                           onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_basic: e.target.value })}
-                                          className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
-                                          placeholder="0"
-                                        />
-                                      </div>
-                                      <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-600">DA</span>
-                                        <input
-                                          type="number"
-                                          value={salaryPreview.custom_da || ''}
-                                          onChange={(e) => setSalaryPreview({ ...salaryPreview, custom_da: e.target.value })}
                                           className="w-24 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-green-500"
                                           placeholder="0"
                                         />
@@ -3801,7 +4019,6 @@ export default function EmployeesPage() {
                                           <span className="text-green-900">Total Earnings</span>
                                           <span className="text-green-900">₹{formatCurrency(
                                             (parseFloat(salaryPreview.custom_basic) || 0) +
-                                            (parseFloat(salaryPreview.custom_da) || 0) +
                                             (parseFloat(salaryPreview.custom_hra) || 0) +
                                             (parseFloat(salaryPreview.custom_conveyance) || 0) +
                                             (parseFloat(salaryPreview.custom_call_allowance) || 0) +
