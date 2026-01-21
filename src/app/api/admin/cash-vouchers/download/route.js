@@ -63,28 +63,28 @@ export async function GET(request) {
     const lineItemsHtml = lineItems.length > 0 
       ? lineItems.map((item, index) => `
         <tr>
-          <td style="border: 1px solid #333; padding: 3px 4px; text-align: center; font-size: 8px;">${item.sr_no || index + 1}</td>
-          <td style="border: 1px solid #333; padding: 3px 4px; font-size: 8px;">${formatDate(item.bill_date)}</td>
-          <td style="border: 1px solid #333; padding: 3px 4px; font-size: 8px;">${item.bill_no || ''}</td>
-          <td style="border: 1px solid #333; padding: 3px 4px; font-size: 8px;">${item.account_head || ''}</td>
-          <td style="border: 1px solid #333; padding: 3px 4px; text-align: right; font-size: 8px;">${item.amount_rs || ''}</td>
-          <td style="border: 1px solid #333; padding: 3px 4px; text-align: right; font-size: 8px;">${item.amount_ps || '00'}</td>
-          <td style="border: 1px solid #333; padding: 3px 4px; font-size: 8px;">${item.description || ''}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; text-align: center; font-size: 11px;">${item.sr_no || index + 1}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${formatDate(item.bill_date)}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.bill_no || ''}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.account_head || ''}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; text-align: right; font-size: 11px;">${item.amount_rs || ''}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; text-align: right; font-size: 11px;">${item.amount_ps || '00'}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.description || ''}</td>
         </tr>
       `).join('')
-      : `<tr><td colspan="7" style="border: 1px solid #333; padding: 10px; text-align: center; color: #666; font-size: 8px;">No line items</td></tr>`;
+      : `<tr><td colspan="7" style="border: 1px solid #333; padding: 15px; text-align: center; color: #666; font-size: 11px;">No line items</td></tr>`;
 
-    // Add empty rows to fill the form (minimum 4 rows for compact size)
-    const emptyRowsNeeded = Math.max(0, 4 - lineItems.length);
+    // Add empty rows to fill the form (minimum 5 rows for A4 half page)
+    const emptyRowsNeeded = Math.max(0, 5 - lineItems.length);
     const emptyRowsHtml = Array(emptyRowsNeeded).fill(`
       <tr>
-        <td style="border: 1px solid #333; padding: 3px 4px; height: 18px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 3px 4px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 3px 4px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 3px 4px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 3px 4px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 3px 4px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 3px 4px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px; height: 24px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
+        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
       </tr>
     `).join('');
 
@@ -96,22 +96,22 @@ export async function GET(request) {
   <title>Cash Voucher - ${voucher.voucher_number}</title>
   <style>
     @page {
-      size: A5 portrait;
-      margin: 0 10mm;
+      size: A4 portrait;
+      margin: 0 5mm;
     }
     @media print {
       body { 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact;
         margin: 0;
-        padding: 0 10mm;
+        padding: 0 5mm;
       }
       .no-print { display: none !important; }
       .voucher {
-        width: 148mm;
-        height: 80mm;
-        max-width: 148mm;
-        max-height: 80mm;
+        width: 200mm;
+        height: 120mm;
+        max-width: 200mm;
+        max-height: 120mm;
         overflow: hidden;
         page-break-after: avoid;
         page-break-inside: avoid;
@@ -124,9 +124,9 @@ export async function GET(request) {
       background: #fff;
     }
     .voucher {
-      width: 128mm;
-      height: 90mm;
-      max-height: 80mm;
+      width: 190mm;
+      height: 130mm;
+      max-height: 130mm;
       margin: 0 auto;
       background: #FFFDE7;
       border: 2px solid #333;
@@ -139,36 +139,36 @@ export async function GET(request) {
     }
     .company-info {
       flex: 1;
-      padding: 6px 8px;
+      padding: 10px 12px;
       border-right: 1px solid #333;
     }
     .company-info .logo-row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 9px;
+      gap: 10px;
+      margin-bottom: 8px;
     }
     .company-info h2 {
       margin: 0;
-      font-size: 9px;
+      font-size: 14px;
     }
     .company-info p {
       margin: 0;
-      font-size: 8px;
+      font-size: 11px;
       color: #444;
-      line-height: 1.3;
+      line-height: 1.4;
     }
     .title-section {
       flex: 0.8;
-      padding: 2px 8px;
+      padding: 8px 12px;
       text-align: center;
       border-right: 1px solid #333;
     }
     .title-section h1 {
-      font-size: 10px;
+      font-size: 14px;
     }
     .voucher-details {
-      width: 160px;
+      width: 200px;
     }
     .voucher-details .row {
       display: flex;
@@ -178,18 +178,18 @@ export async function GET(request) {
       border-bottom: none;
     }
     .voucher-details .label {
-      padding: 3px 5px;
-      font-size: 8px;
+      padding: 6px 8px;
+      font-size: 11px;
       font-weight: bold;
       background: #FFF9C4;
     }
     .voucher-details .value {
       flex: 1;
-      padding: 3px 5px;
-      font-size: 9px;
+      padding: 6px 8px;
+      font-size: 12px;
     }
     .voucher-details .sr-no {
-      font-size: 9px;
+      font-size: 12px;
       font-weight: bold;
       color: #7B1FA2;
     }
@@ -200,13 +200,13 @@ export async function GET(request) {
     th {
       background: #FFF9C4;
       border: 1px solid #333;
-      padding: 3px 4px;
-      font-size: 8px;
+      padding: 6px 8px;
+      font-size: 11px;
       text-transform: uppercase;
     }
     td {
-      font-size: 8px;
-      padding: 2px 4px !important;
+      font-size: 11px;
+      padding: 5px 8px !important;
     }
     .footer-section {
       display: flex;
@@ -214,19 +214,19 @@ export async function GET(request) {
     }
     .payment-mode {
       flex: 1;
-      padding: 5px 8px;
+      padding: 8px 12px;
       border-right: 1px solid #333;
-      font-size: 9px;
+      font-size: 12px;
     }
     .total-section {
-      width: 100px;
-      padding: 5px 8px;
+      width: 140px;
+      padding: 8px 12px;
       border-right: 1px solid #333;
       background: #FFF9C4;
     }
     .words-section {
       flex: 1;
-      padding: 5px 8px;
+      padding: 8px 12px;
     }
     .signatures {
       display: flex;
@@ -234,7 +234,7 @@ export async function GET(request) {
     }
     .signature-box {
       flex: 1;
-      padding: 8px 6px;
+      padding: 12px 10px;
       text-align: center;
       border-right: 1px solid #333;
     }
@@ -242,16 +242,16 @@ export async function GET(request) {
       border-right: none;
     }
     .signature-box .label {
-      font-size: 7px;
+      font-size: 10px;
       font-weight: bold;
       color: #444;
-      margin-bottom: 15px;
+      margin-bottom: 20px;
     }
     .signature-box .name {
-      font-size: 8px;
+      font-size: 11px;
       border-top: 1px solid #999;
-      padding-top: 3px;
-      margin-top: 15px;
+      padding-top: 5px;
+      margin-top: 20px;
     }
     .print-btn {
       display: block;
@@ -267,6 +267,20 @@ export async function GET(request) {
     .print-btn:hover {
       background: #6A1B9A;
     }
+    .cut-line {
+      width: 190mm;
+      margin: 10px auto;
+      border-bottom: 2px dashed #666;
+      position: relative;
+    }
+    .cut-line::before {
+      content: '✂';
+      position: absolute;
+      left: -20px;
+      top: -10px;
+      font-size: 16px;
+      color: #666;
+    }
   </style>
 </head>
 <body>
@@ -277,7 +291,7 @@ export async function GET(request) {
     <div class="header">
       <div class="company-info">
         <div class="logo-row">
-          <img src="/accent-logo.png" alt="Accent Logo" style="height: 24px;" />
+          <img src="/accent-logo.png" alt="Accent Logo" style="height: 32px;" />
           <h2>Accent Techno Solutions Pvt. Ltd.</h2>
         </div>
         <p>17/130, Anand Nagar, Neharu Road, Vakola,</p>
@@ -337,12 +351,12 @@ export async function GET(request) {
         <span style="margin-left: 10px; text-transform: uppercase;">${voucher.payment_mode || 'Cash'}</span>
       </div>
       <div class="total-section">
-        <div style="font-size: 11px; font-weight: bold;">TOTAL</div>
-        <div style="font-size: 16px; font-weight: bold;">₹ ${formatCurrency(voucher.total_amount)}</div>
+        <div style="font-size: 13px; font-weight: bold;">TOTAL</div>
+        <div style="font-size: 18px; font-weight: bold;">₹ ${formatCurrency(voucher.total_amount)}</div>
       </div>
       <div class="words-section">
-        <div style="font-size: 11px; font-weight: bold; margin-bottom: 5px;">Rs. (In Words)</div>
-        <div style="font-size: 12px;">${voucher.amount_in_words || ''}</div>
+        <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px;">Rs. (In Words)</div>
+        <div style="font-size: 14px;">${voucher.amount_in_words || ''}</div>
       </div>
     </div>
 
@@ -366,6 +380,9 @@ export async function GET(request) {
       </div>
     </div>
   </div>
+
+  <!-- Cut line -->
+  <div class="cut-line"></div>
 
   <script>
     // Auto-print when loaded with ?print=true
