@@ -2011,13 +2011,19 @@ export default function EmployeesPage() {
         ...(selectedDepartment && { department: selectedDepartment }),
         ...(selectedStatus && { status: selectedStatus }),
         ...(selectedWorkplace && { workplace: selectedWorkplace }),
-        ...(selectedEmploymentStatus && { employment_status: selectedEmploymentStatus })
+        ...(selectedEmploymentStatus && { employment_status: selectedEmploymentStatus }),
+        // Add cache buster to ensure fresh data
+        _t: Date.now()
       });
       // Add a client-side timeout to avoid hanging forever on network issues
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 12000);
       // Use optimized /api/employees/list endpoint for better TTFB
-      const response = await fetch(`/api/employees/list?${params}`, { signal: controller.signal });
+      // Use cache: 'no-store' to bypass browser cache and get fresh data
+      const response = await fetch(`/api/employees/list?${params}`, { 
+        signal: controller.signal,
+        cache: 'no-store'
+      });
       clearTimeout(t);
       const data = await response.json();
 
