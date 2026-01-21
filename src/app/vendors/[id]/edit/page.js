@@ -140,7 +140,7 @@ export default function EditVendor({ params }) {
       
       if (result.success) {
         alert('Vendor updated successfully!');
-        router.push(`/vendors/${vendor.id}`);
+        router.push('/vendors');
       } else {
         alert('Error updating vendor: ' + result.error);
       }
@@ -154,7 +154,7 @@ export default function EditVendor({ params }) {
 
   const handleCancel = () => {
     if (window.confirm('Are you sure you want to cancel? Unsaved changes will be lost.')) {
-      router.push(`/vendors/${vendor.id}`);
+      router.push('/vendors');
     }
   };
 
@@ -223,7 +223,7 @@ export default function EditVendor({ params }) {
             <button
               onClick={handleSubmit}
               disabled={saving}
-              className="bg-accent-primary text-white px-6 py-2 rounded-md hover:bg-accent-primary/90 flex items-center space-x-2 disabled:opacity-50"
+              className="bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-accent-primary/90 flex items-center space-x-2 disabled:opacity-50"
             >
               <CheckIcon className="h-5 w-5" />
               <span>{saving ? 'Saving...' : 'Save Changes'}</span>
@@ -300,6 +300,8 @@ export default function EditVendor({ params }) {
                         <option value="Consultant">Consultant</option>
                         <option value="OEM">OEM</option>
                         <option value="Service Provider">Service Provider</option>
+                        <option value="Manufacturer">Manufacturer</option>
+                        <option value="Other">Other</option>
                       </select>
                     </div>
                     <div>

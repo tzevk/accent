@@ -311,6 +311,33 @@ export default function EmployeesPage() {
       return;
     }
     
+    // Validate required fields before submission
+    const requiredFields = {
+      employee_id: 'Employee ID',
+      first_name: 'First Name',
+      last_name: 'Last Name',
+      email: 'Email'
+    };
+    
+    const missingFields = [];
+    for (const [field, label] of Object.entries(requiredFields)) {
+      if (!formData[field] || formData[field].trim() === '') {
+        missingFields.push(label);
+      }
+    }
+    
+    if (missingFields.length > 0) {
+      setFormErrors({ general: `Please fill in required fields: ${missingFields.join(', ')}` });
+      return;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setFormErrors({ general: 'Please enter a valid email address' });
+      return;
+    }
+    
     setLoading(true);
     setFormErrors({});
     setErrorMsg('');

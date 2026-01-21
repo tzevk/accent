@@ -212,6 +212,8 @@ export default function NewVendor() {
                         <option value="Consultant">Consultant</option>
                         <option value="OEM">OEM</option>
                         <option value="Service Provider">Service Provider</option>
+                        <option value="Manufacturer">Manufacturer</option>
+                        <option value="Other">Other</option>
                       </select>
                     </div>
                     <div>
