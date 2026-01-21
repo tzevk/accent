@@ -51,7 +51,6 @@ export async function GET(request) {
       return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
-
     // Generate line items rows
     const lineItemsHtml = lineItems.length > 0 
       ? lineItems.map((item, index) => `
@@ -66,10 +65,10 @@ export async function GET(request) {
       `).join('')
       : `<tr><td colspan="6" style="border: 1px solid #333; padding: 15px; text-align: center; color: #666; font-size: 11px;">No line items</td></tr>`;
 
-    // Add empty rows to fill the form (minimum 5 rows for A4 half page)
+    // Add empty rows to fill the form (minimum 5 rows for A4 half page) - hidden when printing
     const emptyRowsNeeded = Math.max(0, 5 - lineItems.length);
     const emptyRowsHtml = Array(emptyRowsNeeded).fill(`
-      <tr>
+      <tr class="empty-table-row">
         <td style="border: 1px solid #333; padding: 6px 8px; height: 24px;">&nbsp;</td>
         <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
         <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
@@ -98,12 +97,13 @@ export async function GET(request) {
         padding: 0 5mm;
       }
       .no-print { display: none !important; }
+      .empty-table-row { display: none !important; }
       .voucher {
         width: 200mm;
-        height: 120mm;
+        height: auto;
         max-width: 200mm;
-        max-height: 120mm;
-        overflow: hidden;
+        max-height: none;
+        overflow: visible;
         page-break-after: avoid;
         page-break-inside: avoid;
       }
@@ -116,13 +116,12 @@ export async function GET(request) {
     }
     .voucher {
       width: 190mm;
-      height: 130mm;
-      max-height: 130mm;
+      height: auto;
+      min-height: 100mm;
       margin: 0 auto;
       background: #FFFDE7;
       border: 2px solid #333;
       box-sizing: border-box;
-      overflow: hidden;
     }
     .header {
       display: flex;
@@ -150,43 +149,76 @@ export async function GET(request) {
       line-height: 1.4;
     }
     .title-section {
-      flex: 0.8;
-      padding: 8px 12px;
+      flex: 0.4;
+      padding: 8px 4px;
       text-align: center;
       border-right: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .title-section h1 {
-      font-size: 11px;
+      font-size: 10px;
+      margin: 0;
     }
     .voucher-details {
-      width: 180px;
+      width: 220px;
+      min-width: 220px;
+      max-width: 220px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+      border-left: 1px solid #333;
     }
     .voucher-details .row {
       display: flex;
+      align-items: center;
       border-bottom: 1px solid #333;
-      white-space: nowrap;
+      flex: 1;
     }
     .voucher-details .row:last-child {
       border-bottom: none;
     }
     .voucher-details .label {
-      width: 60px;
+      width: 70px;
+      min-width: 70px;
       padding: 5px 8px;
       font-size: 10px;
       font-weight: bold;
       background: #FFF9C4;
+      text-align: left;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      border-right: 1px solid #333;
     }
     .voucher-details .value {
       flex: 1;
       padding: 5px 8px;
       font-size: 11px;
+      text-align: left;
+      height: 100%;
+      display: flex;
+      align-items: center;
       overflow: hidden;
-      text-overflow: ellipsis;
+      word-break: break-word;
     }
     .voucher-details .sr-no {
       font-size: 11px;
       font-weight: bold;
       color: #7B1FA2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .voucher-details .row.empty-row {
+      display: none;
+    }
+    @media print {
+      .voucher-details .row.empty-row {
+        display: none !important;
+      }
     }
     table {
       width: 100%;
@@ -229,7 +261,7 @@ export async function GET(request) {
     }
     .signature-box {
       flex: 1;
-      padding: 12px 10px;
+      padding: 17px 10px;
       text-align: center;
       border-right: 1px solid #333;
     }
@@ -240,13 +272,13 @@ export async function GET(request) {
       font-size: 10px;
       font-weight: bold;
       color: #444;
-      margin-bottom: 20px;
+      margin-bottom: 30px;
     }
     .signature-box .name {
       font-size: 11px;
       border-top: 1px solid #999;
       padding-top: 5px;
-      margin-top: 20px;
+      margin-top: 30px;
     }
     .print-btn {
       display: block;
@@ -286,7 +318,7 @@ export async function GET(request) {
     <div class="header">
       <div class="company-info">
         <div class="logo-row">
-          <img src="/accent-logo.png" alt="Accent Logo" style="height: 32px;" />
+          <img src="/accent-logo.png" alt="Accent Logo" style="height: 45px;" />
           <h2>Accent Techno Solutions Pvt. Ltd.</h2>
         </div>
         <p>17/130, Anand Nagar, Neharu Road, Vakola,</p>
@@ -296,20 +328,20 @@ export async function GET(request) {
         <h1>PETTY<br>CASH-CHEQUE<br>VOUCHER</h1>
       </div>
       <div class="voucher-details">
-        <div class="row">
-          <div class="label" style="width: 50px;">SR. NO.:</div>
+        <div class="row${voucher.voucher_number ? '' : ' empty-row'}">
+          <div class="label">SR. NO.:</div>
           <div class="value sr-no">${voucher.voucher_number || ''}</div>
         </div>
-        <div class="row">
-          <div class="label" style="width: 50px;">DATE:</div>
+        <div class="row${voucher.voucher_date ? '' : ' empty-row'}">
+          <div class="label">DATE:</div>
           <div class="value">${formatDate(voucher.voucher_date) || ''}</div>
         </div>
-        <div class="row">
-          <div class="label" style="width: 50px;">PROJECT:</div>
+        <div class="row${voucher.project_number ? '' : ' empty-row'}">
+          <div class="label">PROJECT:</div>
           <div class="value">${voucher.project_number || ''}</div>
         </div>
-        <div class="row">
-          <div class="label" style="width: 50px;">PAID TO:</div>
+        <div class="row${voucher.paid_to ? '' : ' empty-row'}">
+          <div class="label">PAID TO:</div>
           <div class="value">${voucher.paid_to || ''}</div>
         </div>
       </div>
