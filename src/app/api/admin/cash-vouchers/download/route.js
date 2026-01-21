@@ -51,13 +51,6 @@ export async function GET(request) {
       return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
-    // Format currency
-    const formatCurrency = (amount) => {
-      return new Intl.NumberFormat('en-IN', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(amount || 0);
-    };
 
     // Generate line items rows
     const lineItemsHtml = lineItems.length > 0 
@@ -67,19 +60,17 @@ export async function GET(request) {
           <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${formatDate(item.bill_date)}</td>
           <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.bill_no || ''}</td>
           <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.account_head || ''}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; text-align: right; font-size: 11px;">${item.amount_rs || ''}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; text-align: right; font-size: 11px;">${item.amount_ps || '00'}</td>
+          <td style="border: 1px solid #333; padding: 6px 8px; text-align: center; font-size: 11px;">${item.amount_rs || ''}</td>
           <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.description || ''}</td>
         </tr>
       `).join('')
-      : `<tr><td colspan="7" style="border: 1px solid #333; padding: 15px; text-align: center; color: #666; font-size: 11px;">No line items</td></tr>`;
+      : `<tr><td colspan="6" style="border: 1px solid #333; padding: 15px; text-align: center; color: #666; font-size: 11px;">No line items</td></tr>`;
 
     // Add empty rows to fill the form (minimum 5 rows for A4 half page)
     const emptyRowsNeeded = Math.max(0, 5 - lineItems.length);
     const emptyRowsHtml = Array(emptyRowsNeeded).fill(`
       <tr>
         <td style="border: 1px solid #333; padding: 6px 8px; height: 24px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
         <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
         <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
         <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
@@ -165,31 +156,35 @@ export async function GET(request) {
       border-right: 1px solid #333;
     }
     .title-section h1 {
-      font-size: 14px;
+      font-size: 11px;
     }
     .voucher-details {
-      width: 200px;
+      width: 180px;
     }
     .voucher-details .row {
       display: flex;
       border-bottom: 1px solid #333;
+      white-space: nowrap;
     }
     .voucher-details .row:last-child {
       border-bottom: none;
     }
     .voucher-details .label {
-      padding: 6px 8px;
-      font-size: 11px;
+      width: 60px;
+      padding: 5px 8px;
+      font-size: 10px;
       font-weight: bold;
       background: #FFF9C4;
     }
     .voucher-details .value {
       flex: 1;
-      padding: 6px 8px;
-      font-size: 12px;
+      padding: 5px 8px;
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .voucher-details .sr-no {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: bold;
       color: #7B1FA2;
     }
@@ -213,14 +208,14 @@ export async function GET(request) {
       border-top: 1px solid #333;
     }
     .payment-mode {
-      flex: 1;
+      width: 147px;
       padding: 8px 12px;
       border-right: 1px solid #333;
       font-size: 12px;
     }
     .total-section {
-      width: 140px;
-      padding: 8px 12px;
+      width: 94px;
+      padding: 6px 10px;
       border-right: 1px solid #333;
       background: #FFF9C4;
     }
@@ -302,19 +297,19 @@ export async function GET(request) {
       </div>
       <div class="voucher-details">
         <div class="row">
-          <div class="label" style="width: 60px;">SR. NO.:</div>
+          <div class="label" style="width: 50px;">SR. NO.:</div>
           <div class="value sr-no">${voucher.voucher_number || ''}</div>
         </div>
         <div class="row">
-          <div class="label" style="width: 60px;">DATE:</div>
+          <div class="label" style="width: 50px;">DATE:</div>
           <div class="value">${formatDate(voucher.voucher_date) || ''}</div>
         </div>
         <div class="row">
-          <div class="label" style="width: 60px;">PROJECT:</div>
+          <div class="label" style="width: 50px;">PROJECT:</div>
           <div class="value">${voucher.project_number || ''}</div>
         </div>
         <div class="row">
-          <div class="label" style="width: 60px;">PAID TO:</div>
+          <div class="label" style="width: 50px;">PAID TO:</div>
           <div class="value">${voucher.paid_to || ''}</div>
         </div>
       </div>
@@ -324,18 +319,12 @@ export async function GET(request) {
     <table>
       <thead>
         <tr>
-          <th style="width: 50px;">SR. NO.</th>
-          <th style="width: 90px;">BILL DATE</th>
-          <th style="width: 80px;">BILL NO.</th>
-          <th style="width: 150px;">ACCOUNT HEAD</th>
-          <th colspan="2" style="width: 100px;">
-            AMOUNT
-            <div style="display: flex; border-top: 1px solid #333; margin-top: 5px;">
-              <div style="flex: 1; border-right: 1px solid #333; padding: 3px;">RS.</div>
-              <div style="flex: 1; padding: 3px;">PS.</div>
-            </div>
-          </th>
-          <th>DESCRIPTION</th>
+          <th style="width: 10px;">SR. NO.</th>
+          <th style="width: 70px;">BILL DATE</th>
+          <th style="width: 30px;">BILL NO.</th>
+          <th style="width: 100px;">ACCOUNT HEAD</th>
+          <th style="width: 60px;">AMOUNT</th>
+          <th style="width: auto;">DESCRIPTION</th>
         </tr>
       </thead>
       <tbody>
@@ -347,15 +336,14 @@ export async function GET(request) {
     <!-- Footer with Total -->
     <div class="footer-section">
       <div class="payment-mode">
-        <strong>Paid by Cash/Cheque:</strong> 
+        <strong>Paid by:</strong> 
         <span style="margin-left: 10px; text-transform: uppercase;">${voucher.payment_mode || 'Cash'}</span>
       </div>
-      <div class="total-section">
-        <div style="font-size: 13px; font-weight: bold;">TOTAL</div>
-        <div style="font-size: 18px; font-weight: bold;">₹ ${formatCurrency(voucher.total_amount)}</div>
+      <div class="total-section" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span style="font-size: 11px; font-weight: bold;">TOTAL:</span>
+        <span style="font-size: 12px; font-weight: bold;">${voucher.total_amount}</span>
       </div>
       <div class="words-section">
-        <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px;">Rs. (In Words)</div>
         <div style="font-size: 14px;">${voucher.amount_in_words || ''}</div>
       </div>
     </div>
