@@ -1756,6 +1756,7 @@ export default function EmployeesPage() {
           incentive_applicable: salaryPreview.incentive_applicable,
           insurance_applicable: salaryPreview.insurance_applicable,
           // Include breakdown values (manual or calculated)
+          basic: previewBreakdown.basic_plus_da, // Basic (without DA)
           basic_plus_da: previewBreakdown.basic_plus_da,
           da: previewBreakdown.da,
           basic_da_total: previewBreakdown.basic_da_total, // Combined Basic + DA
@@ -1776,8 +1777,9 @@ export default function EmployeesPage() {
           total_earnings: previewBreakdown.total_earnings,
           total_deductions: previewBreakdown.total_deductions,
           net_pay: previewBreakdown.net_pay,
-          employer_cost: previewBreakdown.employer_cost,
+          employer_cost: previewBreakdown.employer_cost || 0,
         };
+        console.log('Monthly salary payload - employer_cost (CTC):', previewBreakdown.employer_cost);
       } else if (salaryType === 'hourly') {
         const hourlyRate = parseFloat(salaryPreview.hourly_rate) || 0;
         const stdHours = parseFloat(salaryPreview.std_hours_per_day) || 8;
@@ -3445,6 +3447,7 @@ export default function EmployeesPage() {
                                               <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.gross_salary || 0)}</span>
                                               <span className="text-sm text-gray-500">Gross/month</span>
                                               <span className="text-sm text-green-600 font-medium">• Net: ₹{formatCurrency(profile.net_pay || 0)}</span>
+                                              <span className="text-sm text-blue-600 font-medium">• CTC: ₹{formatCurrency(profile.employer_cost || 0)}</span>
                                             </>
                                           )}
                                           {profile.salary_type === 'hourly' && (
@@ -3476,6 +3479,7 @@ export default function EmployeesPage() {
                                               <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.gross_salary || 0)}</span>
                                               <span className="text-sm text-gray-500">Earnings</span>
                                               <span className="text-sm text-green-600 font-medium">• Net: ₹{formatCurrency(profile.net_pay || 0)}</span>
+                                              <span className="text-sm text-blue-600 font-medium">• CTC: ₹{formatCurrency(profile.employer_cost || 0)}</span>
                                             </>
                                           )}
                                         </div>
