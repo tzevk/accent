@@ -70,6 +70,7 @@ async function ensureEmployeesTable(connection) {
     ['esi_no', "VARCHAR(50)"],
     ['attendance_id', "VARCHAR(50)"],
     ['biometric_code', "VARCHAR(50)"],
+    ['device_code', "VARCHAR(50)"],
     ['exit_date', "DATE"],
     ['exit_reason', "TEXT"],
     ['deputation_company_id', "INT"],
@@ -481,7 +482,7 @@ export async function PUT(request) {
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
       'qualification','institute','passing_year','work_experience',
       'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
-      'attendance_id','biometric_code','exit_date','exit_reason'
+      'attendance_id','biometric_code','device_code','exit_date','exit_reason'
     ];
     const existingCols = await getExistingColumns(connection);
     const updatable = allowedFields.filter(f => existingCols.has(f));
