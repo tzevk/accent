@@ -286,20 +286,48 @@ export async function POST(request) {
       );
       isUpdate = result.affectedRows > 0;
     } else {
-      // INSERT new salary profile
-      console.log('Creating new salary profile for employee:', employee_id);
-      [result] = await db.query(
-        `INSERT INTO employee_salary_profile 
-         (employee_id, gross, gross_salary, other_allowances, effective_from, effective_to, da_year, 
-          pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
-          basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
-          pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
-          total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
-          salary_type, hourly_rate, std_hours_per_day, std_in_time, std_out_time, ot_multiplier, daily_rate, std_working_days,
-          contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [employee_id, ...values]
+      // Check if a profile already exists for this employee and effective_from date
+      const [existing] = await db.query(
+        `SELECT id FROM employee_salary_profile WHERE employee_id = ? AND effective_from = ? AND is_active = 1 LIMIT 1`,
+        [employee_id, effective_from]
       );
+      
+      if (existing && existing.length > 0) {
+        // UPDATE existing profile for this date
+        console.log('Updating existing salary profile for employee:', employee_id, 'effective_from:', effective_from);
+        const existingId = existing[0].id;
+        [result] = await db.query(
+          `UPDATE employee_salary_profile SET
+            gross = ?, gross_salary = ?, other_allowances = ?, effective_from = ?, effective_to = ?, da_year = ?,
+            pf_applicable = ?, esic_applicable = ?, pt_applicable = ?, mlwf_applicable = ?,
+            retention_applicable = ?, bonus_applicable = ?, incentive_applicable = ?, insurance_applicable = ?,
+            basic_plus_da = ?, da = ?, basic = ?, hra = ?, conveyance = ?, call_allowance = ?, bonus = ?, incentive = ?,
+            pf_employee = ?, esic_employee = ?, pf_employer = ?, esic_employer = ?, pt = ?, mlwf = ?, mlwf_employer = ?,
+            retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
+            is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, std_in_time = ?, std_out_time = ?, ot_multiplier = ?,
+            daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
+            lumpsum_amount = ?, lumpsum_description = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+          [...values, existingId]
+        );
+        isUpdate = true;
+        result.insertId = existingId; // Use existing ID for response
+      } else {
+        // INSERT new salary profile
+        console.log('Creating new salary profile for employee:', employee_id);
+        [result] = await db.query(
+          `INSERT INTO employee_salary_profile 
+           (employee_id, gross, gross_salary, other_allowances, effective_from, effective_to, da_year, 
+            pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
+            basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
+            pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
+            total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
+            salary_type, hourly_rate, std_hours_per_day, std_in_time, std_out_time, ot_multiplier, daily_rate, std_working_days,
+            contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [employee_id, ...values]
+        );
+      }
     }
     
     console.log('Insert/Update result:', result);

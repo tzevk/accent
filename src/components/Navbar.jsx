@@ -173,9 +173,8 @@ export default function Navbar() {
                 <Image
                   src={accentLogo}
                   alt="Accent Techno Solutions logo"
-                  width={accentLogo.width}
-                  height={accentLogo.height}
-                  priority
+                  width={100}
+                  height={40}
                   className="h-10 w-auto object-contain md:h-11"
                 />
               </Link>

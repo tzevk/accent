@@ -833,24 +833,60 @@ export default function EmployeesPage() {
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const monthParam = `${year}-${month}`;
+      
+      console.log('Fetching attendance for employee:', employeeId, 'month:', monthParam);
+      
       const res = await fetch(`/api/attendance?employee_id=${employeeId}&month=${monthParam}`);
       const data = await res.json();
       
-      if (data.success && data.summary) {
-        const empData = data.summary.find(e => e.employee_id == employeeId) || data.summary[0];
-        if (empData && empData.days) {
-          let totalHours = 0;
-          const defaultHours = 8.5; // Default 9:00 to 17:30
+      console.log('Attendance API response:', data);
+      
+      if (data.success) {
+        // Check summary first
+        if (data.summary && data.summary.length > 0) {
+          const empData = data.summary.find(e => String(e.employee_id) === String(employeeId)) || data.summary[0];
+          console.log('Found employee data in summary:', empData);
           
-          Object.values(empData.days).forEach(dayInfo => {
-            if (['P', 'HD', 'OT'].includes(dayInfo.status)) {
-              if (dayInfo.in_time && dayInfo.out_time) {
-                totalHours += calculateHoursDiff(dayInfo.in_time, dayInfo.out_time);
+          if (empData && empData.days && Object.keys(empData.days).length > 0) {
+            let totalHours = 0;
+            const defaultHours = 8.5; // Default 9:00 to 17:30
+            
+            Object.entries(empData.days).forEach(([date, dayInfo]) => {
+              if (['P', 'HD', 'OT'].includes(dayInfo.status)) {
+                if (dayInfo.in_time && dayInfo.out_time) {
+                  const hrs = calculateHoursDiff(dayInfo.in_time, dayInfo.out_time);
+                  totalHours += hrs;
+                  console.log(`Date ${date}: ${dayInfo.status} - ${dayInfo.in_time} to ${dayInfo.out_time} = ${hrs} hrs`);
+                } else {
+                  const hrs = dayInfo.status === 'HD' ? defaultHours / 2 : defaultHours;
+                  totalHours += hrs;
+                  console.log(`Date ${date}: ${dayInfo.status} - default = ${hrs} hrs`);
+                }
+              }
+            });
+            
+            console.log('Total hours calculated:', totalHours);
+            return totalHours > 0 ? totalHours.toFixed(1) : '';
+          }
+        }
+        
+        // If no summary, try to calculate from records directly
+        if (data.records && data.records.length > 0) {
+          console.log('Using records directly, count:', data.records.length);
+          let totalHours = 0;
+          const defaultHours = 8.5;
+          
+          data.records.forEach(record => {
+            if (['P', 'HD', 'OT'].includes(record.status)) {
+              if (record.in_time && record.out_time) {
+                totalHours += calculateHoursDiff(record.in_time, record.out_time);
               } else {
-                totalHours += (dayInfo.status === 'HD' ? defaultHours / 2 : defaultHours);
+                totalHours += record.status === 'HD' ? defaultHours / 2 : defaultHours;
               }
             }
           });
+          
+          console.log('Total hours from records:', totalHours);
           return totalHours > 0 ? totalHours.toFixed(1) : '';
         }
       }
@@ -862,11 +898,24 @@ export default function EmployeesPage() {
 
   // Helper function to calculate hours difference
   const calculateHoursDiff = (inTime, outTime) => {
-    if (!inTime || !outTime) return 8;
-    const [inH, inM] = inTime.split(':').map(Number);
-    const [outH, outM] = outTime.split(':').map(Number);
-    const diffMinutes = (outH * 60 + outM) - (inH * 60 + inM);
-    return diffMinutes > 0 ? diffMinutes / 60 : 8;
+    if (!inTime || !outTime) return 8.5;
+    try {
+      // Handle various time formats (HH:MM:SS, HH:MM, etc.)
+      const parseTime = (time) => {
+        const timeStr = String(time).substring(0, 5); // Get HH:MM part
+        const parts = timeStr.split(':').map(Number);
+        return parts[0] + (parts[1] || 0) / 60;
+      };
+      
+      const inDecimal = parseTime(inTime);
+      const outDecimal = parseTime(outTime);
+      const diff = outDecimal - inDecimal;
+      
+      return diff > 0 ? diff : 8.5;
+    } catch (err) {
+      console.error('Error parsing time:', inTime, outTime, err);
+      return 8.5;
+    }
   };
 
   // Check if employee is exempt from PT
@@ -1320,6 +1369,16 @@ export default function EmployeesPage() {
         if (data.data.length > 0) {
           const savedProfile = data.data[0]; // Most recent profile
           
+          // Parse custom data from lumpsum_description if salary_type is custom
+          let customData = { ctc: null, monthly_hours: 160, custom_components: [] };
+          if (savedProfile.salary_type === 'custom' && savedProfile.lumpsum_description) {
+            try {
+              customData = JSON.parse(savedProfile.lumpsum_description);
+            } catch (e) {
+              console.error('Failed to parse custom salary data:', e);
+            }
+          }
+          
           // Load gross and other settings
           setSalaryPreview({
             gross: savedProfile.gross_salary || savedProfile.gross || '',
@@ -1345,10 +1404,31 @@ export default function EmployeesPage() {
             contract_duration: savedProfile.contract_duration || 'monthly',
             contract_end_date: savedProfile.contract_end_date || '',
             lumpsum_amount: savedProfile.lumpsum_amount || '',
-            lumpsum_description: savedProfile.lumpsum_description || '',
+            lumpsum_description: savedProfile.salary_type === 'custom' ? '' : (savedProfile.lumpsum_description || ''),
             effective_from: savedProfile.effective_from ? savedProfile.effective_from.split('T')[0] : new Date().toISOString().split('T')[0],
             effective_to: savedProfile.effective_to ? savedProfile.effective_to.split('T')[0] : '',
-            custom_components: []
+            custom_components: customData.custom_components || [],
+            // Custom salary type fields - load from saved data
+            custom_ctc: customData.ctc || savedProfile.employer_cost || '',
+            custom_hourly_rate: savedProfile.hourly_rate || '',
+            custom_monthly_hours: customData.monthly_hours || '160',
+            custom_basic: savedProfile.basic || '',
+            custom_da: savedProfile.da || '',
+            custom_hra: savedProfile.hra || '',
+            custom_conveyance: savedProfile.conveyance || '',
+            custom_call_allowance: savedProfile.call_allowance || '',
+            custom_incentive: savedProfile.incentive || '',
+            custom_other_allowances: savedProfile.other_allowances || '',
+            custom_pf_employee: savedProfile.pf_employee || '',
+            custom_esic_employee: savedProfile.esic_employee || '',
+            custom_pt: savedProfile.pt || '',
+            custom_mlwf: savedProfile.mlwf || '',
+            custom_retention: savedProfile.retention || '',
+            custom_pf_employer: savedProfile.pf_employer || '',
+            custom_esic_employer: savedProfile.esic_employer || '',
+            custom_mlwf_employer: savedProfile.mlwf_employer || '',
+            custom_bonus: savedProfile.bonus || '',
+            custom_insurance: savedProfile.insurance || ''
           });
           
           // Load the saved breakdown values directly (frozen/fixed)
@@ -1453,13 +1533,13 @@ export default function EmployeesPage() {
   const handleEditSalaryProfile = (profile) => {
     setEditingSalaryProfileId(profile.id);
     
-    // Parse custom components if salary_type is custom
-    let customComponents = [];
+    // Parse custom data from lumpsum_description if salary_type is custom
+    let customData = { ctc: null, monthly_hours: 160, custom_components: [] };
     if (profile.salary_type === 'custom' && profile.lumpsum_description) {
       try {
-        customComponents = JSON.parse(profile.lumpsum_description);
+        customData = JSON.parse(profile.lumpsum_description);
       } catch (e) {
-        console.error('Failed to parse custom components:', e);
+        console.error('Failed to parse custom salary data:', e);
       }
     }
     
@@ -1474,6 +1554,8 @@ export default function EmployeesPage() {
       contract_duration: profile.contract_duration || 'monthly',
       contract_end_date: profile.contract_end_date ? profile.contract_end_date.split('T')[0] : '',
       std_hours_per_day: profile.std_hours_per_day || 8,
+      std_in_time: profile.std_in_time ? profile.std_in_time.substring(0, 5) : '09:00',
+      std_out_time: profile.std_out_time ? profile.std_out_time.substring(0, 5) : '17:30',
       std_working_days: profile.std_working_days || 26,
       ot_multiplier: profile.ot_multiplier || 1.5,
       other_allowances: profile.other_allowances || '',
@@ -1487,7 +1569,28 @@ export default function EmployeesPage() {
       bonus_applicable: !!profile.bonus_applicable,
       incentive_applicable: !!profile.incentive_applicable,
       insurance_applicable: !!profile.insurance_applicable,
-      custom_components: customComponents
+      custom_components: customData.custom_components || [],
+      // Custom salary type fields - load from saved data
+      custom_ctc: customData.ctc || profile.employer_cost || '',
+      custom_hourly_rate: profile.hourly_rate || '',
+      custom_monthly_hours: customData.monthly_hours || '160',
+      custom_basic: profile.basic || '',
+      custom_da: profile.da || '',
+      custom_hra: profile.hra || '',
+      custom_conveyance: profile.conveyance || '',
+      custom_call_allowance: profile.call_allowance || '',
+      custom_incentive: profile.incentive || '',
+      custom_other_allowances: profile.other_allowances || '',
+      custom_pf_employee: profile.pf_employee || '',
+      custom_esic_employee: profile.esic_employee || '',
+      custom_pt: profile.pt || '',
+      custom_mlwf: profile.mlwf || '',
+      custom_retention: profile.retention || '',
+      custom_pf_employer: profile.pf_employer || '',
+      custom_esic_employer: profile.esic_employer || '',
+      custom_mlwf_employer: profile.mlwf_employer || '',
+      custom_bonus: profile.bonus || '',
+      custom_insurance: profile.insurance || ''
     });
     // If monthly, recalculate preview with the loaded gross
     if (profile.salary_type === 'monthly' || !profile.salary_type) {
@@ -1765,6 +1868,7 @@ export default function EmployeesPage() {
           // Gross salary (CTC - Employer Contributions)
           gross_salary: grossSalary,
           // Earnings breakdown
+          basic: parseFloat(salaryPreview.custom_basic) || 0,
           basic_plus_da: (parseFloat(salaryPreview.custom_basic) || 0) + (parseFloat(salaryPreview.custom_da) || 0),
           da: parseFloat(salaryPreview.custom_da) || 0,
           hra: parseFloat(salaryPreview.custom_hra) || 0,
@@ -3502,19 +3606,37 @@ export default function EmployeesPage() {
                                   <button
                                     key={type.value}
                                     type="button"
-                                    onClick={async () => {
-                                      setSalaryPreview({ ...salaryPreview, salary_type: type.value });
-                                      // Fetch attendance hours when custom is selected
-                                      if (type.value === 'custom' && selectedEmployee?.id) {
-                                        const hours = await fetchAttendanceHours(selectedEmployee.id);
-                                        const hourlyRate = parseFloat(salaryPreview.custom_hourly_rate) || 0;
-                                        setSalaryPreview(prev => ({ 
-                                          ...prev, 
-                                          salary_type: 'custom',
-                                          custom_monthly_hours: hours,
-                                          custom_ctc: hourlyRate > 0 ? (hourlyRate * parseFloat(hours)).toFixed(2) : prev.custom_ctc
-                                        }));
-                                      }
+                                    onClick={() => {
+                                      // Set salary type - use functional update to ensure latest state
+                                      setSalaryPreview(prev => {
+                                        const newState = { ...prev, salary_type: type.value };
+                                        
+                                        // Fetch attendance hours when custom is selected
+                                        if (type.value === 'custom' && selectedEmployee?.id) {
+                                          // Use setTimeout to defer the async call after state update
+                                          setTimeout(async () => {
+                                            try {
+                                              const hours = await fetchAttendanceHours(selectedEmployee.id);
+                                              if (hours) {
+                                                setSalaryPreview(latestPrev => {
+                                                  // Only update if still on custom
+                                                  if (latestPrev.salary_type !== 'custom') return latestPrev;
+                                                  const hourlyRate = parseFloat(latestPrev.custom_hourly_rate) || 0;
+                                                  return {
+                                                    ...latestPrev,
+                                                    custom_monthly_hours: hours,
+                                                    custom_ctc: hourlyRate > 0 ? (hourlyRate * parseFloat(hours)).toFixed(2) : latestPrev.custom_ctc
+                                                  };
+                                                });
+                                              }
+                                            } catch (err) {
+                                              console.error('Error fetching hours:', err);
+                                            }
+                                          }, 0);
+                                        }
+                                        
+                                        return newState;
+                                      });
                                     }}
                                     className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
                                       salaryPreview.salary_type === type.value
@@ -3538,7 +3660,6 @@ export default function EmployeesPage() {
                                 {salaryPreview.salary_type === 'custom' && '💡 Build your own salary structure with hourly rate and custom earnings/deductions'}
                               </p>
                             </div>
-
                             {/* Effective Date Range */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                               <div>
@@ -3838,7 +3959,7 @@ export default function EmployeesPage() {
                                     </svg>
                                     Hourly Rate & CTC Calculation
                                   </h5>
-                                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Hourly Rate (₹) *</label>
                                       <input
@@ -3848,49 +3969,69 @@ export default function EmployeesPage() {
                                         onChange={(e) => {
                                           const hourlyRate = parseFloat(e.target.value) || 0;
                                           const hours = parseFloat(salaryPreview.custom_monthly_hours) || 0;
-                                          const ctc = hourlyRate * hours;
+                                          const ctc = hourlyRate * hours; // CTC = Hourly Rate × Hours
                                           
-                                          // Calculate employer costs
-                                          const employerCosts = 
-                                            (parseFloat(salaryPreview.custom_pf_employer) || 0) +
-                                            (parseFloat(salaryPreview.custom_esic_employer) || 0) +
-                                            (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
-                                            (parseFloat(salaryPreview.custom_bonus) || 0) +
-                                            (parseFloat(salaryPreview.custom_insurance) || 0);
+                                          // Fixed costs
+                                          const mlwfEmployer = 72;
+                                          const insurance = 500;
                                           
-                                          // Gross = CTC - Employer Costs
-                                          const gross = ctc - employerCosts;
+                                          // Iterative calculation to converge on correct values
+                                          let calculatedGross = ctc * 0.90; // Initial estimate
+                                          let basicDa, pfBase, pfEmployer, esicEmployer, bonus, employerCosts;
                                           
-                                          // Auto-calculate earnings from Gross (standard percentages)
-                                          const basicDa = Math.round(gross * 0.30); // 30% for Basic+DA
-                                          const hra = Math.round(gross * 0.20);     // 20% for HRA
-                                          const callAllowance = Math.round(gross * 0.15); // 15% for Call Allowance
-                                          const conveyance = Math.round(gross * 0.15);    // 15% for Conveyance
-                                          const otherAllowance = Math.round(gross * 0.20); // 20% for Other
+                                          // Iterate until values stabilize (usually 2-3 iterations)
+                                          for (let i = 0; i < 5; i++) {
+                                            basicDa = Math.round(calculatedGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
+                                            pfBase = Math.min(basicDa, PAYROLL_CONFIG.PF_WAGE_CEILING);
+                                            pfEmployer = Math.round(pfBase * (PAYROLL_CONFIG.EMPLOYER_PF_PERCENT / 100));
+                                            esicEmployer = calculatedGross <= PAYROLL_CONFIG.ESIC_SALARY_CEILING 
+                                              ? Math.round(calculatedGross * (PAYROLL_CONFIG.EMPLOYER_ESIC_PERCENT / 100)) 
+                                              : 0;
+                                            bonus = Math.round(basicDa * 0.0833);
+                                            employerCosts = pfEmployer + esicEmployer + mlwfEmployer + bonus + insurance;
+                                            const newGross = ctc - employerCosts;
+                                            if (Math.abs(newGross - calculatedGross) < 1) break; // Converged
+                                            calculatedGross = newGross;
+                                          }
                                           
-                                          // Auto-calculate employee deductions
-                                          // PF Employee 12% on Basic+DA (capped at ₹15,000 base)
-                                          const pfBase = Math.min(basicDa, 15000);
-                                          const pfEmployee = Math.round(pfBase * 0.12);
+                                          // Final calculation with converged gross
+                                          calculatedGross = ctc - employerCosts;
+                                          basicDa = Math.round(calculatedGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
+                                          const hra = Math.round(calculatedGross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
+                                          const callAllowance = Math.round(calculatedGross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100));
+                                          const conveyance = Math.round(calculatedGross * (PAYROLL_CONFIG.CONVEYANCE_PERCENT / 100));
+                                          const otherAllowance = calculatedGross - basicDa - hra - callAllowance - conveyance;
                                           
-                                          // ESIC 1.75% only if Gross ≤ 21,000
-                                          const esicEmployee = gross <= 21000 ? Math.round(gross * 0.0175) : 0;
+                                          // Recalculate employer PF/Bonus based on final basicDa
+                                          pfBase = Math.min(basicDa, PAYROLL_CONFIG.PF_WAGE_CEILING);
+                                          pfEmployer = Math.round(pfBase * (PAYROLL_CONFIG.EMPLOYER_PF_PERCENT / 100));
+                                          bonus = Math.round(basicDa * 0.0833);
                                           
-                                          // Professional Tax = 200 (standard)
-                                          const pt = 200;
-                                          
-                                          // MLWF = 25 (12+12+1 employee share)
-                                          const mlwf = 25;
+                                          // Calculate Employee Deductions
+                                          const pfEmployee = Math.round(pfBase * (PAYROLL_CONFIG.EMPLOYEE_PF_PERCENT / 100));
+                                          const esicEmployee = calculatedGross <= PAYROLL_CONFIG.ESIC_SALARY_CEILING 
+                                            ? Math.round(calculatedGross * (PAYROLL_CONFIG.EMPLOYEE_ESIC_PERCENT / 100)) 
+                                            : 0;
+                                          const pt = PAYROLL_CONFIG.PROFESSIONAL_TAX.ABOVE_10000;
+                                          const mlwf = PAYROLL_CONFIG.LWF_HALF_YEARLY;
                                           
                                           setSalaryPreview({ 
                                             ...salaryPreview, 
                                             custom_hourly_rate: e.target.value,
                                             custom_ctc: ctc.toFixed(2),
+                                            // Employer contributions
+                                            custom_pf_employer: pfEmployer.toString(),
+                                            custom_esic_employer: esicEmployer.toString(),
+                                            custom_mlwf_employer: mlwfEmployer.toString(),
+                                            custom_bonus: bonus.toString(),
+                                            custom_insurance: insurance.toString(),
+                                            // Earnings (calculated from Calculated Gross)
                                             custom_basic: basicDa.toString(),
                                             custom_hra: hra.toString(),
                                             custom_conveyance: conveyance.toString(),
                                             custom_call_allowance: callAllowance.toString(),
-                                            custom_other_allowances: otherAllowance.toString(),
+                                            custom_other_allowances: Math.max(0, otherAllowance).toString(),
+                                            // Employee deductions
                                             custom_pf_employee: pfEmployee.toString(),
                                             custom_esic_employee: esicEmployee.toString(),
                                             custom_pt: pt.toString(),
@@ -3923,6 +4064,20 @@ export default function EmployeesPage() {
                                       <p className="text-[10px] text-yellow-700 mt-0.5">Rate × Hours</p>
                                     </div>
                                     <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Employer Contributions</label>
+                                      <div className="w-full px-2 py-1.5 text-sm bg-red-100 border border-red-300 rounded text-red-700 font-semibold">
+                                        ₹{formatCurrency(
+                                          (parseFloat(salaryPreview.custom_pf_employer) || 0) +
+                                          (parseFloat(salaryPreview.custom_esic_employer) || 0) +
+                                          (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+                                          (parseFloat(salaryPreview.custom_bonus) || 0) +
+                                          (parseFloat(salaryPreview.custom_insurance) || 0) +
+                                          ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0))
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-red-600 mt-0.5">PF + ESIC + MLWF + Bonus + Ins</p>
+                                    </div>
+                                    <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Calculated Gross</label>
                                       <div className="w-full px-2 py-1.5 text-sm bg-green-100 border border-green-300 rounded text-green-700 font-semibold">
                                         ₹{formatCurrency(
@@ -3935,9 +4090,7 @@ export default function EmployeesPage() {
                                           ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)))
                                         )}
                                       </div>
-                                    </div>
-                                    <div className="flex items-end">
-                                      <p className="text-xs text-yellow-700 italic">Gross = CTC - Employer Costs</p>
+                                      <p className="text-[10px] text-green-600 mt-0.5">CTC - Employer Costs</p>
                                     </div>
                                   </div>
                                   <p className="text-xs text-gray-500 mt-2">💡 Monthly Hours fetched from Attendance Master during payroll calculation</p>
@@ -4271,21 +4424,7 @@ export default function EmployeesPage() {
                                       <div className="border-t-2 border-blue-400 pt-2 mt-2">
                                         <div className="flex justify-between font-bold text-base">
                                           <span className="text-blue-800">Total CTC</span>
-                                          <span className="text-blue-800">₹{formatCurrency(
-                                            ((parseFloat(salaryPreview.custom_basic) || 0) +
-                                            (parseFloat(salaryPreview.custom_da) || 0) +
-                                            (parseFloat(salaryPreview.custom_hra) || 0) +
-                                            (parseFloat(salaryPreview.custom_conveyance) || 0) +
-                                            (parseFloat(salaryPreview.custom_call_allowance) || 0) +
-                                            (parseFloat(salaryPreview.custom_incentive) || 0) +
-                                            (parseFloat(salaryPreview.custom_other_allowances) || 0)) +
-                                            ((parseFloat(salaryPreview.custom_pf_employer) || 0) +
-                                            (parseFloat(salaryPreview.custom_esic_employer) || 0) +
-                                            (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
-                                            (parseFloat(salaryPreview.custom_bonus) || 0) +
-                                            (parseFloat(salaryPreview.custom_insurance) || 0) +
-                                            ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)))
-                                          )}</span>
+                                          <span className="text-blue-800">₹{formatCurrency(parseFloat(salaryPreview.custom_ctc) || 0)}</span>
                                         </div>
                                       </div>
                                     </div>
