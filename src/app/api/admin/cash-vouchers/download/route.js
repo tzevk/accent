@@ -109,7 +109,7 @@ export async function GET(request) {
       .no-print { display: none !important; }
       .voucher {
         width: 148mm;
-        height: 90mm;
+        height: 80mm;
         max-width: 148mm;
         max-height: 80mm;
         overflow: hidden;
@@ -124,8 +124,9 @@ export async function GET(request) {
       background: #fff;
     }
     .voucher {
-      width: 148mm;
-      height: 105mm;
+      width: 128mm;
+      height: 90mm;
+      max-height: 80mm;
       margin: 0 auto;
       background: #FFFDE7;
       border: 2px solid #333;
@@ -145,7 +146,7 @@ export async function GET(request) {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 2px;
+      margin-bottom: 9px;
     }
     .company-info h2 {
       margin: 0;
@@ -153,9 +154,9 @@ export async function GET(request) {
     }
     .company-info p {
       margin: 0;
-      font-size: 7px;
+      font-size: 8px;
       color: #444;
-      line-height: 1.2;
+      line-height: 1.3;
     }
     .title-section {
       flex: 0.8;
