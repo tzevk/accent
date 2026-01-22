@@ -358,19 +358,22 @@ function EditProjectForm() {
   });
   const newScheduleDescRef = useRef(null);
 
-  // Project Manhours - structured rows
+  // Project Manhours - structured by month with employee entries
   const [projectManhours, setProjectManhours] = useState([]);
-  const [newManhourRow, setNewManhourRow] = useState({
-    month: '',
-    name_of_engineer_designer: '',
-    engineering: '',
-    designer: '',
-    drafting: '',
-    checking: '',
-    coordination: '',
-    site_visit: '',
-    others: '',
-    remarks: ''
+  // State for adding new months - multiple selection
+  const [selectedMonths, setSelectedMonths] = useState([]);
+  const [monthRangeStart, setMonthRangeStart] = useState('');
+  const [monthRangeEnd, setMonthRangeEnd] = useState('');
+  // State for employees with salary profiles (for rate lookup)
+  const [employeesWithRates, setEmployeesWithRates] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  // New entry form for adding employee hours within a month
+  const [newManhourEntry, setNewManhourEntry] = useState({
+    employee_id: '',
+    employee_name: '',
+    rate: '',
+    salary_type: '',
+    hours: ''
   });
   const newManhourNameRef = useRef(null);
 
@@ -946,13 +949,66 @@ function EditProjectForm() {
               setProjectHandover([]);
             }
 
-            // Load project manhours list
+            // Load project manhours list - supports both old flat format and new month-grouped format
             if (project.project_manhours_list) {
               try {
                 const parsed = typeof project.project_manhours_list === 'string'
                   ? JSON.parse(project.project_manhours_list)
                   : project.project_manhours_list;
-                setProjectManhours(Array.isArray(parsed) ? parsed : []);
+                
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  // Check if it's the new format (has 'month' and 'entries' keys)
+                  const isNewFormat = parsed[0] && 'entries' in parsed[0];
+                  
+                  if (isNewFormat) {
+                    // Already in new format
+                    setProjectManhours(parsed);
+                  } else {
+                    // Old format - migrate to new format by grouping by month
+                    const groupedByMonth = {};
+                    parsed.forEach(row => {
+                      const month = row.month || 'unknown';
+                      if (!groupedByMonth[month]) {
+                        groupedByMonth[month] = {
+                          id: Date.now() + Math.random(),
+                          month: month,
+                          entries: []
+                        };
+                      }
+                      // Convert old row to new entry format
+                      groupedByMonth[month].entries.push({
+                        id: row.id || Date.now() + Math.random(),
+                        employee_id: null, // Old format didn't have this
+                        employee_name: row.name_of_engineer_designer || '',
+                        rate: 0, // Old format didn't track rate
+                        salary_type: 'monthly',
+                        // Sum all hour categories from old format
+                        hours: (parseFloat(row.engineering) || 0) + 
+                               (parseFloat(row.designer) || 0) + 
+                               (parseFloat(row.drafting) || 0) + 
+                               (parseFloat(row.checking) || 0) + 
+                               (parseFloat(row.coordination) || 0) + 
+                               (parseFloat(row.site_visit) || 0) + 
+                               (parseFloat(row.others) || 0),
+                        total_cost: 0,
+                        // Preserve old data in legacy field
+                        legacy_data: {
+                          engineering: row.engineering,
+                          designer: row.designer,
+                          drafting: row.drafting,
+                          checking: row.checking,
+                          coordination: row.coordination,
+                          site_visit: row.site_visit,
+                          others: row.others,
+                          remarks: row.remarks
+                        }
+                      });
+                    });
+                    setProjectManhours(Object.values(groupedByMonth));
+                  }
+                } else {
+                  setProjectManhours([]);
+                }
               } catch {
                 setProjectManhours([]);
               }
@@ -1093,6 +1149,97 @@ function EditProjectForm() {
       }
     };
     fetchUsers();
+  }, []);
+
+  // Fetch employees with their salary profiles for manhours rate lookup
+  useEffect(() => {
+    const fetchEmployeesWithRates = async () => {
+      setEmployeesLoading(true);
+      try {
+        // Fetch employees list
+        const empRes = await fetch('/api/employees/list?limit=1000');
+        const empJson = await empRes.json();
+        
+        if (empJson?.success && Array.isArray(empJson.employees)) {
+          // First, set employees immediately without rates so UI is responsive
+          const basicEmployeesData = empJson.employees.map(emp => ({
+            id: emp.id,
+            name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.email || `Employee ${emp.id}`,
+            employee_id: emp.employee_id,
+            department: emp.department,
+            designation: emp.designation,
+            rate: 0,
+            salary_type: 'monthly'
+          }));
+          setEmployeesWithRates(basicEmployeesData);
+          setEmployeesLoading(false);
+          
+          // Then fetch salary profiles in batches to get rates
+          const batchSize = 10;
+          const updatedEmployees = [...basicEmployeesData];
+          
+          for (let i = 0; i < empJson.employees.length; i += batchSize) {
+            const batch = empJson.employees.slice(i, i + batchSize);
+            
+            await Promise.all(
+              batch.map(async (emp, batchIndex) => {
+                try {
+                  const salaryRes = await fetch(`/api/payroll/salary-profile?employee_id=${emp.id}`);
+                  const salaryJson = await salaryRes.json();
+                  
+                  const latestProfile = salaryJson?.data?.[0] || null;
+                  
+                  let rate = 0;
+                  let salaryType = 'monthly';
+                  
+                  if (latestProfile) {
+                    salaryType = latestProfile.salary_type || 'monthly';
+                    
+                    if (salaryType === 'hourly') {
+                      rate = parseFloat(latestProfile.hourly_rate) || 0;
+                    } else if (salaryType === 'daily') {
+                      rate = parseFloat(latestProfile.daily_rate) || 0;
+                    } else if (salaryType === 'custom') {
+                      try {
+                        const customData = latestProfile.lumpsum_description ? JSON.parse(latestProfile.lumpsum_description) : {};
+                        rate = parseFloat(customData.hourly_rate) || parseFloat(latestProfile.hourly_rate) || 0;
+                      } catch {
+                        rate = parseFloat(latestProfile.hourly_rate) || 0;
+                      }
+                    } else {
+                      const grossSalary = parseFloat(latestProfile.gross_salary) || parseFloat(latestProfile.employer_cost) || 0;
+                      const stdWorkingDays = parseFloat(latestProfile.std_working_days) || 26;
+                      const stdHoursPerDay = parseFloat(latestProfile.std_hours_per_day) || 8;
+                      rate = grossSalary > 0 ? parseFloat((grossSalary / (stdWorkingDays * stdHoursPerDay)).toFixed(2)) : 0;
+                    }
+                  }
+                  
+                  const globalIndex = i + batchIndex;
+                  updatedEmployees[globalIndex] = {
+                    ...updatedEmployees[globalIndex],
+                    rate: rate,
+                    salary_type: salaryType
+                  };
+                } catch (err) {
+                  console.error(`Failed to fetch salary for employee ${emp.id}:`, err);
+                }
+              })
+            );
+            
+            // Update state after each batch
+            setEmployeesWithRates([...updatedEmployees]);
+          }
+        } else {
+          console.error('Failed to fetch employees:', empJson);
+          setEmployeesLoading(false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch employees with rates:', error);
+        setEmployeesLoading(false);
+      }
+    };
+    
+    fetchEmployeesWithRates();
   }, []);
 
   // Load project team members from project data
@@ -1800,7 +1947,7 @@ function EditProjectForm() {
     setProjectHandover(prev => prev.filter(r => r.id !== id));
   };
 
-  // Project Manhours helpers
+  // Project Manhours helpers - new structure grouped by month
   const getNextMonth = (currentMonth) => {
     if (!currentMonth) {
       // Default to current month if no month provided
@@ -1813,29 +1960,157 @@ function EditProjectForm() {
     return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
   };
 
-  const addManhourRow = () => {
-    if (!newManhourRow.name_of_engineer_designer || !newManhourRow.name_of_engineer_designer.trim()) return;
-    // Add the row as locked (non-editable)
-    const row = { ...newManhourRow, id: Date.now(), isLocked: true };
-    setProjectManhours(prev => [...prev, row]);
-    // Auto-generate next month in the input field
-    const nextMonth = getNextMonth(newManhourRow.month);
-    setNewManhourRow({ month: nextMonth, name_of_engineer_designer: '', engineering: '', designer: '', drafting: '', checking: '', coordination: '', site_visit: '', others: '', remarks: '' });
+  // Generate array of months between start and end (inclusive)
+  const generateMonthRange = (start, end) => {
+    if (!start || !end) return [];
+    const months = [];
+    let [startYear, startMonth] = start.split('-').map(Number);
+    const [endYear, endMonth] = end.split('-').map(Number);
+    
+    while (startYear < endYear || (startYear === endYear && startMonth <= endMonth)) {
+      months.push(`${startYear}-${String(startMonth).padStart(2, '0')}`);
+      if (startMonth === 12) {
+        startMonth = 1;
+        startYear++;
+      } else {
+        startMonth++;
+      }
+    }
+    return months;
+  };
+
+  // Add multiple month sections at once
+  const addMonthSections = () => {
+    // Get months from range
+    const monthsToAdd = generateMonthRange(monthRangeStart, monthRangeEnd);
+    
+    if (monthsToAdd.length === 0) {
+      alert('Please select a valid month range (From and To)');
+      return;
+    }
+    
+    // Filter out months that already exist
+    const existingMonths = projectManhours.map(m => m.month);
+    const newMonths = monthsToAdd.filter(m => !existingMonths.includes(m));
+    
+    if (newMonths.length === 0) {
+      alert('All selected months already exist');
+      return;
+    }
+    
+    // Create new month entries
+    const newMonthEntries = newMonths.map((month, idx) => ({
+      id: Date.now() + idx,
+      month: month,
+      entries: []
+    }));
+    
+    setProjectManhours(prev => [...prev, ...newMonthEntries].sort((a, b) => a.month.localeCompare(b.month)));
+    
+    // Clear selection
+    setMonthRangeStart('');
+    setMonthRangeEnd('');
+  };
+
+  // Add an employee entry to a specific month
+  const addManhourEntry = (monthId) => {
+    if (!newManhourEntry.employee_id || !newManhourEntry.hours) return;
+    
+    const employee = employeesWithRates.find(e => e.id === parseInt(newManhourEntry.employee_id));
+    if (!employee) return;
+    
+    const entry = {
+      id: Date.now(),
+      employee_id: employee.id,
+      employee_name: employee.name,
+      rate: employee.rate,
+      salary_type: employee.salary_type,
+      hours: parseFloat(newManhourEntry.hours) || 0,
+      total_cost: (employee.rate * (parseFloat(newManhourEntry.hours) || 0)).toFixed(2)
+    };
+    
+    setProjectManhours(prev => prev.map(m => {
+      if (m.id === monthId) {
+        return { ...m, entries: [...(m.entries || []), entry] };
+      }
+      return m;
+    }));
+    
+    // Reset the entry form
+    setNewManhourEntry({
+      employee_id: '',
+      employee_name: '',
+      rate: '',
+      salary_type: '',
+      hours: ''
+    });
     setTimeout(() => newManhourNameRef.current?.focus(), 10);
   };
 
-  const updateManhourRow = (id, field, value) => {
-    setProjectManhours(prev => prev.map(r => {
-      // Prevent updates on locked rows
-      if (r.id === id && !r.isLocked) {
-        return { ...r, [field]: value };
+  // Update an entry within a month
+  const updateManhourEntry = (monthId, entryId, field, value) => {
+    setProjectManhours(prev => prev.map(m => {
+      if (m.id === monthId) {
+        const updatedEntries = (m.entries || []).map(e => {
+          if (e.id === entryId) {
+            const updated = { ...e, [field]: value };
+            // Recalculate total cost if hours changed
+            if (field === 'hours') {
+              updated.total_cost = (updated.rate * (parseFloat(value) || 0)).toFixed(2);
+            }
+            return updated;
+          }
+          return e;
+        });
+        return { ...m, entries: updatedEntries };
       }
-      return r;
+      return m;
     }));
   };
 
-  const removeManhourRow = (id) => {
-    setProjectManhours(prev => prev.filter(r => r.id !== id));
+  // Remove an entry from a month
+  const removeManhourEntry = (monthId, entryId) => {
+    setProjectManhours(prev => prev.map(m => {
+      if (m.id === monthId) {
+        return { ...m, entries: (m.entries || []).filter(e => e.id !== entryId) };
+      }
+      return m;
+    }));
+  };
+
+  // Remove an entire month section
+  const removeMonthSection = (monthId) => {
+    setProjectManhours(prev => prev.filter(m => m.id !== monthId));
+  };
+
+  // Handle employee selection - auto-fill rate
+  const handleEmployeeSelect = (employeeId) => {
+    const employee = employeesWithRates.find(e => e.id === parseInt(employeeId));
+    if (employee) {
+      setNewManhourEntry(prev => ({
+        ...prev,
+        employee_id: employee.id,
+        employee_name: employee.name,
+        rate: employee.rate,
+        salary_type: employee.salary_type
+      }));
+    } else {
+      setNewManhourEntry(prev => ({
+        ...prev,
+        employee_id: '',
+        employee_name: '',
+        rate: '',
+        salary_type: ''
+      }));
+    }
+  };
+
+  // Calculate month totals
+  const getMonthTotals = (monthData) => {
+    const entries = monthData.entries || [];
+    const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    const totalCost = entries.reduce((sum, e) => sum + (parseFloat(e.total_cost) || 0), 0);
+    return { totalHours, totalCost };
   };
 
   // Query Log helpers
@@ -2440,7 +2715,7 @@ function EditProjectForm() {
         documents_received_list: JSON.stringify(documentsReceived),
         documents_issued_list: JSON.stringify(documentsIssued),
         project_handover_list: JSON.stringify(projectHandover),
-        project_manhours_list: JSON.stringify(projectManhours),
+        project_manhours_list: JSON.stringify(projectManhours || []),
         project_query_log_list: JSON.stringify(queryLog),
         project_assumption_list: JSON.stringify(assumptions),
         project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
@@ -3938,10 +4213,10 @@ function EditProjectForm() {
 
             {/* Project Handover Tab */}
             {activeTab === 'project_handover' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mt-4">
+                <div className="px-15 py-19 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                   <div className="flex items-center gap-2">
-                    <svg className="h-4 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <h2 className="text-sm font-bold text-gray-900">Project Handover</h2>
@@ -4009,124 +4284,247 @@ function EditProjectForm() {
 
             {/* Project Manhours Tab */}
             {activeTab === 'project_manhours' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-4 py-2 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                  <div className="flex items-center gap-2">
-                    <svg className="h-4 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <h2 className="text-sm font-bold text-gray-900">Project Manhours</h2>
-                    <span className="text-[10px] text-gray-400 ml-2">• Entries lock after adding</span>
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mt-16">
+                <div className="px-4 py-6 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-4 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h2 className="text-sm font-bold text-gray-900">Project Manhours</h2>
+                      <span className="text-[10px] text-gray-400 ml-2">• Track employee hours by month</span>
+                    </div>
+                    {/* Add Multiple Months Section */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-500">From:</span>
+                      <input 
+                        type="month" 
+                        value={monthRangeStart || ''} 
+                        onChange={(e) => setMonthRangeStart(e.target.value)} 
+                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                      />
+                      <span className="text-xs text-gray-500">To:</span>
+                      <input 
+                        type="month" 
+                        value={monthRangeEnd || ''} 
+                        onChange={(e) => setMonthRangeEnd(e.target.value)} 
+                        min={monthRangeStart || undefined}
+                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
+                      />
+                      <button 
+                        type="button" 
+                        onClick={addMonthSections}
+                        disabled={!monthRangeStart || !monthRangeEnd}
+                        className={`px-3 py-1 rounded text-xs font-medium transition-all ${monthRangeStart && monthRangeEnd ? 'bg-[#7F2487] text-white hover:bg-purple-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      >
+                        + Add Months
+                      </button>
+                      {monthRangeStart && monthRangeEnd && (
+                        <span className="text-[10px] text-gray-500">
+                          ({generateMonthRange(monthRangeStart, monthRangeEnd).length} months)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-gray-400">
+                    {employeesLoading ? 'Loading employees...' : `${employeesWithRates.length} employees available`}
                   </div>
                 </div>
 
-                <div className="px-3 py-2">
-                  <div className="overflow-x-auto border border-gray-200 rounded">
-                    <table className="w-full text-[11px] border-collapse">
-                      <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                        <tr>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-8">#</th>
-                          <th className="text-left py-1.5 px-1 font-semibold text-gray-700 w-24">Month</th>
-                          <th className="text-left py-1.5 px-1 font-semibold text-gray-700 w-36">Engineer/Designer</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Eng</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Des</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Draft</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Chk</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Coord</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Site</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-14">Other</th>
-                          <th className="text-left py-1.5 px-1 font-semibold text-gray-700 w-24">Remarks</th>
-                          <th className="text-center py-1.5 px-1 font-semibold text-gray-700 w-12"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="bg-purple-25/30 border-b border-purple-100">
-                          <td className="py-1 px-1 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-1 px-1"><input type="month" value={newManhourRow.month} onChange={(e)=>setNewManhourRow(prev=>({...prev,month:e.target.value}))} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-1 px-1"><input ref={newManhourNameRef} type="text" value={newManhourRow.name_of_engineer_designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,name_of_engineer_designer:e.target.value}))} placeholder="Name" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.engineering} onChange={(e)=>setNewManhourRow(prev=>({...prev,engineering:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.designer} onChange={(e)=>setNewManhourRow(prev=>({...prev,designer:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.drafting} onChange={(e)=>setNewManhourRow(prev=>({...prev,drafting:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.checking} onChange={(e)=>setNewManhourRow(prev=>({...prev,checking:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.coordination} onChange={(e)=>setNewManhourRow(prev=>({...prev,coordination:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.site_visit} onChange={(e)=>setNewManhourRow(prev=>({...prev,site_visit:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="number" value={newManhourRow.others} onChange={(e)=>setNewManhourRow(prev=>({...prev,others:e.target.value}))} placeholder="0" className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" /></td>
-                          <td className="py-1 px-1"><input type="text" value={newManhourRow.remarks} onChange={(e)=>setNewManhourRow(prev=>({...prev,remarks:e.target.value}))} placeholder="..." className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-1 px-1 text-center">
-                            <button 
-                              type="button" 
-                              onClick={addManhourRow} 
-                              disabled={!(newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim())} 
-                              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${newManhourRow.name_of_engineer_designer && newManhourRow.name_of_engineer_designer.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                            >
-                              Add
-                            </button>
-                          </td>
-                        </tr>
-                        {projectManhours.map((r, index) => (
-                          <tr key={r.id} className={`transition-colors align-middle ${r.isLocked ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
-                            <td className="py-1 px-1 text-center text-gray-500">{index + 1}</td>
-                            <td className="py-1 px-1">
-                              {r.isLocked ? (
-                                <span className="text-[11px] text-gray-600 flex items-center gap-1">
-                                  <svg className="h-3 w-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                                  {r.month || '-'}
-                                </span>
-                              ) : (
-                                <input type="month" value={r.month || ''} onChange={(e)=>updateManhourRow(r.id,'month', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" />
-                              )}
-                            </td>
-                            <td className="py-1 px-1">
-                              {r.isLocked ? (
-                                <span className="text-[11px] text-gray-600">{r.name_of_engineer_designer || '-'}</span>
-                              ) : (
-                                <select value={r.name_of_engineer_designer || ''} onChange={(e)=>updateManhourRow(r.id,'name_of_engineer_designer', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]">
-                                  <option value="">Select</option>
-                                  {projectTeamMembers.map(member => (
-                                    <option key={member.id} value={member.name}>{member.name}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.engineering || '-'}</span> : <input type="number" value={r.engineering || ''} onChange={(e)=>updateManhourRow(r.id,'engineering', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.designer || '-'}</span> : <input type="number" value={r.designer || ''} onChange={(e)=>updateManhourRow(r.id,'designer', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.drafting || '-'}</span> : <input type="number" value={r.drafting || ''} onChange={(e)=>updateManhourRow(r.id,'drafting', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.checking || '-'}</span> : <input type="number" value={r.checking || ''} onChange={(e)=>updateManhourRow(r.id,'checking', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.coordination || '-'}</span> : <input type="number" value={r.coordination || ''} onChange={(e)=>updateManhourRow(r.id,'coordination', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.site_visit || '-'}</span> : <input type="number" value={r.site_visit || ''} onChange={(e)=>updateManhourRow(r.id,'site_visit', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.others || '-'}</span> : <input type="number" value={r.others || ''} onChange={(e)=>updateManhourRow(r.id,'others', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" />}
-                            </td>
-                            <td className="py-1 px-1">
-                              {r.isLocked ? <span className="text-[11px] text-gray-600">{r.remarks || '-'}</span> : <input type="text" value={r.remarks || ''} onChange={(e)=>updateManhourRow(r.id,'remarks', e.target.value)} className="w-full text-[11px] px-1 py-0.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" />}
-                            </td>
-                            <td className="py-1 px-1 text-center">
+                <div className="px-4 py-4 space-y-4">
+                  {projectManhours.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <svg className="h-12 w-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-sm">No months added yet</p>
+                      <p className="text-xs mt-1">Select a month range above and click &quot;+ Add Months&quot;</p>
+                    </div>
+                  ) : (
+                    projectManhours.map((monthData) => {
+                      const { totalHours, totalCost } = getMonthTotals(monthData);
+                      const monthLabel = monthData.month ? new Date(monthData.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown Month';
+                      
+                      return (
+                        <div key={monthData.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                          {/* Month Header */}
+                          <div className="bg-gradient-to-r from-purple-50 to-white px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <CalendarIcon className="h-4 w-4 text-[#7F2487]" />
+                              <h3 className="text-sm font-semibold text-gray-800">{monthLabel}</h3>
+                              <span className="text-xs text-gray-500">
+                                ({(monthData.entries || []).length} {(monthData.entries || []).length === 1 ? 'entry' : 'entries'})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-xs text-gray-600">
+                                <span className="font-medium">Hours:</span> {totalHours.toFixed(1)}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                <span className="font-medium">Cost:</span> ₹{totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </div>
                               <button 
                                 type="button" 
-                                onClick={()=>removeManhourRow(r.id)} 
-                                className="text-red-400 hover:text-red-600 p-0.5"
-                                title="Remove row"
+                                onClick={() => removeMonthSection(monthData.id)}
+                                className="text-red-400 hover:text-red-600 p-1"
+                                title="Remove month"
                               >
-                                <XMarkIcon className="h-3 w-3" />
+                                <XMarkIcon className="h-4 w-4" />
                               </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                            </div>
+                          </div>
+                          
+                          {/* Entries Table */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="text-left py-2 px-3 font-semibold text-gray-600 w-8">#</th>
+                                  <th className="text-left py-2 px-3 font-semibold text-gray-600">Employee Name</th>
+                                  <th className="text-center py-2 px-3 font-semibold text-gray-600 w-24">Salary Type</th>
+                                  <th className="text-right py-2 px-3 font-semibold text-gray-600 w-24">Rate (₹/hr)</th>
+                                  <th className="text-center py-2 px-3 font-semibold text-gray-600 w-20">Hours</th>
+                                  <th className="text-right py-2 px-3 font-semibold text-gray-600 w-28">Total Cost</th>
+                                  <th className="w-12"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {/* Add New Entry Row */}
+                                <tr className="bg-purple-25/30 border-b border-purple-100">
+                                  <td className="py-2 px-3 text-center text-gray-400 font-semibold">+</td>
+                                  <td className="py-2 px-3">
+                                    <select 
+                                      value={newManhourEntry.employee_id || ''} 
+                                      onChange={(e) => handleEmployeeSelect(e.target.value)}
+                                      className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                                    >
+                                      <option value="">Select Employee</option>
+                                      {employeesWithRates.map(emp => (
+                                        <option key={emp.id} value={emp.id}>
+                                          {emp.name} {emp.department ? `(${emp.department})` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
+                                      newManhourEntry.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' :
+                                      newManhourEntry.salary_type === 'daily' ? 'bg-green-100 text-green-700' :
+                                      newManhourEntry.salary_type === 'custom' ? 'bg-yellow-100 text-yellow-700' :
+                                      newManhourEntry.salary_type ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                                    }`}>
+                                      {newManhourEntry.salary_type || '-'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-right">
+                                    <span className="text-xs text-gray-700 font-medium">
+                                      {newManhourEntry.rate ? `₹${parseFloat(newManhourEntry.rate).toFixed(2)}` : '-'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <input 
+                                      type="number" 
+                                      min="0"
+                                      step="0.5"
+                                      value={newManhourEntry.hours || ''} 
+                                      onChange={(e) => setNewManhourEntry(prev => ({ ...prev, hours: e.target.value }))}
+                                      placeholder="0" 
+                                      className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" 
+                                    />
+                                  </td>
+                                  <td className="py-2 px-3 text-right">
+                                    <span className="text-xs text-gray-600">
+                                      {newManhourEntry.rate && newManhourEntry.hours 
+                                        ? `₹${(parseFloat(newManhourEntry.rate) * parseFloat(newManhourEntry.hours)).toFixed(2)}` 
+                                        : '-'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <button 
+                                      type="button" 
+                                      onClick={() => addManhourEntry(monthData.id)}
+                                      disabled={!newManhourEntry.employee_id || !newManhourEntry.hours}
+                                      className={`px-2.5 py-1 rounded text-[10px] font-medium ${
+                                        newManhourEntry.employee_id && newManhourEntry.hours 
+                                          ? 'bg-[#7F2487] text-white hover:bg-purple-700' 
+                                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      Add
+                                    </button>
+                                  </td>
+                                </tr>
+                                
+                                {/* Existing Entries */}
+                                {(monthData.entries || []).map((entry, idx) => (
+                                  <tr key={entry.id} className="hover:bg-gray-50 border-b border-gray-100">
+                                    <td className="py-2 px-3 text-center text-gray-500">{idx + 1}</td>
+                                    <td className="py-2 px-3 font-medium text-gray-800">{entry.employee_name}</td>
+                                    <td className="py-2 px-3 text-center">
+                                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
+                                        entry.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' :
+                                        entry.salary_type === 'daily' ? 'bg-green-100 text-green-700' :
+                                        entry.salary_type === 'custom' ? 'bg-yellow-100 text-yellow-700' :
+                                        'bg-blue-100 text-blue-700'
+                                      }`}>
+                                        {entry.salary_type}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-right">₹{parseFloat(entry.rate || 0).toFixed(2)}</td>
+                                    <td className="py-2 px-3">
+                                      <input 
+                                        type="number" 
+                                        min="0"
+                                        step="0.5"
+                                        value={entry.hours || ''} 
+                                        onChange={(e) => updateManhourEntry(monthData.id, entry.id, 'hours', e.target.value)}
+                                        className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] text-center" 
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3 text-right font-medium">
+                                      ₹{((parseFloat(entry.rate) || 0) * (parseFloat(entry.hours) || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <button 
+                                        type="button" 
+                                        onClick={() => removeManhourEntry(monthData.id, entry.id)}
+                                        className="text-red-400 hover:text-red-600"
+                                      >
+                                        <XMarkIcon className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  
+                  {/* Grand Total */}
+                  {projectManhours.length > 0 && (
+                    <div className="bg-gradient-to-r from-purple-50 to-white border border-purple-200 rounded-lg p-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-bold text-gray-800">Grand Total</span>
+                        <div className="flex gap-6">
+                          <div className="text-right">
+                            <p className="text-[10px] text-gray-500">Total Hours</p>
+                            <p className="text-sm font-bold text-gray-800">
+                              {projectManhours.reduce((sum, m) => sum + (m.entries || []).reduce((s, e) => s + (parseFloat(e.hours) || 0), 0), 0).toFixed(1)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] text-gray-500">Total Cost</p>
+                            <p className="text-sm font-bold text-[#7F2487]">
+                              ₹{projectManhours.reduce((sum, m) => sum + (m.entries || []).reduce((s, e) => s + ((parseFloat(e.rate) || 0) * (parseFloat(e.hours) || 0)), 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
             )}

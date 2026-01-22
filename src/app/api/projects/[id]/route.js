@@ -369,46 +369,8 @@ export async function PUT(request, context) {
   const { id } = await context.params;
   const data = await request.json();
   
-  // Write debug info to file
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const fs = require('fs');
-  const debugInfo = {
-    timestamp: new Date().toISOString(),
-    projectId: id,
-    dataKeys: Object.keys(data),
-    documents_issued_list_type: typeof data.documents_issued_list,
-    documents_issued_list_value: data.documents_issued_list,
-    documents_issued_list_length: data.documents_issued_list?.length,
-    project_handover_list_type: typeof data.project_handover_list,
-    project_handover_list_value: data.project_handover_list,
-    project_handover_list_length: data.project_handover_list?.length,
-    input_documents_list_type: typeof data.input_documents_list,
-    input_documents_list_value: data.input_documents_list,
-    input_documents_list_length: data.input_documents_list?.length
-  };
-  fs.writeFileSync('/tmp/project-update-debug.json', JSON.stringify(debugInfo, null, 2));
-  
-  console.log('[PUT] ===== REQUEST DATA RECEIVED =====');
-  console.log('[PUT] Project ID:', id);
-  console.log('[PUT] Data keys:', Object.keys(data));
-  console.log('[PUT] documents_issued_list type:', typeof data.documents_issued_list);
-  console.log('[PUT] documents_issued_list value:', data.documents_issued_list);
-  console.log('[PUT] documents_issued_list length:', data.documents_issued_list?.length);
-  console.log('[PUT] =====================================');
-  
   while (retries <= maxRetries) {
     try {
-      console.log('PUT /api/projects/[id] - Start update for project:', id, 'Attempt:', retries + 1);
-      console.log('PUT /api/projects/[id] - Data fields:', { 
-        company_id: data.company_id, 
-        client_name: data.client_name, 
-        name: data.name,
-        hasTeamMembers: !!data.team_members,
-        hasProjectActivities: !!data.project_activities_list
-      });
-      
-      console.log('PUT /api/projects/[id] - Attempting database connection...');
-      
       // Get fresh connection for retry attempts
       if (db) {
         try {
@@ -420,40 +382,34 @@ export async function PUT(request, context) {
       }
       
       db = await dbConnect();
-      console.log('PUT /api/projects/[id] - Database connected successfully');
 
-    // Inspect schema to determine the primary key column
-    let pkCol = null;
+    // Detect primary key column (usually 'id' or 'project_id')
+    let pkCol = 'project_id'; // default fallback
     try {
       const [pkRows] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
       );
       if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
         pkCol = pkRows[0].COLUMN_NAME;
       }
     } catch (schemaErr) {
-      console.warn('Could not inspect primary key for projects table:', schemaErr.message || schemaErr);
-      // Fallback to common primary key names
-      pkCol = 'project_id';
+      // Fallback to default primary key
     }
 
-    // If no primary key found, default to 'project_id'
-    if (!pkCol) {
-      pkCol = 'project_id';
-    }
-
-    // Resolve the project using the primary key
+    // Resolve the project: URL param is the numeric primary key
     let projectId = null;
     if (/^\d+$/.test(id)) {
       projectId = parseInt(id, 10);
     } else {
+      // If non-numeric ID provided, it might be a project_code lookup
       try {
-        const [lookup] = await db.execute(`SELECT ${pkCol} FROM projects WHERE project_id = ?`, [id]);
+        const [lookup] = await db.execute(`SELECT ${pkCol} FROM projects WHERE project_code = ?`, [id]);
         if (lookup && lookup.length > 0) {
           projectId = lookup[0][pkCol];
         }
       } catch (lookupErr) {
-        console.warn('Project lookup by project_id failed:', lookupErr.message || lookupErr);
+        console.warn('Project lookup by project_code failed:', lookupErr.message || lookupErr);
       }
     }
 
@@ -554,7 +510,21 @@ export async function PUT(request, context) {
       kickoff_followup_date,
       internal_meeting_date,
       next_internal_meeting,
-      project_team
+      project_team,
+      // Manhours fields
+      estimated_manhours,
+      unit_qty,
+      scope_of_work,
+      deliverables,
+      software_included,
+      duration,
+      mode_of_delivery,
+      revision,
+      site_visit,
+      quotation_validity,
+      exclusion,
+      billing_and_payment_terms,
+      other_terms_and_conditions
     } = data;
 
     
@@ -565,83 +535,20 @@ export async function PUT(request, context) {
       return value;
     };
     
-    // Helper function to normalize date fields (convert empty strings to null)
+    // Helper function to normalize date fields (convert empty strings to null, objects to strings)
     const normalizeDate = (value) => {
       if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
+      // If it's a Date object, convert to YYYY-MM-DD string
+      if (value instanceof Date) {
+        return value.toISOString().split('T')[0];
+      }
+      // If it's an object (but not Date), try to extract a date string
+      if (typeof value === 'object' && value !== null) {
+        console.warn('normalizeDate received object:', value);
+        return null;
+      }
       return value;
     };
-    
-    // First ensure all new columns exist
-    try {
-      // Ensure core columns exist to avoid 'unknown column' errors on UPDATE
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS company_id INT');
-      // project_code stores the human-readable "Project Number" that can be edited
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code VARCHAR(100)');
-
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_id VARCHAR(100)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_contact_details TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_location_country VARCHAR(100)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_location_city VARCHAR(100)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_location_site VARCHAR(255)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS industry VARCHAR(100)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_type VARCHAR(100)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_duration_planned DECIMAL(10,2)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_duration_actual DECIMAL(10,2)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS additional_scope TEXT');
-      
-      // Commercial Details
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_value DECIMAL(15,2)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT "USD"');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(100)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS invoicing_status VARCHAR(50)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS cost_to_company DECIMAL(15,2)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS profitability_estimate DECIMAL(5,2)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS subcontractors_vendors TEXT');
-      
-      // Procurement & Material
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS procurement_status VARCHAR(50)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS material_delivery_schedule TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS vendor_management TEXT');
-      
-      // Construction / Site
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS mobilization_date DATE');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS site_readiness VARCHAR(50)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS construction_progress TEXT');
-      
-      // Risk & Issues
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS major_risks TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS mitigation_plans TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS change_orders TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS claims_disputes TEXT');
-      
-      // Project Closeout
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS final_documentation_status VARCHAR(50)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS lessons_learned TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_feedback TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS actual_profit_loss DECIMAL(15,2)');
-      
-      // Meeting and Document Fields
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_document TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
-      
-      // Enhanced Planning & Meeting Fields
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_start_milestone TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_review_milestone TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_end_milestone TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting_date DATE');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_followup_date DATE');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS internal_meeting_date DATE');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS next_internal_meeting DATE');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_team TEXT');
-    } catch (err) {
-      console.warn('Some ALTER TABLE statements failed, columns might already exist:', err.message);
-    }
     
     // Update all provided fields using COALESCE
     // If proposal_id provided in payload, prefer company info from the linked proposal
@@ -662,83 +569,155 @@ export async function PUT(request, context) {
       }
     }
 
-    // Build an UPDATE that only references columns that actually exist in the projects table.
-    // This avoids "Unknown column" errors in environments with partial schemas.
+    // Build UPDATE query - check which columns exist
+    // TODO: OPTIMIZE THIS - Cache column list at app startup or use Redis cache
+    // Checking INFORMATION_SCHEMA on every request is slow, but necessary for partial schemas
     const [colRows] = await db.execute(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
     );
     const existingCols = new Set((colRows || []).map(c => c.COLUMN_NAME));
 
     const fieldValues = [
-      ['name', name === undefined ? null : name],
+      ['name', name],
       // project_code stores the human-readable "Project Number" that can be edited
-      ['project_code', project_id === undefined ? null : project_id],
+      ['project_code', project_id],
       ['client_name', clientNameParam],
-      ['client_contact_details', client_contact_details === undefined ? null : client_contact_details],
-      ['project_location_country', project_location_country === undefined ? null : project_location_country],
-      ['project_location_city', project_location_city === undefined ? null : project_location_city],
-      ['project_location_site', project_location_site === undefined ? null : project_location_site],
-      ['industry', industry === undefined ? null : industry],
-      ['contract_type', contract_type === undefined ? null : contract_type],
+      ['client_contact_details', client_contact_details],
+      ['project_location_country', project_location_country],
+      ['project_location_city', project_location_city],
+      ['project_location_site', project_location_site],
+      ['industry', industry],
+      ['contract_type', contract_type],
       ['company_id', companyParamValue],
-      ['project_manager', project_manager === undefined ? null : project_manager],
-      ['type', type === undefined ? null : type],
+      ['project_manager', project_manager],
+      ['type', type],
       ['start_date', normalizeDate(start_date)],
       ['end_date', normalizeDate(end_date)],
       ['target_date', normalizeDate(target_date)],
       ['project_duration_planned', normalizeDecimal(project_duration_planned)],
       ['project_duration_actual', normalizeDecimal(project_duration_actual)],
       ['budget', normalizeDecimal(budget)],
-      ['progress', progress === undefined ? null : progress],
-      ['status', status === undefined ? null : status],
-      ['priority', priority === undefined ? null : priority],
-      ['assigned_to', assigned_to === undefined ? null : assigned_to],
-      ['description', description === undefined ? null : description],
-      ['additional_scope', additional_scope === undefined ? null : additional_scope],
-      ['notes', notes === undefined ? null : notes],
+      ['progress', progress],
+      ['status', status],
+      ['priority', priority],
+      ['assigned_to', assigned_to],
+      ['description', description],
+      ['additional_scope', additional_scope],
+      ['notes', notes],
       ['proposal_id', (proposal_id === undefined || proposal_id === null || proposal_id === '' ) ? null : proposal_id],
       ['project_value', normalizeDecimal(project_value)],
-      ['currency', currency === undefined ? null : currency],
-      ['payment_terms', payment_terms === undefined ? null : payment_terms],
-      ['invoicing_status', invoicing_status === undefined ? null : invoicing_status],
+      ['currency', currency],
+      ['payment_terms', payment_terms],
+      ['invoicing_status', invoicing_status],
       ['cost_to_company', normalizeDecimal(cost_to_company)],
       ['profitability_estimate', normalizeDecimal(profitability_estimate)],
-      ['subcontractors_vendors', subcontractors_vendors === undefined ? null : subcontractors_vendors],
-      ['procurement_status', procurement_status === undefined ? null : procurement_status],
-      ['material_delivery_schedule', material_delivery_schedule === undefined ? null : material_delivery_schedule],
-      ['vendor_management', vendor_management === undefined ? null : vendor_management],
+      ['subcontractors_vendors', subcontractors_vendors],
+      ['procurement_status', procurement_status],
+      ['material_delivery_schedule', material_delivery_schedule],
+      ['vendor_management', vendor_management],
       ['mobilization_date', normalizeDate(mobilization_date)],
-      ['site_readiness', site_readiness === undefined ? null : site_readiness],
-      ['construction_progress', construction_progress === undefined ? null : construction_progress],
-      ['major_risks', major_risks === undefined ? null : major_risks],
-      ['mitigation_plans', mitigation_plans === undefined ? null : mitigation_plans],
-      ['change_orders', change_orders === undefined ? null : change_orders],
-      ['claims_disputes', claims_disputes === undefined ? null : claims_disputes],
-      ['final_documentation_status', final_documentation_status === undefined ? null : final_documentation_status],
-      ['lessons_learned', lessons_learned === undefined ? null : lessons_learned],
-      ['client_feedback', client_feedback === undefined ? null : client_feedback],
+      ['site_readiness', site_readiness],
+      ['construction_progress', construction_progress],
+      ['major_risks', major_risks],
+      ['mitigation_plans', mitigation_plans],
+      ['change_orders', change_orders],
+      ['claims_disputes', claims_disputes],
+      ['final_documentation_status', final_documentation_status],
+      ['lessons_learned', lessons_learned],
+      ['client_feedback', client_feedback],
       ['actual_profit_loss', normalizeDecimal(actual_profit_loss)],
-      ['project_schedule', project_schedule === undefined ? null : project_schedule],
-      ['input_document', input_document === undefined ? null : input_document],
-      ['list_of_deliverables', list_of_deliverables === undefined ? null : list_of_deliverables],
-      ['kickoff_meeting', kickoff_meeting === undefined ? null : kickoff_meeting],
-      ['in_house_meeting', in_house_meeting === undefined ? null : in_house_meeting],
-      ['project_start_milestone', project_start_milestone === undefined ? null : project_start_milestone],
-      ['project_review_milestone', project_review_milestone === undefined ? null : project_review_milestone],
-      ['project_end_milestone', project_end_milestone === undefined ? null : project_end_milestone],
+      ['project_schedule', project_schedule],
+      ['input_document', input_document],
+      ['list_of_deliverables', list_of_deliverables],
+      ['kickoff_meeting', kickoff_meeting],
+      ['in_house_meeting', in_house_meeting],
+      ['project_start_milestone', project_start_milestone],
+      ['project_review_milestone', project_review_milestone],
+      ['project_end_milestone', project_end_milestone],
       ['kickoff_meeting_date', normalizeDate(kickoff_meeting_date)],
       ['kickoff_followup_date', normalizeDate(kickoff_followup_date)],
       ['internal_meeting_date', normalizeDate(internal_meeting_date)],
       ['next_internal_meeting', normalizeDate(next_internal_meeting)],
-      ['project_team', project_team === undefined ? null : project_team]
+      ['project_team', project_team === undefined ? null : (typeof project_team === 'object' && project_team !== null ? JSON.stringify(project_team) : project_team)],
+      ['estimated_manhours', normalizeDecimal(estimated_manhours)],
+      ['unit_qty', normalizeDecimal(unit_qty)],
+      ['scope_of_work', scope_of_work === undefined ? null : scope_of_work],
+      ['deliverables', deliverables === undefined ? null : deliverables],
+      ['software_included', software_included === undefined ? null : software_included],
+      ['duration', duration === undefined ? null : duration],
+      ['mode_of_delivery', mode_of_delivery === undefined ? null : mode_of_delivery],
+      ['revision', revision === undefined ? null : revision],
+      ['site_visit', site_visit === undefined ? null : site_visit],
+      ['quotation_validity', quotation_validity === undefined ? null : quotation_validity],
+      ['exclusion', exclusion === undefined ? null : exclusion],
+      ['billing_and_payment_terms', billing_and_payment_terms === undefined ? null : billing_and_payment_terms],
+      ['other_terms_and_conditions', other_terms_and_conditions]
     ];
+
+    // Add list fields to main UPDATE (avoid second query race condition)
+    const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : undefined;
+    const assignedActivities = data.activities ? JSON.stringify(data.activities) : undefined;
+    const disciplineDescriptions = data.discipline_descriptions ? JSON.stringify(data.discipline_descriptions) : undefined;
+    const assignments = data.assignments ? JSON.stringify(data.assignments) : undefined;
+    const teamMembers = data.team_members ? (typeof data.team_members === 'string' ? data.team_members : JSON.stringify(data.team_members)) : undefined;
+    const softwareItems = data.software_items ? (typeof data.software_items === 'string' ? data.software_items : JSON.stringify(data.software_items)) : undefined;
+    const projectActivitiesList = data.project_activities_list ? (typeof data.project_activities_list === 'string' ? data.project_activities_list : JSON.stringify(data.project_activities_list)) : undefined;
+    const planningActivitiesList = data.planning_activities_list ? (typeof data.planning_activities_list === 'string' ? data.planning_activities_list : JSON.stringify(data.planning_activities_list)) : undefined;
+    const documentsList = data.documents_list ? (typeof data.documents_list === 'string' ? data.documents_list : JSON.stringify(data.documents_list)) : undefined;
+    const inputDocumentsList = data.input_documents_list || undefined;
+    const kickoffMeetingsList = data.kickoff_meetings_list || undefined;
+    const internalMeetingsList = data.internal_meetings_list || undefined;
+    const documentsReceivedList = data.documents_received_list || undefined;
+    const documentsIssuedList = data.documents_issued_list || undefined;
+    const projectHandoverList = data.project_handover_list || undefined;
+    const projectManhoursList = data.project_manhours_list || undefined;
+    const projectQueryLogList = data.project_query_log_list || undefined;
+    const projectAssumptionList = data.project_assumption_list || undefined;
+    const projectLessonsLearntList = data.project_lessons_learnt_list || undefined;
+    const projectScheduleList = data.project_schedule_list || undefined;
+
+    const listFields = [
+      ['assigned_disciplines', assignedDisciplines === undefined ? null : assignedDisciplines],
+      ['assigned_activities', assignedActivities === undefined ? null : assignedActivities],
+      ['discipline_descriptions', disciplineDescriptions === undefined ? null : disciplineDescriptions],
+      ['assignments', assignments === undefined ? null : assignments],
+      ['team_members', teamMembers === undefined ? null : teamMembers],
+      ['software_items', softwareItems === undefined ? null : softwareItems],
+      ['project_activities_list', projectActivitiesList === undefined ? null : projectActivitiesList],
+      ['planning_activities_list', planningActivitiesList === undefined ? null : planningActivitiesList],
+      ['documents_list', documentsList === undefined ? null : documentsList],
+      ['input_documents_list', inputDocumentsList === undefined ? null : inputDocumentsList],
+      ['kickoff_meetings_list', kickoffMeetingsList === undefined ? null : kickoffMeetingsList],
+      ['internal_meetings_list', internalMeetingsList === undefined ? null : internalMeetingsList],
+      ['documents_received_list', documentsReceivedList === undefined ? null : documentsReceivedList],
+      ['documents_issued_list', documentsIssuedList === undefined ? null : documentsIssuedList],
+      ['project_handover_list', projectHandoverList === undefined ? null : projectHandoverList],
+      ['project_manhours_list', projectManhoursList === undefined ? null : projectManhoursList],
+      ['project_query_log_list', projectQueryLogList === undefined ? null : projectQueryLogList],
+      ['project_assumption_list', projectAssumptionList === undefined ? null : projectAssumptionList],
+      ['project_lessons_learnt_list', projectLessonsLearntList === undefined ? null : projectLessonsLearntList],
+      ['project_schedule_list', projectScheduleList === undefined ? null : projectScheduleList]
+    ];
+
+    // Merge list fields into main field values
+    fieldValues.push(...listFields);
 
     const setParts = [];
     const queryParams = [];
+    const paramFieldMap = []; // Track which field each param corresponds to
+    
+    // Only update fields that: 1) exist in schema, 2) were explicitly provided (not undefined)
     for (const [col, val] of fieldValues) {
-      if (existingCols.has(col)) {
-        setParts.push(`${col} = COALESCE(?, ${col})`);
+      // Skip if column doesn't exist in database
+      if (!existingCols.has(col)) {
+        continue;
+      }
+      // Skip undefined values (field not in request) but allow null (intentional clear)
+      if (val !== undefined) {
+        setParts.push(`${col} = ?`);
         queryParams.push(val);
+        paramFieldMap.push({ col, type: val === null ? 'null' : typeof val, isObject: typeof val === 'object' && val !== null });
       }
     }
 
@@ -748,114 +727,18 @@ export async function PUT(request, context) {
     const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
     queryParams.push(projectId);
 
-    console.log('PUT /api/projects/[id] - Executing UPDATE with', setParts.length, 'fields');
-    const [result] = await db.execute(sql, queryParams);
-    console.log('PUT /api/projects/[id] - UPDATE executed, affected rows:', result.affectedRows);
-
-    // Ensure columns exist to store assigned disciplines/activities/assignments and per-discipline descriptions
-    try {
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_disciplines TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_activities TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS discipline_descriptions TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_members JSON');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS software_items JSON');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_activities_list JSON');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS planning_activities_list JSON');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_list JSON');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_documents_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meetings_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS internal_meetings_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_received_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS documents_issued_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_handover_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_manhours_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_query_log_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule_list TEXT');
-    } catch (err) {
-      // Non-fatal - some MySQL versions may not support IF NOT EXISTS on ALTER COLUMN
-      console.warn('Could not ensure project assignment columns exist:', err.message || err);
+    // Validate all parameters are not undefined
+    const invalidParams = queryParams.map((p, i) => ({ index: i, field: paramFieldMap[i]?.col, value: p, isUndefined: p === undefined })).filter(p => p.isUndefined);
+    if (invalidParams.length > 0) {
+      throw new Error('Invalid parameters: undefined values found at indices ' + invalidParams.map(p => p.index).join(', '));
     }
 
-    // Persist disciplines/activities/descriptions/assignments/team_members/project_activities_list/planning_activities/documents if provided in payload
+    let result;
     try {
-      const assignedDisciplines = data.disciplines ? JSON.stringify(data.disciplines) : null;
-      const assignedActivities = data.activities ? JSON.stringify(data.activities) : null;
-      const disciplineDescriptions = data.discipline_descriptions ? JSON.stringify(data.discipline_descriptions) : null;
-      const assignments = data.assignments ? JSON.stringify(data.assignments) : null;
-      const teamMembers = data.team_members || null;
-      const softwareItems = data.software_items || null;
-      const projectActivitiesList = data.project_activities_list || null;
-      const planningActivitiesList = data.planning_activities_list || null;
-      const documentsList = data.documents_list || null;
-      const inputDocumentsList = data.input_documents_list || null;
-      const kickoffMeetingsList = data.kickoff_meetings_list || null;
-      const internalMeetingsList = data.internal_meetings_list || null;
-      const documentsReceivedList = data.documents_received_list || null;
-      const documentsIssuedList = data.documents_issued_list || null;
-      const projectHandoverList = data.project_handover_list || null;
-      const projectManhoursList = data.project_manhours_list || null;
-      const projectQueryLogList = data.project_query_log_list || null;
-      const projectAssumptionList = data.project_assumption_list || null;
-      const projectLessonsLearntList = data.project_lessons_learnt_list || null;
-      const projectScheduleList = data.project_schedule_list || null;
-
-      console.log('[PUT] List fields received:', {
-        documentsReceivedList: documentsReceivedList ? `${documentsReceivedList.substring(0, 50)}...` : 'null',
-        documentsIssuedList: documentsIssuedList ? `${documentsIssuedList.substring(0, 50)}...` : 'null',
-        projectHandoverList: projectHandoverList ? `${projectHandoverList.substring(0, 50)}...` : 'null',
-        projectManhoursList: projectManhoursList ? `${projectManhoursList.substring(0, 50)}...` : 'null'
-      });
-
-      if (assignedDisciplines !== null || assignedActivities !== null || disciplineDescriptions !== null || 
-          assignments !== null || teamMembers !== null || softwareItems !== null ||
-          projectActivitiesList !== null || planningActivitiesList !== null || documentsList !== null ||
-          inputDocumentsList !== null || kickoffMeetingsList !== null || internalMeetingsList !== null ||
-          documentsReceivedList !== null || documentsIssuedList !== null || projectHandoverList !== null ||
-          projectManhoursList !== null || projectQueryLogList !== null || projectAssumptionList !== null ||
-          projectLessonsLearntList !== null || projectScheduleList !== null) {
-        console.log('[PUT] Updating list fields in database...');
-        console.log('[PUT] About to UPDATE with values:', {
-          projectHandoverList: projectHandoverList?.substring(0, 100),
-          projectManhoursList: projectManhoursList?.substring(0, 100),
-          documentsIssuedList: documentsIssuedList?.substring(0, 100)
-        });
-        const updateResult = await db.execute(
-          `UPDATE projects SET 
-             assigned_disciplines = COALESCE(?, assigned_disciplines),
-             assigned_activities = COALESCE(?, assigned_activities),
-             discipline_descriptions = COALESCE(?, discipline_descriptions),
-             assignments = COALESCE(?, assignments),
-             team_members = COALESCE(?, team_members),
-             software_items = COALESCE(?, software_items),
-             project_activities_list = COALESCE(?, project_activities_list),
-             planning_activities_list = COALESCE(?, planning_activities_list),
-             documents_list = COALESCE(?, documents_list),
-             input_documents_list = COALESCE(?, input_documents_list),
-             kickoff_meetings_list = COALESCE(?, kickoff_meetings_list),
-             internal_meetings_list = COALESCE(?, internal_meetings_list),
-             documents_received_list = COALESCE(?, documents_received_list),
-             documents_issued_list = COALESCE(?, documents_issued_list),
-             project_handover_list = COALESCE(?, project_handover_list),
-             project_manhours_list = COALESCE(?, project_manhours_list),
-             project_query_log_list = COALESCE(?, project_query_log_list),
-             project_assumption_list = COALESCE(?, project_assumption_list),
-             project_lessons_learnt_list = COALESCE(?, project_lessons_learnt_list),
-             project_schedule_list = COALESCE(?, project_schedule_list)
-           WHERE ${pkCol} = ?`,
-          [assignedDisciplines, assignedActivities, disciplineDescriptions, assignments, 
-           teamMembers, softwareItems, projectActivitiesList, planningActivitiesList, documentsList, inputDocumentsList,
-           kickoffMeetingsList, internalMeetingsList, documentsReceivedList, documentsIssuedList, projectHandoverList, projectManhoursList,
-           projectQueryLogList, projectAssumptionList, projectLessonsLearntList, projectScheduleList, projectId]
-        );
-        console.log('[PUT] List fields update result:', updateResult[0].affectedRows, 'rows affected');
-      } else {
-        console.log('[PUT] No list fields to update (all null)');
-      }
-    } catch (err) {
-      console.error('Failed to persist project discipline/activity/assignment/team data:', err);
+      [result] = await db.execute(sql, queryParams);
+    } catch (execError) {
+      console.error('PUT /api/projects/[id] - Execute error:', execError.message);
+      throw execError;
     }
 
     // Sync activity assignments to user_activity_assignments table
