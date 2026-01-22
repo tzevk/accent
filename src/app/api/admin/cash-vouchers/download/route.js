@@ -51,30 +51,31 @@ export async function GET(request) {
       return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
-    // Generate line items rows
-    const lineItemsHtml = lineItems.length > 0 
-      ? lineItems.map((item, index) => `
+    // Generate line items rows - always show at least 5 rows
+    const actualItems = lineItems.length > 0 ? lineItems : [];
+    const totalRowsNeeded = 5;
+    const emptyRowsNeeded = Math.max(0, totalRowsNeeded - actualItems.length);
+    
+    const lineItemsHtml = actualItems.map((item, index) => `
         <tr>
-          <td style="border: 1px solid #333; padding: 6px 8px; text-align: center; font-size: 11px;">${item.sr_no || index + 1}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${formatDate(item.bill_date)}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.bill_no || ''}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.account_head || ''}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; text-align: center; font-size: 11px;">${item.amount_rs || ''}</td>
-          <td style="border: 1px solid #333; padding: 6px 8px; font-size: 11px;">${item.description || ''}</td>
+          <td style="width: 50px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; text-align: center; font-size: 11px;">${item.sr_no || index + 1}</td>
+          <td style="width: 70px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${formatDate(item.bill_date)}</td>
+          <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${item.bill_no || ''}</td>
+          <td style="width: 100px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; font-size: 11px;">${item.account_head || ''}</td>
+          <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; text-align: center; font-size: 11px;">${item.amount_rs || ''}</td>
+          <td style="border: none; padding: 6px 8px; font-size: 11px;">${item.description || ''}</td>
         </tr>
-      `).join('')
-      : `<tr><td colspan="6" style="border: 1px solid #333; padding: 15px; text-align: center; color: #666; font-size: 11px;">No line items</td></tr>`;
+      `).join('');
 
-    // Add empty rows to fill the form (minimum 5 rows for A4 half page) - hidden when printing
-    const emptyRowsNeeded = Math.max(0, 5 - lineItems.length);
+    // Add empty rows to fill to 5 rows total - always show
     const emptyRowsHtml = Array(emptyRowsNeeded).fill(`
-      <tr class="empty-table-row">
-        <td style="border: 1px solid #333; padding: 6px 8px; height: 24px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
-        <td style="border: 1px solid #333; padding: 6px 8px;">&nbsp;</td>
+      <tr>
+        <td style="width: 50px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px; height: 24px;">&nbsp;</td>
+        <td style="width: 70px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
+        <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
+        <td style="width: 100px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
+        <td style="width: 60px; border-left: none; border-right: 1px solid #333; border-top: none; border-bottom: none; padding: 6px 8px;">&nbsp;</td>
+        <td style="border: none; padding: 6px 8px;">&nbsp;</td>
       </tr>
     `).join('');
 
@@ -97,7 +98,6 @@ export async function GET(request) {
         padding: 0 5mm;
       }
       .no-print { display: none !important; }
-      .empty-table-row { display: none !important; }
       .voucher {
         width: 200mm;
         height: auto;
@@ -106,6 +106,16 @@ export async function GET(request) {
         overflow: visible;
         page-break-after: avoid;
         page-break-inside: avoid;
+      }
+      /* Keep same styling for print - column separators only */
+      table {
+        border: 2px solid #333 !important;
+      }
+      table thead tr {
+        border-bottom: 2px solid #333 !important;
+      }
+      table thead th {
+        border-bottom: 2px solid #333 !important;
       }
     }
     body {
@@ -223,13 +233,21 @@ export async function GET(request) {
     table {
       width: 100%;
       border-collapse: collapse;
+      border: 2px solid #333;
+      table-layout: fixed;
     }
     th {
       background: #f3f4f6;
-      border: 1px solid #333;
+      border-left: none;
+      border-right: 1px solid #333;
+      border-top: none;
+      border-bottom: 2px solid #333;
       padding: 6px 8px;
       font-size: 11px;
       text-transform: uppercase;
+    }
+    th:last-child {
+      border-right: none;
     }
     td {
       font-size: 11px;
@@ -237,16 +255,16 @@ export async function GET(request) {
     }
     .footer-section {
       display: flex;
-      border-top: 1px solid #333;
+      border-top: 2px solid #333;
     }
     .payment-mode {
-      width: 147px;
+      width: 180px; /* SR.NO (50) + BILL DATE (70) + BILL NO (60) = 180px */
       padding: 8px 12px;
       border-right: 1px solid #333;
       font-size: 12px;
     }
     .total-section {
-      width: 94px;
+      width: 160px; /* ACCOUNT HEAD (100) + AMOUNT (60) = 160px */
       padding: 6px 10px;
       border-right: 1px solid #333;
       background: #f3f4f6;
@@ -260,7 +278,7 @@ export async function GET(request) {
       border-top: 1px solid #333;
     }
     .signature-box {
-      flex: 1;
+      width: 25%;
       padding: 17px 10px;
       text-align: center;
       border-right: 1px solid #333;
@@ -351,9 +369,9 @@ export async function GET(request) {
     <table>
       <thead>
         <tr>
-          <th style="width: 10px;">SR. NO.</th>
+          <th style="width: 50px;">SR. NO.</th>
           <th style="width: 70px;">BILL DATE</th>
-          <th style="width: 30px;">BILL NO.</th>
+          <th style="width: 60px;">BILL NO.</th>
           <th style="width: 100px;">ACCOUNT HEAD</th>
           <th style="width: 60px;">AMOUNT</th>
           <th style="width: auto;">DESCRIPTION</th>
@@ -365,20 +383,22 @@ export async function GET(request) {
       </tbody>
     </table>
 
-    <!-- Footer with Total -->
-    <div class="footer-section">
-      <div class="payment-mode">
-        <strong>Paid by:</strong> 
-        <span style="margin-left: 10px; text-transform: uppercase;">${voucher.payment_mode || 'Cash'}</span>
-      </div>
-      <div class="total-section" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-        <span style="font-size: 11px; font-weight: bold;">TOTAL:</span>
-        <span style="font-size: 12px; font-weight: bold;">${voucher.total_amount}</span>
-      </div>
-      <div class="words-section">
-        <div style="font-size: 14px;">${voucher.amount_in_words || ''}</div>
-      </div>
-    </div>
+    <!-- Footer with Total - using table for alignment -->
+    <table style="width: 100%; border-collapse: collapse; border-left: 2px solid #333; border-right: 2px solid #333; border-bottom: 2px solid #333; table-layout: fixed;">
+      <tr>
+        <td style="width: 180px; padding: 8px 12px; border-right: 1px solid #333; font-size: 12px; border-top: none; border-bottom: none; border-left: none;">
+          <strong>Paid by:</strong> 
+          <span style="margin-left: 10px; text-transform: uppercase;">${voucher.payment_mode || 'Cash'}</span>
+        </td>
+        <td style="width: 160px; padding: 6px 10px; border-right: 1px solid #333; background: #f3f4f6; text-align: center; border-top: none; border-bottom: none; border-left: none;">
+          <span style="font-size: 11px; font-weight: bold;">TOTAL:</span>
+          <span style="font-size: 12px; font-weight: bold; margin-left: 8px;">${voucher.total_amount}</span>
+        </td>
+        <td style="padding: 8px 12px; border: none;">
+          <div style="font-size: 14px;">${voucher.amount_in_words || ''}</div>
+        </td>
+      </tr>
+    </table>
 
     <!-- Signatures -->
     <div class="signatures">

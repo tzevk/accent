@@ -359,7 +359,15 @@ function EditProjectForm() {
   const newScheduleDescRef = useRef(null);
 
   // Project Manhours - structured by month with employee entries
-  const [projectManhours, setProjectManhours] = useState([]);
+  const [projectManhours, setProjectManhours] = useState([{
+    id: Date.now(),
+    employee_id: '',
+    employee_name: '',
+    salary_type: '',
+    rate_company: '',
+    rate_accent: '',
+    monthly_hours: {}
+  }]);
   // State for adding new months - multiple selection
   const [selectedMonths, setSelectedMonths] = useState([]);
   const [monthRangeStart, setMonthRangeStart] = useState('');
@@ -367,6 +375,8 @@ function EditProjectForm() {
   // State for employees with salary profiles (for rate lookup)
   const [employeesWithRates, setEmployeesWithRates] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
+  // Cache for attendance hours to avoid re-fetching
+  const [attendanceHoursCache, setAttendanceHoursCache] = useState({});
   // New entry form for adding employee hours within a month
   const [newManhourEntry, setNewManhourEntry] = useState({
     employee_id: '',
@@ -1152,22 +1162,75 @@ function EditProjectForm() {
   }, []);
 
   // Fetch employees with their salary profiles for manhours rate lookup
+  // Function to fetch attendance hours for an employee for a given year
+  const fetchAttendanceHours = async (employeeId, year = new Date().getFullYear()) => {
+    // Check cache first
+    const cacheKey = `${employeeId}_${year}`;
+    if (attendanceHoursCache[cacheKey]) {
+      return attendanceHoursCache[cacheKey];
+    }
+    
+    try {
+      const res = await fetch(`/api/attendance?employee_id=${employeeId}&year=${year}`);
+      const json = await res.json();
+      
+      if (json?.success && Array.isArray(json.records)) {
+        const monthlyHours = { jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0, jul: 0, aug: 0, sep: 0, oct: 0, nov: 0, dec: 0 };
+        const monthMap = { '01': 'jan', '02': 'feb', '03': 'mar', '04': 'apr', '05': 'may', '06': 'jun', '07': 'jul', '08': 'aug', '09': 'sep', '10': 'oct', '11': 'nov', '12': 'dec' };
+        
+        json.records.forEach(record => {
+          if (record.status === 'P' || record.status === 'HD' || record.status === 'OT') {
+            const date = new Date(record.attendance_date);
+            const monthKey = monthMap[String(date.getMonth() + 1).padStart(2, '0')];
+            
+            // Calculate hours from in_time and out_time
+            let hours = 8; // Default 8 hours if no time data
+            if (record.in_time && record.out_time) {
+              const [inH, inM] = record.in_time.split(':').map(Number);
+              const [outH, outM] = record.out_time.split(':').map(Number);
+              const inDecimal = inH + (inM / 60);
+              const outDecimal = outH + (outM / 60);
+              if (outDecimal > inDecimal) {
+                hours = outDecimal - inDecimal;
+                if (record.status === 'HD') hours = hours / 2; // Half day
+              }
+            }
+            
+            monthlyHours[monthKey] += hours;
+          }
+        });
+        
+        // Round to 1 decimal place
+        Object.keys(monthlyHours).forEach(key => {
+          monthlyHours[key] = parseFloat(monthlyHours[key].toFixed(1));
+        });
+        
+        // Cache the result
+        setAttendanceHoursCache(prev => ({ ...prev, [cacheKey]: monthlyHours }));
+        return monthlyHours;
+      }
+    } catch (error) {
+      console.error('Failed to fetch attendance hours:', error);
+    }
+    return null;
+  };
+
   useEffect(() => {
     const fetchEmployeesWithRates = async () => {
       setEmployeesLoading(true);
       try {
-        // Fetch employees list
-        const empRes = await fetch('/api/employees/list?limit=1000');
+        // Fetch employees list from employee master
+        const empRes = await fetch('/api/employee-master/list?limit=2000');
         const empJson = await empRes.json();
         
-        if (empJson?.success && Array.isArray(empJson.employees)) {
+        if (empJson?.success && Array.isArray(empJson.data)) {
           // First, set employees immediately without rates so UI is responsive
-          const basicEmployeesData = empJson.employees.map(emp => ({
+          const basicEmployeesData = empJson.data.map(emp => ({
             id: emp.id,
-            name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.email || `Employee ${emp.id}`,
+            name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.email || `Employee ${emp.id}`,
             employee_id: emp.employee_id,
             department: emp.department,
-            designation: emp.designation,
+            workplace: emp.workplace,
             rate: 0,
             salary_type: 'monthly'
           }));
@@ -1178,8 +1241,8 @@ function EditProjectForm() {
           const batchSize = 10;
           const updatedEmployees = [...basicEmployeesData];
           
-          for (let i = 0; i < empJson.employees.length; i += batchSize) {
-            const batch = empJson.employees.slice(i, i + batchSize);
+          for (let i = 0; i < empJson.data.length; i += batchSize) {
+            const batch = empJson.data.slice(i, i + batchSize);
             
             await Promise.all(
               batch.map(async (emp, batchIndex) => {
@@ -4208,14 +4271,7 @@ function EditProjectForm() {
             {/* Project Handover Tab */}
             {activeTab === 'project_handover' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mt-4">
-                <div className="px-15 py-19 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                  <div className="flex items-center gap-2">
-                    <svg className="h-5 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <h2 className="text-sm font-bold text-gray-900">Project Handover</h2>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Handover checklist / outputs delivered by Accent</p>
+                <div className="px-4 py-7 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                 </div>
 
                 <div className="px-6 py-5">
@@ -4279,7 +4335,7 @@ function EditProjectForm() {
             {/* Project Manhours Tab */}
             {activeTab === 'project_manhours' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mt-16">
-                <div className="px-4 py-6 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                <div className="px-4 py-4 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-2">
                       <svg className="h-4 w-4 text-[#7F2487]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4288,237 +4344,206 @@ function EditProjectForm() {
                       <h2 className="text-sm font-bold text-gray-900">Project Manhours</h2>
                       <span className="text-[10px] text-gray-400 ml-2">• Track employee hours by month</span>
                     </div>
-                    {/* Add Multiple Months Section */}
+                    {/* Add Employee & Month Range */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-gray-500">From:</span>
-                      <input 
-                        type="month" 
-                        value={monthRangeStart || ''} 
-                        onChange={(e) => setMonthRangeStart(e.target.value)} 
-                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                      />
-                      <span className="text-xs text-gray-500">To:</span>
-                      <input 
-                        type="month" 
-                        value={monthRangeEnd || ''} 
-                        onChange={(e) => setMonthRangeEnd(e.target.value)} 
-                        min={monthRangeStart || undefined}
-                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" 
-                      />
-                      <button 
-                        type="button" 
-                        onClick={addMonthSections}
-                        disabled={!monthRangeStart || !monthRangeEnd}
-                        className={`px-3 py-1 rounded text-xs font-medium transition-all ${monthRangeStart && monthRangeEnd ? 'bg-[#7F2487] text-white hover:bg-purple-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProjectManhours(prev => [...prev, {
+                            id: Date.now(),
+                            employee_id: '',
+                            employee_name: '',
+                            salary_type: '',
+                            rate_company: '',
+                            rate_accent: '',
+                            monthly_hours: {}
+                          }]);
+                        }}
+                        className="text-xs px-3 py-1.5 bg-[#7F2487] text-white rounded hover:bg-purple-700 font-medium flex items-center gap-1"
                       >
-                        + Add Months
+                        <PlusIcon className="h-3 w-3" />
+                        Add Row
                       </button>
-                      {monthRangeStart && monthRangeEnd && (
-                        <span className="text-[10px] text-gray-500">
-                          ({generateMonthRange(monthRangeStart, monthRangeEnd).length} months)
-                        </span>
-                      )}
                     </div>
                   </div>
                   <div className="mt-2 text-[10px] text-gray-400">
-                    {employeesLoading ? 'Loading employees...' : `${employeesWithRates.length} employees available`}
+                    {employeesLoading ? 'Loading employees...' : `${employeesWithRates.length} employees available • ${projectManhours.length} added`}
                   </div>
                 </div>
 
-                <div className="px-4 py-4 space-y-4">
-                  {projectManhours.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400">
-                      <svg className="h-12 w-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <p className="text-sm">No months added yet</p>
-                      <p className="text-xs mt-1">Select a month range above and click &quot;+ Add Months&quot;</p>
-                    </div>
-                  ) : (
-                    projectManhours.map((monthData) => {
-                      const { totalHours, totalCost } = getMonthTotals(monthData);
-                      const monthLabel = monthData.month ? new Date(monthData.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown Month';
-                      
-                      return (
-                        <div key={monthData.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                          {/* Month Header */}
-                          <div className="bg-gradient-to-r from-purple-50 to-white px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <CalendarIcon className="h-4 w-4 text-[#7F2487]" />
-                              <h3 className="text-sm font-semibold text-gray-800">{monthLabel}</h3>
-                              <span className="text-xs text-gray-500">
-                                ({(monthData.entries || []).length} {(monthData.entries || []).length === 1 ? 'entry' : 'entries'})
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <div className="text-xs text-gray-600">
-                                <span className="font-medium">Hours:</span> {totalHours.toFixed(1)}
-                              </div>
-                              <div className="text-xs text-gray-600">
-                                <span className="font-medium">Cost:</span> ₹{totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                              </div>
-                              <button 
-                                type="button" 
-                                onClick={() => removeMonthSection(monthData.id)}
-                                className="text-red-400 hover:text-red-600 p-1"
-                                title="Remove month"
-                              >
-                                <XMarkIcon className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {/* Entries Table */}
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="text-left py-2 px-3 font-semibold text-gray-600 w-8">#</th>
-                                  <th className="text-left py-2 px-3 font-semibold text-gray-600">Employee Name</th>
-                                  <th className="text-center py-2 px-3 font-semibold text-gray-600 w-24">Salary Type</th>
-                                  <th className="text-right py-2 px-3 font-semibold text-gray-600 w-24">Rate (₹/hr)</th>
-                                  <th className="text-center py-2 px-3 font-semibold text-gray-600 w-20">Hours</th>
-                                  <th className="text-right py-2 px-3 font-semibold text-gray-600 w-28">Total Cost</th>
-                                  <th className="w-12"></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {/* Add New Entry Row */}
-                                <tr className="bg-purple-25/30 border-b border-purple-100">
-                                  <td className="py-2 px-3 text-center text-gray-400 font-semibold">+</td>
-                                  <td className="py-2 px-3">
-                                    <select 
-                                      value={newManhourEntry.employee_id || ''} 
-                                      onChange={(e) => handleEmployeeSelect(e.target.value)}
-                                      className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+                <div className="px-4 py-4">
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-gradient-to-r from-purple-50 to-gray-50">
+                            <th className="text-left py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 sticky left-0 bg-purple-50 z-10" style={{ minWidth: '140px' }}>Employee</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-50" style={{ minWidth: '80px' }}>Salary Type</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50" style={{ minWidth: '90px' }}>RT/HR (Company)</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50" style={{ minWidth: '90px' }}>RT/HR (Accent)</th>
+                            {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => (
+                              <th key={month} className="text-center py-2 px-1 font-semibold text-gray-700 border-b border-gray-200 bg-amber-50/50" style={{ minWidth: '50px' }}>{month}</th>
+                            ))}
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-purple-100" style={{ minWidth: '70px' }}>Total Hrs</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-100" style={{ minWidth: '100px' }}>Company Cost</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-100" style={{ minWidth: '100px' }}>Accent Cost</th>
+                            <th className="text-center py-2 px-2 border-b border-gray-200" style={{ width: '40px' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {projectManhours.map((empData, idx) => {
+                            const monthlyHours = empData.monthly_hours || {};
+                            const totalHrs = Object.values(monthlyHours).reduce((sum, h) => sum + (parseFloat(h) || 0), 0);
+                            const companyCost = totalHrs * (parseFloat(empData.rate_company) || 0);
+                            const accentCost = totalHrs * (parseFloat(empData.rate_accent) || 0);
+                            
+                            return (
+                              <tr key={empData.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                                <td className="py-2 px-2 font-medium text-gray-800 sticky left-0 bg-white z-10 border-r border-gray-100">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-gray-400 text-[10px]">{idx + 1}.</span>
+                                    <select
+                                      value={empData.employee_id || ''}
+                                      onChange={async (e) => {
+                                        const selectedEmp = employeesWithRates.find(emp => emp.id === parseInt(e.target.value));
+                                        if (selectedEmp) {
+                                          const salaryType = selectedEmp.salary_type || 'monthly';
+                                          let monthlyHoursData = empData.monthly_hours || {};
+                                          
+                                          // If monthly salary type, fetch attendance hours
+                                          if (salaryType === 'monthly') {
+                                            const attendanceHours = await fetchAttendanceHours(selectedEmp.id);
+                                            if (attendanceHours) {
+                                              monthlyHoursData = attendanceHours;
+                                            }
+                                          }
+                                          
+                                          setProjectManhours(prev => prev.map(m => m.id === empData.id ? {
+                                            ...m,
+                                            employee_id: selectedEmp.id,
+                                            employee_name: selectedEmp.name,
+                                            salary_type: salaryType,
+                                            rate_company: selectedEmp.rate || 0,
+                                            rate_accent: m.rate_accent || '',
+                                            monthly_hours: monthlyHoursData
+                                          } : m));
+                                        }
+                                      }}
+                                      className="text-xs px-1 py-0.5 border border-gray-200 rounded focus:ring-1 focus:ring-purple-400 bg-transparent max-w-[120px] truncate"
                                     >
                                       <option value="">Select Employee</option>
                                       {employeesWithRates.map(emp => (
-                                        <option key={emp.id} value={emp.id}>
-                                          {emp.name} {emp.department ? `(${emp.department})` : ''}
-                                        </option>
+                                        <option key={emp.id} value={emp.id}>{emp.name}</option>
                                       ))}
                                     </select>
-                                  </td>
-                                  <td className="py-2 px-3 text-center">
-                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
-                                      newManhourEntry.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' :
-                                      newManhourEntry.salary_type === 'daily' ? 'bg-green-100 text-green-700' :
-                                      newManhourEntry.salary_type === 'custom' ? 'bg-yellow-100 text-yellow-700' :
-                                      newManhourEntry.salary_type ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                                    }`}>
-                                      {newManhourEntry.salary_type || '-'}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 text-right">
-                                    <span className="text-xs text-gray-700 font-medium">
-                                      {newManhourEntry.rate ? `₹${parseFloat(newManhourEntry.rate).toFixed(2)}` : '-'}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3">
-                                    <input 
-                                      type="number" 
+                                  </div>
+                                </td>
+                                <td className="py-2 px-2 text-center bg-green-50/30">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
+                                    empData.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' :
+                                    empData.salary_type === 'daily' ? 'bg-green-100 text-green-700' :
+                                    empData.salary_type === 'custom' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {empData.salary_type || 'monthly'}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-1 text-center bg-blue-50/30">
+                                  <input
+                                    type="number"
+                                    value={empData.rate_company || ''}
+                                    onChange={(e) => setProjectManhours(prev => prev.map(m => m.id === empData.id ? { ...m, rate_company: e.target.value } : m))}
+                                    className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400"
+                                    placeholder="0"
+                                    min="0"
+                                    step="0.01"
+                                  />
+                                </td>
+                                <td className="py-2 px-1 text-center bg-blue-50/30">
+                                  <input
+                                    type="number"
+                                    value={empData.rate_accent || ''}
+                                    onChange={(e) => setProjectManhours(prev => prev.map(m => m.id === empData.id ? { ...m, rate_accent: e.target.value } : m))}
+                                    className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400"
+                                    placeholder="0"
+                                    min="0"
+                                    step="0.01"
+                                  />
+                                </td>
+                                {['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].map(month => (
+                                  <td key={month} className="py-2 px-0.5 text-center bg-amber-50/20">
+                                    <input
+                                      type="number"
+                                      value={monthlyHours[month] || ''}
+                                      onChange={(e) => setProjectManhours(prev => prev.map(m => {
+                                        if (m.id === empData.id) {
+                                          return { ...m, monthly_hours: { ...m.monthly_hours, [month]: e.target.value } };
+                                        }
+                                        return m;
+                                      }))}
+                                      className={`w-full text-[10px] px-0.5 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-amber-400 ${empData.salary_type === 'monthly' ? 'bg-blue-50/50' : ''}`}
+                                      placeholder="–"
                                       min="0"
                                       step="0.5"
-                                      value={newManhourEntry.hours || ''} 
-                                      onChange={(e) => setNewManhourEntry(prev => ({ ...prev, hours: e.target.value }))}
-                                      placeholder="0" 
-                                      className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] text-center" 
+                                      title={empData.salary_type === 'monthly' ? 'Auto-fetched from Attendance (editable)' : ''}
                                     />
                                   </td>
-                                  <td className="py-2 px-3 text-right">
-                                    <span className="text-xs text-gray-600">
-                                      {newManhourEntry.rate && newManhourEntry.hours 
-                                        ? `₹${(parseFloat(newManhourEntry.rate) * parseFloat(newManhourEntry.hours)).toFixed(2)}` 
-                                        : '-'}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 text-center">
-                                    <button 
-                                      type="button" 
-                                      onClick={() => addManhourEntry(monthData.id)}
-                                      disabled={!newManhourEntry.employee_id || !newManhourEntry.hours}
-                                      className={`px-2.5 py-1 rounded text-[10px] font-medium ${
-                                        newManhourEntry.employee_id && newManhourEntry.hours 
-                                          ? 'bg-[#7F2487] text-white hover:bg-purple-700' 
-                                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                      }`}
-                                    >
-                                      Add
-                                    </button>
-                                  </td>
-                                </tr>
-                                
-                                {/* Existing Entries */}
-                                {(monthData.entries || []).map((entry, idx) => (
-                                  <tr key={entry.id} className="hover:bg-gray-50 border-b border-gray-100">
-                                    <td className="py-2 px-3 text-center text-gray-500">{idx + 1}</td>
-                                    <td className="py-2 px-3 font-medium text-gray-800">{entry.employee_name}</td>
-                                    <td className="py-2 px-3 text-center">
-                                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
-                                        entry.salary_type === 'hourly' ? 'bg-orange-100 text-orange-700' :
-                                        entry.salary_type === 'daily' ? 'bg-green-100 text-green-700' :
-                                        entry.salary_type === 'custom' ? 'bg-yellow-100 text-yellow-700' :
-                                        'bg-blue-100 text-blue-700'
-                                      }`}>
-                                        {entry.salary_type}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3 text-right">₹{parseFloat(entry.rate || 0).toFixed(2)}</td>
-                                    <td className="py-2 px-3">
-                                      <input 
-                                        type="number" 
-                                        min="0"
-                                        step="0.5"
-                                        value={entry.hours || ''} 
-                                        onChange={(e) => updateManhourEntry(monthData.id, entry.id, 'hours', e.target.value)}
-                                        className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] text-center" 
-                                      />
-                                    </td>
-                                    <td className="py-2 px-3 text-right font-medium">
-                                      ₹{((parseFloat(entry.rate) || 0) * (parseFloat(entry.hours) || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                    </td>
-                                    <td className="py-2 px-3 text-center">
-                                      <button 
-                                        type="button" 
-                                        onClick={() => removeManhourEntry(monthData.id, entry.id)}
-                                        className="text-red-400 hover:text-red-600"
-                                      >
-                                        <XMarkIcon className="h-4 w-4" />
-                                      </button>
-                                    </td>
-                                  </tr>
                                 ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                  
-                  {/* Grand Total */}
-                  {projectManhours.length > 0 && (
-                    <div className="bg-gradient-to-r from-purple-50 to-white border border-purple-200 rounded-lg p-4">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-bold text-gray-800">Grand Total</span>
-                        <div className="flex gap-6">
-                          <div className="text-right">
-                            <p className="text-[10px] text-gray-500">Total Hours</p>
-                            <p className="text-sm font-bold text-gray-800">
-                              {projectManhours.reduce((sum, m) => sum + (m.entries || []).reduce((s, e) => s + (parseFloat(e.hours) || 0), 0), 0).toFixed(1)}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] text-gray-500">Total Cost</p>
-                            <p className="text-sm font-bold text-[#7F2487]">
-                              ₹{projectManhours.reduce((sum, m) => sum + (m.entries || []).reduce((s, e) => s + ((parseFloat(e.rate) || 0) * (parseFloat(e.hours) || 0)), 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                                <td className="py-2 px-2 text-center font-semibold text-purple-700 bg-purple-50/50">
+                                  {totalHrs.toFixed(1)}
+                                </td>
+                                <td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
+                                  ₹{companyCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
+                                  ₹{accentCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-2 px-1 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setProjectManhours(prev => prev.filter(m => m.id !== empData.id))}
+                                    className="text-red-400 hover:text-red-600"
+                                    title="Remove employee"
+                                  >
+                                    <XMarkIcon className="h-4 w-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {/* Totals Row */}
+                          <tr className="bg-gradient-to-r from-purple-100 to-gray-100 font-semibold">
+                            <td className="py-2 px-2 text-gray-800 sticky left-0 bg-purple-100 z-10 border-r border-gray-200">Grand Total</td>
+                            <td className="py-2 px-2 bg-green-100/50"></td>
+                            <td className="py-2 px-2 bg-blue-100/50"></td>
+                            <td className="py-2 px-2 bg-blue-100/50"></td>
+                            {['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].map(month => {
+                              const monthTotal = projectManhours.reduce((sum, emp) => sum + (parseFloat(emp.monthly_hours?.[month]) || 0), 0);
+                              return (
+                                <td key={month} className="py-2 px-1 text-center text-gray-700 bg-amber-100/50">
+                                  {monthTotal > 0 ? monthTotal.toFixed(1) : '–'}
+                                </td>
+                              );
+                            })}
+                            <td className="py-2 px-2 text-center text-purple-800 bg-purple-200/50">
+                              {projectManhours.reduce((sum, emp) => sum + Object.values(emp.monthly_hours || {}).reduce((s, h) => s + (parseFloat(h) || 0), 0), 0).toFixed(1)}
+                            </td>
+                            <td className="py-2 px-2 text-center text-green-800 bg-green-200/50">
+                              ₹{projectManhours.reduce((sum, emp) => {
+                                const hrs = Object.values(emp.monthly_hours || {}).reduce((s, h) => s + (parseFloat(h) || 0), 0);
+                                return sum + (hrs * (parseFloat(emp.rate_company) || 0));
+                              }, 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-2 text-center text-blue-800 bg-blue-200/50">
+                              ₹{projectManhours.reduce((sum, emp) => {
+                                const hrs = Object.values(emp.monthly_hours || {}).reduce((s, h) => s + (parseFloat(h) || 0), 0);
+                                return sum + (hrs * (parseFloat(emp.rate_accent) || 0));
+                              }, 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2 px-1"></td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
-                  )}
                 </div>
               </section>
             )}
@@ -5190,8 +5215,7 @@ function EditProjectForm() {
                                 <thead>
                                   <tr className="border-b border-gray-200">
                                     <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
-                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '15%' }}></th>
-                                    <th className="text-left py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-gray-50 border-l border-r border-gray-200" style={{ width: '18%' }}>Description</th>
+                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '20%' }}></th>
                                     <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Team</th>
                                     <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '10%' }}>Unit/Qty</th>
                                     <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '24%' }}>Progress</th>
@@ -5201,7 +5225,6 @@ function EditProjectForm() {
                                   <tr className="border-b border-gray-300">
                                     <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
                                     <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
-                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-gray-50 border-l border-r border-gray-200"></th>
                                     <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Member</th>
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
@@ -5209,7 +5232,7 @@ function EditProjectForm() {
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Actual</th>
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Due</th>
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Status</th>
-                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
+                                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
                                     <th className="py-2 px-1"></th>
                                   </tr>
                                 </thead>
@@ -5219,11 +5242,11 @@ function EditProjectForm() {
                                     const hasUsers = assignedUsers.length > 0;
                                     return (
                                       <Fragment key={`${act.id}-${act.type}-${idx}`}>
-                                        <tr className="border-b border-gray-200">
+                                        <tr className="border-b border-gray-200 bg-gray-50/50">
                                           <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
-                                          <td className="py-2 px-2">
+                                          <td className="py-2 px-2" colSpan={9}>
                                             <div className="flex items-center gap-2">
-                                              <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="flex-1 px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" placeholder="Activity name" />
+                                              <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="flex-1 max-w-xs px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" placeholder="Activity name" />
                                               <div className="relative" data-user-selector-dropdown>
                                                 <button type="button" onClick={(e) => { e.stopPropagation(); setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id); }} className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap">+ Add User</button>
                                                 {openUserSelectorForActivity === act.id && (
@@ -5245,15 +5268,6 @@ function EditProjectForm() {
                                               </div>
                                             </div>
                                           </td>
-                                          <td className="py-2 px-2" colSpan={8}>
-                                            <input 
-                                              type="text" 
-                                              value={act.description || ''} 
-                                              onChange={(e) => updateProjectActivity(act.id, 'description', e.target.value)} 
-                                              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-white" 
-                                              placeholder="Enter description..." 
-                                            />
-                                          </td>
                                           <td className="py-2 px-1 text-center align-middle"><button type="button" onClick={() => removeScopeActivity(act.id)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
                                         </tr>
                                         {hasUsers && assignedUsers.map((assignment, uIdx) => {
@@ -5268,36 +5282,37 @@ function EditProjectForm() {
                                           const dueDate = typeof assignment === 'object' ? (assignment.due_date || '') : '';
                                           const status = typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
                                           const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
+                                          const description = typeof assignment === 'object' ? (assignment.description || '') : '';
                                           return (
-                                            <tr key={`${act.id}-user-${odUserId}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                            <tr key={`${act.id}-user-${odUserId}`} className="border-b border-gray-100">
                                               <td className="py-1.5 px-2"></td>
-                                              <td className="py-1.5 px-2"></td>
-                                              <td className="py-1.5 px-2"></td>
-                                              <td className="py-1.5 px-2 text-gray-600 text-xs"><span className="text-gray-400 mr-1">{uIdx + 1}.</span>{name}</td>
-                                              <td className="py-1.5 px-1"><input type="number" value={qtyAssigned} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_assigned', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
-                                              <td className="py-1.5 px-1"><input type="number" value={qtyCompleted} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_completed', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
-                                              <td className="py-1.5 px-2"><input type="number" value={plannedHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'planned_hours', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
-                                              <td className="py-1.5 px-2"><input type="number" value={actualHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'actual_hours', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
-                                              <td className="py-1.5 px-2"><input type="date" value={dueDate} onChange={(e) => updateUserManhours(act.id, odUserId, 'due_date', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent" /></td>
-                                              <td className="py-1.5 px-2"><select value={status} onChange={(e) => updateUserManhours(act.id, odUserId, 'status', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"><option value="Not Started">Not Started</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="On Hold">On Hold</option></select></td>
-                                              <td className="py-1.5 px-2"><textarea value={remarks} onChange={(e) => updateUserManhours(act.id, odUserId, 'remarks', e.target.value)} className="w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-transparent resize-y min-h-[24px]" placeholder="–" rows={1} /></td>
+                                              <td className="py-1.5 px-2">
+                                                <input type="text" value={description} onChange={(e) => updateUserManhours(act.id, odUserId, 'description', e.target.value)} className="w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-white" placeholder="Description for this user..." />
+                                              </td>
+                                              <td className="py-1.5 px-2 text-gray-600 text-xs bg-green-50/50"><span className="text-gray-400 mr-1">{uIdx + 1}.</span>{name}</td>
+                                              <td className="py-1.5 px-1 bg-purple-50/50"><input type="number" value={qtyAssigned} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_assigned', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-purple-200 text-center focus:border-purple-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
+                                              <td className="py-1.5 px-1 bg-purple-50/50"><input type="number" value={qtyCompleted} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_completed', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-purple-200 text-center focus:border-purple-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
+                                              <td className="py-1.5 px-1 bg-blue-50/50"><input type="number" value={plannedHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'planned_hours', e.target.value)} className="w-full px-0.5 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
+                                              <td className="py-1.5 px-1 bg-blue-50/50"><input type="number" value={actualHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'actual_hours', e.target.value)} className="w-full px-0.5 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
+                                              <td className="py-1.5 px-0.5 bg-blue-50/50" style={{ width: '60px' }}><input type="date" value={dueDate} onChange={(e) => updateUserManhours(act.id, odUserId, 'due_date', e.target.value)} className="w-full px-0 py-0.5 text-[9px] border-0 border-b border-blue-200 focus:border-blue-500 focus:outline-none bg-transparent" /></td>
+                                              <td className="py-1.5 px-1 bg-blue-50/50" style={{ minWidth: '85px' }}><select value={status} onChange={(e) => updateUserManhours(act.id, odUserId, 'status', e.target.value)} className="w-full px-0.5 py-0.5 text-[10px] border-0 border-b border-blue-200 focus:border-blue-500 focus:outline-none bg-transparent"><option value="Not Started">Not Started</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="On Hold">On Hold</option></select></td>
+                                              <td className="py-1.5 px-2 bg-amber-50/50"><textarea value={remarks} onChange={(e) => updateUserManhours(act.id, odUserId, 'remarks', e.target.value)} className="w-full px-1 py-0.5 text-xs border border-amber-200 rounded focus:border-amber-500 focus:outline-none bg-transparent resize-y min-h-[24px]" placeholder="–" rows={1} /></td>
                                               <td className="py-1.5 px-1 text-center"><button type="button" onClick={() => toggleUserForActivity(act.id, odUserId)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
                                             </tr>
                                           );
                                         })}
                                         {hasUsers && (
-                                          <tr className="border-t border-gray-200">
+                                          <tr className="border-t border-gray-200 bg-gray-50/30">
                                             <td className="py-1.5 px-2"></td>
                                             <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2 text-right text-gray-400 text-xs">Total</td>
-                                            <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_assigned : 0) || 0), 0)}</td>
-                                            <td className="py-1.5 px-1 font-semibold text-purple-600 text-xs text-center">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_completed : 0) || 0), 0)}</td>
-                                            <td className="py-1.5 px-2 font-semibold text-blue-600 text-xs">{getActivityTotalPlanned(act).toFixed(1)}</td>
-                                            <td className="py-1.5 px-2 font-semibold text-green-600 text-xs">{getActivityTotalActual(act).toFixed(1)}</td>
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2"></td>
+                                            <td className="py-1.5 px-2 text-right text-gray-400 text-xs bg-green-50/50">Total</td>
+                                            <td className="py-1.5 px-1 font-semibold text-purple-700 text-xs text-center bg-purple-50/50">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_assigned : 0) || 0), 0)}</td>
+                                            <td className="py-1.5 px-1 font-semibold text-purple-700 text-xs text-center bg-purple-50/50">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_completed : 0) || 0), 0)}</td>
+                                            <td className="py-1.5 px-2 font-semibold text-blue-700 text-xs text-center bg-blue-50/50">{getActivityTotalPlanned(act).toFixed(1)}</td>
+                                            <td className="py-1.5 px-2 font-semibold text-blue-700 text-xs text-center bg-blue-50/50">{getActivityTotalActual(act).toFixed(1)}</td>
+                                            <td className="py-1.5 px-2 bg-blue-50/50"></td>
+                                            <td className="py-1.5 px-2 bg-blue-50/50"></td>
+                                            <td className="py-1.5 px-2 bg-amber-50/50"></td>
                                             <td className="py-1.5 px-1"></td>
                                           </tr>
                                         )}
@@ -6338,6 +6353,7 @@ function EditProjectForm() {
                                       const totalQtyDone = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
                                       const totalActualHrs = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
                                       const plannedHrs = myAssignment && typeof myAssignment === 'object' ? (myAssignment.planned_hours || '') : '';
+                                      const myDescription = myAssignment && typeof myAssignment === 'object' ? (myAssignment.description || '') : '';
                                       const dueDate = myAssignment && typeof myAssignment === 'object' ? (myAssignment.due_date || '') : '';
                                       const status = myAssignment && typeof myAssignment === 'object' ? (myAssignment.status || 'Not Started') : 'Not Started';
                                       const remarks = myAssignment && typeof myAssignment === 'object' ? (myAssignment.remarks || '') : '';
@@ -6363,9 +6379,13 @@ function EditProjectForm() {
                                               </div>
                                             </td>
                                             <td className="py-3 px-3">
-                                              <span className="text-xs text-slate-600">
-                                                {act.description || act.deliverables || <span className="text-gray-400 italic">No description</span>}
-                                              </span>
+                                              <input
+                                                type="text"
+                                                value={myDescription}
+                                                onChange={(e) => updateUserManhours(act.id, sessionUser?.id, 'description', e.target.value)}
+                                                className="w-full px-2 py-1 text-xs text-slate-600 bg-white border border-slate-200 rounded-md focus:ring-2 focus:ring-gray-200 focus:border-gray-300 focus:outline-none transition-shadow"
+                                                placeholder="Enter your description..."
+                                              />
                                             </td>
                                             <td className="py-3 px-2 text-center">
                                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
