@@ -822,33 +822,20 @@ export async function PUT(request, context) {
     }
 
     await db.end();
-    console.log('PUT /api/projects/[id] - Database connection closed');
 
     if (result.affectedRows === 0) {
-      console.warn('PUT /api/projects/[id] - No rows affected, project not found');
       return Response.json({ 
         success: false, 
         error: 'Project not found' 
       }, { status: 404 });
     }
 
-    console.log('PUT /api/projects/[id] - SUCCESS - Project updated');
     return Response.json({ 
       success: true, 
       message: 'Project updated successfully' 
     });
     
   } catch (error) {
-    console.error('PUT /api/projects/[id] - CAUGHT ERROR on attempt', retries + 1);
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error details:', {
-      code: error.code,
-      errno: error.errno,
-      sqlMessage: error.sqlMessage,
-      sqlState: error.sqlState
-    });
-    
     // Check if it's a retryable error (connection issues)
     const isRetryable = error.code === 'ETIMEDOUT' || 
                        error.code === 'ECONNRESET' || 
@@ -859,16 +846,14 @@ export async function PUT(request, context) {
     if (db) {
       try {
         await db.end();
-        console.log('PUT /api/projects/[id] - Database connection closed after error');
       } catch (closeErr) {
-        console.error('PUT /api/projects/[id] - Failed to close DB connection:', closeErr.message);
+        // Ignore close errors
       }
       db = null;
     }
     
     // Retry for connection errors
     if (isRetryable && retries < maxRetries) {
-      console.log('PUT /api/projects/[id] - Retrying due to connection error...');
       retries++;
       await new Promise(resolve => setTimeout(resolve, 500 * retries)); // Exponential backoff
       continue; // Retry the while loop

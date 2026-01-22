@@ -2574,6 +2574,12 @@ function EditProjectForm() {
     setKickoffMeetings(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
+  const updateProjectActivity = (activityId, field, value) => {
+    setProjectActivities(prev => prev.map(act => 
+      act.id === activityId ? { ...act, [field]: value } : act
+    ));
+  };
+
   const formatAsBulletPoints = (text) => {
     if (!text) return '';
     const lines = text.split('\n').filter(line => line.trim());
@@ -2683,7 +2689,6 @@ function EditProjectForm() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    console.log('[SUBMIT] Form submit triggered');
     
     if (!form.name.trim()) {
       alert('Project name is required');
@@ -2691,7 +2696,6 @@ function EditProjectForm() {
     }
 
     setSubmitting(true);
-    console.log('[SUBMIT] Starting submission...');
     
     try {
       const payload = {
@@ -2738,24 +2742,18 @@ function EditProjectForm() {
       });
       console.log('[SUBMIT] Sample data - documentsIssued:', JSON.stringify(documentsIssued).substring(0, 200));
 
-      console.log('[SUBMIT] Making API call to /api/projects/' + id);
       const result = await fetchJSON(`/api/projects/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      console.log('[SUBMIT] API Response:', result);
-
       if (result.success) {
-        console.log('[SUBMIT] Project updated successfully');
         alert('Project updated successfully!');
       } else {
-        console.error('[SUBMIT] Update failed:', result);
         alert(`Failed to update project: ${result.error || result.message || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('[SUBMIT] Project update error:', error);
       alert(`Failed to update project: ${error?.message || 'Unknown error'}`);
     } finally {
       setSubmitting(false);
@@ -2874,10 +2872,6 @@ function EditProjectForm() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    onClick={(e) => {
-                      console.log('[BUTTON] Update Project button clicked');
-                      console.log('[BUTTON] Submitting state:', submitting);
-                    }}
                     className="px-6 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     style={{
                       background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
@@ -5196,16 +5190,18 @@ function EditProjectForm() {
                                 <thead>
                                   <tr className="border-b border-gray-200">
                                     <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
-                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '18%' }}></th>
+                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '15%' }}></th>
+                                    <th className="text-left py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-gray-50 border-l border-r border-gray-200" style={{ width: '18%' }}>Description</th>
                                     <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Team</th>
                                     <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '10%' }}>Unit/Qty</th>
-                                    <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '28%' }}>Progress</th>
-                                    <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '20%' }}>Notes</th>
+                                    <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '24%' }}>Progress</th>
+                                    <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '15%' }}>Notes</th>
                                     <th className="py-1 px-1" style={{ width: '4%' }}></th>
                                   </tr>
                                   <tr className="border-b border-gray-300">
                                     <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
                                     <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
+                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-gray-50 border-l border-r border-gray-200"></th>
                                     <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Member</th>
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
                                     <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
@@ -5225,7 +5221,7 @@ function EditProjectForm() {
                                       <Fragment key={`${act.id}-${act.type}-${idx}`}>
                                         <tr className="border-b border-gray-200">
                                           <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
-                                          <td className="py-2 px-2" colSpan={9}>
+                                          <td className="py-2 px-2">
                                             <div className="flex items-center gap-2">
                                               <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="flex-1 px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" placeholder="Activity name" />
                                               <div className="relative" data-user-selector-dropdown>
@@ -5249,6 +5245,15 @@ function EditProjectForm() {
                                               </div>
                                             </div>
                                           </td>
+                                          <td className="py-2 px-2" colSpan={8}>
+                                            <input 
+                                              type="text" 
+                                              value={act.description || ''} 
+                                              onChange={(e) => updateProjectActivity(act.id, 'description', e.target.value)} 
+                                              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-white" 
+                                              placeholder="Enter description..." 
+                                            />
+                                          </td>
                                           <td className="py-2 px-1 text-center align-middle"><button type="button" onClick={() => removeScopeActivity(act.id)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
                                         </tr>
                                         {hasUsers && assignedUsers.map((assignment, uIdx) => {
@@ -5267,6 +5272,7 @@ function EditProjectForm() {
                                             <tr key={`${act.id}-user-${odUserId}`} className="border-b border-gray-100 hover:bg-gray-50">
                                               <td className="py-1.5 px-2"></td>
                                               <td className="py-1.5 px-2"></td>
+                                              <td className="py-1.5 px-2"></td>
                                               <td className="py-1.5 px-2 text-gray-600 text-xs"><span className="text-gray-400 mr-1">{uIdx + 1}.</span>{name}</td>
                                               <td className="py-1.5 px-1"><input type="number" value={qtyAssigned} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_assigned', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
                                               <td className="py-1.5 px-1"><input type="number" value={qtyCompleted} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_completed', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-gray-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
@@ -5281,6 +5287,7 @@ function EditProjectForm() {
                                         })}
                                         {hasUsers && (
                                           <tr className="border-t border-gray-200">
+                                            <td className="py-1.5 px-2"></td>
                                             <td className="py-1.5 px-2"></td>
                                             <td className="py-1.5 px-2"></td>
                                             <td className="py-1.5 px-2 text-right text-gray-400 text-xs">Total</td>
@@ -6278,7 +6285,10 @@ function EditProjectForm() {
                                   <thead>
                                     <tr className="bg-gradient-to-r from-slate-50 to-slate-100">
                                       <th className="py-2.5 px-3" style={{ width: '3%' }}></th>
-                                      <th className="py-2.5 px-3" style={{ width: '20%' }}></th>
+                                      <th className="py-2.5 px-3" style={{ width: '18%' }}></th>
+                                      <th className="py-2.5 px-3" style={{ width: '20%' }}>
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-700 uppercase tracking-wider">Description</span>
+                                      </th>
                                       <th className="py-2.5 px-2 text-center" style={{ width: '8%' }}>
                                         <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">Date</span>
                                       </th>
@@ -6302,6 +6312,7 @@ function EditProjectForm() {
                                     <tr className="border-b-2 border-slate-200 bg-white">
                                       <th className="text-left py-2 px-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide">#</th>
                                       <th className="text-left py-2 px-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide">Activity</th>
+                                      <th className="text-left py-2 px-3 font-medium text-gray-600 text-[10px] uppercase bg-gray-50/50"></th>
                                       <th className="text-center py-2 px-2 font-medium text-emerald-600 text-[10px] uppercase bg-emerald-50/50 rounded-t"></th>
                                       <th className="text-center py-2 px-2 font-medium text-blue-600 text-[10px] uppercase bg-blue-50/50">Plan</th>
                                       <th className="text-center py-2 px-2 font-medium text-blue-600 text-[10px] uppercase bg-blue-50/50">Actual</th>
@@ -6350,6 +6361,11 @@ function EditProjectForm() {
                                                   <span>+</span> Add Day
                                                 </button>
                                               </div>
+                                            </td>
+                                            <td className="py-3 px-3">
+                                              <span className="text-xs text-slate-600">
+                                                {act.description || act.deliverables || <span className="text-gray-400 italic">No description</span>}
+                                              </span>
                                             </td>
                                             <td className="py-3 px-2 text-center">
                                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
@@ -6838,9 +6854,10 @@ function EditProjectForm() {
                       <table className="w-full text-xs border-collapse">
                         <thead>
                           <tr className="bg-gray-100 border-b-2 border-gray-300">
-                            <th className="text-left py-3 px-4 font-semibold w-1/3">Discipline</th>
-                            <th className="text-left py-3 px-4 font-semibold w-1/3">Activity</th>
-                            <th className="text-left py-3 px-4 font-semibold w-1/3">Sub-Activity</th>
+                            <th className="text-left py-3 px-4 font-semibold" style={{ width: '20%' }}>Discipline</th>
+                            <th className="text-left py-3 px-4 font-semibold" style={{ width: '25%' }}>Activity</th>
+                            <th className="text-left py-3 px-4 font-semibold" style={{ width: '30%' }}>Description</th>
+                            <th className="text-left py-3 px-4 font-semibold" style={{ width: '25%' }}>Sub-Activity</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -6853,7 +6870,7 @@ function EditProjectForm() {
                                   <td className="py-3 px-4">
                                     <span className="font-semibold text-[#7F2487]">{func.function_name}</span>
                                   </td>
-                                  <td className="py-3 px-4 text-gray-400 italic" colSpan="2">No activities defined</td>
+                                  <td className="py-3 px-4 text-gray-400 italic" colSpan="3">No activities defined</td>
                                 </tr>
                               );
                             }
@@ -6892,6 +6909,25 @@ function EditProjectForm() {
                                           <span className="text-sm text-black font-medium">{activity.activity_name}</span>
                                         </label>
                                       </div>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      {isActivitySelected ? (
+                                        <input
+                                          type="text"
+                                          value={projectActivities.find(pa => pa.id === activity.id && pa.type === 'activity')?.description || ''}
+                                          onChange={(e) => {
+                                            setProjectActivities(prev => prev.map(pa => 
+                                              pa.id === activity.id && pa.type === 'activity' 
+                                                ? { ...pa, description: e.target.value } 
+                                                : pa
+                                            ));
+                                          }}
+                                          placeholder="Enter description..."
+                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
+                                        />
+                                      ) : (
+                                        <span className="text-gray-400 text-xs">—</span>
+                                      )}
                                     </td>
                                     <td className="py-3 px-4">
                                       {hasSubActivities ? (
