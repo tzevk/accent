@@ -130,8 +130,7 @@ export default function NewMaterialRequisitionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-      <Sidebar />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="flex-1 flex flex-col">
         <Navbar />
         
@@ -157,9 +156,9 @@ export default function NewMaterialRequisitionPage() {
 
           {/* Requisition Form - styled like the physical form */}
           <form onSubmit={handleSubmit}>
-            <div className="bg-white border-2 border-gray-400 rounded-lg overflow-hidden max-w-5xl mx-auto">
+            <div className="bg-white border-2 border-gray-800 rounded-lg overflow-hidden max-w-10xl mx-auto">
               {/* Header Section */}
-              <div className="border-b-2 border-gray-400 p-6">
+              <div className="border-b-2 border-gray-800 p-6">
                 <div className="flex items-center">
                   <div className="flex items-center gap-3">
                     <img src="/accent-logo.png" alt="Accent Logo" className="h-20 w-auto" />
@@ -171,10 +170,10 @@ export default function NewMaterialRequisitionPage() {
               </div>
 
               {/* Form Details */}
-              <div className="border-b-2 border-gray-400">
-                <div className="flex border-b border-gray-400">
-                  <div className="w-40 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-400">Requisition No.</div>
-                  <div className="flex-1 px-4 py-3 border-r border-gray-400">
+              <div className="border-b-2 border-gray-800">
+                <div className="flex border-b border-gray-800">
+                  <div className="w-40 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-800">Requisition No.</div>
+                  <div className="flex-1 px-4 py-3 border-r border-gray-800">
                     <input
                       type="text"
                       value={formData.requisition_number}
@@ -183,7 +182,7 @@ export default function NewMaterialRequisitionPage() {
                       readOnly
                     />
                   </div>
-                  <div className="w-32 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-400">Date of Req.</div>
+                  <div className="w-32 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-800">Date of Req.</div>
                   <div className="w-40 px-4 py-3">
                     <input
                       type="date"
@@ -194,8 +193,8 @@ export default function NewMaterialRequisitionPage() {
                   </div>
                 </div>
                 <div className="flex">
-                  <div className="w-40 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-400">Requested By</div>
-                  <div className="flex-1 px-4 py-3 border-r border-gray-400">
+                  <div className="w-40 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-800">Requested By</div>
+                  <div className="flex-1 px-4 py-3 border-r border-gray-800">
                     <input
                       type="text"
                       value={formData.requested_by}
@@ -204,7 +203,7 @@ export default function NewMaterialRequisitionPage() {
                       placeholder="Enter name"
                     />
                   </div>
-                  <div className="w-32 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-400">Department</div>
+                  <div className="w-32 px-4 py-3 bg-gray-200 font-semibold text-sm border-r border-gray-800">Department</div>
                   <div className="w-40 px-4 py-3">
                     <input
                       type="text"
@@ -218,22 +217,22 @@ export default function NewMaterialRequisitionPage() {
               </div>
 
               {/* Line Items Table */}
-              <div className="border-b-2 border-gray-400">
+              <div className="border-b-2 border-gray-800">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-200">
-                      <th className="border-r border-gray-400 px-3 py-3 text-xs font-semibold text-gray-700 w-16">Sr. No.</th>
-                      <th className="border-r border-gray-400 px-3 py-3 text-xs font-semibold text-gray-700">Material Description</th>
-                      <th className="border-r border-gray-400 px-3 py-3 text-xs font-semibold text-gray-700 w-28">Unit / Qty</th>
-                      <th className="border-r border-gray-400 px-3 py-3 text-xs font-semibold text-gray-700 w-40">Purpose</th>
+                      <th className="border-r border-gray-800 px-3 py-3 text-xs font-semibold text-gray-700 w-16">Sr. No.</th>
+                      <th className="border-r border-gray-800 px-3 py-3 text-xs font-semibold text-gray-700">Material Description</th>
+                      <th className="border-r border-gray-800 px-3 py-3 text-xs font-semibold text-gray-700 w-28">Unit / Qty</th>
+                      <th className="border-r border-gray-800 px-3 py-3 text-xs font-semibold text-gray-700 w-40">Purpose</th>
                       <th className="px-3 py-3 text-xs font-semibold text-gray-700 w-10"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {lineItems.map((item, index) => (
-                      <tr key={index} className="border-t border-gray-400">
-                        <td className="border-r border-gray-400 px-3 py-2 text-center text-sm">{item.sr_no}</td>
-                        <td className="border-r border-gray-400 px-2 py-2">
+                      <tr key={index} className="border-t border-gray-800">
+                        <td className="border-r border-gray-800 px-3 py-2 text-center text-sm">{item.sr_no}</td>
+                        <td className="border-r border-gray-800 px-2 py-2">
                           <input
                             type="text"
                             value={item.description}
@@ -242,7 +241,7 @@ export default function NewMaterialRequisitionPage() {
                             placeholder="Enter material description"
                           />
                         </td>
-                        <td className="border-r border-gray-400 px-2 py-2">
+                        <td className="border-r border-gray-800 px-2 py-2">
                           <input
                             type="text"
                             value={item.unit_qty}
@@ -251,7 +250,7 @@ export default function NewMaterialRequisitionPage() {
                             placeholder="Qty"
                           />
                         </td>
-                        <td className="border-r border-gray-400 px-2 py-2">
+                        <td className="border-r border-gray-800 px-2 py-2">
                           <input
                             type="text"
                             value={item.purpose}
@@ -277,7 +276,7 @@ export default function NewMaterialRequisitionPage() {
                 </table>
                 
                 {/* Add Row Button */}
-                <div className="border-t border-gray-400 p-2">
+                <div className="border-t border-gray-800 p-2">
                   <button
                     type="button"
                     onClick={addLineItem}
@@ -290,22 +289,22 @@ export default function NewMaterialRequisitionPage() {
               </div>
 
               {/* Signatures Section */}
-              <div className="flex border-b-2 border-gray-400">
-                <div className="flex-1 p-6 border-r border-gray-400 text-center">
+              <div className="flex border-b-2 border-gray-800">
+                <div className="flex-1 p-6 border-r border-gray-800 text-center">
                   <input
                     type="text"
                     value={formData.prepared_by}
                     onChange={(e) => setFormData(prev => ({ ...prev, prepared_by: e.target.value }))}
-                    className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm mb-2"
+                    className="w-full px-2 py-1 bg-transparent border-b border-gray-800 text-center text-sm mb-2"
                   />
                   <div className="text-xs font-semibold text-gray-600">Prepared By</div>
                 </div>
-                <div className="flex-1 p-6 border-r border-gray-400 text-center">
+                <div className="flex-1 p-6 border-r border-gray-800 text-center">
                   <input
                     type="text"
                     value={formData.checked_by}
                     onChange={(e) => setFormData(prev => ({ ...prev, checked_by: e.target.value }))}
-                    className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm mb-2"
+                    className="w-full px-2 py-1 bg-transparent border-b border-gray-800 text-center text-sm mb-2"
                     placeholder="Name"
                   />
                   <div className="text-xs font-semibold text-gray-600">Checked By</div>
@@ -315,7 +314,7 @@ export default function NewMaterialRequisitionPage() {
                     type="text"
                     value={formData.approved_by}
                     onChange={(e) => setFormData(prev => ({ ...prev, approved_by: e.target.value }))}
-                    className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm mb-2"
+                    className="w-full px-2 py-1 bg-transparent border-b border-gray-800 text-center text-sm mb-2"
                     placeholder="Name"
                   />
                   <div className="text-xs font-semibold text-gray-600">Approved By</div>
@@ -323,14 +322,14 @@ export default function NewMaterialRequisitionPage() {
               </div>
 
               {/* Receipt Section */}
-              <div className="p-4 border-b-2 border-gray-400">
+              <div className="p-4 border-b-2 border-gray-800">
                 <div className="flex gap-4 mb-2">
                   <span className="font-semibold text-sm">Material Received / Collected By:</span>
                   <input
                     type="text"
                     value={formData.received_by}
                     onChange={(e) => setFormData(prev => ({ ...prev, received_by: e.target.value }))}
-                    className="flex-1 px-2 py-1 bg-transparent border-b border-gray-400 text-sm"
+                    className="flex-1 px-2 py-1 bg-transparent border-b border-gray-800 text-sm"
                     placeholder="Name"
                   />
                 </div>
@@ -340,7 +339,7 @@ export default function NewMaterialRequisitionPage() {
                     type="date"
                     value={formData.receipt_date}
                     onChange={(e) => setFormData(prev => ({ ...prev, receipt_date: e.target.value }))}
-                    className="px-2 py-1 bg-transparent border-b border-gray-400 text-sm"
+                    className="px-2 py-1 bg-transparent border-b border-gray-800 text-sm"
                   />
                 </div>
               </div>

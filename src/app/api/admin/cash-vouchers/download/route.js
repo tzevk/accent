@@ -119,7 +119,7 @@ export async function GET(request) {
       height: auto;
       min-height: 100mm;
       margin: 0 auto;
-      background: #FFFDE7;
+      background: #ffffff;
       border: 2px solid #333;
       box-sizing: border-box;
     }
@@ -186,7 +186,7 @@ export async function GET(request) {
       padding: 5px 8px;
       font-size: 10px;
       font-weight: bold;
-      background: #FFF9C4;
+      background: #f3f4f6;
       text-align: left;
       height: 100%;
       display: flex;
@@ -225,7 +225,7 @@ export async function GET(request) {
       border-collapse: collapse;
     }
     th {
-      background: #FFF9C4;
+      background: #f3f4f6;
       border: 1px solid #333;
       padding: 6px 8px;
       font-size: 11px;
@@ -249,7 +249,7 @@ export async function GET(request) {
       width: 94px;
       padding: 6px 10px;
       border-right: 1px solid #333;
-      background: #FFF9C4;
+      background: #f3f4f6;
     }
     .words-section {
       flex: 1;

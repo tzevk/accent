@@ -665,91 +665,88 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full divide-y divide-gray-200 table-fixed">
               <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/75">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                  <th className="w-14 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Sr
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                  <th className="w-24 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Lead ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                  <th className="w-64 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Company & Contact
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Project Details
+                  <th className="w-56 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Location
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                  <th className="w-32 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Status & Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                  <th className="w-28 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Date & Source
                   </th>
-                  <th className="relative px-6 py-3">
-                    <span className="sr-only">Actions</span>
+                  <th className="w-40 px-4 py-3 text-center text-xs font-medium text-black uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {leads.map((lead, index) => (
                   <tr key={lead.id} className="hover:bg-gray-50 odd:bg-white even:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="w-14 px-4 py-3 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {(currentPage - 1) * 20 + index + 1}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="w-24 px-4 py-3 whitespace-nowrap">
                       <div className="text-sm font-mono font-medium text-gray-900">
                         {lead.lead_id || '-'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap max-w-sm">
+                    <td className="w-64 px-4 py-3">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-gray-900 truncate">
                           {lead.company_name}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-gray-500 truncate">
                           {lead.contact_name}
                         </div>
                         {lead.designation && (
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-gray-400 truncate">
                             {lead.designation}
                           </div>
                         )}
                         <div className="flex items-center mt-1 space-x-3">
                           {lead.contact_email && (
                             <div className="flex items-center text-xs text-gray-400">
-                              <EnvelopeIcon className="h-3 w-3 mr-1" />
-                              <span className="truncate max-w-[9rem]">{lead.contact_email}</span>
+                              <EnvelopeIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate max-w-[8rem]">{lead.contact_email}</span>
                             </div>
                           )}
                           {lead.phone && (
                             <div className="flex items-center text-xs text-gray-400">
-                              <PhoneIcon className="h-3 w-3 mr-1" />
-                              {lead.phone}
+                              <PhoneIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">{lead.phone}</span>
                             </div>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs">
-                        <div className="truncate font-medium">
-                          {lead.project_description || 'No description'}
+                    <td className="w-56 px-4 py-3">
+                      <div className="text-sm text-gray-900">
+                        <div className="font-medium">
+                          {lead.city || '-'}
                         </div>
-                        <div className="text-sm text-gray-500 mt-1">
-                          <span className="inline-block mr-2">{lead.city}</span>
-                          {lead.enquiry_type && (
-                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
-                              {lead.enquiry_type}
-                            </span>
-                          )}
-                        </div>
+                        {lead.enquiry_type && (
+                          <span className="inline-flex mt-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                            {lead.enquiry_type}
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="space-y-2">
+                    <td className="w-32 px-4 py-3 whitespace-nowrap">
+                      <div className="space-y-1">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(lead.enquiry_status)}`}>
                           {lead.enquiry_status}
                         </span>
@@ -758,18 +755,18 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="w-28 px-4 py-3 whitespace-nowrap">
                       <div className="text-sm text-gray-500 space-y-1">
                         <div>{formatDate(lead.enquiry_date)}</div>
                         {lead.lead_source && (
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-gray-400 truncate">
                             via {lead.lead_source}
                           </div>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end space-x-2">
+                    <td className="w-40 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                      <div className="flex items-center justify-center space-x-1">
                         <button 
                           onClick={() => router.push(`/leads/${lead.id}`)}
                           className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors"
@@ -787,16 +784,17 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                         {lead.enquiry_status !== 'Converted to Proposal' ? (
                           <button 
                             onClick={() => convertToProposal(lead)}
-                            className="flex items-center gap-2 px-3 py-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors"
+                            className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-full transition-colors"
                             title="Convert to Proposal"
                           >
                             <DocumentTextIcon className="h-4 w-4" />
-                            <span className="hidden sm:inline text-sm">Convert</span>
                           </button>
                         ) : (
-                          <span className="flex items-center gap-2 px-3 py-1 text-gray-400 text-sm" title="Already converted to proposal">
+                          <span 
+                            className="p-2 text-gray-400 cursor-default" 
+                            title="Already converted to proposal"
+                          >
                             <DocumentTextIcon className="h-4 w-4" />
-                            <span className="hidden sm:inline">Converted</span>
                           </span>
                         )}
                         <button 

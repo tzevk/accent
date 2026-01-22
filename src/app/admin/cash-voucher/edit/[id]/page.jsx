@@ -312,7 +312,7 @@ export default function EditCashVoucherPage({ params }) {
 
           {/* Voucher Form - styled like the physical form */}
           <form onSubmit={handleSubmit}>
-            <div className="bg-amber-50 border-2 border-gray-800 rounded-lg overflow-hidden max-w-10xl mx-auto">
+            <div className="bg-white border-2 border-gray-800 rounded-lg overflow-hidden max-w-10xl mx-auto">
               {/* Header Section */}
               <div className="border-b-2 border-gray-800 flex">
                 {/* Company Info */}
@@ -330,7 +330,7 @@ export default function EditCashVoucherPage({ params }) {
                 {/* Voucher Details */}
                 <div className="w-150">
                   <div className="flex border-b border-gray-800">
-                    <div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-amber-100 w-24">SR. NO.:</div>
+                    <div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">SR. NO.:</div>
                     <input
                       type="text"
                       value={formData.voucher_number}
@@ -347,7 +347,7 @@ export default function EditCashVoucherPage({ params }) {
                     />
                   </div>
                   <div className="flex border-b border-gray-800">
-                    <div className="px-3 py-2 text-sm font-semibold bg-amber-100 w-24">PROJECT:</div>
+                    <div className="px-3 py-2 text-sm font-semibold bg-white w-24">PROJECT:</div>
                     <select
                       value={formData.project_number}
                       onChange={(e) => setFormData(prev => ({ ...prev, project_number: e.target.value }))}
@@ -362,7 +362,7 @@ export default function EditCashVoucherPage({ params }) {
                     </select>
                   </div>
                   <div className="flex">
-                    <div className="px-3 py-2 text-sm font-semibold bg-amber-100 w-24">PAID TO:</div>
+                    <div className="px-3 py-2 text-sm font-semibold bg-white w-24">PAID TO:</div>
                     <select
                       value={formData.paid_to}
                       onChange={(e) => setFormData(prev => ({ ...prev, paid_to: e.target.value }))}
@@ -383,7 +383,7 @@ export default function EditCashVoucherPage({ params }) {
               <div className="border-b-2 border-gray-800">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-amber-100">
+                    <tr className="bg-white">
                       <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-14">SR. NO.</th>
                       <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-28">BILL DATE</th>
                       <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-24">BILL NO.</th>
@@ -525,7 +525,7 @@ export default function EditCashVoucherPage({ params }) {
                     </label>
                   </div>
                 </div>
-                <div className="w-40 p-3 border-r-2 border-gray-800 bg-amber-100">
+                <div className="w-40 p-3 border-r-2 border-gray-800 bg-white">
                   <div className="text-xs font-semibold text-gray-600">TOTAL</div>
                   <div className="text-lg font-bold text-gray-900">{formatCurrency(formData.total_amount)}</div>
                 </div>

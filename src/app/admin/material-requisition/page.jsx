@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import { 
   ClipboardDocumentListIcon,
   MagnifyingGlassIcon,
@@ -136,7 +135,7 @@ export default function MaterialRequisitionPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-        <Sidebar />
+
         <div className="flex-1 flex flex-col">
           <Navbar />
           <div className="flex-1 flex items-center justify-center">
@@ -149,7 +148,7 @@ export default function MaterialRequisitionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-      <Sidebar />
+
       <div className="flex-1 flex flex-col">
         <Navbar />
         
