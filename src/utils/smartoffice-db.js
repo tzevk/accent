@@ -6,16 +6,16 @@
 import sql from 'mssql';
 
 const config = {
-  server: '172.16.1.40',
-  port: 84,
-  database: 'SmartOfficedb',
-  user: 'sa',
-  password: 'Biomax@123',
+  server: process.env.SMARTOFFICE_SERVER || '172.16.1.40',
+  port: parseInt(process.env.SMARTOFFICE_PORT || '84'),
+  database: process.env.SMARTOFFICE_DATABASE || 'SmartOfficedb',
+  user: process.env.SMARTOFFICE_USER || 'sa',
+  password: process.env.SMARTOFFICE_PASSWORD || 'Biomax@123',
   options: {
     encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
-    instanceName: 'SQLEXPRESS',
+    instanceName: process.env.SMARTOFFICE_INSTANCE || 'SQLEXPRESS',
   },
   pool: {
     max: 5,
