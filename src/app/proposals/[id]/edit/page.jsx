@@ -1272,6 +1272,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
 
   const [disciplineOptions, setDisciplineOptions] = useState([]);
   const [activityOptions, setActivityOptions] = useState([]);
+  const [editingItemId, setEditingItemId] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1300,20 +1301,19 @@ function CommercialsForm({ proposalData, setProposalData }) {
   }, [items, setProposalData]);
 
   const addItem = () => {
-    setItems(prev => [
-      ...prev,
-      {
-        id: Date.now(),
-        sr_no: prev.length + 1,
-        activities: '',
-        scope_of_work: '',
-        man_hours: 0,
-        man_hour_rate: 0,
-        total_amount: 0,
-        discipline_id: '',
-        activity_ids: [],
-      },
-    ]);
+    const newItem = {
+      id: Date.now(),
+      sr_no: items.length + 1,
+      activities: '',
+      scope_of_work: '',
+      man_hours: 0,
+      man_hour_rate: 0,
+      total_amount: 0,
+      discipline_id: '',
+      activity_ids: [],
+    };
+    setItems(prev => [...prev, newItem]);
+    setEditingItemId(newItem.id);
   };
 
   const removeItem = (id) => {
@@ -1322,6 +1322,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
         .filter(i => i.id !== id)
         .map((i, idx) => ({ ...i, sr_no: idx + 1 }))
     );
+    if (editingItemId === id) setEditingItemId(null);
   };
 
   const updateItem = (id, field, value) => {
@@ -1344,6 +1345,19 @@ function CommercialsForm({ proposalData, setProposalData }) {
         return updated;
       })
     );
+  };
+
+  const getDisciplineName = (disciplineId) => {
+    const disc = disciplineOptions.find(d => String(d.id) === String(disciplineId));
+    return disc ? (disc.function_name || disc.name || disc.label || disc.id) : '—';
+  };
+
+  const getActivityNames = (activityIds) => {
+    if (!activityIds?.length) return '—';
+    return activityOptions
+      .filter(a => activityIds.map(String).includes(String(a.id)))
+      .map(a => a.activity_name)
+      .join(', ') || '—';
   };
 
   const totalManHours = useMemo(
@@ -1378,32 +1392,39 @@ function CommercialsForm({ proposalData, setProposalData }) {
         </button>
       </div>
 
-      {/* Commercial Items Cards */}
-      <div className="space-y-4 mb-6">
-        {items.map((item, index) => (
-          <div key={item.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-            {/* Card Header */}
+      {/* Edit Form - shown when editing an item */}
+      {editingItemId && (() => {
+        const item = items.find(i => i.id === editingItemId);
+        if (!item) return null;
+        return (
+          <div className="mb-6 bg-white rounded-xl border-2 border-green-500 shadow-lg overflow-hidden">
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-5 py-3 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center text-sm font-bold">
                   {item.sr_no}
                 </span>
                 <span className="font-medium text-gray-700">
-                  {item.activity_ids?.length 
-                    ? activityOptions.filter(a => item.activity_ids.map(String).includes(String(a.id))).map(a => a.activity_name).join(', ') || 'Commercial Item'
-                    : 'Commercial Item'}
+                  {editingItemId === item.id && items.indexOf(item) === items.length - 1 ? 'New Commercial Item' : 'Edit Commercial Item'}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => removeItem(item.id)}
-                className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingItemId(null)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <CheckIcon className="h-4 w-4" />
+                  Done
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeItem(item.id)}
+                  className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-
-            {/* Card Body */}
             <div className="p-5">
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 {/* Discipline */}
@@ -1433,7 +1454,6 @@ function CommercialsForm({ proposalData, setProposalData }) {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {/* Selected Activities Display */}
                       {item.activity_ids?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
                           {activityOptions
@@ -1455,7 +1475,6 @@ function CommercialsForm({ proposalData, setProposalData }) {
                             ))}
                         </div>
                       )}
-                      {/* Dropdown to Add Activities */}
                       <select
                         value=""
                         onChange={e => {
@@ -1520,47 +1539,119 @@ function CommercialsForm({ proposalData, setProposalData }) {
               </div>
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-100">
-              <ClipboardDocumentListIcon className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Items</p>
-              <p className="text-2xl font-bold text-gray-900">{items.length}</p>
-            </div>
-          </div>
+      {/* Commercial Items Table */}
+      {items.length > 0 && (
+        <div className="mb-6 overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                <th className="py-3 px-4 text-left font-semibold text-gray-700 w-16">Sr.</th>
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">Discipline</th>
+                <th className="py-3 px-4 text-left font-semibold text-gray-700">Activities</th>
+                <th className="py-3 px-4 text-right font-semibold text-gray-700 w-28">Man-Hours</th>
+                <th className="py-3 px-4 text-right font-semibold text-gray-700 w-32">Rate (₹/hr)</th>
+                <th className="py-3 px-4 text-right font-semibold text-gray-700 w-36">Total (₹)</th>
+                <th className="py-3 px-4 text-center font-semibold text-gray-700 w-24">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {items.map((item) => (
+                <tr 
+                  key={item.id} 
+                  className={`hover:bg-gray-50 transition-colors ${editingItemId === item.id ? 'bg-green-50' : ''}`}
+                >
+                  <td className="py-3 px-4">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-100 text-green-800 text-xs font-bold">
+                      {item.sr_no}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-gray-900">
+                    {getDisciplineName(item.discipline_id)}
+                  </td>
+                  <td className="py-3 px-4 text-gray-900">
+                    <div className="max-w-xs">
+                      {item.activity_ids?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {activityOptions
+                            .filter(a => (item.activity_ids || []).map(String).includes(String(a.id)))
+                            .map(a => (
+                              <span key={a.id} className="inline-flex px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                                {a.activity_name}
+                              </span>
+                            ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-right font-medium text-gray-900">
+                    {(parseFloat(item.man_hours) || 0).toFixed(1)}
+                  </td>
+                  <td className="py-3 px-4 text-right font-medium text-gray-900">
+                    ₹ {(parseFloat(item.man_hour_rate) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="py-3 px-4 text-right font-bold text-green-700">
+                    ₹ {(parseFloat(item.total_amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          editingItemId === item.id 
+                            ? 'bg-green-600 text-white' 
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        title={editingItemId === item.id ? 'Close edit' : 'Edit item'}
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                        title="Remove item"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {/* Table Footer with Totals */}
+            <tfoot>
+              <tr className="bg-gradient-to-r from-green-50 to-emerald-50 border-t-2 border-green-200">
+                <td colSpan="3" className="py-3 px-4 text-right font-semibold text-gray-700">
+                  Total ({items.length} item{items.length !== 1 ? 's' : ''})
+                </td>
+                <td className="py-3 px-4 text-right font-bold text-gray-900">
+                  {totalManHours.toFixed(1)}
+                </td>
+                <td className="py-3 px-4 text-right font-medium text-gray-500">—</td>
+                <td className="py-3 px-4 text-right font-bold text-green-700 text-lg">
+                  ₹ {totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </td>
+                <td className="py-3 px-4"></td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-100">
-              <ClockIcon className="h-5 w-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Man-Hours</p>
-              <p className="text-2xl font-bold text-gray-900">{totalManHours.toFixed(1)}</p>
-            </div>
-          </div>
+      )}
+
+      {/* Empty State */}
+      {items.length === 0 && (
+        <div className="mb-6 text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+          <CurrencyDollarIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+          <p className="text-gray-500 text-sm mb-2">No commercial items added yet</p>
+          <p className="text-gray-400 text-xs">Click Add Item to add a commercial breakdown item</p>
         </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-green-100">
-              <CurrencyDollarIcon className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Amount</p>
-              <p className="text-2xl font-bold text-green-700">₹ {totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -2483,96 +2574,65 @@ function Text({ label, value, onChange = () => {}, placeholder = '', required = 
 }
 
 function ProposalIdField({ label, value, onChange }) {
-  // value is full proposal_id string. We split into three parts:
-  //   prefix (read-only) e.g. ATSPL/Q/MM/YYYY/
-  //   series (editable) e.g. 076
-  //   suffix (editable) last 3 digits
-  const defaultPrefix = useCallback(() => {
+  // Auto-generate prefix up to month: ATSPL/Q/MM/
+  // User can edit the suffix part after the prefix
+  const generatePrefix = useCallback(() => {
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const next = year + 1;
-    return `ATSPL/Q/${month}/${year}-${next}/`;
+    return `ATSPL/Q/${month}/`;
   }, []);
 
-  const defaultSeries = '076';
-
-  const splitId = useCallback((val) => {
-    if (!val) return { prefix: defaultPrefix(), series: defaultSeries };
+  const [prefix] = useState(generatePrefix());
+  
+  // Extract suffix from value (everything after the auto-generated prefix pattern)
+  const extractSuffix = useCallback((val) => {
+    if (!val) return '';
     const s = String(val).trim();
-    // Legacy numeric id like P<digits> (e.g. P123456789) -> try to extract a 3-digit series from digits
-    const legacyMatch = s.match(/^P(\d+)$/i);
-    if (legacyMatch) {
-      const digits = legacyMatch[1];
-      const series = digits.length >= 6 ? digits.slice(-6, -3) : defaultSeries;
-      return { prefix: defaultPrefix(), series };
+    // Match pattern like ATSPL/Q/MM/ and get everything after
+    const match = s.match(/^ATSPL\/Q\/\d{2}\/(.*)$/);
+    if (match) {
+      return match[1] || '';
     }
-
-    // Try to match ATSPL-style with series (3 digits) at the end
-    const m = s.match(/^(.*?)(\d{3})$/);
-    if (m) {
-      const prefixPart = m[1];
-      const series = m[2] || defaultSeries;
-      const prefix = String(prefixPart).includes('ATSPL') ? prefixPart : defaultPrefix();
-      return { prefix, series };
+    // If it doesn't match our pattern, check if it starts with something like ATSPL
+    if (s.startsWith('ATSPL')) {
+      // Try to find the last slash and get content after it
+      const lastSlashIndex = s.lastIndexOf('/');
+      if (lastSlashIndex !== -1 && lastSlashIndex < s.length - 1) {
+        return s.substring(lastSlashIndex + 1);
+      }
     }
+    return '';
+  }, []);
 
-    // Fallback: take last up to 3 digits as series
-    const fallbackMatch = s.match(/^(.*?)(\d{1,})$/);
-    if (fallbackMatch) {
-      const allDigits = fallbackMatch[2];
-      const series = allDigits.slice(-3) || defaultSeries;
-      const prefixPart = s.slice(0, s.length - series.length) || defaultPrefix();
-      const prefix = String(prefixPart).includes('ATSPL') ? prefixPart : defaultPrefix();
-      return { prefix, series };
-    }
+  const [suffix, setSuffix] = useState(() => extractSuffix(value));
 
-    return { prefix: defaultPrefix(), series: defaultSeries };
-  }, [defaultPrefix, defaultSeries]);
-
-  const { prefix: initialPrefix, series: initialSeries } = splitId(value);
-  const [pref, setPref] = useState(initialPrefix || defaultPrefix());
-  const [series, setSeries] = useState(initialSeries || defaultSeries);
-
-  // keep local state in sync if parent value changes
+  // Keep suffix in sync if parent value changes
   useEffect(() => {
-    const s = splitId(value);
-    setPref(s.prefix || defaultPrefix());
-    setSeries(s.series || defaultSeries);
-  }, [value, splitId, defaultPrefix]);
+    const extracted = extractSuffix(value);
+    setSuffix(extracted);
+  }, [value, extractSuffix]);
 
-  const updateParent = (nextPref, nextSeries) => {
-    const padSeries = String(nextSeries || '').padStart(3, '0');
-    onChange(`${nextPref || defaultPrefix()}${padSeries}`);
+  const handleSuffixChange = (newSuffix) => {
+    setSuffix(newSuffix);
+    onChange(`${prefix}${newSuffix}`);
   };
 
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center">
+        <span className="px-3 py-2 bg-gray-100 border border-r-0 border-gray-300 rounded-l-lg text-gray-600 text-sm whitespace-nowrap">
+          {prefix}
+        </span>
         <input
           type="text"
-          value={pref}
-          disabled
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-l bg-gray-100 cursor-not-allowed"
+          value={suffix}
+          onChange={e => handleSuffixChange(e.target.value)}
+          placeholder="Enter ID suffix"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
         />
-        <input
-          type="number"
-          min="0"
-          max="999"
-          value={series}
-          onChange={e => {
-            const v = e.target.value.replace(/^0+(?=\d)/, '');
-            const cleaned = v === '' ? '' : String(Math.max(0, Math.min(999, Number(v))));
-            setSeries(cleaned);
-          }}
-          onBlur={() => updateParent(pref, series)}
-          className="w-20 px-3 py-2 border-t border-b border-gray-300 text-center"
-          aria-label="Proposal series (3 digits)"
-        />
-        {/* suffix removed — server will assign final sequence */}
       </div>
-      <p className="text-xs text-gray-500 mt-1">Format: {defaultPrefix()}<span className="font-mono">NNN</span> — edit the 3-digit series</p>
+      <p className="text-xs text-gray-500 mt-1">Auto-generated prefix: {prefix} — enter your suffix</p>
     </div>
   );
 }

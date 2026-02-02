@@ -1,5 +1,4 @@
 import { dbConnect } from '@/utils/database';
-import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 
 /**
@@ -13,6 +12,7 @@ export async function GET(request) {
     let user;
     try {
       user = await getCurrentUser(request);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (authErr) {
       return new Response('Authentication failed', { status: 500 });
     }

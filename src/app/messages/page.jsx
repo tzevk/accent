@@ -827,40 +827,33 @@ export default function MessagesPage() {
               </div>
             </div>
             
-            {/* Horizontal Icon-Only Filters */}
+            {/* Filter Tabs with Labels */}
             <div className="px-2 py-1.5 border-b border-gray-100">
-              <div className="flex items-center justify-around bg-gray-100 rounded-lg p-1">
+              <div className="flex items-center gap-1">
                 {[
-                  { id: 'all', label: 'All Chats', icon: InboxIcon, iconSolid: InboxIconSolid, count: conversations.filter(c => !archivedConversations.has(c.id)).length },
-                  { id: 'unread', label: 'Unread', icon: EnvelopeIcon, iconSolid: EnvelopeIconSolid, count: unreadCount },
-                  { id: 'flagged', label: 'Starred', icon: StarIcon, iconSolid: StarIconSolid, count: flaggedConversations.size },
-                  { id: 'archived', label: 'Archived', icon: ArchiveBoxIcon, iconSolid: ArchiveBoxIconSolid, count: archivedConversations.size }
-                ].map(folder => {
-                  const isActive = conversationFilter === folder.id;
-                  const Icon = isActive ? folder.iconSolid : folder.icon;
+                  { id: 'all', label: 'All', count: conversations.filter(c => !archivedConversations.has(c.id)).length },
+                  { id: 'unread', label: 'Unread', count: unreadCount },
+                  { id: 'flagged', label: 'Starred', count: flaggedConversations.size },
+                  { id: 'archived', label: 'Archived', count: archivedConversations.size }
+                ].map(tab => {
+                  const isActive = conversationFilter === tab.id;
                   
                   return (
                     <button
-                      key={folder.id}
-                      onClick={() => setConversationFilter(folder.id)}
-                      className={`relative flex-1 flex items-center justify-center p-2.5 rounded-md transition-all ${
+                      key={tab.id}
+                      onClick={() => setConversationFilter(tab.id)}
+                      className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
                         isActive 
-                          ? 'bg-white text-[#7F2387] shadow-sm' 
-                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                          ? 'bg-[#7F2387] text-white' 
+                          : 'text-gray-600 hover:bg-gray-100'
                       }`}
-                      title={folder.label}
                     >
-                      <Icon className="h-5 w-5" />
-                      {/* Badge */}
-                      {folder.count > 0 && (
-                        <span className={`absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full flex items-center justify-center ${
-                          isActive 
-                            ? 'bg-[#7F2387] text-white' 
-                            : folder.id === 'unread' 
-                              ? 'bg-[#7F2387] text-white'
-                              : 'bg-gray-300 text-gray-700'
+                      {tab.label}
+                      {tab.count > 0 && (
+                        <span className={`ml-1 ${
+                          isActive ? 'text-white/80' : 'text-gray-400'
                         }`}>
-                          {folder.count > 99 ? '99+' : folder.count}
+                          ({tab.count > 99 ? '99+' : tab.count})
                         </span>
                       )}
                     </button>

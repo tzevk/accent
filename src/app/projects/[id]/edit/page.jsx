@@ -3122,42 +3122,14 @@ function EditProjectForm() {
                             </div>
                             <div className="space-y-2">
                               <label className="block text-xs font-bold" style={{ color: '#475569', letterSpacing: '0.01em' }}>
-                                Company <span style={{ color: '#ef4444' }}>*</span>
+                                Client Name <span style={{ color: '#ef4444' }}>*</span>
                               </label>
-                              <select
-                                name="company_id"
-                                value={form.company_id || ''}
-                                onChange={(e) => {
-                                  const companyId = e.target.value;
-                                  const company = companies.find(c => c.id == companyId || c.company_id == companyId);
-                                  setForm(prev => ({
-                                    ...prev,
-                                    company_id: companyId,
-                                    client_name: company ? company.company_name : prev.client_name
-                                  }));
-                                }}
-                                disabled
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed"
-                                style={{
-                                  background: 'rgba(249, 250, 251, 0.95)',
-                                  border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#6b7280',
-                                  boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
-                                }}
-                              >
-                                <option value="">Select Company</option>
-                                {companies.map(company => (
-                                  <option key={company.id || company.company_id} value={company.id || company.company_id}>
-                                    {company.company_name}
-                                  </option>
-                                ))}
-                              </select>
                               <input 
                                 type="text" 
                                 name="client_name" 
                                 value={form.client_name} 
                                 onChange={handleChange} 
-                                placeholder="Or enter company name manually"
+                                placeholder="Client name"
                                 readOnly
                                 className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
                                 style={{
@@ -3817,8 +3789,7 @@ function EditProjectForm() {
                             value={teamMemberSearch}
                             onChange={(e) => setTeamMemberSearch(e.target.value)}
                             placeholder="Search users by name, email, or department..."
-                            readOnly
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 cursor-not-allowed"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-[#7F2487]"
                           />
                         </div>
 
