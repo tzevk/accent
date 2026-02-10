@@ -118,12 +118,21 @@ export async function GET(request) {
     if (hasCompanyId) {
       try {
         const [r] = await db.execute(`
-          SELECT p.*, c.company_name
+          SELECT p.*, 
+                 c.company_name AS linked_company_name,
+                 prop.client_name AS proposal_client_name,
+                 prop_c.company_name AS proposal_company_name
           FROM projects p
           LEFT JOIN companies c ON p.company_id = c.id
+          LEFT JOIN proposals prop ON p.proposal_id = prop.id
+          LEFT JOIN companies prop_c ON prop.company_id = prop_c.id
           ORDER BY p.created_at DESC
         `);
-        rows = r;
+        // Merge client_name: prefer p.client_name, then linked_company_name, then proposal info
+        rows = r.map(row => ({
+          ...row,
+          client_name: row.client_name || row.linked_company_name || row.proposal_client_name || row.proposal_company_name || null
+        }));
       } catch (joinErr) {
         // If the join still fails due to schema drift, log and fallback
         if (String(joinErr?.message || '').includes('Unknown column') && String(joinErr?.message || '').includes('company_id')) {

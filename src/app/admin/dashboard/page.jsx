@@ -23,6 +23,7 @@ import {
   CalendarDaysIcon,
   UsersIcon
 } from '@heroicons/react/24/outline';
+import UpcomingFollowups from '@/components/dashboard/UpcomingFollowups';
 
 /**
  * Admin Dashboard - Protected route
@@ -61,28 +62,25 @@ export default function AdminDashboard() {
 
   // Check authorization and start fetching data as soon as possible
   useEffect(() => {
+    // If session context already has user data (from cache), use it immediately
+    if (user && authenticated) {
+      const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+      if (isSuperAdmin) {
+        setIsAuthorized(true);
+        fetchStats();
+        return;
+      } else {
+        // Not super admin - redirect
+        router.replace('/user/dashboard');
+        return;
+      }
+    }
+    
     // Wait for session to load
     if (sessionLoading) return;
 
-    // Session loaded but not authenticated - check cookies as fallback
-    // This handles the race condition after login where /api/session returns 401
+    // Session loaded but not authenticated - let middleware handle redirect
     if (!authenticated || !user) {
-      const hasCookies = typeof document !== 'undefined' && 
-        document.cookie.includes('auth=') && 
-        document.cookie.includes('user_id=');
-      
-      if (hasCookies) {
-        // Cookies exist - assume authorized and proceed
-        // Middleware will protect if actually unauthorized
-        const isSuperAdminCookie = document.cookie.includes('is_super_admin=1') || 
-                                    document.cookie.includes('is_super_admin=true');
-        if (isSuperAdminCookie) {
-          setIsAuthorized(true);
-          fetchStats();
-          return;
-        }
-      }
-      // No cookies and not authenticated - let middleware handle redirect
       return;
     }
 
@@ -503,6 +501,11 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Follow-ups Section */}
+        <div className="mb-6">
+          <UpcomingFollowups limit={8} />
         </div>
 
         {/* Projects Overview */}

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { fetchJSON } from '@/utils/http';
-import { clearSessionCache } from '@/context/SessionContext';
+import { clearSessionCache, setSessionData } from '@/context/SessionContext';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { Poppins } from 'next/font/google';
 
@@ -64,17 +64,23 @@ export default function SignIn() {
       });
 
       if (data?.success) {
-        // Clear cached session data to ensure fresh session is loaded
-        clearSessionCache();
+        // Pre-populate session cache with user data to avoid refetch delay
+        // This allows dashboard to render immediately without waiting for /api/session
+        if (data.user) {
+          setSessionData(data.user);
+        } else {
+          // If no user data in response, clear cache so it fetches fresh
+          clearSessionCache();
+        }
         
-        // Redirect directly based on API response - no intermediate route
-        // Do NOT read cookies or check session - trust the API response
-        // Wrap in microtask to ensure cookies are fully set before navigation
-        setTimeout(() => {
-          router.replace(
-            data.is_super_admin ? '/admin/dashboard' : '/user/dashboard'
-          );
-        }, 0);
+        // Small delay to ensure cookies are fully set before navigation
+        // This prevents race condition where dashboard loads before cookies exist
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Navigate to appropriate dashboard
+        router.replace(
+          data.is_super_admin ? '/admin/dashboard' : '/user/dashboard'
+        );
       }
       else setError(data?.message || 'Invalid credentials');
     } catch (e) {

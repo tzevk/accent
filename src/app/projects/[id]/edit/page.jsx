@@ -3090,12 +3090,11 @@ function EditProjectForm() {
                                 value={form.project_id} 
                                 onChange={handleChange} 
                                 placeholder="Enter project number"
-                                readOnly
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300" 
                                 style={{
-                                  background: 'rgba(249, 250, 251, 0.95)',
+                                  background: 'rgba(255, 255, 255, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#6b7280',
+                                  color: '#1e293b',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                               />
@@ -3129,13 +3128,12 @@ function EditProjectForm() {
                                 name="client_name" 
                                 value={form.client_name} 
                                 onChange={handleChange} 
-                                placeholder="Client name"
-                                readOnly
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
+                                placeholder="Enter client name"
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300" 
                                 style={{
-                                  background: 'rgba(249, 250, 251, 0.95)',
+                                  background: 'rgba(255, 255, 255, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#6b7280',
+                                  color: '#1e293b',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                               />

@@ -4,396 +4,125 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { fetchJSON } from '@/utils/http';
 import Navbar from '@/components/Navbar';
-import {
-  PaperAirplaneIcon,
-  MagnifyingGlassIcon,
-  PaperClipIcon,
-  DocumentIcon,
-  XMarkIcon,
-  ArrowPathIcon,
-  ChevronLeftIcon,
-  ArrowDownTrayIcon,
-  PencilSquareIcon,
-  UserGroupIcon,
-  ChatBubbleLeftRightIcon,
-  InboxIcon,
-  EnvelopeIcon,
-  StarIcon,
-  ArchiveBoxIcon,
-  LinkIcon,
-  ListBulletIcon,
-  CodeBracketIcon,
-  PhotoIcon,
-  TableCellsIcon,
-  FaceSmileIcon,
-  ChevronDownIcon
-} from '@heroicons/react/24/outline';
-import { 
-  ChatBubbleLeftRightIcon as ChatBubbleLeftRightIconSolid,
-  InboxIcon as InboxIconSolid,
-  EnvelopeIcon as EnvelopeIconSolid,
-  StarIcon as StarIconSolid,
-  ArchiveBoxIcon as ArchiveBoxIconSolid
-} from '@heroicons/react/24/solid';
 
 export default function MessagesPage() {
   const { user, loading: authLoading } = useSessionRBAC();
   
-  // Conversations state (left pane)
+  // State
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
-  const [conversationsLoading, setConversationsLoading] = useState(true);
-  const [conversationFilter, setConversationFilter] = useState('all'); // all, unread, flagged, archived
-  const [conversationSearch, setConversationSearch] = useState('');
-  
-  // Messages state (center pane)
   const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  
-  // Users for compose
   const [users, setUsers] = useState([]);
+  const [activeFolder, setActiveFolder] = useState('inbox');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [inboxTab, setInboxTab] = useState('focused');
+  const [expandedFolders, setExpandedFolders] = useState({ favorites: true, folders: true });
   
   // Compose state
   const [showCompose, setShowCompose] = useState(false);
-  const [messageText, setMessageText] = useState('');
-  const [messageSubject, setMessageSubject] = useState('');
+  const [composeTo, setComposeTo] = useState([]);
+  const [composeCc, setComposeCc] = useState([]);
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
   const [sending, setSending] = useState(false);
-  const [attachments, setAttachments] = useState([]);
   const [recipientSearch, setRecipientSearch] = useState('');
-  const [toRecipients, setToRecipients] = useState([]);
+  const [showCc, setShowCc] = useState(false);
   
-  // UI state
-  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [flaggedConversations, setFlaggedConversations] = useState(new Set());
-  const [archivedConversations, setArchivedConversations] = useState(new Set());
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showTablePicker, setShowTablePicker] = useState(false);
+  // Reply state
+  const [replyText, setReplyText] = useState('');
+  const [replyMode, setReplyMode] = useState(null);
   
-  // Rich text editor state
-  const [activeFormats, setActiveFormats] = useState({
-    bold: false,
-    italic: false,
-    underline: false,
-  });
-  const [selectedFont, setSelectedFont] = useState('Calibri');
-  const [selectedFontSize, setSelectedFontSize] = useState('11');
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
-  const [currentTextColor, setCurrentTextColor] = useState('#000000');
-  const [currentHighlightColor, setCurrentHighlightColor] = useState('#ffff00');
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
-  
-  const fileInputRef = useRef(null);
-  const replyFileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const replyInputRef = useRef(null);
-  const composeEditorRef = useRef(null);
-  const replyEditorRef = useRef(null);
-  const fontDropdownBtnRef = useRef(null);
-  const fontSizeDropdownBtnRef = useRef(null);
-  const colorPickerBtnRef = useRef(null);
-  const highlightPickerBtnRef = useRef(null);
 
-  // Font options
-  const fontOptions = ['Arial', 'Calibri', 'Georgia', 'Helvetica', 'Times New Roman', 'Verdana', 'Courier New'];
-  const fontSizeOptions = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '36'];
-  const colorOptions = ['#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#efefef', '#f3f3f3', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff'];
-  
-  // Emoji options
-  const emojiOptions = ['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😍', '🥰', '😘', '😋', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😔', '😢', '😭', '😤', '😠', '👍', '👎', '👏', '🙏', '🤝', '💪', '✨', '🎉', '🔥', '❤️', '💯'];
-
-  // Helper function to get dropdown position from button
-  const getDropdownPosition = (buttonRef, openAbove = false) => {
-    if (buttonRef?.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      return {
-        top: openAbove ? rect.top - 8 : rect.bottom + 4,
-        left: rect.left,
-        openAbove
-      };
-    }
-    return { top: 0, left: 0, openAbove };
-  };
-
-  // Rich text formatting functions
-  const execCommand = (command, value = null) => {
-    document.execCommand(command, false, value);
-    updateActiveFormats();
-  };
-
-  const updateActiveFormats = () => {
-    setActiveFormats({
-      bold: document.queryCommandState('bold'),
-      italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline'),
-    });
-  };
-
-  const handleFormat = (format) => {
-    execCommand(format);
-  };
-
-  const handleFontChange = (font) => {
-    execCommand('fontName', font);
-    setSelectedFont(font);
-    setShowFontDropdown(false);
-  };
-
-  const handleFontSizeChange = (size) => {
-    // Convert to HTML font size (1-7)
-    const htmlSize = Math.min(7, Math.max(1, Math.floor(parseInt(size) / 4)));
-    execCommand('fontSize', htmlSize);
-    setSelectedFontSize(size);
-    setShowFontSizeDropdown(false);
-  };
-
-  const handleTextColor = (color) => {
-    execCommand('foreColor', color);
-    setCurrentTextColor(color);
-    setShowColorPicker(false);
-  };
-
-  const handleHighlightColor = (color) => {
-    execCommand('hiliteColor', color);
-    setCurrentHighlightColor(color);
-    setShowHighlightPicker(false);
-  };
-
-  const handleInsertLink = () => {
-    const url = prompt('Enter URL:');
-    if (url) {
-      execCommand('createLink', url);
-    }
-  };
-
-  const handleInsertList = (type) => {
-    execCommand(type === 'bullet' ? 'insertUnorderedList' : 'insertOrderedList');
-  };
-
-  const handleInsertEmoji = (emoji) => {
-    execCommand('insertText', emoji);
-    setShowEmojiPicker(false);
-  };
-
-  const handleInsertTable = (rows, cols) => {
-    let tableHtml = '<table style="border-collapse: collapse; width: 100%; margin: 8px 0;">';
-    for (let i = 0; i < rows; i++) {
-      tableHtml += '<tr>';
-      for (let j = 0; j < cols; j++) {
-        tableHtml += '<td style="border: 1px solid #d1d5db; padding: 8px; min-width: 50px;">&nbsp;</td>';
-      }
-      tableHtml += '</tr>';
-    }
-    tableHtml += '</table>';
-    execCommand('insertHTML', tableHtml);
-    setShowTablePicker(false);
-  };
-
-  const getEditorContent = (editorRef) => {
-    if (editorRef?.current) {
-      return editorRef.current.innerHTML;
-    }
-    return messageText;
-  };
-
-  const getEditorText = (editorRef) => {
-    if (editorRef?.current) {
-      return editorRef.current.innerText || editorRef.current.textContent;
-    }
-    return messageText;
-  };
-
-  const clearEditor = (editorRef) => {
-    if (editorRef?.current) {
-      editorRef.current.innerHTML = '';
-    }
-    setMessageText('');
-  };
-
-  // Handle keyboard shortcuts for formatting
-  const handleEditorKeyDown = (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      switch (e.key.toLowerCase()) {
-        case 'b':
-          e.preventDefault();
-          handleFormat('bold');
-          break;
-        case 'i':
-          e.preventDefault();
-          handleFormat('italic');
-          break;
-        case 'u':
-          e.preventDefault();
-          handleFormat('underline');
-          break;
-        case 'k':
-          e.preventDefault();
-          handleInsertLink();
-          break;
-        default:
-          break;
-      }
-    }
-  };
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (!e.target.closest('[data-dropdown]')) {
-        setShowFontDropdown(false);
-        setShowFontSizeDropdown(false);
-        setShowColorPicker(false);
-        setShowHighlightPicker(false);
-        setShowEmojiPicker(false);
-        setShowTablePicker(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
-  // Fetch conversations list
+  // Fetch conversations
   const fetchConversations = useCallback(async () => {
     if (!user?.id) return;
-    
+    setLoading(true);
     try {
-      setConversationsLoading(true);
-      
-      // Fetch all messages and group by conversation
-      const [inboxRes, sentRes] = await Promise.all([
-        fetchJSON('/api/messages?type=inbox&limit=500'),
-        fetchJSON('/api/messages?type=sent&limit=500')
-      ]);
-      
-      const allMessages = [];
-      if (inboxRes.success) {
-        allMessages.push(...(inboxRes.data?.messages || []));
-      }
-      if (sentRes.success) {
-        allMessages.push(...(sentRes.data?.messages || []));
-      }
-      
-      // Remove duplicates and group by conversation_id
-      const uniqueMessages = Array.from(new Map(allMessages.map(m => [m.id, m])).values());
-      const conversationMap = new Map();
-      
-      uniqueMessages.forEach(msg => {
-        const convId = msg.conversation_id || `legacy_${Math.min(msg.sender_id, msg.receiver_id || 0)}_${Math.max(msg.sender_id, msg.receiver_id || 0)}`;
-        
-        if (!conversationMap.has(convId)) {
-          conversationMap.set(convId, {
-            id: convId,
-            conversation_id: msg.conversation_id,
-            messages: [],
-            participants: new Set(),
-            participantNames: new Map(),
-            lastMessage: null,
-            unreadCount: 0,
-            type: 'direct' // Could be 'group' or 'project' in future
-          });
-        }
-        
-        const conv = conversationMap.get(convId);
-        conv.messages.push(msg);
-        
-        // Track participants
-        if (msg.sender_id) {
+      const res = await fetchJSON(`/api/messages?type=inbox&user_id=${user.id}`);
+      if (res.messages) {
+        const convMap = new Map();
+        res.messages.forEach(msg => {
+          const convId = msg.conversation_id || `direct-${msg.sender_id}-${msg.receiver_id}`;
+          if (!convMap.has(convId)) {
+            convMap.set(convId, {
+              id: convId,
+              messages: [],
+              participants: new Set(),
+              lastMessage: msg,
+              unreadCount: 0
+            });
+          }
+          const conv = convMap.get(convId);
+          conv.messages.push(msg);
           conv.participants.add(msg.sender_id);
-          if (msg.sender_name) conv.participantNames.set(msg.sender_id, msg.sender_name);
-        }
-        if (msg.receiver_id) {
           conv.participants.add(msg.receiver_id);
-          if (msg.receiver_name) conv.participantNames.set(msg.receiver_id, msg.receiver_name);
-        }
+          if (!msg.read_status && msg.receiver_id === user.id) {
+            conv.unreadCount++;
+          }
+          if (new Date(msg.created_at) > new Date(conv.lastMessage.created_at)) {
+            conv.lastMessage = msg;
+          }
+        });
         
-        // Track unread (messages TO current user that are unread)
-        if (msg.sender_id !== user.id && !msg.read_status) {
-          conv.unreadCount++;
-        }
-      });
-      
-      // Process conversations
-      const convList = Array.from(conversationMap.values()).map(conv => {
-        // Sort messages by date
-        conv.messages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        conv.lastMessage = conv.messages[0];
+        const convList = Array.from(convMap.values())
+          .map(conv => ({
+            ...conv,
+            displayName: conv.lastMessage.sender_id === user.id 
+              ? conv.lastMessage.receiver_name 
+              : conv.lastMessage.sender_name,
+            participantCount: conv.participants.size
+          }))
+          .sort((a, b) => new Date(b.lastMessage.created_at) - new Date(a.lastMessage.created_at));
         
-        // Get other participant name for display
-        const otherParticipants = Array.from(conv.participants).filter(id => id !== user.id);
-        conv.displayName = otherParticipants.length > 0 
-          ? otherParticipants.map(id => conv.participantNames.get(id) || 'Unknown').join(', ')
-          : conv.participantNames.get(user.id) || 'Me';
-        
-        conv.participantCount = conv.participants.size;
-        
-        return conv;
-      });
-      
-      // Sort by last message date
-      convList.sort((a, b) => new Date(b.lastMessage?.created_at || 0) - new Date(a.lastMessage?.created_at || 0));
-      
-      setConversations(convList);
-      
-      // Calculate total unread
-      const totalUnread = convList.reduce((sum, c) => sum + c.unreadCount, 0);
-      setUnreadCount(totalUnread);
-      
+        setConversations(convList);
+      }
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
     } finally {
-      setConversationsLoading(false);
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  // Fetch users for compose (from user master)
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/users/list?limit=1000');
+      const data = await res.json();
+      if (data.data) {
+        setUsers(data.data.filter(u => u.id !== user?.id));
+      }
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
     }
   }, [user?.id]);
 
   // Fetch messages for selected conversation
-  const fetchConversationMessages = useCallback(async (conversation) => {
-    if (!conversation?.conversation_id) {
-      // Use cached messages for legacy conversations
-      const msgs = [...(conversation?.messages || [])];
-      msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      setMessages(msgs);
-      return;
-    }
-    
+  const fetchConversationMessages = useCallback(async (conv) => {
+    if (!conv || !user?.id) return;
+    setMessagesLoading(true);
     try {
-      setMessagesLoading(true);
-      const res = await fetchJSON(`/api/messages/conversation/${conversation.conversation_id}?limit=100`);
-      
-      if (res.success) {
-        const msgs = res.data?.messages || [];
-        // Sort oldest first for chat display
-        msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        setMessages(msgs);
-      } else {
-        // Fallback to cached messages
-        const msgs = [...(conversation.messages || [])];
-        msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        setMessages(msgs);
+      const otherParticipant = Array.from(conv.participants).find(id => id !== user.id);
+      const res = await fetchJSON(`/api/messages?type=conversation&user_id=${user.id}&other_user_id=${otherParticipant}`);
+      if (res.messages) {
+        setMessages(res.messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+        res.messages.forEach(async (msg) => {
+          if (!msg.read_status && msg.receiver_id === user.id) {
+            try {
+              await fetchJSON(`/api/messages/${msg.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ action: 'read' })
+              });
+            } catch (e) {}
+          }
+        });
       }
     } catch (error) {
-      console.error('Failed to fetch conversation messages:', error);
-      const msgs = [...(conversation?.messages || [])];
-      msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      setMessages(msgs);
+      console.error('Failed to fetch messages:', error);
     } finally {
       setMessagesLoading(false);
-    }
-  }, []);
-
-  // Fetch users for compose
-  const fetchUsers = useCallback(async () => {
-    try {
-      const res = await fetchJSON('/api/users');
-      if (res.success && res.data) {
-        const userList = Array.isArray(res.data) ? res.data : (res.data.users || []);
-        setUsers(userList.filter(u => u.id !== user?.id));
-      }
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
     }
   }, [user?.id]);
 
@@ -404,107 +133,34 @@ export default function MessagesPage() {
     }
   }, [user?.id, fetchConversations, fetchUsers]);
 
-  // Load messages when conversation is selected
   useEffect(() => {
     if (selectedConversation) {
       fetchConversationMessages(selectedConversation);
     }
   }, [selectedConversation, fetchConversationMessages]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const selectConversation = (conv) => {
-    setSelectedConversation(conv);
-    setSelectedMessage(null);
-    setShowCompose(false);
-  };
-
-  const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-
-    // Allowed file extensions
-    const allowedExtensions = [
-      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.xlsm', '.csv',
-      '.ppt', '.pptx', '.txt', '.dwg', '.dxf', '.dgn', '.rvt',
-      '.ifc', '.plt', '.jpg', '.jpeg', '.png', '.webp', '.heic',
-      '.tif', '.tiff', '.zip', '.rar', '.7z', '.dat', '.xml',
-      '.json', '.mpp', '.xer', '.mp3', '.wav', '.mp4', '.mov', '.webm'
-    ];
-
-    try {
-      for (const file of files) {
-        // Check file extension
-        const fileExt = '.' + file.name.split('.').pop().toLowerCase();
-        if (!allowedExtensions.includes(fileExt)) {
-          alert(`File type not allowed: ${file.name}. Please upload files with these extensions: ${allowedExtensions.join(', ')}`);
-          continue;
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('type', 'message-attachment');
-
-        const response = await fetch('/api/messages/attachments', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          setAttachments(prev => [...prev, {
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            url: result.data.file_path,
-            file_name: result.data.file_name,
-            original_name: result.data.original_name,
-            file_path: result.data.file_path,
-            file_type: result.data.file_type,
-            file_size: result.data.file_size
-          }]);
-        } else {
-          alert(result.error || 'Failed to upload file');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to upload file:', error);
-    }
-  };
-
-  const removeAttachment = (index) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // Send new message (compose)
+  // Send message
   const sendMessage = async () => {
-    const content = getEditorContent(composeEditorRef);
-    const textContent = getEditorText(composeEditorRef);
-    
-    if ((!textContent.trim() && attachments.length === 0) || toRecipients.length === 0) return;
-    
+    if (!composeBody.trim() || composeTo.length === 0) return;
     setSending(true);
     try {
-      for (const recipient of toRecipients) {
-        await fetchJSON('/api/messages', {
-          method: 'POST',
-          body: JSON.stringify({
-            receiver_id: recipient.id,
-            body: content,
-            subject: messageSubject || 'No Subject',
-            attachments: attachments.length > 0 ? attachments : []
-          })
-        });
-      }
-
-      clearEditor(composeEditorRef);
-      setMessageSubject('');
-      setAttachments([]);
-      setToRecipients([]);
+      await fetchJSON('/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          receiver_id: composeTo[0].id,
+          subject: composeSubject || '(No Subject)',
+          body: composeBody
+        })
+      });
       setShowCompose(false);
+      setComposeTo([]);
+      setComposeCc([]);
+      setComposeSubject('');
+      setComposeBody('');
       fetchConversations();
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -513,44 +169,22 @@ export default function MessagesPage() {
     }
   };
 
-  // Send reply in conversation
+  // Send reply
   const sendReply = async () => {
-    const content = getEditorContent(replyEditorRef);
-    const textContent = getEditorText(replyEditorRef);
-    
-    if (!textContent.trim() || !selectedConversation) return;
-    
+    if (!replyText.trim() || !selectedConversation) return;
     setSending(true);
     try {
-      // For direct conversations, find the other participant
-      const otherParticipants = Array.from(selectedConversation.participants).filter(id => id !== user.id);
-      const receiverId = otherParticipants[0];
-      
-      if (!receiverId && !selectedConversation.conversation_id) {
-        console.error('No recipient found');
-        return;
-      }
-
-      const payload = {
-        body: content,
-        subject: selectedConversation.lastMessage?.subject || 'Re: Conversation',
-        attachments: attachments.length > 0 ? attachments : []
-      };
-
-      // If we have a conversation_id, use it; otherwise use receiver_id
-      if (selectedConversation.conversation_id) {
-        payload.conversation_id = selectedConversation.conversation_id;
-      } else {
-        payload.receiver_id = receiverId;
-      }
-
+      const otherParticipant = Array.from(selectedConversation.participants).find(id => id !== user.id);
       await fetchJSON('/api/messages', {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          receiver_id: otherParticipant,
+          subject: `Re: ${selectedConversation.lastMessage?.subject || 'Conversation'}`,
+          body: replyText
+        })
       });
-
-      clearEditor(replyEditorRef);
-      setAttachments([]);
+      setReplyText('');
+      setReplyMode(null);
       fetchConversationMessages(selectedConversation);
       fetchConversations();
     } catch (error) {
@@ -560,143 +194,20 @@ export default function MessagesPage() {
     }
   };
 
-  const startNewMessage = () => {
-    setShowCompose(true);
-    setSelectedConversation(null);
-    setSelectedMessage(null);
-    setMessageText('');
-    setMessageSubject('');
-    setAttachments([]);
-    setToRecipients([]);
-    setRecipientSearch('');
-    // Clear compose editor after a tick
-    setTimeout(() => {
-      if (composeEditorRef.current) {
-        composeEditorRef.current.innerHTML = '';
-      }
-    }, 0);
-  };
-
-  const addRecipient = (userToAdd) => {
-    if (!toRecipients.find(r => r.id === userToAdd.id)) {
-      setToRecipients([...toRecipients, userToAdd]);
-    }
-    setRecipientSearch('');
-  };
-
-  const removeRecipient = (userId) => {
-    setToRecipients(toRecipients.filter(r => r.id !== userId));
-  };
-
-  const toggleFlag = (e, convId) => {
-    e.stopPropagation();
-    setFlaggedConversations(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(convId)) {
-        newSet.delete(convId);
-      } else {
-        newSet.add(convId);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleArchive = (e, convId) => {
-    e.stopPropagation();
-    setArchivedConversations(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(convId)) {
-        newSet.delete(convId);
-      } else {
-        newSet.add(convId);
-      }
-      return newSet;
-    });
-    // If archiving current conversation, deselect it
-    if (selectedConversation?.id === convId) {
-      setSelectedConversation(null);
-    }
-  };
-
-  const handleArchiveMessage = async (e, msgId) => {
-    e.stopPropagation();
-    try {
-      const res = await fetchJSON(`/api/messages/${msgId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ action: 'archive' })
-      });
-      if (res.success) {
-        // Refresh conversation
-        if (selectedConversation) {
-          fetchConversationMessages(selectedConversation);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to archive message:', error);
-    }
-  };
-
-  const handleDeleteMessage = async (e, msgId) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this message?')) return;
-    
-    try {
-      const res = await fetchJSON(`/api/messages/${msgId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ action: 'delete' })
-      });
-      if (res.success) {
-        // Refresh conversation
-        if (selectedConversation) {
-          fetchConversationMessages(selectedConversation);
-          fetchConversations();
-        }
-      }
-    } catch (error) {
-      console.error('Failed to delete message:', error);
-    }
-  };
-
-  const formatTime = (dateString) => {
+  const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     
-    if (messageDate.getTime() === today.getTime()) {
+    if (msgDate.getTime() === today.getTime()) {
       return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    } else if (messageDate.getTime() === yesterday.getTime()) {
-      return 'Yesterday';
     } else if (now - date < 7 * 24 * 60 * 60 * 1000) {
       return date.toLocaleDateString('en-US', { weekday: 'short' });
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
     }
-  };
-
-  // WhatsApp-style last message preview with sender prefix
-  const getLastMessagePreview = (conv) => {
-    const msg = conv.lastMessage;
-    if (!msg) return 'No messages yet';
-    
-    const isSentByMe = msg.sender_id === user?.id;
-    const body = msg.body_preview || msg.body?.substring(0, 60) || '';
-    
-    // For group conversations, show sender name prefix
-    if (conv.participantCount > 2 && !isSentByMe) {
-      const senderFirstName = msg.sender_name?.split(' ')[0] || 'Unknown';
-      return `${senderFirstName}: ${body}`;
-    }
-    
-    // For direct messages sent by me, show "You: " prefix
-    if (isSentByMe) {
-      return `You: ${body}`;
-    }
-    
-    return body;
   };
 
   const formatFullDate = (dateString) => {
@@ -704,18 +215,10 @@ export default function MessagesPage() {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
       weekday: 'long', 
-      year: 'numeric', 
       month: 'long', 
       day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-  };
-
-  const formatMessageTime = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      year: 'numeric'
+    }) + ' ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
   const getInitials = (name) => {
@@ -724,8 +227,9 @@ export default function MessagesPage() {
   };
 
   const getAvatarColor = (name) => {
-    const colors = ['#7F2387', '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed'];
-    const index = name ? name.charCodeAt(0) % colors.length : 0;
+    const colors = ['#0078d4', '#107c10', '#5c2d91', '#d83b01', '#008272', '#004e8c', '#8764b8', '#ca5010'];
+    if (!name) return colors[0];
+    const index = name.charCodeAt(0) % colors.length;
     return colors[index];
   };
 
@@ -733,317 +237,302 @@ export default function MessagesPage() {
     (u.name?.toLowerCase().includes(recipientSearch.toLowerCase()) ||
     u.full_name?.toLowerCase().includes(recipientSearch.toLowerCase()) ||
     u.email?.toLowerCase().includes(recipientSearch.toLowerCase())) &&
-    !toRecipients.find(r => r.id === u.id)
+    !composeTo.find(r => r.id === u.id)
   );
 
   const filteredConversations = conversations.filter(conv => {
-    // Search filter
-    if (conversationSearch) {
-      const searchLower = conversationSearch.toLowerCase();
-      const matchesName = conv.displayName?.toLowerCase().includes(searchLower);
-      const matchesSubject = conv.lastMessage?.subject?.toLowerCase().includes(searchLower);
-      const matchesBody = conv.lastMessage?.body_preview?.toLowerCase().includes(searchLower);
-      if (!matchesName && !matchesSubject && !matchesBody) return false;
-    }
-    
-    // Category filters (Outlook-style folders acting as chat filters)
-    switch (conversationFilter) {
-      case 'unread':
-        if (archivedConversations.has(conv.id)) return false;
-        if (conv.unreadCount === 0) return false;
-        break;
-      case 'flagged':
-        if (archivedConversations.has(conv.id)) return false;
-        if (!flaggedConversations.has(conv.id)) return false;
-        break;
-      case 'archived':
-        if (!archivedConversations.has(conv.id)) return false;
-        break;
-      case 'all':
-      default:
-        // Show all non-archived conversations
-        if (archivedConversations.has(conv.id)) return false;
-        break;
-    }
-    
-    return true;
+    if (!searchQuery) return true;
+    const search = searchQuery.toLowerCase();
+    return conv.displayName?.toLowerCase().includes(search) ||
+           conv.lastMessage?.subject?.toLowerCase().includes(search) ||
+           conv.lastMessage?.body?.toLowerCase().includes(search);
   });
+
+  const unreadCount = conversations.reduce((acc, c) => acc + c.unreadCount, 0);
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-white">
         <Navbar />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <ArrowPathIcon className="h-8 w-8 animate-spin text-[#64126D]" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0078d4]"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="h-screen flex flex-col bg-white" style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', sans-serif" }}>
       <Navbar />
       
-      {/* Main Content Container with Dashboard-like dimensions */}
-      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16 h-full">
-        {/* Three Pane Layout - Fixed height container */}
-        <div className="h-[calc(100vh-140px)] flex relative bg-white rounded-xl shadow-sm border border-gray-200">
+      <div className="flex-1 flex pt-16 overflow-hidden gap-0">
         
-        {/* LEFT PANE - Conversations (WhatsApp-style) */}
-        {!leftPaneCollapsed && (
-          <div className="w-[280px] bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-            {/* Header */}
-            <div className="px-3 py-2 bg-[#7F2387] flex items-center justify-between">
-              <h1 className="text-base font-semibold text-white">Chats</h1>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={startNewMessage}
-                  className="p-2 hover:bg-white/10 rounded-full text-white transition-colors"
-                  title="New message"
-                >
-                  <PencilSquareIcon className="h-5 w-5" />
-                </button>
-                <button 
-                  onClick={() => fetchConversations()}
-                  className="p-2 hover:bg-white/10 rounded-full text-white transition-colors"
-                  title="Refresh"
-                >
-                  <ArrowPathIcon className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-            
-            {/* Search Bar */}
-            <div className="px-2 py-1.5 bg-gray-50">
-              <div className="relative">
-                <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search or start new chat"
-                  value={conversationSearch}
-                  onChange={(e) => setConversationSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white border-0 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#7F2387]/30 placeholder-gray-400"
-                />
-              </div>
-            </div>
-            
-            {/* Filter Tabs with Labels */}
-            <div className="px-2 py-1.5 border-b border-gray-100">
-              <div className="flex items-center gap-1">
+        {/* Left Navigation Pane - Outlook Style */}
+        <div className="w-48 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0">
+          
+          {/* New Mail Button */}
+          <div className="p-2">
+            <button
+              onClick={() => setShowCompose(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-[#0078d4] text-white rounded-sm hover:bg-[#106ebe] transition-colors text-[13px] font-semibold"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M14.5 2h-13C.67 2 0 2.67 0 3.5v9c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-9c0-.83-.67-1.5-1.5-1.5zM1.5 3h13c.28 0 .5.22.5.5v.5L8 8 1 4V3.5c0-.28.22-.5.5-.5zM1 12.5v-7L8 9l7-3.5v7c0 .28-.22.5-.5.5h-13c-.28 0-.5-.22-.5-.5z"/>
+              </svg>
+              New mail
+            </button>
+          </div>
+          
+          {/* Favorites Section */}
+          <div className="mt-1">
+            <button 
+              onClick={() => setExpandedFolders({...expandedFolders, favorites: !expandedFolders.favorites})}
+              className="w-full flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#605e5c] hover:bg-[#e1dfdd]"
+            >
+              <svg className={`w-3 h-3 transition-transform ${expandedFolders.favorites ? 'rotate-90' : ''}`} viewBox="0 0 16 16" fill="currentColor">
+                <path d="M5.7 13.7L5 13l4.6-5L5 3l.7-.7L11 8z"/>
+              </svg>
+              Favorites
+            </button>
+            {expandedFolders.favorites && (
+              <div className="ml-2">
                 {[
-                  { id: 'all', label: 'All', count: conversations.filter(c => !archivedConversations.has(c.id)).length },
-                  { id: 'unread', label: 'Unread', count: unreadCount },
-                  { id: 'flagged', label: 'Starred', count: flaggedConversations.size },
-                  { id: 'archived', label: 'Archived', count: archivedConversations.size }
-                ].map(tab => {
-                  const isActive = conversationFilter === tab.id;
-                  
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setConversationFilter(tab.id)}
-                      className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
-                        isActive 
-                          ? 'bg-[#7F2387] text-white' 
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {tab.label}
-                      {tab.count > 0 && (
-                        <span className={`ml-1 ${
-                          isActive ? 'text-white/80' : 'text-gray-400'
-                        }`}>
-                          ({tab.count > 99 ? '99+' : tab.count})
-                        </span>
+                  { id: 'inbox', label: 'Inbox', count: unreadCount },
+                  { id: 'sent', label: 'Sent Items', count: 0 },
+                ].map(folder => (
+                  <button
+                    key={folder.id}
+                    onClick={() => setActiveFolder(folder.id)}
+                    className={`w-full flex items-center gap-2 px-2 py-[5px] text-[13px] rounded-sm ${
+                      activeFolder === folder.id 
+                        ? 'bg-[#e1dfdd]' 
+                        : 'hover:bg-[#e9e8e7]'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 text-[#0078d4]" viewBox="0 0 16 16" fill="currentColor">
+                      {folder.id === 'inbox' ? (
+                        <path d="M14.5 2h-13C.67 2 0 2.67 0 3.5v9c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-9c0-.83-.67-1.5-1.5-1.5zM1 3.5c0-.28.22-.5.5-.5h13c.28 0 .5.22.5.5v.22L8 7.65 1 3.72V3.5zM14.5 13h-13c-.28 0-.5-.22-.5-.5V5.04l7 3.93 7-3.93v7.46c0 .28-.22.5-.5.5z"/>
+                      ) : (
+                        <path d="M14.5 2h-13C.67 2 0 2.67 0 3.5v9c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-9c0-.83-.67-1.5-1.5-1.5zm-13 1h13c.28 0 .5.22.5.5v.22L8 7.65 1 3.72V3.5c0-.28.22-.5.5-.5zm13 10h-13c-.28 0-.5-.22-.5-.5V5.04l7 3.93 7-3.93v7.46c0 .28-.22.5-.5.5z"/>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            
-            {/* Conversations List */}
-            <div className="flex-1 overflow-y-auto">
-              {conversationsLoading ? (
-                <div className="flex flex-col items-center justify-center h-40 gap-2">
-                  <ArrowPathIcon className="h-6 w-6 animate-spin text-[#7F2387]" />
-                  <p className="text-xs text-gray-400">Loading chats...</p>
-                </div>
-              ) : filteredConversations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 text-gray-400 p-6">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                    {conversationFilter === 'unread' ? (
-                      <EnvelopeIcon className="h-8 w-8 text-gray-300" />
-                    ) : conversationFilter === 'flagged' ? (
-                      <StarIcon className="h-8 w-8 text-gray-300" />
-                    ) : conversationFilter === 'archived' ? (
-                      <ArchiveBoxIcon className="h-8 w-8 text-gray-300" />
-                    ) : (
-                      <ChatBubbleLeftRightIcon className="h-8 w-8 text-gray-300" />
+                    </svg>
+                    <span className="flex-1 text-left text-[#323130]">{folder.label}</span>
+                    {folder.count > 0 && (
+                      <span className="text-[11px] font-semibold text-[#0078d4]">{folder.count}</span>
                     )}
-                  </div>
-                  <p className="text-sm font-medium text-gray-500">
-                    {conversationFilter === 'unread' ? 'All caught up!' : 
-                     conversationFilter === 'flagged' ? 'No starred chats' : 
-                     conversationFilter === 'archived' ? 'No archived chats' :
-                     'No conversations'}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1 text-center">
-                    {conversationFilter === 'unread' ? 'No unread messages' :
-                     conversationFilter === 'flagged' ? 'Star important chats to find them here' :
-                     conversationFilter === 'archived' ? 'Archived chats will appear here' :
-                     'Start a new chat to begin messaging'}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  {filteredConversations.map((conv) => {
-                    const isSentByMe = conv.lastMessage?.sender_id === user?.id;
-                    const hasUnread = conv.unreadCount > 0;
-                    const isSelected = selectedConversation?.id === conv.id;
-                    const isStarred = flaggedConversations.has(conv.id);
-                    
-                    return (
-                      <div
-                        key={conv.id}
-                        onClick={() => selectConversation(conv)}
-                        className={`group relative flex items-center gap-2 px-2 py-2 cursor-pointer transition-all duration-150 ${
-                          isSelected 
-                            ? 'bg-[#7F2387]/8' 
-                            : 'hover:bg-gray-50/80'
-                        }`}
-                      >
-                        {/* Star button on hover */}
-                        <button
-                          onClick={(e) => toggleFlag(e, conv.id)}
-                          className={`absolute right-2 top-2 p-1 rounded transition-all ${
-                            isStarred 
-                              ? 'opacity-100' 
-                              : 'opacity-0 group-hover:opacity-100'
-                          } hover:bg-gray-200`}
-                          title={isStarred ? 'Unstar' : 'Star'}
-                        >
-                          {isStarred ? (
-                            <StarIconSolid className="h-4 w-4 text-amber-400" />
-                          ) : (
-                            <StarIcon className="h-4 w-4 text-gray-400 hover:text-amber-400" />
-                          )}
-                        </button>
-                        
-                        {/* Unread accent bar */}
-                        {hasUnread && (
-                          <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-[#7F2387] rounded-r-full" />
-                        )}
-                        
-                        {/* Selected indicator */}
-                        {isSelected && !hasUnread && (
-                          <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-[#7F2387]/40 rounded-r-full" />
-                        )}
-                        
-                        {/* Avatar - slightly smaller for compact look */}
-                        <div className="relative flex-shrink-0">
-                          <div 
-                            className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                            style={{ backgroundColor: getAvatarColor(conv.displayName) }}
-                          >
-                            {conv.participantCount > 2 ? (
-                              <UserGroupIcon className="h-5 w-5" />
-                            ) : (
-                              getInitials(conv.displayName)
-                            )}
-                          </div>
-                          {/* Online indicator */}
-                          {conv.participantCount <= 2 && (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
-                          )}
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="flex-1 min-w-0 py-0.5">
-                          {/* Top row: Name + Time */}
-                          <div className="flex items-baseline justify-between gap-2">
-                            <h3 className={`truncate text-[13px] leading-tight ${
-                              hasUnread 
-                                ? 'font-semibold text-gray-900' 
-                                : 'font-medium text-gray-700'
-                            }`}>
-                              {conv.displayName}
-                            </h3>
-                            <span className={`text-[11px] flex-shrink-0 tabular-nums ${
-                              hasUnread ? 'text-[#7F2387] font-medium' : 'text-gray-400'
-                            }`}>
-                              {formatTime(conv.lastMessage?.created_at)}
-                            </span>
-                          </div>
-                          
-                          {/* Bottom row: Preview + indicators */}
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {/* Read receipt for sent messages */}
-                            {isSentByMe && (
-                              <svg className={`w-3.5 h-3.5 flex-shrink-0 ${
-                                conv.lastMessage?.read_status ? 'text-blue-500' : 'text-gray-300'
-                              }`} viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.88a.32.32 0 0 1-.484.032l-.358-.325a.32.32 0 0 0-.484.032l-.378.48a.418.418 0 0 0 .036.54l1.32 1.266a.32.32 0 0 0 .484-.034l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.88a.32.32 0 0 1-.484.032L1.892 7.77a.366.366 0 0 0-.516.005l-.423.433a.364.364 0 0 0 .006.514l3.255 3.185a.32.32 0 0 0 .484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"/>
-                              </svg>
-                            )}
-                            
-                            {/* Message preview */}
-                            <p className={`flex-1 truncate text-[13px] leading-tight ${
-                              hasUnread 
-                                ? 'text-gray-600 font-medium' 
-                                : 'text-gray-400'
-                            }`}>
-                              {getLastMessagePreview(conv)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* Folders Section */}
+          <div className="mt-1">
+            <button 
+              onClick={() => setExpandedFolders({...expandedFolders, folders: !expandedFolders.folders})}
+              className="w-full flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#605e5c] hover:bg-[#e1dfdd]"
+            >
+              <svg className={`w-3 h-3 transition-transform ${expandedFolders.folders ? 'rotate-90' : ''}`} viewBox="0 0 16 16" fill="currentColor">
+                <path d="M5.7 13.7L5 13l4.6-5L5 3l.7-.7L11 8z"/>
+              </svg>
+              Folders
+            </button>
+            {expandedFolders.folders && (
+              <div className="ml-2">
+                {[
+                  { id: 'inbox', label: 'Inbox', count: unreadCount, icon: 'inbox' },
+                  { id: 'drafts', label: 'Drafts', count: 0, icon: 'draft' },
+                  { id: 'sent', label: 'Sent Items', count: 0, icon: 'sent' },
+                  { id: 'deleted', label: 'Deleted Items', count: 0, icon: 'trash' },
+                  { id: 'archive', label: 'Archive', count: 0, icon: 'archive' },
+                  { id: 'junk', label: 'Junk Email', count: 0, icon: 'junk' },
+                ].map(folder => (
+                  <button
+                    key={folder.id + '-folder'}
+                    onClick={() => setActiveFolder(folder.id)}
+                    className={`w-full flex items-center gap-2 px-2 py-[5px] text-[13px] rounded-sm ${
+                      activeFolder === folder.id 
+                        ? 'bg-[#e1dfdd]' 
+                        : 'hover:bg-[#e9e8e7]'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 text-[#ffb900]" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M14 4H7.5l-1-2H2c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zm0 9H2V5h12v8z"/>
+                    </svg>
+                    <span className="flex-1 text-left text-[#323130]">{folder.label}</span>
+                    {folder.count > 0 && (
+                      <span className="text-[11px] font-semibold text-[#0078d4]">{folder.count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Message List Pane */}
+        <div className="w-[360px] bg-white border-r border-[#edebe9] flex flex-col flex-shrink-0">
+          
+          {/* Search Bar */}
+          <div className="p-2 border-b border-[#edebe9]">
+            <div className="relative">
+              <svg className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-[#605e5c]" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M11.5 7c0 .79-.2 1.53-.56 2.18l3.53 3.53-.71.71-3.53-3.53A4.5 4.5 0 117 2.5 4.5 4.5 0 0111.5 7zm-1 0a3.5 3.5 0 10-7 0 3.5 3.5 0 007 0z"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-[6px] text-[13px] border border-[#8a8886] rounded-sm focus:outline-none focus:border-[#0078d4] bg-white placeholder-[#605e5c]"
+              />
             </div>
           </div>
-        )}
-
-        {/* Toggle Button for Left Pane */}
-        <button
-          onClick={() => setLeftPaneCollapsed(!leftPaneCollapsed)}
-          className={`absolute top-1/2 -translate-y-1/2 z-10 bg-white border border-gray-200 rounded-r-lg p-1 shadow-sm hover:bg-gray-50 transition-all ${
-            leftPaneCollapsed ? 'left-0' : 'left-[279px]'
-          }`}
-        >
-          <ChevronLeftIcon className={`h-4 w-4 text-gray-500 transition-transform ${leftPaneCollapsed ? 'rotate-180' : ''}`} />
-        </button>
-
-        {/* CENTER/MAIN PANE - Message List / Compose */}
-        <div className="flex-1 flex flex-col bg-white min-w-0">
-          {showCompose ? (
-            /* Compose View */
-            <div className="flex flex-col h-full">
-              {/* Compose Header */}
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
-                <h2 className="text-base font-semibold text-gray-900">New Message</h2>
-                <button
-                  onClick={() => setShowCompose(false)}
-                  className="p-2 hover:bg-gray-200 rounded-lg text-gray-500"
+          
+          {/* Inbox Tabs: Focused / Other */}
+          <div className="flex border-b border-[#edebe9]">
+            <button 
+              onClick={() => setInboxTab('focused')}
+              className={`flex-1 py-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
+                inboxTab === 'focused' 
+                  ? 'text-[#0078d4] border-[#0078d4]' 
+                  : 'text-[#605e5c] border-transparent hover:text-[#323130]'
+              }`}
+            >
+              Focused
+            </button>
+            <button 
+              onClick={() => setInboxTab('other')}
+              className={`flex-1 py-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
+                inboxTab === 'other' 
+                  ? 'text-[#0078d4] border-[#0078d4]' 
+                  : 'text-[#605e5c] border-transparent hover:text-[#323130]'
+              }`}
+            >
+              Other
+            </button>
+          </div>
+          
+          {/* Message List */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#0078d4] border-t-transparent"></div>
+              </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <svg className="w-12 h-12 mx-auto text-[#c8c6c4] mb-3" viewBox="0 0 48 48" fill="currentColor">
+                  <path d="M42 8H6a4 4 0 0 0-4 4v24a4 4 0 0 0 4 4h36a4 4 0 0 0 4-4V12a4 4 0 0 0-4-4zm0 2c.4 0 .77.12 1.08.32L24 23.3 4.92 10.32c.31-.2.68-.32 1.08-.32h36zM6 38a2 2 0 0 1-2-2V12.63l19.56 13.35a1 1 0 0 0 .88 0L44 12.63V36a2 2 0 0 1-2 2H6z"/>
+                </svg>
+                <p className="text-[13px] text-[#605e5c]">Nothing in Focused right now</p>
+                <p className="text-[12px] text-[#a19f9d] mt-1">Check back later for new mail</p>
+              </div>
+            ) : (
+              filteredConversations.map(conv => (
+                <div
+                  key={conv.id}
+                  onClick={() => {
+                    setSelectedConversation(conv);
+                    setShowCompose(false);
+                    setReplyMode(null);
+                  }}
+                  className={`relative cursor-pointer border-b border-[#edebe9] ${
+                    selectedConversation?.id === conv.id 
+                      ? 'bg-[#e6f2fb]' 
+                      : 'hover:bg-[#f3f2f1]'
+                  }`}
                 >
-                  <XMarkIcon className="h-5 w-5" />
+                  {/* Unread Indicator Bar */}
+                  {conv.unreadCount > 0 && (
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#0078d4]" />
+                  )}
+                  
+                  <div className="flex gap-3 px-4 py-3">
+                    {/* Avatar */}
+                    <div 
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-semibold flex-shrink-0"
+                      style={{ backgroundColor: getAvatarColor(conv.displayName) }}
+                    >
+                      {getInitials(conv.displayName)}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      {/* Sender & Time */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-[13px] truncate ${
+                          conv.unreadCount > 0 ? 'font-semibold text-[#323130]' : 'text-[#323130]'
+                        }`}>
+                          {conv.displayName || 'Unknown'}
+                        </span>
+                        <span className="text-[12px] text-[#605e5c] flex-shrink-0">
+                          {formatDate(conv.lastMessage?.created_at)}
+                        </span>
+                      </div>
+                      
+                      {/* Subject */}
+                      <p className={`text-[13px] truncate ${
+                        conv.unreadCount > 0 ? 'font-semibold text-[#323130]' : 'text-[#605e5c]'
+                      }`}>
+                        {conv.lastMessage?.subject || '(No Subject)'}
+                      </p>
+                      
+                      {/* Preview */}
+                      <p className="text-[12px] text-[#a19f9d] truncate">
+                        {conv.lastMessage?.body?.replace(/<[^>]*>/g, '').substring(0, 80)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        
+        {/* Reading Pane */}
+        <div className="flex-1 bg-white flex flex-col min-w-0">
+          {showCompose ? (
+            /* Compose New Message */
+            <div className="flex-1 flex flex-col">
+              
+              {/* Compose Toolbar */}
+              <div className="flex items-center gap-1 px-3 py-2 border-b border-[#edebe9] bg-[#faf9f8]">
+                <button
+                  onClick={sendMessage}
+                  disabled={sending || composeTo.length === 0 || !composeBody.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078d4] text-white rounded-sm hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M1 1.91L5.63 8 1 14.09V1.91M0 0v16l7-8-7-8zM14.05 7.36L3.19 1.09l8.62 5.98L14.05 7 14.05 7.36zM3.19 14.91l10.86-6.27-.01.36-2.23.07L3.19 14.91zM16 8l-1.64 1.52L16 8z"/>
+                  </svg>
+                  Send
+                </button>
+                <button 
+                  onClick={() => setShowCompose(false)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[#323130] hover:bg-[#e1dfdd] rounded-sm text-[13px]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M12 5v8H4V5h8m1-1H3v10h10V4z"/>
+                    <path d="M10 2v2H6V2h4m1-1H5v4h6V1z"/>
+                  </svg>
+                  Discard
                 </button>
               </div>
               
               {/* Compose Form */}
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* To Field */}
-                <div className="flex items-start border-b border-gray-100 px-4 py-2 relative flex-shrink-0">
-                  <label className="w-16 text-sm text-gray-500 pt-2">To:</label>
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2 min-h-[36px]">
-                      {toRecipients.map(r => (
-                        <span key={r.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#7F2387]/10 text-[#7F2387] rounded-full text-sm">
+              <div className="flex-1 flex flex-col overflow-hidden">
+                
+                {/* To Field - Vertical Layout with Dropdown */}
+                <div className="px-6 py-3 border-b border-[#edebe9]">
+                  <label className="block text-[13px] font-semibold text-[#323130] mb-2">To</label>
+                  <div className="relative">
+                    <div className="flex flex-wrap items-center gap-2 min-h-[40px] p-2 border border-[#c8c6c4] rounded bg-white focus-within:border-[#0078d4] focus-within:ring-1 focus-within:ring-[#0078d4]">
+                      {composeTo.map(r => (
+                        <span key={r.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#deecf9] text-[#0078d4] rounded text-[13px]">
                           {r.name || r.full_name || r.username}
-                          <button onClick={() => removeRecipient(r.id)} className="hover:text-[#64126D]">
-                            <XMarkIcon className="h-3.5 w-3.5" />
+                          <button onClick={() => setComposeTo(composeTo.filter(x => x.id !== r.id))} className="hover:text-[#106ebe]">
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                              <path d="M8.7 8l3.65-3.65-.7-.7L8 7.29 4.35 3.65l-.7.7L7.29 8l-3.64 3.65.7.7L8 8.71l3.65 3.64.7-.7L8.71 8z"/>
+                            </svg>
                           </button>
                         </span>
                       ))}
@@ -1051,27 +540,35 @@ export default function MessagesPage() {
                         type="text"
                         value={recipientSearch}
                         onChange={(e) => setRecipientSearch(e.target.value)}
-                        placeholder={toRecipients.length === 0 ? "Search people..." : ""}
-                        className="flex-1 min-w-[150px] text-sm focus:outline-none py-1.5"
+                        onFocus={() => setRecipientSearch(recipientSearch || ' ')}
+                        placeholder={composeTo.length === 0 ? "Select recipient..." : ""}
+                        className="flex-1 min-w-[150px] text-[13px] focus:outline-none py-1 bg-transparent placeholder-[#a19f9d]"
                       />
+                      <svg className="w-4 h-4 text-[#605e5c] flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4 6l4 4 4-4H4z"/>
+                      </svg>
                     </div>
-                    {recipientSearch && filteredUsers.length > 0 && (
-                      <div className="absolute left-16 right-6 z-20 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {/* User Dropdown */}
+                    {(recipientSearch || recipientSearch === ' ') && filteredUsers.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[#c8c6c4] shadow-lg rounded z-20 max-h-60 overflow-y-auto">
                         {filteredUsers.slice(0, 8).map(u => (
                           <button
                             key={u.id}
-                            onClick={() => addRecipient(u)}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-left"
+                            onClick={() => {
+                              setComposeTo([...composeTo, u]);
+                              setRecipientSearch('');
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#f3f2f1] text-left border-b border-[#edebe9] last:border-b-0"
                           >
                             <div 
-                              className="h-9 w-9 rounded-full flex items-center justify-center text-white text-sm"
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[12px] font-semibold flex-shrink-0"
                               style={{ backgroundColor: getAvatarColor(u.name || u.full_name) }}
                             >
                               {getInitials(u.name || u.full_name || u.username)}
                             </div>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{u.name || u.full_name || u.username}</div>
-                              <div className="text-xs text-gray-500">{u.email}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[14px] font-medium text-[#323130] truncate">{u.name || u.full_name || u.username}</div>
+                              <div className="text-[12px] text-[#605e5c] truncate">{u.email}</div>
                             </div>
                           </button>
                         ))}
@@ -1080,1222 +577,213 @@ export default function MessagesPage() {
                   </div>
                 </div>
                 
-                {/* Subject Field */}
-                <div className="flex items-center border-b border-gray-100 px-4 py-2 flex-shrink-0">
-                  <label className="w-16 text-sm text-gray-500">Subject:</label>
-                  <input
-                    type="text"
-                    value={messageSubject}
-                    onChange={(e) => setMessageSubject(e.target.value)}
-                    placeholder="Add a subject"
-                    className="flex-1 text-sm focus:outline-none py-1"
-                  />
-                </div>
-                
-                {/* Formatting Toolbar - Enhanced Style */}
-                <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white shadow-sm overflow-x-auto flex-nowrap flex-shrink-0 relative z-50" style={{ overflowY: 'visible' }}>
-                  {/* Font Family */}
-                  <div className="relative z-[100]" data-dropdown>
-                    <button 
-                      ref={fontDropdownBtnRef}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const pos = getDropdownPosition(fontDropdownBtnRef);
-                        setDropdownPosition(pos);
-                        setShowFontDropdown(!showFontDropdown);
-                        setShowFontSizeDropdown(false);
-                        setShowColorPicker(false);
-                        setShowHighlightPicker(false);
-                      }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all whitespace-nowrap min-w-[100px] justify-between"
-                      title="Font Family"
-                    >
-                      <span className="truncate">{selectedFont}</span>
-                      <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontDropdown ? 'rotate-180' : ''}`} />
-                    </button>
-                    {showFontDropdown && (
-                      <div 
-                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 min-w-[160px] max-h-64 overflow-y-auto"
-                        style={{ 
-                          top: dropdownPosition.top,
-                          left: dropdownPosition.left,
-                          zIndex: 99999
-                        }}
-                      >
-                        {fontOptions.map(font => (
-                          <button
-                            key={font}
-                            onClick={() => handleFontChange(font)}
-                            className={`w-full px-3 py-2 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
-                              selectedFont === font ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
-                            }`}
-                            style={{ fontFamily: font }}
-                          >
-                            <span>{font}</span>
-                            {selectedFont === font && (
-                              <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Font Size */}
-                  <div className="relative z-[100]" data-dropdown>
-                    <button 
-                      ref={fontSizeDropdownBtnRef}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const pos = getDropdownPosition(fontSizeDropdownBtnRef);
-                        setDropdownPosition(pos);
-                        setShowFontSizeDropdown(!showFontSizeDropdown);
-                        setShowFontDropdown(false);
-                        setShowColorPicker(false);
-                        setShowHighlightPicker(false);
-                      }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all w-[70px] justify-between"
-                      title="Font Size"
-                    >
-                      <span>{selectedFontSize}</span>
-                      <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontSizeDropdown ? 'rotate-180' : ''}`} />
-                    </button>
-                    {showFontSizeDropdown && (
-                      <div 
-                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 max-h-56 overflow-y-auto min-w-[80px]"
-                        style={{ 
-                          top: dropdownPosition.top,
-                          left: dropdownPosition.left,
-                          zIndex: 99999
-                        }}
-                      >
-                        {fontSizeOptions.map(size => (
-                          <button
-                            key={size}
-                            onClick={() => handleFontSizeChange(size)}
-                            className={`w-full px-3 py-1.5 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
-                              selectedFontSize === size ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
-                            }`}
-                          >
-                            <span>{size}px</span>
-                            {selectedFontSize === size && (
-                              <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                  
-                  {/* Bold */}
-                  <button 
-                    onClick={() => handleFormat('bold')}
-                    className={`p-2 rounded-md transition-all flex-shrink-0 ${
-                      activeFormats.bold 
-                        ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
-                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                    }`}
-                    title="Bold (Ctrl+B)"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6V4zm0 8h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6v-8zm3 7h5a2 2 0 0 0 0-4H9v4zm0-7h4a2 2 0 0 0 0-4H9v4z"/>
-                    </svg>
-                  </button>
-                  
-                  {/* Italic */}
-                  <button 
-                    onClick={() => handleFormat('italic')}
-                    className={`p-2 rounded-md transition-all flex-shrink-0 ${
-                      activeFormats.italic 
-                        ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
-                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                    }`}
-                    title="Italic (Ctrl+I)"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4h-8z"/>
-                    </svg>
-                  </button>
-                  
-                  {/* Underline */}
-                  <button 
-                    onClick={() => handleFormat('underline')}
-                    className={`p-2 rounded-md transition-all flex-shrink-0 ${
-                      activeFormats.underline 
-                        ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
-                        : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                    }`}
-                    title="Underline (Ctrl+U)"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3h-2v7a4 4 0 0 1-4 4 4 4 0 0 1-4-4V3H6zM4 20h16v2H4v-2z"/>
-                    </svg>
-                  </button>
-                  
-                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                  
-                  {/* Text Color */}
-                  <div className="relative z-[100]" data-dropdown>
-                    <button 
-                      ref={colorPickerBtnRef}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const pos = getDropdownPosition(colorPickerBtnRef);
-                        setDropdownPosition(pos);
-                        setShowColorPicker(!showColorPicker);
-                        setShowHighlightPicker(false);
-                        setShowFontDropdown(false);
-                        setShowFontSizeDropdown(false);
-                      }}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
-                      title="Text Color"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M11 2L5.5 16h2.25l1.12-3h6.25l1.12 3h2.25L13 2h-2zm-1.38 9L12 4.67 14.38 11H9.62z"/>
-                      </svg>
-                      <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentTextColor }} />
-                    </button>
-                    {showColorPicker && (
-                      <div 
-                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                        style={{ 
-                          top: dropdownPosition.top,
-                          left: dropdownPosition.left,
-                          zIndex: 99999
-                        }}
-                      >
-                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Text Color</div>
-                        <div className="grid grid-cols-5 gap-1.5">
-                          {colorOptions.map(color => (
-                            <button
-                              key={color}
-                              onClick={() => handleTextColor(color)}
-                              className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
-                                currentTextColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
-                              }`}
-                              style={{ backgroundColor: color }}
-                              title={color}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Highlight Color */}
-                  <div className="relative z-[100]" data-dropdown>
-                    <button 
-                      ref={highlightPickerBtnRef}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const pos = getDropdownPosition(highlightPickerBtnRef);
-                        setDropdownPosition(pos);
-                        setShowHighlightPicker(!showHighlightPicker);
-                        setShowColorPicker(false);
-                        setShowFontDropdown(false);
-                        setShowFontSizeDropdown(false);
-                      }}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
-                      title="Highlight Color"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M15.24 2.86l3.89 3.89-1.41 1.41-3.89-3.89 1.41-1.41zM3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM5.92 19H5v-.92l9.06-9.06.92.92L5.92 19z"/>
-                      </svg>
-                      <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentHighlightColor }} />
-                    </button>
-                    {showHighlightPicker && (
-                      <div 
-                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                        style={{ 
-                          top: dropdownPosition.top,
-                          left: dropdownPosition.left,
-                          zIndex: 99999
-                        }}
-                      >
-                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Highlight Color</div>
-                        <div className="grid grid-cols-5 gap-1.5">
-                          {colorOptions.map(color => (
-                            <button
-                              key={color}
-                              onClick={() => handleHighlightColor(color)}
-                              className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
-                                currentHighlightColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
-                              }`}
-                              style={{ backgroundColor: color }}
-                              title={color}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                  
-                  {/* Bullet List */}
-                  <button 
-                    onClick={() => handleInsertList('bullet')}
-                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                    title="Bullet List"
-                  >
-                    <ListBulletIcon className="h-4 w-4" />
-                  </button>
-                  
-                  {/* Numbered List */}
-                  <button 
-                    onClick={() => handleInsertList('numbered')}
-                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                    title="Numbered List"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"/>
-                    </svg>
-                  </button>
-                  
-                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                  
-                  {/* Link */}
-                  <button 
-                    onClick={handleInsertLink}
-                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                    title="Insert Link (Ctrl+K)"
-                  >
-                    <LinkIcon className="h-4 w-4" />
-                  </button>
-                  
-                  {/* Code */}
-                  <button 
-                    onClick={() => execCommand('formatBlock', 'pre')}
-                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                    title="Code Block"
-                  >
-                    <CodeBracketIcon className="h-4 w-4" />
-                  </button>
-                  
-                  <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                  
-                  {/* Insert Table */}
-                  <div className="relative z-[100]" data-dropdown>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const btn = e.currentTarget;
-                        const rect = btn.getBoundingClientRect();
-                        setDropdownPosition({ top: rect.bottom + 4, left: rect.left, openAbove: false });
-                        setShowTablePicker(!showTablePicker);
-                        setShowEmojiPicker(false);
-                      }}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
-                      title="Insert Table"
-                    >
-                      <TableCellsIcon className="h-4 w-4" />
-                    </button>
-                    {showTablePicker && (
-                      <div 
-                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                        style={{ 
-                          top: dropdownPosition.top,
-                          left: dropdownPosition.left,
-                          zIndex: 99999
-                        }}
-                      >
-                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Table</div>
-                        <div className="grid grid-cols-5 gap-1">
-                          {[1, 2, 3, 4, 5].map(rows => (
-                            [1, 2, 3, 4, 5].map(cols => (
-                              <button
-                                key={`${rows}-${cols}`}
-                                onClick={() => handleInsertTable(rows, cols)}
-                                className="w-6 h-6 border border-gray-300 hover:bg-[#7F2387]/20 hover:border-[#7F2387] transition-colors rounded"
-                                title={`${rows}×${cols} table`}
-                              />
-                            ))
-                          ))}
-                        </div>
-                        <div className="text-[10px] text-gray-400 mt-2 text-center">Click to insert table</div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Insert Image */}
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                    title="Insert Picture"
-                  >
-                    <PhotoIcon className="h-4 w-4" />
-                  </button>
-                  
-                  {/* Emoji */}
-                  <div className="relative z-[100]" data-dropdown>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const btn = e.currentTarget;
-                        const rect = btn.getBoundingClientRect();
-                        setDropdownPosition({ top: rect.bottom + 4, left: rect.left - 100, openAbove: false });
-                        setShowEmojiPicker(!showEmojiPicker);
-                        setShowTablePicker(false);
-                      }}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
-                      title="Insert Emoji"
-                    >
-                      <FaceSmileIcon className="h-4 w-4" />
-                    </button>
-                    {showEmojiPicker && (
-                      <div 
-                        className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                        style={{ 
-                          top: dropdownPosition.top,
-                          left: dropdownPosition.left,
-                          zIndex: 99999
-                        }}
-                      >
-                        <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Emoji</div>
-                        <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
-                          {emojiOptions.map(emoji => (
-                            <button
-                              key={emoji}
-                              onClick={() => handleInsertEmoji(emoji)}
-                              className="w-7 h-7 hover:bg-gray-100 rounded text-lg flex items-center justify-center transition-colors"
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Message Body - Rich Text Editor */}
-                <div className="flex-1 px-3 py-2 min-h-0 overflow-y-auto">
-                  <div
-                    ref={composeEditorRef}
-                    contentEditable
-                    onInput={updateActiveFormats}
-                    onMouseUp={updateActiveFormats}
-                    onKeyUp={updateActiveFormats}
-                    onKeyDown={handleEditorKeyDown}
-                    className="w-full h-full text-[14px] leading-relaxed text-gray-700 focus:outline-none border border-gray-200 rounded-lg p-3 overflow-y-auto"
-                    style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
-                    data-placeholder="Write your message..."
-                    suppressContentEditableWarning={true}
-                  />
-                </div>
-                
-                {/* Attachments */}
-                {attachments.length > 0 && (
-                  <div className="px-4 py-2 flex-shrink-0">
-                    <div className="flex flex-wrap gap-2">
-                      {attachments.map((att, idx) => (
-                        <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-                          <DocumentIcon className="h-4 w-4 text-gray-500" />
-                          <span className="text-sm text-gray-700">{att.name}</span>
-                          <button onClick={() => removeAttachment(idx)} className="text-gray-400 hover:text-gray-600">
-                            <XMarkIcon className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                {/* Cc Field - Vertical Layout */}
+                {showCc && (
+                  <div className="px-6 py-3 border-b border-[#edebe9]">
+                    <label className="block text-[13px] font-semibold text-[#323130] mb-2">Cc</label>
+                    <input
+                      type="text"
+                      className="w-full text-[13px] focus:outline-none p-2.5 bg-white border border-[#c8c6c4] rounded focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] placeholder-[#a19f9d]"
+                      placeholder="Add Cc recipients..."
+                    />
                   </div>
                 )}
-              </div>
-              
-              {/* Compose Footer - Always visible */}
-              <div className="border-t border-gray-200 px-4 py-2 flex items-center justify-between bg-gray-50 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={sendMessage}
-                    disabled={sending || toRecipients.length === 0 || (!getEditorText(composeEditorRef).trim() && attachments.length === 0)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[#7F2387] text-white rounded-lg hover:bg-[#64126D] disabled:opacity-50 font-medium"
-                  >
-                    <PaperAirplaneIcon className="h-4 w-4" />
-                    <span>Send</span>
-                  </button>
-                  
+                
+                {/* Subject Field - Vertical Layout */}
+                <div className="px-6 py-3 border-b border-[#edebe9]">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-[13px] font-semibold text-[#323130]">Subject</label>
+                    {!showCc && (
+                      <button onClick={() => setShowCc(true)} className="text-[12px] text-[#0078d4] hover:underline">+ Add Cc</button>
+                    )}
+                  </div>
                   <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ppt,.pptx,.txt,.dwg,.dxf,.dgn,.rvt,.ifc,.plt,.jpg,.jpeg,.png,.webp,.heic,.tif,.tiff,.zip,.rar,.7z,.dat,.xml,.json,.mpp,.xer,.mp3,.wav,.mp4,.mov,.webm"
-                    onChange={handleFileUpload}
-                    className="hidden"
+                    type="text"
+                    value={composeSubject}
+                    onChange={(e) => setComposeSubject(e.target.value)}
+                    placeholder="Enter subject..."
+                    className="w-full text-[13px] focus:outline-none p-2.5 bg-white border border-[#c8c6c4] rounded focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] placeholder-[#a19f9d]"
                   />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2.5 hover:bg-gray-200 rounded-lg text-gray-500"
-                    title="Attach file"
-                  >
-                    <PaperClipIcon className="h-5 w-5" />
-                  </button>
                 </div>
                 
-                <button
-                  onClick={() => setShowCompose(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg"
-                >
-                  Discard
-                </button>
+                {/* Body - Vertical Layout */}
+                <div className="flex-1 px-6 py-3 flex flex-col overflow-hidden">
+                  <label className="block text-[13px] font-semibold text-[#323130] mb-2">Message</label>
+                  <textarea
+                    value={composeBody}
+                    onChange={(e) => setComposeBody(e.target.value)}
+                    placeholder="Write your message here..."
+                    className="flex-1 w-full resize-none text-[14px] focus:outline-none text-[#323130] leading-relaxed p-3 border border-[#c8c6c4] rounded focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] placeholder-[#a19f9d]"
+                    style={{ minHeight: '200px' }}
+                  />
+                </div>
               </div>
             </div>
           ) : selectedConversation ? (
-            /* Conversation View - 2-pane style (removed middle pane) */
-            <div className="flex h-full">
-              {/* RIGHT PANE - Reading Pane (Email-style Thread View) */}
-              <div className="flex-1 flex flex-col bg-gray-100 min-w-0">
-                {/* Thread Header */}
-                <div className="border-b border-gray-200 bg-white px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h2 className="font-semibold text-gray-900 text-base truncate">
-                        {selectedConversation.lastMessage?.subject || 'Conversation'}
-                      </h2>
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        {messages.length} message{messages.length !== 1 ? 's' : ''} in this thread
-                      </p>
+            /* Reading Pane Content */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              
+              {/* Message Actions Toolbar */}
+              <div className="flex items-center gap-1 px-3 py-2 border-b border-[#edebe9] bg-[#faf9f8]">
+                <button 
+                  onClick={() => setReplyMode('reply')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[#323130] hover:bg-[#e1dfdd] rounded-sm text-[13px]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M6 3L1 8l5 5v-3c5 0 8 2 10 6 0-6-3-10-10-10V3z"/>
+                  </svg>
+                  Reply
+                </button>
+                <button 
+                  onClick={() => setReplyMode('replyAll')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[#323130] hover:bg-[#e1dfdd] rounded-sm text-[13px]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M9 5L4 10l5 5v-3c5 0 7 2 9 5 0-5-3-9-9-9V5z"/>
+                    <path d="M6 3L1 8l5 5v-2L3 8l3-3V3z"/>
+                  </svg>
+                  Reply all
+                </button>
+                <button 
+                  onClick={() => setReplyMode('forward')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[#323130] hover:bg-[#e1dfdd] rounded-sm text-[13px]"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M10 3l5 5-5 5v-3C5 10 2 12 0 16c0-6 3-10 10-10V3z"/>
+                  </svg>
+                  Forward
+                </button>
+                <div className="w-px h-5 bg-[#c8c6c4] mx-2" />
+                <button className="flex items-center gap-1.5 px-3 py-1.5 text-[#323130] hover:bg-[#e1dfdd] rounded-sm text-[13px]">
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M14 3H2v10h12V3zm-1 9H3V6h10v6z"/>
+                  </svg>
+                  Archive
+                </button>
+                <button className="flex items-center gap-1.5 px-3 py-1.5 text-[#323130] hover:bg-[#e1dfdd] rounded-sm text-[13px]">
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M13 3H3v10h10V3zm-1 9H4V4h8v8zM6 1h4v1H6V1z"/>
+                  </svg>
+                  Delete
+                </button>
+              </div>
+              
+              {/* Message Content */}
+              <div className="flex-1 overflow-y-auto bg-white">
+                {messagesLoading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#0078d4] border-t-transparent"></div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Thread Subject Header - Outlook style */}
+                    <div className="px-8 py-5 border-b border-[#edebe9]">
+                      <h1 className="text-[21px] font-semibold text-[#323130]" style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" }}>
+                        {selectedConversation.lastMessage?.subject || '(No Subject)'}
+                      </h1>
                     </div>
                     
-                    {/* Thread Actions */}
-                    <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => {
-                          // Focus on reply editor
-                          if (replyEditorRef.current) {
-                            replyEditorRef.current.focus();
-                          }
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Reply to thread"
-                      >
-                        <PaperAirplaneIcon className="h-5 w-5 text-gray-400 hover:text-gray-600 -rotate-45" />
-                      </button>
-                      <button 
-                        onClick={() => window.print()}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Print thread"
-                      >
-                        <DocumentIcon className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (selectedConversation) {
-                            toggleArchive({ stopPropagation: () => {} }, selectedConversation.id);
-                          }
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Archive conversation"
-                      >
-                        <ArchiveBoxIcon className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Email Cards Stack */}
-                <div className="flex-1 overflow-y-auto p-3">
-                  {messagesLoading ? (
-                    <div className="flex justify-center items-center h-32">
-                      <ArrowPathIcon className="h-6 w-6 animate-spin text-[#7F2387]" />
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                      <EnvelopeIcon className="h-12 w-12 mb-2 text-gray-300" />
-                      <p className="text-sm">No messages in this conversation</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-w-4xl mx-auto">
-                      {messages.map((msg) => {
-                        const isOwn = msg.sender_id === user?.id;
-                        const isSelected = selectedMessage?.id === msg.id;
-                        
-                        return (
-                          <div
-                            key={msg.id}
-                            onClick={() => setSelectedMessage(msg)}
-                            className={`bg-white rounded-lg shadow-sm border transition-all cursor-pointer ${
-                              isSelected 
-                                ? 'border-[#7F2387] ring-1 ring-[#7F2387]/20' 
-                                : 'border-gray-200 hover:border-gray-300 hover:shadow'
-                            }`}
-                          >
-                            {/* Card Header */}
-                            <div className="px-4 py-3 border-b border-gray-100">
-                              <div className="flex items-start gap-4">
-                                {/* Sender Avatar */}
-                                <div 
-                                  className="h-9 w-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                                  style={{ backgroundColor: getAvatarColor(msg.sender_name) }}
-                                >
-                                  {getInitials(msg.sender_name)}
-                                </div>
-                                
-                                {/* Sender Info & Subject */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between gap-3 mb-1">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <span className="font-semibold text-gray-900 text-[15px]">
-                                        {isOwn ? 'You' : msg.sender_name}
-                                      </span>
-                                      {isOwn && (
-                                        <span className="px-1.5 py-0.5 bg-[#7F2387]/10 text-[#7F2387] text-[10px] font-medium rounded">
-                                          SENT
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className="text-xs text-gray-400 flex-shrink-0 tabular-nums">
-                                      {formatFullDate(msg.created_at)}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Subject Line */}
-                                  <p className="text-sm font-medium text-gray-700 truncate">
-                                    {msg.subject || 'No Subject'}
-                                  </p>
-                                  
-                                  {/* To/From line */}
-                                  <p className="text-xs text-gray-400 mt-1">
-                                    {isOwn ? (
-                                      <>To: {msg.receiver_name || selectedConversation.displayName}</>
-                                    ) : (
-                                      <>To: You</>
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
+                    {/* Messages Thread */}
+                    <div className="divide-y divide-[#edebe9]">
+                      {messages.map((msg, idx) => (
+                        <div key={msg.id} className="px-8 py-5">
+                          {/* Message Header Row */}
+                          <div className="flex items-start gap-4">
+                            {/* Avatar */}
+                            <div 
+                              className="w-12 h-12 rounded-full flex items-center justify-center text-white text-[14px] font-semibold flex-shrink-0"
+                              style={{ backgroundColor: getAvatarColor(msg.sender_id === user?.id ? 'You' : msg.sender_name) }}
+                            >
+                              {getInitials(msg.sender_id === user?.id ? user?.name || 'You' : msg.sender_name)}
                             </div>
                             
-                            {/* Card Body - Enhanced Reading Area */}
-                            <div className="px-4 py-3 bg-gray-50/30">
+                            {/* Sender Details */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="text-[15px] font-semibold text-[#323130]">
+                                  {msg.sender_id === user?.id ? (user?.name || 'You') : msg.sender_name}
+                                </span>
+                                <span className="text-[12px] text-[#605e5c] flex-shrink-0 ml-4">
+                                  {formatFullDate(msg.created_at)}
+                                </span>
+                              </div>
+                              <div className="text-[13px] text-[#605e5c] mb-4">
+                                To: {msg.sender_id === user?.id ? msg.receiver_name : (user?.name || 'You')}
+                              </div>
+                              
+                              {/* Message Body - Outlook email content style */}
                               <div 
-                                className="prose prose-sm prose-gray max-w-none
-                                  prose-headings:text-gray-900 prose-headings:font-semibold
-                                  prose-p:text-gray-700 prose-p:leading-[1.6] prose-p:text-[14px]
-                                  prose-a:text-[#7F2387] prose-a:no-underline hover:prose-a:underline
-                                  prose-strong:text-gray-900 prose-strong:font-semibold
-                                  prose-code:text-[#7F2387] prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-normal prose-code:before:content-none prose-code:after:content-none
-                                  prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:rounded-lg
-                                  prose-blockquote:border-l-[#7F2387] prose-blockquote:bg-gray-50 prose-blockquote:py-1 prose-blockquote:not-italic
-                                  prose-ul:text-gray-700 prose-ol:text-gray-700
-                                  prose-li:marker:text-gray-400
-                                  prose-hr:border-gray-200
-                                  prose-table:text-sm prose-th:bg-gray-100 prose-th:px-3 prose-th:py-2
-                                  prose-td:px-3 prose-td:py-2 prose-td:border-gray-200
-                                  whitespace-pre-wrap
-                                  selection:bg-[#7F2387]/20"
-                                style={{ maxWidth: '65ch' }}
-                                dangerouslySetInnerHTML={{ __html: (msg.body || msg.body_preview || 'No content').replace(/\n/g, '<br/>') }}
-                              />
-                            </div>
-                            
-                            {/* Card Attachments */}
-                            {msg.attachments && msg.attachments.length > 0 && (
-                              <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 rounded-b-lg">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <PaperClipIcon className="h-4 w-4 text-gray-400" />
-                                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                                    {msg.attachments.length} Attachment{msg.attachments.length > 1 ? 's' : ''}
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  {msg.attachments.map((att, attIdx) => (
-                                    <a
-                                      key={attIdx}
-                                      href={`/api/messages/attachments/${att.id}`}
-                                      download={att.original_name || att.name}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        // Use fetch to download the file properly
-                                        e.preventDefault();
-                                        fetch(`/api/messages/attachments/${att.id}`)
-                                          .then(res => {
-                                            if (!res.ok) throw new Error('Download failed');
-                                            return res.blob();
-                                          })
-                                          .then(blob => {
-                                            const url = window.URL.createObjectURL(blob);
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = att.original_name || att.name || 'attachment';
-                                            document.body.appendChild(a);
-                                            a.click();
-                                            window.URL.revokeObjectURL(url);
-                                            a.remove();
-                                          })
-                                          .catch(err => console.error('Download error:', err));
-                                      }}
-                                      className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group cursor-pointer"
-                                    >
-                                      <div className="p-1.5 bg-gray-100 rounded">
-                                        <DocumentIcon className="h-4 w-4 text-gray-500" />
-                                      </div>
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-medium text-gray-700 truncate max-w-[150px]">
-                                          {att.original_name || att.name}
-                                        </p>
-                                        <p className="text-[10px] text-gray-400">
-                                          {att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : 'Download'}
-                                        </p>
-                                      </div>
-                                      <ArrowDownTrayIcon className="h-4 w-4 text-gray-400 group-hover:text-[#7F2387]" />
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Card Footer - Quick Actions */}
-                            <div className="px-5 py-2.5 border-t border-gray-100 flex items-center gap-2">
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  replyInputRef.current?.focus();
+                                className="text-[14px] text-[#323130] leading-[1.6] max-w-none prose prose-sm"
+                                style={{ 
+                                  fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+                                  wordWrap: 'break-word',
+                                  overflowWrap: 'break-word'
                                 }}
-                                className="text-xs text-gray-500 hover:text-[#7F2387] font-medium flex items-center gap-1"
-                              >
-                                <PaperAirplaneIcon className="h-3.5 w-3.5 -rotate-45" />
-                                Reply
-                              </button>
-                              <span className="text-gray-300">•</span>
-                              <button 
-                                onClick={(e) => toggleArchive(e, selectedConversation?.id)}
-                                className="text-xs text-gray-500 hover:text-[#7F2387] font-medium flex items-center gap-1"
-                              >
-                                <ArchiveBoxIcon className="h-3.5 w-3.5" />
-                                Archive
-                              </button>
-                              <span className="text-gray-300">•</span>
-                              <button 
-                                onClick={(e) => handleDeleteMessage(e, msg.id)}
-                                className="text-xs text-gray-500 hover:text-red-500 font-medium"
-                              >
-                                Delete
-                              </button>
+                                dangerouslySetInnerHTML={{ __html: msg.body }}
+                              />
                             </div>
                           </div>
-                        );
-                      })}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  )}
-                </div>
-                
-                {/* Reply Composer - Outlook Style Rich Text Editor */}
-                <div className="border-t border-gray-200 bg-white flex-shrink-0">
-                  {/* Formatting Toolbar - Enhanced Style */}
-                  <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white shadow-sm overflow-x-auto flex-nowrap relative z-50" style={{ overflowY: 'visible' }}>
-                    {/* Font Family */}
-                    <div className="relative z-[100]" data-dropdown>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const btn = e.currentTarget;
-                          const rect = btn.getBoundingClientRect();
-                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
-                          setShowFontDropdown(!showFontDropdown);
-                          setShowFontSizeDropdown(false);
-                          setShowColorPicker(false);
-                          setShowHighlightPicker(false);
-                        }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all whitespace-nowrap min-w-[100px] justify-between"
-                        title="Font Family"
-                      >
-                        <span className="truncate">{selectedFont}</span>
-                        <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontDropdown ? 'rotate-180' : ''}`} />
-                      </button>
-                      {showFontDropdown && (
-                        <div 
-                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 min-w-[160px] max-h-64 overflow-y-auto"
-                          style={{ 
-                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
-                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
-                            left: dropdownPosition.left,
-                            zIndex: 99999
-                          }}
-                        >
-                          {fontOptions.map(font => (
-                            <button
-                              key={font}
-                              onClick={() => handleFontChange(font)}
-                              className={`w-full px-3 py-2 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
-                                selectedFont === font ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
-                              }`}
-                              style={{ fontFamily: font }}
-                            >
-                              <span>{font}</span>
-                              {selectedFont === font && (
-                                <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </button>
-                          ))}
                         </div>
-                      )}
-                    </div>
-                    
-                    {/* Font Size */}
-                    <div className="relative z-[100]" data-dropdown>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const btn = e.currentTarget;
-                          const rect = btn.getBoundingClientRect();
-                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
-                          setShowFontSizeDropdown(!showFontSizeDropdown);
-                          setShowFontDropdown(false);
-                          setShowColorPicker(false);
-                          setShowHighlightPicker(false);
-                        }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md shadow-sm transition-all w-[70px] justify-between"
-                        title="Font Size"
-                      >
-                        <span>{selectedFontSize}</span>
-                        <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showFontSizeDropdown ? 'rotate-180' : ''}`} />
-                      </button>
-                      {showFontSizeDropdown && (
-                        <div 
-                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl py-1.5 max-h-56 overflow-y-auto min-w-[80px]"
-                          style={{ 
-                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
-                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
-                            left: dropdownPosition.left,
-                            zIndex: 99999
-                          }}
-                        >
-                          {fontSizeOptions.map(size => (
-                            <button
-                              key={size}
-                              onClick={() => handleFontSizeChange(size)}
-                              className={`w-full px-3 py-1.5 text-left text-sm hover:bg-[#7F2387]/10 transition-colors flex items-center justify-between ${
-                                selectedFontSize === size ? 'bg-[#7F2387]/5 text-[#7F2387] font-semibold' : 'text-gray-700'
-                              }`}
-                            >
-                              <span>{size}px</span>
-                              {selectedFontSize === size && (
-                                <svg className="h-4 w-4 text-[#7F2387]" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                    
-                    {/* Bold */}
-                    <button 
-                      onClick={() => handleFormat('bold')}
-                      className={`p-2 rounded-md transition-all flex-shrink-0 ${
-                        activeFormats.bold 
-                          ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
-                          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                      }`}
-                      title="Bold (Ctrl+B)"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6V4zm0 8h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6v-8zm3 7h5a2 2 0 0 0 0-4H9v4zm0-7h4a2 2 0 0 0 0-4H9v4z"/>
-                      </svg>
-                    </button>
-                    
-                    {/* Italic */}
-                    <button 
-                      onClick={() => handleFormat('italic')}
-                      className={`p-2 rounded-md transition-all flex-shrink-0 ${
-                        activeFormats.italic 
-                          ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
-                          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                      }`}
-                      title="Italic (Ctrl+I)"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4h-8z"/>
-                      </svg>
-                    </button>
-                    
-                    {/* Underline */}
-                    <button 
-                      onClick={() => handleFormat('underline')}
-                      className={`p-2 rounded-md transition-all flex-shrink-0 ${
-                        activeFormats.underline 
-                          ? 'bg-[#7F2387] text-white shadow-sm hover:bg-[#64126D]' 
-                          : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                      }`}
-                      title="Underline (Ctrl+U)"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3h-2v7a4 4 0 0 1-4 4 4 4 0 0 1-4-4V3H6zM4 20h16v2H4v-2z"/>
-                      </svg>
-                    </button>
-                    
-                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                    
-                    {/* Text Color */}
-                    <div className="relative z-[100]" data-dropdown>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const btn = e.currentTarget;
-                          const rect = btn.getBoundingClientRect();
-                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
-                          setShowColorPicker(!showColorPicker);
-                          setShowHighlightPicker(false);
-                          setShowFontDropdown(false);
-                          setShowFontSizeDropdown(false);
-                        }}
-                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
-                        title="Text Color"
-                      >
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M11 2L5.5 16h2.25l1.12-3h6.25l1.12 3h2.25L13 2h-2zm-1.38 9L12 4.67 14.38 11H9.62z"/>
-                        </svg>
-                        <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentTextColor }} />
-                      </button>
-                      {showColorPicker && (
-                        <div 
-                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                          style={{ 
-                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
-                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
-                            left: dropdownPosition.left,
-                            zIndex: 99999
-                          }}
-                        >
-                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Text Color</div>
-                          <div className="grid grid-cols-5 gap-1.5">
-                            {colorOptions.map(color => (
-                              <button
-                                key={color}
-                                onClick={() => handleTextColor(color)}
-                                className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
-                                  currentTextColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
-                                }`}
-                                style={{ backgroundColor: color }}
-                                title={color}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Highlight Color */}
-                    <div className="relative z-[100]" data-dropdown>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const btn = e.currentTarget;
-                          const rect = btn.getBoundingClientRect();
-                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
-                          setShowHighlightPicker(!showHighlightPicker);
-                          setShowColorPicker(false);
-                          setShowFontDropdown(false);
-                          setShowFontSizeDropdown(false);
-                        }}
-                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all relative flex-shrink-0"
-                        title="Highlight Color"
-                      >
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M15.24 2.86l3.89 3.89-1.41 1.41-3.89-3.89 1.41-1.41zM3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM5.92 19H5v-.92l9.06-9.06.92.92L5.92 19z"/>
-                        </svg>
-                        <div className="absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-full shadow-sm" style={{ backgroundColor: currentHighlightColor }} />
-                      </button>
-                      {showHighlightPicker && (
-                        <div 
-                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                          style={{ 
-                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
-                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
-                            left: dropdownPosition.left,
-                            zIndex: 99999
-                          }}
-                        >
-                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Highlight Color</div>
-                          <div className="grid grid-cols-5 gap-1.5">
-                            {colorOptions.map(color => (
-                              <button
-                                key={color}
-                                onClick={() => handleHighlightColor(color)}
-                                className={`w-7 h-7 rounded-md border-2 hover:scale-110 transition-transform ${
-                                  currentHighlightColor === color ? 'border-[#7F2387] ring-2 ring-[#7F2387]/30' : 'border-gray-300'
-                                }`}
-                                style={{ backgroundColor: color }}
-                                title={color}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                    
-                    {/* Bullet List */}
-                    <button 
-                      onClick={() => handleInsertList('bullet')}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                      title="Bullet List"
-                    >
-                      <ListBulletIcon className="h-4 w-4" />
-                    </button>
-                    
-                    {/* Numbered List */}
-                    <button 
-                      onClick={() => handleInsertList('numbered')}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                      title="Numbered List"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"/>
-                      </svg>
-                    </button>
-                    
-                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                    
-                    {/* Link */}
-                    <button 
-                      onClick={handleInsertLink}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                      title="Insert Link (Ctrl+K)"
-                    >
-                      <LinkIcon className="h-4 w-4" />
-                    </button>
-                    
-                    {/* Code */}
-                    <button 
-                      onClick={() => execCommand('formatBlock', 'pre')}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                      title="Code Block"
-                    >
-                      <CodeBracketIcon className="h-4 w-4" />
-                    </button>
-                    
-                    <div className="w-px h-6 bg-gray-300 mx-1.5 flex-shrink-0" />
-                    
-                    {/* Insert Table */}
-                    <div className="relative z-[100]" data-dropdown>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const btn = e.currentTarget;
-                          const rect = btn.getBoundingClientRect();
-                          setDropdownPosition({ top: rect.top - 8, left: rect.left, openAbove: true });
-                          setShowTablePicker(!showTablePicker);
-                          setShowEmojiPicker(false);
-                        }}
-                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
-                        title="Insert Table"
-                      >
-                        <TableCellsIcon className="h-4 w-4" />
-                      </button>
-                      {showTablePicker && (
-                        <div 
-                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                          style={{ 
-                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
-                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
-                            left: dropdownPosition.left,
-                            zIndex: 99999
-                          }}
-                        >
-                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Table</div>
-                          <div className="grid grid-cols-5 gap-1">
-                            {[1, 2, 3, 4, 5].map(rows => (
-                              [1, 2, 3, 4, 5].map(cols => (
-                                <button
-                                  key={`${rows}-${cols}`}
-                                  onClick={() => handleInsertTable(rows, cols)}
-                                  className="w-6 h-6 border border-gray-300 hover:bg-[#7F2387]/20 hover:border-[#7F2387] transition-colors rounded"
-                                  title={`${rows}×${cols} table`}
-                                />
-                              ))
-                            ))}
-                          </div>
-                          <div className="text-[10px] text-gray-400 mt-2 text-center">Click to insert table</div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Insert Image */}
-                    <button 
-                      onClick={() => replyFileInputRef.current?.click()}
-                      className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0"
-                      title="Insert Picture"
-                    >
-                      <PhotoIcon className="h-4 w-4" />
-                    </button>
-                    
-                    {/* Emoji */}
-                    <div className="relative z-[100]" data-dropdown>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const btn = e.currentTarget;
-                          const rect = btn.getBoundingClientRect();
-                          setDropdownPosition({ top: rect.top - 8, left: rect.left - 100, openAbove: true });
-                          setShowEmojiPicker(!showEmojiPicker);
-                          setShowTablePicker(false);
-                        }}
-                        className="p-2 text-gray-600 hover:bg-gray-200 hover:text-gray-900 rounded-md transition-all flex-shrink-0" 
-                        title="Insert Emoji"
-                      >
-                        <FaceSmileIcon className="h-4 w-4" />
-                      </button>
-                      {showEmojiPicker && (
-                        <div 
-                          className="fixed bg-white border border-gray-300 rounded-lg shadow-2xl p-3"
-                          style={{ 
-                            top: dropdownPosition.openAbove ? 'auto' : dropdownPosition.top,
-                            bottom: dropdownPosition.openAbove ? `calc(100vh - ${dropdownPosition.top}px)` : 'auto',
-                            left: dropdownPosition.left,
-                            zIndex: 99999
-                          }}
-                        >
-                          <div className="text-xs font-semibold text-gray-700 mb-2 px-1">Insert Emoji</div>
-                          <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
-                            {emojiOptions.map(emoji => (
-                              <button
-                                key={emoji}
-                                onClick={() => handleInsertEmoji(emoji)}
-                                className="w-7 h-7 hover:bg-gray-100 rounded text-lg flex items-center justify-center transition-colors"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Attachments Preview */}
-                  {attachments.length > 0 && (
-                    <div className="px-4 py-2 border-b border-gray-100 flex flex-wrap gap-2">
-                      {attachments.map((att, idx) => (
-                        <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 rounded-lg text-xs text-gray-600">
-                          <PaperClipIcon className="h-3.5 w-3.5" />
-                          <span className="max-w-[120px] truncate">{att.name}</span>
-                          <button onClick={() => removeAttachment(idx)} className="hover:text-red-500">
-                            <XMarkIcon className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
                       ))}
                     </div>
-                  )}
-                  
-                  {/* Rich Text Editor Area */}
-                  <div className="px-3 py-2">
-                    <div
-                      ref={replyEditorRef}
-                      contentEditable
-                      onInput={updateActiveFormats}
-                      onMouseUp={updateActiveFormats}
-                      onKeyUp={updateActiveFormats}
-                      onKeyDown={(e) => {
-                        // Handle formatting shortcuts
-                        handleEditorKeyDown(e);
-                        // Handle Enter to send
-                        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                          const text = getEditorText(replyEditorRef);
-                          if (text.trim()) {
-                            e.preventDefault();
-                            sendReply();
-                          }
-                        }
-                      }}
-                      className="w-full text-[14px] leading-relaxed text-gray-700 focus:outline-none min-h-[50px] max-h-[100px] overflow-y-auto border border-gray-200 rounded-lg p-2.5"
-                      style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
-                      data-placeholder="Write your reply here..."
-                      suppressContentEditableWarning={true}
-                    />
-                  </div>
-                  
-                  {/* Bottom Actions */}
-                  <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={sendReply}
-                        disabled={sending || (!getEditorText(replyEditorRef).trim() && attachments.length === 0)}
-                        className="px-5 py-2 bg-[#7F2387] text-white rounded-md hover:bg-[#64126D] disabled:opacity-50 font-medium flex items-center gap-2 text-sm"
-                      >
-                        <PaperAirplaneIcon className="h-4 w-4" />
-                        Send
+                    <div ref={messagesEndRef} />
+                  </>
+                )}
+              </div>
+              
+              {/* Reply Box - Outlook Style */}
+              <div className="border-t border-[#edebe9] p-4 bg-white">
+                <div className="border border-[#c8c6c4] rounded focus-within:border-[#0078d4] focus-within:ring-1 focus-within:ring-[#0078d4]">
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Type your reply here..."
+                    className="w-full resize-none text-[14px] focus:outline-none p-4 min-h-[100px] placeholder-[#a19f9d]"
+                    style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        sendReply();
+                      }
+                    }}
+                  />
+                  <div className="flex items-center justify-between px-3 py-2 border-t border-[#edebe9] bg-[#faf9f8]">
+                    <div className="flex items-center gap-1">
+                      <button className="p-2 text-[#605e5c] hover:bg-[#e1dfdd] rounded" title="Attach file">
+                        <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M14.5 3a3.5 3.5 0 0 1 .15 6.995L14.5 10H6v1h8.5a4.5 4.5 0 0 0 .22-8.996L14.5 2A4.5 4.5 0 0 0 10 6.5V15a3 3 0 0 0 5.995.176L16 15V6h1v9a4 4 0 0 1-7.995.2L9 15V6.5a5.5 5.5 0 0 1 5.5-5.5V3z"/>
+                        </svg>
                       </button>
-                      
-                      <input
-                        ref={replyFileInputRef}
-                        type="file"
-                        multiple
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ppt,.pptx,.txt,.dwg,.dxf,.dgn,.rvt,.ifc,.plt,.jpg,.jpeg,.png,.webp,.heic,.tif,.tiff,.zip,.rar,.7z,.dat,.xml,.json,.mpp,.xer,.mp3,.wav,.mp4,.mov,.webm"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                      <button
-                        onClick={() => replyFileInputRef.current?.click()}
-                        className="px-3 py-2 text-gray-600 hover:bg-gray-200 rounded-md transition-colors flex items-center gap-1.5 text-sm"
-                        title="Attach file"
-                      >
-                        <PaperClipIcon className="h-4 w-4" />
-                        Attach
+                      <button className="p-2 text-[#605e5c] hover:bg-[#e1dfdd] rounded" title="Insert emoji">
+                        <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm0 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM7.5 8a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm5 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM6.5 11.5h7c-.2 1.95-1.67 3.5-3.5 3.5s-3.3-1.55-3.5-3.5z"/>
+                        </svg>
                       </button>
                     </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => {
-                          // Save draft - just show alert for now
-                          alert('Draft saved!');
-                        }}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors" 
-                        title="Save as draft"
-                      >
-                        <DocumentIcon className="h-4 w-4" />
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (confirm('Are you sure you want to discard this reply?')) {
-                            clearEditor(replyEditorRef);
-                            setAttachments([]);
-                          }
-                        }}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-200 rounded transition-colors" 
-                        title="Discard"
-                      >
-                        <XMarkIcon className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={sendReply}
+                      disabled={sending || !replyText.trim()}
+                      className="flex items-center gap-2 px-4 py-1.5 bg-[#0078d4] text-white rounded hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M2.72 2.05l15.74 7.12c.38.18.51.64.25.97a.67.67 0 0 1-.25.21l-15.74 7.12a.75.75 0 0 1-1.01-.35.75.75 0 0 1-.04-.52l1.62-5.96L13 10 3.29 9.36l-1.62-5.96a.75.75 0 0 1 .48-.94c.18-.06.38-.04.57.09z"/>
+                      </svg>
+                      Send
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
             /* Empty State */
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 bg-gray-50">
-              <div className="bg-white rounded-full p-6 shadow-sm mb-4">
-                <ChatBubbleLeftRightIconSolid className="h-16 w-16 text-[#7F2387]/30" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">Your Messages</h3>
-              <p className="text-sm text-gray-500 mb-6 text-center max-w-sm">
-                Select a conversation from the list or start a new message
-              </p>
-              <button
-                onClick={startNewMessage}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#7F2387] text-white rounded-lg hover:bg-[#64126D] font-medium"
-              >
-                <PencilSquareIcon className="h-5 w-5" />
-                <span>New Message</span>
-              </button>
+            <div className="flex-1 flex flex-col items-center justify-center text-[#605e5c]">
+              <svg className="w-24 h-24 text-[#c8c6c4] mb-4" viewBox="0 0 96 96" fill="currentColor">
+                <path d="M84 16H12a8 8 0 0 0-8 8v48a8 8 0 0 0 8 8h72a8 8 0 0 0 8-8V24a8 8 0 0 0-8-8zm0 4c.77 0 1.47.3 2.02.78L48 46.58 9.98 20.78c.55-.48 1.25-.78 2.02-.78h72zM8 72V26.82l39.44 26.79a1 1 0 0 0 1.12 0L88 26.82V72a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4z"/>
+              </svg>
+              <p className="text-[16px] font-semibold text-[#323130]">Select an item to read</p>
+              <p className="text-[13px] text-[#605e5c] mt-1">Nothing is selected</p>
             </div>
           )}
-        </div>
         </div>
       </div>
     </div>

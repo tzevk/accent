@@ -9,6 +9,7 @@ const SessionContext = createContext({
   authenticated: false,
   can: () => false,
   refreshSession: () => {},
+  setUserData: () => {},  // New: direct setter for login
   RESOURCES,
   PERMISSIONS
 });
@@ -21,12 +22,51 @@ const CACHE_TTL = 30000; // 30 seconds
 // Flag to force next fetch to bypass cache
 let forceNextFetch = false;
 
+// Callback to update provider state from outside (set by provider)
+let updateProviderState = null;
+
 export function SessionProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  // Initialize state from cache if available (for instant login)
+  const [user, setUser] = useState(() => sessionCache?.user || null);
+  const [loading, setLoading] = useState(() => {
+    // If cache exists and is valid, we're not loading
+    if (sessionCache?.authenticated && sessionCache?.user) {
+      return false;
+    }
+    return true;
+  });
+  const [authenticated, setAuthenticated] = useState(() => sessionCache?.authenticated || false);
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
+
+  // Register the state updater so setSessionData can update state
+  useEffect(() => {
+    updateProviderState = (userData) => {
+      if (userData) {
+        setUser(userData);
+        setAuthenticated(true);
+        setLoading(false);
+      }
+    };
+    return () => {
+      updateProviderState = null;
+    };
+  }, []);
+
+  // Direct setter for login - updates state immediately
+  const setUserData = useCallback((userData) => {
+    if (userData) {
+      sessionCache = {
+        authenticated: true,
+        user: userData
+      };
+      sessionCacheTime = Date.now();
+      forceNextFetch = false;
+      setUser(userData);
+      setAuthenticated(true);
+      setLoading(false);
+    }
+  }, []);
 
   const fetchSession = useCallback(async (force = false) => {
     const now = Date.now();
@@ -160,9 +200,10 @@ export function SessionProvider({ children }) {
     authenticated,
     can,
     refreshSession,
+    setUserData,
     RESOURCES,
     PERMISSIONS
-  }), [user, loading, authenticated, can, refreshSession]);
+  }), [user, loading, authenticated, can, refreshSession, setUserData]);
 
   return (
     <SessionContext.Provider value={value}>
@@ -180,4 +221,21 @@ export function clearSessionCache() {
   sessionCache = null;
   sessionCacheTime = 0;
   forceNextFetch = true;
+}
+
+// Pre-set session data (used after login to avoid refetch delay)
+export function setSessionData(userData) {
+  if (userData) {
+    sessionCache = {
+      authenticated: true,
+      user: userData
+    };
+    sessionCacheTime = Date.now();
+    forceNextFetch = false;
+    
+    // Also update the provider state if it's mounted
+    if (updateProviderState) {
+      updateProviderState(userData);
+    }
+  }
 }

@@ -32,28 +32,24 @@ export default function UserDashboardPage() {
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
+    // If session context already has user data (from cache), use it immediately
+    if (user && authenticated) {
+      const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+      if (isSuperAdmin) {
+        // Super admin - redirect to admin dashboard
+        router.replace('/admin/dashboard');
+        return;
+      }
+      // Regular user - authorize immediately
+      setAuthorized(true);
+      return;
+    }
+    
     // Wait for session to load
     if (loading) return;
 
-    // Session loaded but not authenticated - check cookies as fallback
+    // Session loaded but not authenticated - let middleware handle redirect
     if (!authenticated || !user) {
-      const hasCookies = typeof document !== 'undefined' && 
-        document.cookie.includes('auth=') && 
-        document.cookie.includes('user_id=');
-      
-      if (hasCookies) {
-        // Cookies exist - check if super admin
-        const isSuperAdminCookie = document.cookie.includes('is_super_admin=1') || 
-                                    document.cookie.includes('is_super_admin=true');
-        if (isSuperAdminCookie) {
-          router.replace('/admin/dashboard');
-          return;
-        }
-        // Regular user with cookies - proceed
-        setAuthorized(true);
-        return;
-      }
-      // No cookies - let middleware handle redirect
       return;
     }
 

@@ -625,7 +625,7 @@ function ProjectsInner() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <div className="text-sm font-medium text-gray-900">{project.company_name || '-'}</div>
+                                  <div className="text-sm font-medium text-gray-900">{project.client_name || project.company_name || '-'}</div>
                                   <div className="text-xs text-gray-600 mt-1">PM: {project.project_manager || 'Not assigned'}</div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">

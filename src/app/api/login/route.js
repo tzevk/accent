@@ -150,10 +150,22 @@ export async function POST(req) {
         try { await db.end() } catch {}
       }
       
+      // Build user data object for session pre-population
+      const userData = {
+        id: userId,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name || user.username,
+        role_id: user.role_id,
+        is_super_admin: isSuperAdmin,
+        permissions: permissions
+      };
+      
       const res = NextResponse.json({ 
         success: true, 
         message: 'Login successful',
-        is_super_admin: isSuperAdmin
+        is_super_admin: isSuperAdmin,
+        user: userData  // Include user data for session pre-population
       })
       const isProd = process.env.NODE_ENV === 'production'
       
