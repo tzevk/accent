@@ -721,6 +721,473 @@ const MODULE_FIELDS = {
         }
       }
     }
+  },
+  
+  // ==================== ADDITIONAL MODULES ====================
+  reports: {
+    name: 'Reports',
+    description: 'View and generate reports',
+    category: 'module',
+    sections: {
+      report_access: {
+        name: 'Report Access',
+        fields: {
+          lead_reports: { label: 'Lead Reports', type: 'view' },
+          project_reports: { label: 'Project Reports', type: 'view' },
+          employee_reports: { label: 'Employee Reports', type: 'view' },
+          financial_reports: { label: 'Financial Reports', type: 'view', sensitive: true },
+          attendance_reports: { label: 'Attendance Reports', type: 'view' },
+          productivity_reports: { label: 'Productivity Reports', type: 'view' }
+        }
+      },
+      export: {
+        name: 'Export Options',
+        fields: {
+          export_pdf: { label: 'Export to PDF', type: 'action' },
+          export_excel: { label: 'Export to Excel', type: 'action' },
+          export_csv: { label: 'Export to CSV', type: 'action' }
+        }
+      }
+    }
+  },
+  work_logs: {
+    name: 'Work Logs',
+    description: 'Daily work log management',
+    category: 'module',
+    sections: {
+      log_details: {
+        name: 'Log Details',
+        fields: {
+          log_date: { label: 'Log Date', type: 'date' },
+          project: { label: 'Project', type: 'select' },
+          activity: { label: 'Activity', type: 'select' },
+          hours_worked: { label: 'Hours Worked', type: 'number' },
+          description: { label: 'Description', type: 'textarea' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      approval: {
+        name: 'Approval',
+        fields: {
+          approved_by: { label: 'Approved By', type: 'select' },
+          approval_date: { label: 'Approval Date', type: 'date' },
+          approval_notes: { label: 'Approval Notes', type: 'textarea' }
+        }
+      }
+    }
+  },
+  messages: {
+    name: 'Messages',
+    description: 'Internal messaging system',
+    category: 'module',
+    sections: {
+      messaging: {
+        name: 'Messaging',
+        fields: {
+          send_message: { label: 'Send Messages', type: 'action' },
+          view_messages: { label: 'View Messages', type: 'view' },
+          attachments: { label: 'Attachments', type: 'file' },
+          group_messages: { label: 'Group Messages', type: 'action' }
+        }
+      }
+    }
+  },
+  profile: {
+    name: 'Profile',
+    description: 'User profile management',
+    category: 'module',
+    sections: {
+      personal: {
+        name: 'Personal Information',
+        fields: {
+          full_name: { label: 'Full Name', type: 'text' },
+          email: { label: 'Email', type: 'email' },
+          phone: { label: 'Phone', type: 'phone' },
+          avatar: { label: 'Profile Photo', type: 'file' }
+        }
+      },
+      preferences: {
+        name: 'Preferences',
+        fields: {
+          notifications: { label: 'Notifications', type: 'boolean' },
+          theme: { label: 'Theme', type: 'select' },
+          language: { label: 'Language', type: 'select' }
+        }
+      }
+    }
+  },
+  tickets: {
+    name: 'Tickets',
+    description: 'Support ticket management',
+    category: 'module',
+    sections: {
+      ticket_details: {
+        name: 'Ticket Details',
+        fields: {
+          ticket_id: { label: 'Ticket ID', type: 'text' },
+          title: { label: 'Title', type: 'text' },
+          description: { label: 'Description', type: 'textarea' },
+          priority: { label: 'Priority', type: 'select' },
+          status: { label: 'Status', type: 'select' },
+          category: { label: 'Category', type: 'select' },
+          assigned_to: { label: 'Assigned To', type: 'select' }
+        }
+      },
+      resolution: {
+        name: 'Resolution',
+        fields: {
+          resolution_notes: { label: 'Resolution Notes', type: 'textarea' },
+          resolved_by: { label: 'Resolved By', type: 'select' },
+          resolved_date: { label: 'Resolved Date', type: 'date' }
+        }
+      }
+    }
+  },
+  
+  // ==================== ADDITIONAL MASTERS ====================
+  documents: {
+    name: 'Document Master',
+    description: 'Document types and templates',
+    category: 'master',
+    sections: {
+      document_types: {
+        name: 'Document Types',
+        fields: {
+          document_type: { label: 'Document Type', type: 'text' },
+          category: { label: 'Category', type: 'select' },
+          description: { label: 'Description', type: 'textarea' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      templates: {
+        name: 'Templates',
+        fields: {
+          template_name: { label: 'Template Name', type: 'text' },
+          template_file: { label: 'Template File', type: 'file' },
+          version: { label: 'Version', type: 'text' }
+        }
+      }
+    }
+  },
+  roles: {
+    name: 'Role Master',
+    description: 'Role and permission management',
+    category: 'master',
+    sections: {
+      role_details: {
+        name: 'Role Details',
+        fields: {
+          role_name: { label: 'Role Name', type: 'text' },
+          description: { label: 'Description', type: 'textarea' },
+          status: { label: 'Status', type: 'select' },
+          is_system_role: { label: 'System Role', type: 'boolean' }
+        }
+      },
+      permissions: {
+        name: 'Permissions',
+        fields: {
+          permissions_list: { label: 'Permissions', type: 'json', sensitive: true }
+        }
+      }
+    }
+  },
+  holidays: {
+    name: 'Holiday Master',
+    description: 'Holiday calendar management',
+    category: 'master',
+    sections: {
+      holiday_details: {
+        name: 'Holiday Details',
+        fields: {
+          holiday_name: { label: 'Holiday Name', type: 'text' },
+          holiday_date: { label: 'Date', type: 'date' },
+          holiday_type: { label: 'Type', type: 'select' },
+          is_optional: { label: 'Optional Holiday', type: 'boolean' },
+          description: { label: 'Description', type: 'textarea' }
+        }
+      }
+    }
+  },
+  accounts: {
+    name: 'Account Master',
+    description: 'Chart of accounts and financial accounts',
+    category: 'master',
+    sections: {
+      account_details: {
+        name: 'Account Details',
+        fields: {
+          account_code: { label: 'Account Code', type: 'text' },
+          account_name: { label: 'Account Name', type: 'text' },
+          account_type: { label: 'Account Type', type: 'select' },
+          parent_account: { label: 'Parent Account', type: 'select' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      financial: {
+        name: 'Financial Info',
+        fields: {
+          opening_balance: { label: 'Opening Balance', type: 'currency', sensitive: true },
+          current_balance: { label: 'Current Balance', type: 'currency', sensitive: true }
+        }
+      }
+    }
+  },
+  
+  // ==================== ADMIN MODULES ====================
+  settings: {
+    name: 'Settings',
+    description: 'System settings and configuration',
+    category: 'admin',
+    sections: {
+      general: {
+        name: 'General Settings',
+        fields: {
+          company_name: { label: 'Company Name', type: 'text' },
+          company_logo: { label: 'Company Logo', type: 'file' },
+          date_format: { label: 'Date Format', type: 'select' },
+          currency: { label: 'Currency', type: 'select' },
+          timezone: { label: 'Timezone', type: 'select' }
+        }
+      },
+      email: {
+        name: 'Email Settings',
+        fields: {
+          smtp_server: { label: 'SMTP Server', type: 'text', sensitive: true },
+          smtp_port: { label: 'SMTP Port', type: 'number' },
+          smtp_username: { label: 'SMTP Username', type: 'text', sensitive: true },
+          smtp_password: { label: 'SMTP Password', type: 'password', sensitive: true }
+        }
+      }
+    }
+  },
+  admin_monitoring: {
+    name: 'Live Monitoring',
+    description: 'Real-time user and system monitoring',
+    category: 'admin',
+    sections: {
+      monitoring: {
+        name: 'Monitoring',
+        fields: {
+          active_users: { label: 'Active Users', type: 'widget' },
+          user_activities: { label: 'User Activities', type: 'view' },
+          screen_time: { label: 'Screen Time', type: 'report' },
+          idle_tracking: { label: 'Idle Tracking', type: 'view' }
+        }
+      }
+    }
+  },
+  admin_activity_logs: {
+    name: 'Activity Logs',
+    description: 'User activity logging and audit',
+    category: 'admin',
+    sections: {
+      logs: {
+        name: 'Activity Logs',
+        fields: {
+          view_logs: { label: 'View Logs', type: 'view' },
+          filter_logs: { label: 'Filter Logs', type: 'action' },
+          export_logs: { label: 'Export Logs', type: 'action' },
+          user_filter: { label: 'Filter by User', type: 'select' },
+          date_filter: { label: 'Filter by Date', type: 'date' }
+        }
+      }
+    }
+  },
+  admin_audit_logs: {
+    name: 'Audit Logs',
+    description: 'System audit trail',
+    category: 'admin',
+    sections: {
+      audit: {
+        name: 'Audit Trail',
+        fields: {
+          view_audit: { label: 'View Audit Trail', type: 'view' },
+          filter_audit: { label: 'Filter Audit', type: 'action' },
+          export_audit: { label: 'Export Audit', type: 'action' },
+          resource_filter: { label: 'Filter by Resource', type: 'select' },
+          action_filter: { label: 'Filter by Action', type: 'select' }
+        }
+      }
+    }
+  },
+  admin_productivity: {
+    name: 'Productivity',
+    description: 'Employee productivity analytics',
+    category: 'admin',
+    sections: {
+      productivity: {
+        name: 'Productivity Metrics',
+        fields: {
+          productivity_dashboard: { label: 'Productivity Dashboard', type: 'view' },
+          employee_productivity: { label: 'Employee Productivity', type: 'report' },
+          team_productivity: { label: 'Team Productivity', type: 'report' },
+          project_productivity: { label: 'Project Productivity', type: 'report' }
+        }
+      }
+    }
+  },
+  payroll: {
+    name: 'Payroll',
+    description: 'Payroll management and processing',
+    category: 'admin',
+    sections: {
+      payroll_details: {
+        name: 'Payroll Details',
+        fields: {
+          basic_salary: { label: 'Basic Salary', type: 'currency', sensitive: true },
+          hra: { label: 'HRA', type: 'currency', sensitive: true },
+          conveyance: { label: 'Conveyance', type: 'currency', sensitive: true },
+          special_allowance: { label: 'Special Allowance', type: 'currency', sensitive: true },
+          gross_salary: { label: 'Gross Salary', type: 'currency', sensitive: true },
+          net_salary: { label: 'Net Salary', type: 'currency', sensitive: true }
+        }
+      },
+      deductions: {
+        name: 'Deductions',
+        fields: {
+          pf_deduction: { label: 'PF Deduction', type: 'currency', sensitive: true },
+          pt_deduction: { label: 'PT Deduction', type: 'currency', sensitive: true },
+          tds_deduction: { label: 'TDS Deduction', type: 'currency', sensitive: true },
+          other_deductions: { label: 'Other Deductions', type: 'currency', sensitive: true }
+        }
+      },
+      schedules: {
+        name: 'Payroll Schedules',
+        fields: {
+          schedule_name: { label: 'Schedule Name', type: 'text' },
+          pay_period: { label: 'Pay Period', type: 'select' },
+          process_date: { label: 'Process Date', type: 'date' },
+          status: { label: 'Status', type: 'select' }
+        }
+      }
+    }
+  },
+  material_requisition: {
+    name: 'Material Requisition',
+    description: 'Material requisition management',
+    category: 'admin',
+    sections: {
+      requisition_details: {
+        name: 'Requisition Details',
+        fields: {
+          requisition_no: { label: 'Requisition No', type: 'text' },
+          requisition_date: { label: 'Requisition Date', type: 'date' },
+          project: { label: 'Project', type: 'select' },
+          requested_by: { label: 'Requested By', type: 'select' },
+          status: { label: 'Status', type: 'select' }
+        }
+      },
+      items: {
+        name: 'Requisition Items',
+        fields: {
+          item_name: { label: 'Item Name', type: 'text' },
+          quantity: { label: 'Quantity', type: 'number' },
+          unit: { label: 'Unit', type: 'select' },
+          estimated_cost: { label: 'Estimated Cost', type: 'currency', sensitive: true }
+        }
+      }
+    }
+  },
+  da_schedule: {
+    name: 'DA Schedule',
+    description: 'Dearness Allowance schedule management',
+    category: 'admin',
+    sections: {
+      da_details: {
+        name: 'DA Details',
+        fields: {
+          effective_date: { label: 'Effective Date', type: 'date' },
+          da_percentage: { label: 'DA Percentage', type: 'number', sensitive: true },
+          applicable_to: { label: 'Applicable To', type: 'select' },
+          status: { label: 'Status', type: 'select' }
+        }
+      }
+    }
+  },
+  cash_voucher: {
+    name: 'Cash Voucher',
+    description: 'Cash voucher management',
+    category: 'admin',
+    sections: {
+      voucher_details: {
+        name: 'Voucher Details',
+        fields: {
+          voucher_no: { label: 'Voucher No', type: 'text' },
+          voucher_date: { label: 'Voucher Date', type: 'date' },
+          voucher_type: { label: 'Voucher Type', type: 'select' },
+          amount: { label: 'Amount', type: 'currency', sensitive: true },
+          description: { label: 'Description', type: 'textarea' },
+          paid_to: { label: 'Paid To', type: 'text' },
+          approved_by: { label: 'Approved By', type: 'select' },
+          status: { label: 'Status', type: 'select' }
+        }
+      }
+    }
+  },
+  attendance: {
+    name: 'Attendance',
+    description: 'Attendance tracking and management',
+    category: 'admin',
+    sections: {
+      attendance_details: {
+        name: 'Attendance Details',
+        fields: {
+          employee: { label: 'Employee', type: 'select' },
+          date: { label: 'Date', type: 'date' },
+          check_in: { label: 'Check In', type: 'time' },
+          check_out: { label: 'Check Out', type: 'time' },
+          total_hours: { label: 'Total Hours', type: 'number' },
+          status: { label: 'Status', type: 'select' },
+          remarks: { label: 'Remarks', type: 'textarea' }
+        }
+      },
+      leave: {
+        name: 'Leave Management',
+        fields: {
+          leave_type: { label: 'Leave Type', type: 'select' },
+          from_date: { label: 'From Date', type: 'date' },
+          to_date: { label: 'To Date', type: 'date' },
+          reason: { label: 'Reason', type: 'textarea' },
+          leave_status: { label: 'Leave Status', type: 'select' }
+        }
+      }
+    }
+  },
+  followups: {
+    name: 'Follow-ups',
+    description: 'Follow-up management for leads and proposals',
+    category: 'module',
+    sections: {
+      followup_details: {
+        name: 'Follow-up Details',
+        fields: {
+          followup_date: { label: 'Follow-up Date', type: 'date' },
+          followup_type: { label: 'Follow-up Type', type: 'select' },
+          contact_person: { label: 'Contact Person', type: 'text' },
+          description: { label: 'Description', type: 'textarea' },
+          outcome: { label: 'Outcome', type: 'select' },
+          next_followup_date: { label: 'Next Follow-up Date', type: 'date' }
+        }
+      }
+    }
+  },
+  todos: {
+    name: 'Todos',
+    description: 'Task and todo management',
+    category: 'module',
+    sections: {
+      todo_details: {
+        name: 'Todo Details',
+        fields: {
+          title: { label: 'Title', type: 'text' },
+          description: { label: 'Description', type: 'textarea' },
+          due_date: { label: 'Due Date', type: 'date' },
+          priority: { label: 'Priority', type: 'select' },
+          status: { label: 'Status', type: 'select' },
+          assigned_to: { label: 'Assigned To', type: 'select' }
+        }
+      }
+    }
   }
 };
 

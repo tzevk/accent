@@ -11,6 +11,8 @@ async function ensureUsersTable(db) {
       password_hash VARCHAR(255) NOT NULL,
       email VARCHAR(100),
       employee_id INT DEFAULT NULL,
+      vendor_id INT DEFAULT NULL,
+      account_type ENUM('employee', 'vendor') DEFAULT 'employee',
       role_id INT DEFAULT NULL,
       permissions JSON DEFAULT NULL,
       field_permissions JSON DEFAULT NULL,
@@ -27,6 +29,7 @@ async function ensureUsersTable(db) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_username (username),
       INDEX idx_employee_id (employee_id),
+      INDEX idx_vendor_id (vendor_id),
       INDEX idx_role_id (role_id)
     )
   `);
@@ -38,6 +41,16 @@ async function ensureUsersTable(db) {
   }
   try {
     await db.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS field_permissions JSON DEFAULT NULL');
+  } catch {
+    // ignore if not supported or already present
+  }
+  try {
+    await db.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_id INT DEFAULT NULL');
+  } catch {
+    // ignore if not supported or already present
+  }
+  try {
+    await db.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type ENUM("employee", "vendor") DEFAULT "employee"');
   } catch {
     // ignore if not supported or already present
   }
@@ -118,14 +131,19 @@ export async function POST(request) {
     const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.CREATE);
     if (auth instanceof Response) return auth;
     const data = await request.json();
-    const { username, password, email, employee_id, role_id, permissions, created_by } = data;
+    const { username, password, email, employee_id, vendor_id, account_type, role_id, permissions, created_by } = data;
 
     if (!username || !password) {
       return NextResponse.json({ success: false, error: 'username and password are required' }, { status: 400 });
     }
 
-    if (!employee_id) {
-      return NextResponse.json({ success: false, error: 'employee_id is required' }, { status: 400 });
+    // Validate account type - either employee or vendor must be provided
+    const userAccountType = account_type || 'employee';
+    if (userAccountType === 'employee' && !employee_id) {
+      return NextResponse.json({ success: false, error: 'employee_id is required for employee accounts' }, { status: 400 });
+    }
+    if (userAccountType === 'vendor' && !vendor_id) {
+      return NextResponse.json({ success: false, error: 'vendor_id is required for vendor accounts' }, { status: 400 });
     }
 
     db = await dbConnect();
@@ -138,16 +156,34 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'User with this username or email already exists' }, { status: 409 });
     }
 
-    // Ensure employee exists and get employee details
-    const [emp] = await db.execute('SELECT id, first_name, last_name, email as emp_email, department FROM employees WHERE id = ? LIMIT 1', [employee_id]);
-    if (!emp || emp.length === 0) {
-      await db.end();
-      return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 400 });
-    }
+    let fullName = '';
+    let userEmail = email;
+    let department = null;
 
-    const employee = emp[0];
-    const fullName = `${employee.first_name} ${employee.last_name}`;
-    const userEmail = email || employee.emp_email;
+    // Handle employee or vendor account
+    if (userAccountType === 'employee') {
+      // Ensure employee exists and get employee details
+      const [emp] = await db.execute('SELECT id, first_name, last_name, email as emp_email, department FROM employees WHERE id = ? LIMIT 1', [employee_id]);
+      if (!emp || emp.length === 0) {
+        await db.end();
+        return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 400 });
+      }
+      const employee = emp[0];
+      fullName = `${employee.first_name} ${employee.last_name}`;
+      userEmail = email || employee.emp_email;
+      department = employee.department;
+    } else if (userAccountType === 'vendor') {
+      // Ensure vendor exists and get vendor details
+      const [vnd] = await db.execute('SELECT id, vendor_name, contact_person, email as vendor_email FROM vendors WHERE id = ? LIMIT 1', [vendor_id]);
+      if (!vnd || vnd.length === 0) {
+        await db.end();
+        return NextResponse.json({ success: false, error: 'Vendor not found' }, { status: 400 });
+      }
+      const vendor = vnd[0];
+      fullName = vendor.contact_person || vendor.vendor_name;
+      userEmail = email || vendor.vendor_email;
+      department = 'Vendor';
+    }
 
     // Validate role if provided
     let roleData = null;
@@ -162,16 +198,18 @@ export async function POST(request) {
 
     // Create the user
     const [result] = await db.execute(
-      `INSERT INTO users (username, password_hash, email, employee_id, role_id, permissions, department, full_name, created_by) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (username, password_hash, email, employee_id, vendor_id, account_type, role_id, permissions, department, full_name, created_by) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         username, 
         password, 
         userEmail || null, 
-        employee_id || null, 
+        userAccountType === 'employee' ? employee_id : null, 
+        userAccountType === 'vendor' ? vendor_id : null,
+        userAccountType,
         role_id || null, 
         permissions ? JSON.stringify(permissions) : null,
-        roleData ? roleData.department : (employee.department || null),
+        roleData ? roleData.department : department,
         fullName || null,
         created_by || null
       ]
@@ -180,9 +218,11 @@ export async function POST(request) {
     const [rows] = await db.execute(`
       SELECT u.*, 
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+             v.vendor_name,
              r.role_name, r.role_code
       FROM users u
       LEFT JOIN employees e ON u.employee_id = e.id
+      LEFT JOIN vendors v ON u.vendor_id = v.id
       LEFT JOIN roles_master r ON u.role_id = r.id
       WHERE u.id = ?`, [result.insertId]);
     

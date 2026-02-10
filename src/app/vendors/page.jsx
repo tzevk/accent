@@ -92,8 +92,8 @@ export default function Vendors() {
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
       
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full px-4 pt-22">
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 pt-22 pb-6">
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
             <div>

@@ -136,6 +136,7 @@ export default function UserMasterPage() {
 function UsersTabContent() {
   const router = useRouter();
   const [employees, setEmployees] = useState([]);
+  const [vendors, setVendors] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,16 +156,19 @@ function UsersTabContent() {
     setLoading(true);
     try {
       // Use optimized /api/employees/list and /api/users/list endpoints for better TTFB
-      const [empRes, usersRes] = await Promise.all([
+      const [empRes, usersRes, vendorsRes] = await Promise.all([
         fetch('/api/employees/list?limit=1000'),
-        fetch('/api/users/list?limit=1000')
+        fetch('/api/users/list?limit=1000'),
+        fetch('/api/vendors')
       ]);
       
       const empData = await empRes.json();
       const usersData = await usersRes.json();
+      const vendorsData = await vendorsRes.json();
 
       setEmployees(empData.employees || empData.data || []);
       setUsers(usersData.data || []);
+      setVendors(vendorsData.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -176,15 +180,26 @@ function UsersTabContent() {
     return employees.find(e => e.id === employeeId);
   };
 
+  const getVendorForUser = (vendorId) => {
+    return vendors.find(v => v.id === vendorId);
+  };
+
   // Get employees without user accounts (for create user modal)
   const employeesWithoutAccount = employees.filter(emp => 
     !users.some(u => u.employee_id === emp.id)
   );
 
+  // Get vendors without user accounts (for create user modal)
+  const vendorsWithoutAccount = vendors.filter(vnd => 
+    !users.some(u => u.vendor_id === vnd.id)
+  );
+
   // Filter users based on search
   const filteredUsers = users.filter(user => {
     const employee = getEmployeeForUser(user.employee_id);
-    const fullName = employee ? `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase() : '';
+    const vendor = getVendorForUser(user.vendor_id);
+    const fullName = employee ? `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase() : 
+                     vendor ? vendor.vendor_name?.toLowerCase() : '';
     const matchesSearch = !searchQuery || 
       user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -268,7 +283,7 @@ function UsersTabContent() {
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          disabled={employeesWithoutAccount.length === 0}
+          disabled={employeesWithoutAccount.length === 0 && vendorsWithoutAccount.length === 0}
           className="inline-flex items-center gap-2 px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#4a0d52] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <PlusIcon className="h-5 w-5" />
@@ -411,6 +426,7 @@ function UsersTabContent() {
       {showCreateModal && (
         <SelectEmployeeModal
           employees={employeesWithoutAccount}
+          vendors={vendorsWithoutAccount}
           onSelect={(emp) => {
             setSelectedEmployee(emp);
           }}
@@ -463,10 +479,12 @@ function UsersTabContent() {
   );
 }
 
-// Select Employee Modal - First step to create a user
-function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, onSuccess }) {
+// Select Employee/Vendor Modal - First step to create a user
+function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selectedEmployee, onSuccess }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [accountType, setAccountType] = useState('employee'); // 'employee' or 'vendor'
+  const [selectedEntity, setSelectedEntity] = useState(null); // Selected employee or vendor
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -475,16 +493,20 @@ function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, o
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Update form when employee is selected
+  // Update form when entity is selected
   useEffect(() => {
-    if (selectedEmployee) {
+    if (selectedEntity) {
+      const email = accountType === 'employee' 
+        ? selectedEntity.email 
+        : selectedEntity.email;
       setFormData(prev => ({
         ...prev,
-        username: selectedEmployee.email?.split('@')[0] || ''
+        username: email?.split('@')[0] || ''
       }));
     }
-  }, [selectedEmployee]);
+  }, [selectedEntity, accountType]);
 
+  // Filter employees based on search
   const filteredEmployees = employees.filter(emp => {
     const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
     return !searchQuery || 
@@ -493,12 +515,21 @@ function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, o
       emp.employee_id?.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
+  // Filter vendors based on search
+  const filteredVendors = vendors.filter(vnd => {
+    return !searchQuery || 
+      vnd.vendor_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      vnd.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      vnd.contact_person?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      vnd.vendor_id?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!selectedEmployee) {
-      setError('Please select an employee first');
+    if (!selectedEntity) {
+      setError(`Please select ${accountType === 'employee' ? 'an employee' : 'a vendor'} first`);
       return;
     }
 
@@ -519,17 +550,27 @@ function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, o
 
     setSaving(true);
     try {
+      const payload = {
+        username: formData.username,
+        password: formData.password,
+        account_type: accountType,
+        permissions: []
+      };
+
+      if (accountType === 'employee') {
+        payload.employee_id = selectedEntity.id;
+        payload.email = selectedEntity.email;
+        payload.full_name = `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.trim();
+      } else {
+        payload.vendor_id = selectedEntity.id;
+        payload.email = selectedEntity.email;
+        payload.full_name = selectedEntity.contact_person || selectedEntity.vendor_name;
+      }
+
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: formData.username,
-          password: formData.password,
-          email: selectedEmployee.email,
-          employee_id: selectedEmployee.id,
-          full_name: `${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.trim(),
-          permissions: []
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
@@ -549,6 +590,16 @@ function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, o
     }
   };
 
+  const handleSelectEntity = (entity) => {
+    setSelectedEntity(entity);
+  };
+
+  const handleBack = () => {
+    setSelectedEntity(null);
+    setFormData({ username: '', password: '', confirmPassword: '' });
+    setError('');
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
@@ -556,7 +607,9 @@ function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, o
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Create User</h3>
             <p className="text-sm text-gray-500 mt-0.5">
-              {selectedEmployee ? 'Set up login credentials' : 'Select an employee to create a user account'}
+              {selectedEntity 
+                ? 'Set up login credentials' 
+                : `Select ${accountType === 'employee' ? 'an employee' : 'a vendor'} to create a user account`}
             </p>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
@@ -564,80 +617,167 @@ function SelectEmployeeModal({ employees, onSelect, onClose, selectedEmployee, o
           </button>
         </div>
 
-        {!selectedEmployee ? (
-          // Step 1: Select Employee
+        {!selectedEntity ? (
+          // Step 1: Select Employee or Vendor
           <div className="flex-1 overflow-hidden flex flex-col">
+            {/* Account Type Toggle */}
+            <div className="p-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setAccountType('employee'); setSearchQuery(''); }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                    accountType === 'employee'
+                      ? 'bg-[#64126D] text-white'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  Employee Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAccountType('vendor'); setSearchQuery(''); }}
+                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                    accountType === 'vendor'
+                      ? 'bg-[#64126D] text-white'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  Vendor Account
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
             <div className="p-4 border-b border-gray-200">
               <div className="relative">
                 <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Search employees..."
+                  placeholder={accountType === 'employee' ? 'Search employees...' : 'Search vendors...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-[#64126D]"
                 />
               </div>
             </div>
+
+            {/* List */}
             <div className="flex-1 overflow-y-auto p-4">
-              {filteredEmployees.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  {employees.length === 0 
-                    ? 'All employees already have user accounts'
-                    : 'No employees match your search'}
-                </div>
+              {accountType === 'employee' ? (
+                // Employee List
+                filteredEmployees.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    {employees.length === 0 
+                      ? 'All employees already have user accounts'
+                      : 'No employees match your search'}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredEmployees.map((emp) => {
+                      const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
+                      return (
+                        <button
+                          key={emp.id}
+                          onClick={() => handleSelectEntity(emp)}
+                          className="w-full flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:border-[#64126D] hover:bg-purple-50 transition-all text-left"
+                        >
+                          <div className="h-12 w-12 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium text-lg">
+                            {fullName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{fullName}</div>
+                            <div className="text-sm text-gray-500">{emp.email}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              {emp.department || '-'} • {emp.position || '-'}
+                            </div>
+                          </div>
+                          <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
               ) : (
-                <div className="space-y-2">
-                  {filteredEmployees.map((emp) => {
-                    const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim();
-                    return (
+                // Vendor List
+                filteredVendors.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    {vendors.length === 0 
+                      ? 'All vendors already have user accounts'
+                      : 'No vendors match your search'}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredVendors.map((vnd) => (
                       <button
-                        key={emp.id}
-                        onClick={() => onSelect(emp)}
+                        key={vnd.id}
+                        onClick={() => handleSelectEntity(vnd)}
                         className="w-full flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:border-[#64126D] hover:bg-purple-50 transition-all text-left"
                       >
-                        <div className="h-12 w-12 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium text-lg">
-                          {fullName.charAt(0).toUpperCase()}
+                        <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium text-lg">
+                          {(vnd.vendor_name || 'V').charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1">
-                          <div className="font-medium text-gray-900">{fullName}</div>
-                          <div className="text-sm text-gray-500">{emp.email}</div>
+                          <div className="font-medium text-gray-900">{vnd.vendor_name}</div>
+                          <div className="text-sm text-gray-500">{vnd.email || vnd.contact_person || '-'}</div>
                           <div className="text-xs text-gray-400 mt-0.5">
-                            {emp.department || '-'} • {emp.position || '-'}
+                            {vnd.vendor_type || '-'} • {vnd.status || 'Active'}
                           </div>
                         </div>
                         <ChevronRightIcon className="h-5 w-5 text-gray-400" />
                       </button>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           </div>
         ) : (
           // Step 2: Set Credentials
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            {/* Selected Employee Info */}
-            <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+            {/* Selected Entity Info */}
+            <div className={`rounded-lg p-4 border ${accountType === 'employee' ? 'bg-purple-50 border-purple-100' : 'bg-blue-50 border-blue-100'}`}>
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium text-lg">
-                  {`${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.charAt(0).toUpperCase()}
+                <div className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-medium text-lg ${accountType === 'employee' ? 'bg-[#64126D]' : 'bg-blue-600'}`}>
+                  {accountType === 'employee' 
+                    ? `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.charAt(0).toUpperCase()
+                    : (selectedEntity.vendor_name || 'V').charAt(0).toUpperCase()
+                  }
                 </div>
                 <div className="flex-1">
                   <div className="font-medium text-gray-900">
-                    {`${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.trim()}
+                    {accountType === 'employee' 
+                      ? `${selectedEntity.first_name || ''} ${selectedEntity.last_name || ''}`.trim()
+                      : selectedEntity.vendor_name
+                    }
                   </div>
-                  <div className="text-sm text-gray-500">{selectedEmployee.email}</div>
-                  <div className="text-xs text-gray-400">{selectedEmployee.department} • {selectedEmployee.position}</div>
+                  <div className="text-sm text-gray-500">{selectedEntity.email || '-'}</div>
+                  <div className="text-xs text-gray-400">
+                    {accountType === 'employee' 
+                      ? `${selectedEntity.department || '-'} • ${selectedEntity.position || '-'}`
+                      : `${selectedEntity.vendor_type || '-'} • ${selectedEntity.contact_person || '-'}`
+                    }
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => onSelect(null)}
+                  onClick={handleBack}
                   className="text-sm text-[#64126D] hover:underline"
                 >
                   Change
                 </button>
               </div>
+            </div>
+
+            {/* Account Type Badge */}
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                accountType === 'employee' 
+                  ? 'bg-purple-100 text-purple-700' 
+                  : 'bg-blue-100 text-blue-700'
+              }`}>
+                {accountType === 'employee' ? 'Employee Account' : 'Vendor Account'}
+              </span>
             </div>
 
             {/* Username */}

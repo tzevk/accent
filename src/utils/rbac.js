@@ -18,6 +18,9 @@ export const RESOURCES = {
   WORK_LOGS: 'work_logs',
   MESSAGES: 'messages',
   PROFILE: 'profile',
+  TICKETS: 'tickets',
+  FOLLOWUPS: 'followups',
+  TODOS: 'todos',
   
   // Project Financial Documents
   QUOTATIONS: 'quotations',
@@ -29,6 +32,8 @@ export const RESOURCES = {
   SOFTWARE: 'software',
   DOCUMENTS: 'documents',
   ROLES: 'roles',
+  HOLIDAYS: 'holidays',
+  ACCOUNTS: 'accounts',
   
   // Admin
   ADMIN: 'admin',
@@ -36,7 +41,12 @@ export const RESOURCES = {
   ADMIN_MONITORING: 'admin_monitoring',
   ADMIN_ACTIVITY_LOGS: 'admin_activity_logs',
   ADMIN_AUDIT_LOGS: 'admin_audit_logs',
-  ADMIN_PRODUCTIVITY: 'admin_productivity'
+  ADMIN_PRODUCTIVITY: 'admin_productivity',
+  PAYROLL: 'payroll',
+  MATERIAL_REQUISITION: 'material_requisition',
+  DA_SCHEDULE: 'da_schedule',
+  CASH_VOUCHER: 'cash_voucher',
+  ATTENDANCE: 'attendance'
 };
 
 export const PERMISSIONS = {
