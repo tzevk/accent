@@ -156,9 +156,10 @@ export default function UpcomingFollowups({ limit = 10 }) {
             const isToday = dateLabel === 'Today';
             
             return (
-              <div 
-                key={followup.id} 
-                className={`px-6 py-4 hover:bg-purple-50/40 transition-colors ${
+              <Link 
+                key={followup.id}
+                href={`/leads/${followup.lead_id}/edit`}
+                className={`block px-6 py-4 hover:bg-purple-50/40 transition-colors cursor-pointer ${
                   isToday ? 'bg-orange-50/30' : ''
                 }`}
               >
@@ -225,7 +226,7 @@ export default function UpcomingFollowups({ limit = 10 }) {
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })
         )}
