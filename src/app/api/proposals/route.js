@@ -220,48 +220,57 @@ export async function POST(request) {
       
       // Status fields
       progress,
-      project_id
+      project_id,
+      
+      // Custom proposal_id (used when converting from lead)
+      proposal_id: custom_proposal_id
     } = data;
 
     // Get database connection
     const pool = await dbConnect();
 
-    // Generate proposal ID in format: ATSPL/Q/{MONTH_NUMBER}/{RUNNING_YEAR}/076{SEQ}
-    // Find the highest sequence number used this month/year to avoid duplicates
-    // Example: ATSPL/Q/12/2025/076001
-    try {
-      const now = new Date();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const year = now.getFullYear();
-      
-      // Find the maximum sequence number from existing proposal_ids for this month/year
-      // Pattern: ATSPL/Q/MM/YYYY/076XXX where XXX is the sequence
-      const pattern = `ATSPL/Q/${month}/${year}/076%`;
-      const [maxRows] = await pool.execute(
-        `SELECT proposal_id FROM proposals WHERE proposal_id LIKE ? ORDER BY proposal_id DESC LIMIT 1`,
-        [pattern]
-      );
-      
-      let seq = 1;
-      if (maxRows && maxRows.length > 0 && maxRows[0].proposal_id) {
-        // Extract the sequence number from the last part (e.g., "076004" -> 4)
-        const lastId = maxRows[0].proposal_id;
-        const match = lastId.match(/076(\d+)$/);
-        if (match) {
-          seq = parseInt(match[1], 10) + 1;
+    // Use provided proposal_id if converting from lead, otherwise generate one
+    var proposal_id;
+    if (custom_proposal_id) {
+      proposal_id = custom_proposal_id;
+    } else {
+      // Generate proposal ID in format: ATSPL/Q/{MONTH_NUMBER}/{RUNNING_YEAR}/076{SEQ}
+      // Find the highest sequence number used this month/year to avoid duplicates
+      // Example: ATSPL/Q/12/2025/076001
+      try {
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        
+        // Find the maximum sequence number from existing proposal_ids for this month/year
+        // Pattern: ATSPL/Q/MM/YYYY/076XXX where XXX is the sequence
+        const pattern = `ATSPL/Q/${month}/${year}/076%`;
+        const [maxRows] = await pool.execute(
+          `SELECT proposal_id FROM proposals WHERE proposal_id LIKE ? ORDER BY proposal_id DESC LIMIT 1`,
+          [pattern]
+        );
+        
+        let seq = 1;
+        if (maxRows && maxRows.length > 0 && maxRows[0].proposal_id) {
+          // Extract the sequence number from the last part (e.g., "076004" -> 4)
+          const lastId = maxRows[0].proposal_id;
+          const match = lastId.match(/076(\d+)$/);
+          if (match) {
+            seq = parseInt(match[1], 10) + 1;
+          }
         }
+        
+        const seqStr = String(seq).padStart(3, '0');
+        proposal_id = `ATSPL/Q/${month}/${year}/076${seqStr}`;
+      } catch (e) {
+        // If finding max fails, fall back to timestamp-based unique id
+        console.error('Failed to compute sequential proposal id, falling back to timestamp-based id', e);
+        const now2 = new Date();
+        const month2 = String(now2.getMonth() + 1).padStart(2, '0');
+        const year2 = now2.getFullYear();
+        const timestamp = Date.now().toString().slice(-6);
+        proposal_id = `ATSPL/Q/${month2}/${year2}/076${timestamp}`;
       }
-      
-      const seqStr = String(seq).padStart(3, '0');
-      var proposal_id = `ATSPL/Q/${month}/${year}/076${seqStr}`;
-    } catch (e) {
-      // If finding max fails, fall back to timestamp-based unique id
-      console.error('Failed to compute sequential proposal id, falling back to timestamp-based id', e);
-      const now2 = new Date();
-      const month2 = String(now2.getMonth() + 1).padStart(2, '0');
-      const year2 = now2.getFullYear();
-      const timestamp = Date.now().toString().slice(-6);
-      var proposal_id = `ATSPL/Q/${month2}/${year2}/076${timestamp}`;
     }
     
     // Build columns and values explicitly to avoid column/value count mismatches

@@ -43,7 +43,7 @@ export async function GET(request) {
         bank_account_no VARCHAR(100),
         ifsc_swift_code VARCHAR(50),
         currency_preference VARCHAR(10) DEFAULT 'INR',
-        payment_terms VARCHAR(255),
+        payment_terms TEXT,
         credit_limit DECIMAL(15, 2),
         
         -- Performance & History
@@ -81,7 +81,8 @@ export async function GET(request) {
       `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS bank_account_no VARCHAR(100)`,
       `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS ifsc_swift_code VARCHAR(50)`,
       `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS currency_preference VARCHAR(10)`,
-      `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(255)`,
+      `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS payment_terms TEXT`,
+      `ALTER TABLE vendors MODIFY COLUMN payment_terms TEXT`,
       `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15, 2)`,
       `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS previous_projects TEXT`,
       `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS avg_quality_rating DECIMAL(2, 1)`,

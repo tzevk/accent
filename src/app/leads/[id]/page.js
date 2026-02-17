@@ -4,6 +4,8 @@ import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
 import { 
   ArrowLeftIcon,
   PencilIcon,
@@ -22,6 +24,8 @@ export default function LeadDetails({ params }) {
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { loading: rbacLoading, can } = useSessionRBAC();
+  const canConvert = !rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT);
 
   useEffect(() => {
     const fetchLead = async () => {
@@ -146,7 +150,7 @@ export default function LeadDetails({ params }) {
       const result = await fetchJSON('/api/proposals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, lead_id: lead.id })
+        body: JSON.stringify({ ...payload, lead_id: lead.id, proposal_id: lead.lead_id })
       });
 
       if (!result.success) {
@@ -267,7 +271,7 @@ export default function LeadDetails({ params }) {
               </div>
             </div>
             <div className="flex space-x-3">
-              {lead.enquiry_status !== 'Converted to Proposal' ? (
+              {canConvert && lead.enquiry_status !== 'Converted to Proposal' ? (
                 <button
                   onClick={handleConvertToProposal}
                   className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center space-x-2"
@@ -275,12 +279,12 @@ export default function LeadDetails({ params }) {
                   <DocumentTextIcon className="h-4 w-4" />
                   <span>Convert to Proposal</span>
                 </button>
-              ) : (
+              ) : lead.enquiry_status === 'Converted to Proposal' ? (
                 <div className="px-4 py-2 rounded-md bg-gray-100 text-gray-500 flex items-center space-x-2" title="Already converted to proposal">
                   <DocumentTextIcon className="h-4 w-4" />
                   <span>Already Converted</span>
                 </div>
-              )}
+              ) : null}
               <button
                 onClick={handleEdit}
                 className="bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90 flex items-center space-x-2"

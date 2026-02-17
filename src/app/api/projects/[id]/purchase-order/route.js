@@ -23,7 +23,7 @@ export async function GET(request, { params }) {
         gst_percentage DECIMAL(5, 2) DEFAULT 18,
         gst_amount DECIMAL(15, 2) DEFAULT 0,
         net_amount DECIMAL(15, 2) DEFAULT 0,
-        payment_terms VARCHAR(255),
+        payment_terms TEXT,
         remarks TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -31,6 +31,11 @@ export async function GET(request, { params }) {
         UNIQUE KEY unique_project (project_id)
       )
     `);
+
+    // Ensure payment_terms column is TEXT type (no character limit)
+    try {
+      await connection.execute(`ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`);
+    } catch (e) { /* ignore if already TEXT */ }
 
     // Fetch purchase order for this project
     const [rows] = await connection.execute(
@@ -103,7 +108,7 @@ export async function POST(request, { params }) {
         gst_percentage DECIMAL(5, 2) DEFAULT 18,
         gst_amount DECIMAL(15, 2) DEFAULT 0,
         net_amount DECIMAL(15, 2) DEFAULT 0,
-        payment_terms VARCHAR(255),
+        payment_terms TEXT,
         remarks TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -111,6 +116,11 @@ export async function POST(request, { params }) {
         UNIQUE KEY unique_project (project_id)
       )
     `);
+
+    // Ensure payment_terms column is TEXT type (no character limit)
+    try {
+      await connection.execute(`ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`);
+    } catch (e) { /* ignore if already TEXT */ }
 
     // Check if purchase order already exists for this project
     const [existing] = await connection.execute(

@@ -1322,7 +1322,8 @@ export default function UserPermissionsPage() {
               update: savedModule.crud?.update || false,
               delete: savedModule.crud?.delete || false,
               export: savedModule.crud?.export || false,
-              import: savedModule.crud?.import || false
+              import: savedModule.crud?.import || false,
+              convert: savedModule.crud?.convert || false
             };
             
             // Load sections and fields
@@ -1347,16 +1348,19 @@ export default function UserPermissionsPage() {
             const hasExport = existingPerms.includes(`${moduleKey}:export`);
             const hasImport = existingPerms.includes(`${moduleKey}:import`);
             
+            const hasConvert = existingPerms.includes(`${moduleKey}:convert`);
+            
             modulePerms[moduleKey] = {
               read: hasRead,
               create: hasCreate,
               update: hasUpdate,
               delete: hasDelete,
               export: hasExport,
-              import: hasImport
+              import: hasImport,
+              convert: hasConvert
             };
             
-            enabled[moduleKey] = hasRead || hasCreate || hasUpdate || hasDelete || hasExport || hasImport;
+            enabled[moduleKey] = hasRead || hasCreate || hasUpdate || hasDelete || hasExport || hasImport || hasConvert;
             
             // Load legacy field permissions
             const sections = moduleDef.sections || {};
@@ -1441,7 +1445,8 @@ export default function UserPermissionsPage() {
           update: false,
           delete: false,
           export: false,
-          import: false
+          import: false,
+          convert: false
         }
       }));
       // Disable all sections in this module
@@ -1536,7 +1541,8 @@ export default function UserPermissionsPage() {
         update: true,
         delete: true,
         export: true,
-        import: true
+        import: true,
+        convert: module === 'leads' ? true : false
       }
     }));
     // Enable all sections
@@ -1559,7 +1565,8 @@ export default function UserPermissionsPage() {
         update: false,
         delete: false,
         export: false,
-        import: false
+        import: false,
+        convert: false
       }
     }));
     // Disable all sections
@@ -1603,7 +1610,8 @@ export default function UserPermissionsPage() {
             update: !!modulePerms.update,
             delete: !!modulePerms.delete,
             export: !!modulePerms.export,
-            import: !!modulePerms.import
+            import: !!modulePerms.import,
+            convert: !!modulePerms.convert
           },
           sections: {}
         };
@@ -1640,6 +1648,7 @@ export default function UserPermissionsPage() {
           if (modulePerms.delete) permissionsArray.push(`${moduleKey}:delete`);
           if (modulePerms.export) permissionsArray.push(`${moduleKey}:export`);
           if (modulePerms.import) permissionsArray.push(`${moduleKey}:import`);
+          if (modulePerms.convert) permissionsArray.push(`${moduleKey}:convert`);
         }
       });
       
@@ -1653,6 +1662,7 @@ export default function UserPermissionsPage() {
         if (perms.delete) oldPermissionsArray.push(`${module}:delete`);
         if (perms.export) oldPermissionsArray.push(`${module}:export`);
         if (perms.import) oldPermissionsArray.push(`${module}:import`);
+        if (perms.convert) oldPermissionsArray.push(`${module}:convert`);
       });
 
       const res = await fetch('/api/users', {
@@ -2056,7 +2066,7 @@ export default function UserPermissionsPage() {
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <h3 className="font-medium text-gray-900 mb-3">Module Access (CRUD)</h3>
                     <div className="flex flex-wrap gap-2">
-                      {['read', 'create', 'update', 'delete', 'export', 'import'].map(perm => (
+                      {['read', 'create', 'update', 'delete', 'export', 'import', ...(activeModule === 'leads' ? ['convert'] : [])].map(perm => (
                         <button
                           key={perm}
                           onClick={() => toggleModulePerm(activeModule, perm)}

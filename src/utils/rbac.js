@@ -57,7 +57,8 @@ export const PERMISSIONS = {
   EXPORT: 'export',
   IMPORT: 'import',
   APPROVE: 'approve',
-  ASSIGN: 'assign'
+  ASSIGN: 'assign',
+  CONVERT: 'convert'
 };
 
 // Predefined permission combinations for common roles
@@ -77,7 +78,8 @@ export const PERMISSION_DESCRIPTIONS = {
     [PERMISSIONS.DELETE]: 'Delete leads',
     [PERMISSIONS.EXPORT]: 'Export lead data',
     [PERMISSIONS.IMPORT]: 'Import leads from files',
-    [PERMISSIONS.ASSIGN]: 'Assign leads to other users'
+    [PERMISSIONS.ASSIGN]: 'Assign leads to other users',
+    [PERMISSIONS.CONVERT]: 'Convert leads to proposals'
   },
   [RESOURCES.PROJECTS]: {
     [PERMISSIONS.READ]: 'View project information',

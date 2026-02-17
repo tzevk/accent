@@ -124,12 +124,43 @@ export default function ReportsPage() {
     setGenerating(true);
     try {
       const month = `${selectedMonth}-01`;
-      // If no employees selected, generate for all
-      const body = selectedEmployees.length === 0 
-        ? { month, all: true }
-        : selectedEmployees.length === 1
-          ? { month, employee_id: parseInt(selectedEmployees[0]) }
-          : { month, employee_ids: selectedEmployees.map(id => parseInt(id)) };
+      
+      // If no employees selected (generate all), export Excel sheet instead
+      if (selectedEmployees.length === 0) {
+        // Download the Excel salary sheet
+        const response = await fetch(`/api/payroll/export-sheet?month=${month}`);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          if (response.status === 404) {
+            alert(errorData.error || 'No payroll slips found for this month. Please generate individual slips first.');
+          } else {
+            alert(errorData.error || 'Failed to export salary sheet');
+          }
+          setGenerating(false);
+          return;
+        }
+        
+        // Download the file
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Salary_Sheet_${selectedMonth}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        alert('Salary sheet downloaded successfully!');
+        setGenerating(false);
+        return;
+      }
+      
+      // Generate for selected employee(s)
+      const body = selectedEmployees.length === 1
+        ? { month, employee_id: parseInt(selectedEmployees[0]) }
+        : { month, employee_ids: selectedEmployees.map(id => parseInt(id)) };
 
       const res = await fetch('/api/payroll/generate', {
         method: 'POST',
@@ -163,6 +194,51 @@ export default function ReportsPage() {
       }
     } catch {
       alert('Failed to generate payroll');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Generate all individual slips (used before exporting sheet)
+  const handleGenerateAllSlips = async () => {
+    if (!confirm('This will generate individual salary slips for all employees for the selected month. Continue?')) {
+      return;
+    }
+    
+    setGenerating(true);
+    try {
+      const month = `${selectedMonth}-01`;
+      
+      const res = await fetch('/api/payroll/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, all: true })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        const successCount = data.results?.success || 1;
+        const failedCount = data.results?.failed || 0;
+        const skippedCount = data.results?.skipped || 0;
+        
+        let message = `Salary slips generated! Success: ${successCount}`;
+        if (failedCount > 0) message += `, Failed: ${failedCount}`;
+        if (skippedCount > 0) message += `, Skipped (already exists): ${skippedCount}`;
+        
+        if (data.results?.errors?.length > 0) {
+          message += '\n\nErrors:\n' + data.results.errors.map(e => `- Employee ${e.employee_id}: ${e.error}`).join('\n');
+        }
+        
+        alert(message);
+        fetchPayrollSlips(1);
+      } else {
+        let errorMsg = data.error || 'Failed to generate salary slips';
+        if (data.suggestion) errorMsg += '\n\n' + data.suggestion;
+        alert(errorMsg);
+      }
+    } catch {
+      alert('Failed to generate salary slips');
     } finally {
       setGenerating(false);
     }
@@ -713,6 +789,23 @@ export default function ReportsPage() {
               )}
             </div>
             
+            {/* Generate All Slips button - shown when no employees selected */}
+            {selectedEmployees.length === 0 && (
+              <button
+                onClick={handleGenerateAllSlips}
+                disabled={generating || employees.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
+                title="Generate individual salary slips for all employees"
+              >
+                {generating ? (
+                  <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                ) : (
+                  <PlusIcon className="h-5 w-5" />
+                )}
+                Generate All Slips
+              </button>
+            )}
+            
             <button
               onClick={handleGeneratePayroll}
               disabled={generating || employees.length === 0}
@@ -720,10 +813,12 @@ export default function ReportsPage() {
             >
               {generating ? (
                 <ArrowPathIcon className="h-5 w-5 animate-spin" />
+              ) : selectedEmployees.length === 0 ? (
+                <ArrowDownTrayIcon className="h-5 w-5" />
               ) : (
                 <PlusIcon className="h-5 w-5" />
               )}
-              {generating ? 'Generating...' : 'Generate Salary'}
+              {generating ? 'Processing...' : selectedEmployees.length === 0 ? 'Export Salary Sheet' : 'Generate Salary'}
             </button>
           </div>
         </div>

@@ -3,6 +3,8 @@
 import Navbar from '@/components/Navbar';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
 import { 
   PlusIcon, 
   UserGroupIcon,
@@ -25,6 +27,8 @@ import {
 
 export default function Leads() {
   const router = useRouter();
+  const { loading: rbacLoading, can } = useSessionRBAC();
+  const canConvert = !rbacLoading && can(RBAC_RESOURCES.LEADS, RBAC_PERMISSIONS.CONVERT);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({});
@@ -345,7 +349,7 @@ export default function Leads() {
       const result = await fetchJSON('/api/proposals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, lead_id: lead.id })
+        body: JSON.stringify({ ...payload, lead_id: lead.id, proposal_id: lead.lead_id })
       });
       if (!result.success) {
         alert('Failed to create proposal: ' + (result.error || 'Unknown'));
@@ -671,9 +675,6 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                   <th className="w-14 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Sr
                   </th>
-                  <th className="w-24 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
-                    Lead ID
-                  </th>
                   <th className="w-64 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Company & Contact
                   </th>
@@ -697,11 +698,6 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                     <td className="w-14 px-4 py-3 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {(currentPage - 1) * 20 + index + 1}
-                      </div>
-                    </td>
-                    <td className="w-24 px-4 py-3 whitespace-nowrap">
-                      <div className="text-sm font-mono font-medium text-gray-900">
-                        {lead.lead_id || '-'}
                       </div>
                     </td>
                     <td className="w-64 px-4 py-3">
@@ -781,7 +777,7 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                         >
                           <PencilIcon className="h-4 w-4" />
                         </button>
-                        {lead.enquiry_status !== 'Converted to Proposal' ? (
+                        {canConvert && lead.enquiry_status !== 'Converted to Proposal' ? (
                           <button 
                             onClick={() => convertToProposal(lead)}
                             className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-full transition-colors"
@@ -789,14 +785,14 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                           >
                             <DocumentTextIcon className="h-4 w-4" />
                           </button>
-                        ) : (
+                        ) : lead.enquiry_status === 'Converted to Proposal' ? (
                           <span 
                             className="p-2 text-gray-400 cursor-default" 
                             title="Already converted to proposal"
                           >
                             <DocumentTextIcon className="h-4 w-4" />
                           </span>
-                        )}
+                        ) : null}
                         <button 
                           onClick={() => handleDeleteLead(lead.id, lead.company_name)}
                           className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-full transition-colors"
