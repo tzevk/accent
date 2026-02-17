@@ -150,7 +150,10 @@ export async function POST(request) {
     await ensureUsersTable(db);
 
     // check duplicates
-    const [existing] = await db.execute('SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1', [username, email || '']);
+    const [existing] = await db.execute(
+      'SELECT id FROM users WHERE username = ? OR (email = ? AND email IS NOT NULL AND email != \'\') LIMIT 1', 
+      [username, email || null]
+    );
     if (existing && existing.length > 0) {
       await db.end();
       return NextResponse.json({ success: false, error: 'User with this username or email already exists' }, { status: 409 });

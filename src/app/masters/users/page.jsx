@@ -185,14 +185,22 @@ function UsersTabContent() {
   };
 
   // Get employees without user accounts (for create user modal)
-  const employeesWithoutAccount = employees.filter(emp => 
-    !users.some(u => u.employee_id === emp.id)
-  );
+  // Convert to strings for comparison to handle type mismatches
+  // Also handle null/undefined employee_id values
+  const employeesWithoutAccount = employees.filter(emp => {
+    if (!emp.id) return false; // Skip employees without valid id
+    const empIdStr = String(emp.id);
+    const hasUser = users.some(u => u.employee_id && String(u.employee_id) === empIdStr);
+    return !hasUser;
+  });
 
   // Get vendors without user accounts (for create user modal)
-  const vendorsWithoutAccount = vendors.filter(vnd => 
-    !users.some(u => u.vendor_id === vnd.id)
-  );
+  const vendorsWithoutAccount = vendors.filter(vnd => {
+    if (!vnd.id) return false; // Skip vendors without valid id
+    const vndIdStr = String(vnd.id);
+    const hasUser = users.some(u => u.vendor_id && String(u.vendor_id) === vndIdStr);
+    return !hasUser;
+  });
 
   // Filter users based on search
   const filteredUsers = users.filter(user => {
@@ -509,10 +517,11 @@ function SelectEmployeeModal({ employees, vendors = [], onSelect, onClose, selec
   // Filter employees based on search
   const filteredEmployees = employees.filter(emp => {
     const fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.toLowerCase();
+    const empId = String(emp.employee_id || '').toLowerCase();
     return !searchQuery || 
       fullName.includes(searchQuery.toLowerCase()) ||
       emp.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.employee_id?.toLowerCase().includes(searchQuery.toLowerCase());
+      empId.includes(searchQuery.toLowerCase());
   });
 
   // Filter vendors based on search

@@ -37,7 +37,7 @@ export async function GET(request) {
     const workplace = searchParams.get('workplace') || '';
     const employment_status = searchParams.get('employment_status') || '';
     const page = parseInt(searchParams.get('page')) || 1;
-    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit')) || 100));
+    const limit = Math.max(1, Math.min(1000, parseInt(searchParams.get('limit')) || 100));
     const offset = (page - 1) * limit;
 
     const db = await dbConnect();
