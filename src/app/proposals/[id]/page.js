@@ -4,6 +4,8 @@ import Navbar from '@/components/Navbar';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
 import { 
   ArrowLeftIcon,
   DocumentTextIcon,
@@ -26,6 +28,8 @@ import {
 export default function ProposalPage() {
   const router = useRouter();
   const { id: routeId } = useParams() || {};
+  const { can, loading: rbacLoading } = useSessionRBAC();
+  const canConvert = !rbacLoading && can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.CONVERT);
 
   const [proposal, setProposal] = useState(null);
   const [linkedLead, setLinkedLead] = useState(null);
@@ -880,6 +884,7 @@ export default function ProposalPage() {
                   <span>Create Annexure</span>
                 </button>
 
+                {canConvert && (
                 <button
                   onClick={() => {
                     try {
@@ -907,6 +912,7 @@ export default function ProposalPage() {
                   <ArrowRightIcon className="h-3 w-3" />
                   <span>Convert to Project</span>
                 </button>
+                )}
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(proposal.status)}`}>
                   {(proposal.status || 'draft').charAt(0).toUpperCase() + (proposal.status || 'draft').slice(1)}
                 </span>

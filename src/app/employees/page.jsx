@@ -241,6 +241,7 @@ export default function EmployeesPage() {
         lumpsum_description: '',
         contract_duration: 'monthly',
         contract_end_date: '',
+        tds_percentage: '',
         std_hours_per_day: 8,
         std_in_time: '09:00',
         std_out_time: '17:30',
@@ -528,6 +529,7 @@ export default function EmployeesPage() {
     contract_amount: '',
     lumpsum_amount: '',
     other_allowances: '',
+    tds_percentage: '',
     effective_from: new Date().toISOString().split('T')[0],
     effective_to: '',
     pf_applicable: true,
@@ -573,7 +575,9 @@ export default function EmployeesPage() {
     mediclaim: 0,
     bonus: 0,
     leaves: 0,
-    tds: 0
+    tds: 0,
+    tds_type: null,
+    tds_percentage: 0
   });
   const [previewBreakdown, setPreviewBreakdown] = useState(null);
   const [previewError, setPreviewError] = useState('');
@@ -1010,7 +1014,9 @@ export default function EmployeesPage() {
           mediclaim: components.mediclaim?.amount || 0,
           bonus: components.bonus?.amount || 0,
           leaves: components.leaves?.amount || 0,
-          tds: components.tds?.amount || 0
+          tds: components.tds?.amount || 0,
+          tds_type: components.tds?.type || null,
+          tds_percentage: components.tds?.percentage || 0
         });
       }
     } catch (error) {
@@ -1431,6 +1437,7 @@ export default function EmployeesPage() {
             contract_amount: savedProfile.contract_amount || '',
             contract_duration: savedProfile.contract_duration || 'monthly',
             contract_end_date: savedProfile.contract_end_date || '',
+            tds_percentage: savedProfile.tds_percentage || '',
             lumpsum_amount: savedProfile.lumpsum_amount || '',
             lumpsum_description: savedProfile.salary_type === 'custom' ? '' : (savedProfile.lumpsum_description || ''),
             effective_from: savedProfile.effective_from ? savedProfile.effective_from.split('T')[0] : new Date().toISOString().split('T')[0],
@@ -1581,6 +1588,7 @@ export default function EmployeesPage() {
       lumpsum_description: profile.salary_type === 'custom' ? '' : (profile.lumpsum_description || ''),
       contract_duration: profile.contract_duration || 'monthly',
       contract_end_date: profile.contract_end_date ? profile.contract_end_date.split('T')[0] : '',
+      tds_percentage: profile.tds_percentage || '',
       std_hours_per_day: profile.std_hours_per_day || 8,
       std_in_time: profile.std_in_time ? profile.std_in_time.substring(0, 5) : '09:00',
       std_out_time: profile.std_out_time ? profile.std_out_time.substring(0, 5) : '17:30',
@@ -3501,6 +3509,9 @@ export default function EmployeesPage() {
                                             <>
                                               <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.contract_amount || profile.gross_salary || 0)}</span>
                                               <span className="text-sm text-gray-500 capitalize">{profile.contract_duration?.replace('_', ' ') || 'Monthly'}</span>
+                                              {profile.tds_percentage ? (
+                                                <span className="text-sm text-green-600 font-medium">• After TDS: ₹{formatCurrency((profile.contract_amount || profile.gross_salary || 0) - ((profile.contract_amount || profile.gross_salary || 0) * (parseFloat(profile.tds_percentage) || 0) / 100))}</span>
+                                              ) : null}
                                             </>
                                           )}
                                           {profile.salary_type === 'lumpsum' && (
@@ -3897,7 +3908,7 @@ export default function EmployeesPage() {
                             {/* Contract Amount Fields */}
                             {salaryPreview.salary_type === 'contract' && (
                               <div className="space-y-4 mb-3">
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                   <div>
                                     <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₹) *</label>
                                     <input 
@@ -3931,9 +3942,24 @@ export default function EmployeesPage() {
                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
                                     />
                                   </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">TDS %</label>
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      min="0"
+                                      max="100"
+                                      value={salaryPreview.tds_percentage || ''} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, tds_percentage: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
+                                      placeholder="e.g. 10"
+                                    />
+                                  </div>
                                 </div>
                                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
-                                  <p className="text-xs text-amber-700">💡 No PF/ESIC. TDS may apply.</p>
+                                  <p className="text-xs text-amber-700">
+                                    💡 No PF/ESIC.{salaryPreview.tds_percentage ? ` TDS @ ${salaryPreview.tds_percentage}% = ₹${((parseFloat(salaryPreview.contract_amount) || 0) * (parseFloat(salaryPreview.tds_percentage) || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })} | Amount After TDS: ₹${((parseFloat(salaryPreview.contract_amount) || 0) - ((parseFloat(salaryPreview.contract_amount) || 0) * (parseFloat(salaryPreview.tds_percentage) || 0) / 100)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : ' TDS may apply (optional).'}
+                                  </p>
                                   <button
                                     onClick={handleSaveSalaryProfile}
                                     disabled={salaryProfileSaving || !salaryPreview.contract_amount}

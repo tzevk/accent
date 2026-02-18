@@ -21,7 +21,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { employee_id, employee_ids, month, all, preview } = body;
+    const { employee_id, employee_ids, month, all, preview, salary_type } = body;
     
     if (!month) {
       return NextResponse.json(
@@ -52,7 +52,7 @@ export async function POST(request) {
     
     // Generate for all employees
     if (all) {
-      const results = await generateMonthlyPayroll(month);
+      const results = await generateMonthlyPayroll(month, salary_type || null);
       
       return NextResponse.json({
         success: true,

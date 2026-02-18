@@ -38,6 +38,7 @@ export default function ReportsPage() {
   });
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+  const [salaryTypeFilter, setSalaryTypeFilter] = useState('all');
   const employeeDropdownRef = useRef(null);
   
   // Stats
@@ -128,7 +129,8 @@ export default function ReportsPage() {
       // If no employees selected (generate all), export Excel sheet instead
       if (selectedEmployees.length === 0) {
         // Download the Excel salary sheet
-        const response = await fetch(`/api/payroll/export-sheet?month=${month}`);
+        const salaryTypeParam = salaryTypeFilter !== 'all' ? `&salary_type=${salaryTypeFilter}` : '';
+        const response = await fetch(`/api/payroll/export-sheet?month=${month}${salaryTypeParam}`);
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -201,7 +203,7 @@ export default function ReportsPage() {
 
   // Generate all individual slips (used before exporting sheet)
   const handleGenerateAllSlips = async () => {
-    if (!confirm('This will generate individual salary slips for all employees for the selected month. Continue?')) {
+    if (!confirm(`This will generate individual salary slips for ${salaryTypeFilter !== 'all' ? salaryTypeFilter + ' ' : 'all '}employees for the selected month. Continue?`)) {
       return;
     }
     
@@ -212,7 +214,7 @@ export default function ReportsPage() {
       const res = await fetch('/api/payroll/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month, all: true })
+        body: JSON.stringify({ month, all: true, salary_type: salaryTypeFilter !== 'all' ? salaryTypeFilter : undefined })
       });
 
       const data = await res.json();
@@ -608,6 +610,18 @@ export default function ReportsPage() {
                 <td>-</td>
               </tr>
               <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>AMOUNT AFTER TDS</td>
+                <td class="amount">${selectedSlip?.tds ? ((selectedSlip?.total_earnings || selectedSlip?.gross_salary || 0) - (selectedSlip?.tds || 0)).toFixed(2) : ''}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
                 <td>PAID HOLIDAY AMOUNT</td>
                 <td class="amount">${selectedSlip?.paid_holiday || ''}</td>
                 <td class="amount">${selectedSlip?.paid_holiday || ''}</td>
@@ -736,6 +750,21 @@ export default function ReportsPage() {
               </select>
             </div>
             
+            {/* Salary Type Filter */}
+            <select
+              value={salaryTypeFilter}
+              onChange={(e) => setSalaryTypeFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            >
+              <option value="all">All Salary Types</option>
+              <option value="monthly">Monthly</option>
+              <option value="hourly">Hourly</option>
+              <option value="daily">Daily</option>
+              <option value="contract">Contract</option>
+              <option value="lumpsum">Lumpsum</option>
+              <option value="custom">Custom</option>
+            </select>
+
             {/* Employee Checkbox Dropdown */}
             <div className="relative" ref={employeeDropdownRef}>
               <button
@@ -1158,6 +1187,20 @@ export default function ReportsPage() {
                     <td className="border border-black px-2 py-1 text-center">-</td>
                     <td className="border border-black px-2 py-1 text-center">-</td>
                   </tr>
+                  {selectedSlip.tds ? (
+                  <tr>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1 font-semibold">AMOUNT AFTER TDS</td>
+                    <td className="border border-black px-2 py-1 text-right font-semibold">{((selectedSlip.total_earnings || selectedSlip.gross_salary || 0) - (selectedSlip.tds || 0)).toFixed(2)}</td>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-black px-2 py-1"></td>
+                  </tr>
+                  ) : null}
                   <tr>
                     <td className="border border-black px-2 py-1">PAID HOLIDAY AMOUNT</td>
                     <td className="border border-black px-2 py-1 text-right">{selectedSlip.paid_holiday || ''}</td>

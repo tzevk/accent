@@ -89,6 +89,14 @@ export const PERMISSION_DESCRIPTIONS = {
     [PERMISSIONS.APPROVE]: 'Approve project proposals and changes',
     [PERMISSIONS.ASSIGN]: 'Assign project team members'
   },
+  [RESOURCES.PROPOSALS]: {
+    [PERMISSIONS.READ]: 'View proposals',
+    [PERMISSIONS.CREATE]: 'Create new proposals',
+    [PERMISSIONS.UPDATE]: 'Edit proposal details',
+    [PERMISSIONS.DELETE]: 'Delete proposals',
+    [PERMISSIONS.APPROVE]: 'Approve proposals',
+    [PERMISSIONS.CONVERT]: 'Convert proposals to projects'
+  },
   [RESOURCES.QUOTATIONS]: {
     [PERMISSIONS.READ]: 'View project quotations (read-only)',
     [PERMISSIONS.CREATE]: 'Create new quotations',

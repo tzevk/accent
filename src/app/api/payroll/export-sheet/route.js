@@ -4,18 +4,19 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
 import ExcelJS from 'exceljs';
 
 /**
- * GET - Export salary sheet as Excel file in the "Updated salary Sheet" format
+ * GET - Export salary sheet as Excel file
  * Query params:
  *  - month: Month to export (YYYY-MM-01)
+ *  - salary_type: Filter by salary type (monthly, hourly, daily, contract, lumpsum, custom)
  */
 export async function GET(request) {
-  // RBAC check
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
+    const salaryType = searchParams.get('salary_type');
 
     if (!month) {
       return NextResponse.json(
@@ -24,11 +25,10 @@ export async function GET(request) {
       );
     }
 
+    const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom'];
     const db = await dbConnect();
 
-    // Fetch all payroll slips for the month with employee details
-    const [slips] = await db.execute(
-      `SELECT 
+    let query = `SELECT 
         ps.*,
         CONCAT(e.first_name, ' ', e.last_name) as full_name,
         e.employee_id as employee_code,
@@ -36,14 +36,22 @@ export async function GET(request) {
         e.uan,
         e.pf_no,
         e.esi_no,
-        e.department
+        e.department,
+        sp.salary_type
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
-      WHERE ps.month = ?
-      ORDER BY e.first_name ASC`,
-      [month]
-    );
+      LEFT JOIN employee_salary_profile sp ON sp.employee_id = e.id AND sp.is_active = 1
+      WHERE ps.month = ?`;
+    const params = [month];
 
+    if (salaryType && validSalaryTypes.includes(salaryType)) {
+      query += ` AND (sp.salary_type = ? OR (sp.salary_type IS NULL AND ? = 'monthly'))`;
+      params.push(salaryType, salaryType);
+    }
+
+    query += ` ORDER BY e.employee_id ASC`;
+
+    const [slips] = await db.execute(query, params);
     await db.end();
 
     if (slips.length === 0) {
@@ -53,20 +61,18 @@ export async function GET(request) {
       );
     }
 
-    // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Accent CRM';
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Sheet1');
-
-    // Parse month for display
     const monthDate = new Date(month);
+    const isContractExport = salaryType === 'contract';
 
     // Row 1: Title
     sheet.mergeCells('A1:L1');
     const titleCell = sheet.getCell('A1');
-    titleCell.value = 'PAY SHEET';
+    titleCell.value = isContractExport ? 'CONTRACT PAY SHEET' : 'PAY SHEET';
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: 'center' };
 
@@ -98,249 +104,198 @@ export async function GET(request) {
     sheet.getCell('N4').value = monthDate;
     sheet.getCell('N4').numFmt = 'mmm-yyyy';
 
-    // Row 5: Empty
-    // Row 6: Header row
-    const headers = [
-      'Full Name',           // A
-      'Designation',         // B
-      'UAN',                 // C
-      'PF No.',              // D
-      'ESIC No.',            // E
-      'Total Days',          // F
-      'Days Present',        // G
-      'Days Paid',           // H
-      'LWP Days',            // I
-      'Leave',               // J
-      'WeekOff',             // K
-      'Paid Holiday',        // L
-      'OT Hours',            // M
-      'BASIC',               // N
-      'DA',                  // O
-      'HRA',                 // P
-      'CONVEYANCE ALLOWANCE', // Q
-      'CALL ALLOWANCE',      // R
-      'OTHER ALLOWANCE',     // S
-      'PAID HOLIDAY AMOUNT', // T
-      'BONUS',               // U
-      'OT RATE',             // V
-      'INCENTIVE',           // W
-      'BASIC Arrears',       // X
-      'DA Arrears',          // Y
-      'HRA Arrears',         // Z
-      'CALW Arrears',        // AA
-      'CALALW Arrears',      // AB
-      'OTHALW Arrears',      // AC
-      'PHA Arrears',         // AD
-      'BONUS Arrears',       // AE
-      'OT Arrears',          // AF
-      'INCENTIVE Arrears',   // AG
-      'GROSS',               // AH
-      'EBONUS',              // AI
-      'EMPRPF',              // AJ
-      'PAI',                 // AK
-      'RATE',                // AL
-      'EC',                  // AM
-      'EPFWAGE',             // AN
-      'PROVIDENT FUND',      // AO
-      'ESIC',                // AP
-      'PROFESSIONAL TAX',    // AQ
-      'LOAN',                // AR
-      'ADVANCE',             // AS
-      'TAX DEDUCTED AT SOURCE', // AT
-      'RETENTION AMOUNT',    // AU
-      'TOTAL DED',           // AV
-      'NET SAL',             // AW
-      'Signature',           // AX
-    ];
-
-    const headerRow = sheet.getRow(6);
-    headers.forEach((header, index) => {
-      const cell = headerRow.getCell(index + 1);
-      cell.value = header;
-      cell.font = { bold: true, size: 10 };
-      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFD9E1F2' }
-      };
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
-    });
-
-    // Row 7: Sub-header (Rs. P.)
-    const subHeaderRow = sheet.getRow(7);
-    headers.forEach((header, index) => {
-      const cell = subHeaderRow.getCell(index + 1);
-      if (index < 13) {
-        cell.value = header; // Repeat text headers
-      } else if (index < 49) {
-        cell.value = 'Rs. P.';
-      } else {
-        cell.value = 'Signature';
-      }
-      cell.font = { size: 9 };
-      cell.alignment = { horizontal: 'center' };
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
-    });
-
-    // Data rows starting from row 8
-    slips.forEach((slip, index) => {
-      const row = sheet.getRow(8 + index);
-      
-      const totalDays = slip.standard_working_days || 26;
-      const daysPresent = slip.days_present || 0;
-      const daysPaid = slip.payable_days || 0;
-      const lwpDays = slip.lop_days || 0;
-      const daysLeave = slip.days_leave || 0;
-      // WeekOff and Paid Holiday calculations (estimated)
-      const weekOff = 4; // Approximate 4 weekends
-      const paidHoliday = 0;
-      const otHours = slip.overtime_hours || 0;
-
-      const values = [
-        slip.full_name || '',                       // Full Name
-        slip.designation || '',                     // Designation
-        slip.uan || '',                             // UAN
-        slip.pf_no || '',                           // PF No.
-        slip.esi_no || '--',                        // ESIC No.
-        totalDays,                                  // Total Days
-        daysPresent,                                // Days Present
-        daysPaid,                                   // Days Paid
-        lwpDays,                                    // LWP Days
-        daysLeave,                                  // Leave
-        weekOff,                                    // WeekOff
-        paidHoliday,                                // Paid Holiday
-        otHours,                                    // OT Hours
-        slip.basic || 0,                            // BASIC
-        slip.da || slip.da_used || 0,               // DA
-        slip.hra || 0,                              // HRA
-        slip.conveyance || 0,                       // CONVEYANCE ALLOWANCE
-        slip.call_allowance || 0,                   // CALL ALLOWANCE
-        slip.other_allowances || 0,                 // OTHER ALLOWANCE
-        0,                                          // PAID HOLIDAY AMOUNT
-        slip.bonus || 0,                            // BONUS
-        0,                                          // OT RATE
-        slip.incentive || 0,                        // INCENTIVE
-        0,                                          // BASIC Arrears
-        0,                                          // DA Arrears
-        0,                                          // HRA Arrears
-        0,                                          // CALW Arrears
-        0,                                          // CALALW Arrears
-        0,                                          // OTHALW Arrears
-        0,                                          // PHA Arrears
-        0,                                          // BONUS Arrears
-        0,                                          // OT Arrears
-        0,                                          // INCENTIVE Arrears
-        slip.gross || slip.total_earnings || 0,     // GROSS
-        0,                                          // EBONUS
-        slip.pf_employer || 0,                      // EMPRPF
-        0,                                          // PAI
-        0,                                          // RATE
-        0,                                          // EC
-        0,                                          // EPFWAGE
-        slip.pf_employee || 0,                      // PROVIDENT FUND
-        slip.esic_employee || 0,                    // ESIC
-        slip.pt || 0,                               // PROFESSIONAL TAX
-        0,                                          // LOAN
-        0,                                          // ADVANCE
-        slip.tds || 0,                              // TAX DEDUCTED AT SOURCE
-        slip.retention || 0,                        // RETENTION AMOUNT
-        slip.total_deductions || 0,                 // TOTAL DED
-        slip.net_pay || 0,                          // NET SAL
-        '',                                         // Signature
+    if (isContractExport) {
+      // ── Contract-specific sheet layout ──
+      const contractHeaders = [
+        'Emp Code',
+        'Full Name',
+        'Designation',
+        'Month Days',
+        'Working Days',
+        'Rate Per Month',
+        'Monthly Amount',
+        'OT Hours',
+        'OT Amount',
+        'Total Amount',
+        '10% TDS',
+        'Retention',
+        'Net Payable Amount',
       ];
 
-      values.forEach((val, colIndex) => {
-        const cell = row.getCell(colIndex + 1);
-        cell.value = val;
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
-        
-        // Number formatting for currency columns (columns 14+)
-        if (colIndex >= 13 && colIndex < 49 && typeof val === 'number') {
-          cell.numFmt = '#,##0';
-        }
+      const contractHeaderRow = sheet.getRow(6);
+      contractHeaders.forEach((header, index) => {
+        const cell = contractHeaderRow.getCell(index + 1);
+        cell.value = header;
+        cell.font = { bold: true, size: 10 };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
       });
-    });
 
-    // Set column widths
-    const columnWidths = [
-      25, // Full Name
-      20, // Designation
-      15, // UAN
-      25, // PF No.
-      15, // ESIC No.
-      10, // Total Days
-      10, // Days Present
-      10, // Days Paid
-      10, // LWP Days
-      8,  // Leave
-      8,  // WeekOff
-      10, // Paid Holiday
-      8,  // OT Hours
-      12, // BASIC
-      10, // DA
-      10, // HRA
-      15, // CONVEYANCE ALLOWANCE
-      12, // CALL ALLOWANCE
-      14, // OTHER ALLOWANCE
-      14, // PAID HOLIDAY AMOUNT
-      10, // BONUS
-      8,  // OT RATE
-      10, // INCENTIVE
-      12, // BASIC Arrears
-      10, // DA Arrears
-      10, // HRA Arrears
-      12, // CALW Arrears
-      12, // CALALW Arrears
-      12, // OTHALW Arrears
-      10, // PHA Arrears
-      12, // BONUS Arrears
-      10, // OT Arrears
-      14, // INCENTIVE Arrears
-      12, // GROSS
-      10, // EBONUS
-      10, // EMPRPF
-      8,  // PAI
-      8,  // RATE
-      8,  // EC
-      10, // EPFWAGE
-      14, // PROVIDENT FUND
-      10, // ESIC
-      14, // PROFESSIONAL TAX
-      10, // LOAN
-      10, // ADVANCE
-      18, // TAX DEDUCTED AT SOURCE
-      15, // RETENTION AMOUNT
-      12, // TOTAL DED
-      12, // NET SAL
-      12, // Signature
-    ];
+      slips.forEach((slip, index) => {
+        const row = sheet.getRow(7 + index);
+        const gross = slip.gross || slip.total_earnings || 0;
+        const workingDays = slip.payable_days || slip.days_present || 0;
+        const monthDays = slip.standard_working_days || 26;
+        const ratePerMonth = slip.full_month_gross || gross;
+        const monthlyAmount = gross;
+        const otHours = slip.overtime_hours || 0;
+        const otAmount = 0; // OT amount from slip if available
+        const totalAmount = monthlyAmount + otAmount;
+        const tds = slip.tds || 0;
+        const retention = slip.retention || 0;
+        const netPayable = totalAmount - tds - retention;
 
-    columnWidths.forEach((width, index) => {
-      sheet.getColumn(index + 1).width = width;
-    });
+        const values = [
+          slip.employee_code || '',
+          slip.full_name || '',
+          slip.designation || '',
+          monthDays,
+          workingDays,
+          ratePerMonth,
+          monthlyAmount,
+          otHours,
+          otAmount,
+          totalAmount,
+          tds,
+          retention,
+          netPayable,
+        ];
 
-    // Generate buffer
+        values.forEach((val, colIndex) => {
+          const cell = row.getCell(colIndex + 1);
+          cell.value = val;
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          if (colIndex >= 3 && typeof val === 'number') {
+            cell.numFmt = '#,##0';
+          }
+        });
+      });
+
+      const contractColWidths = [12, 25, 20, 12, 12, 15, 15, 10, 12, 15, 12, 12, 18];
+      contractColWidths.forEach((width, index) => {
+        sheet.getColumn(index + 1).width = width;
+      });
+
+    } else {
+      // ── Standard (non-contract) sheet layout ──
+      const headers = [
+        'Emp Code',
+        'Full Name',
+        'Designation',
+        'UAN',
+        'PF No.',
+        'ESIC No.',
+        'Total Days',
+        'Days Present',
+        'Days Paid',
+        'LWP Days',
+        'Leave',
+        'WeekOff',
+        'Paid Holiday',
+        'OT Hours',
+        'BASIC',
+        'DA',
+        'HRA',
+        'CONVEYANCE ALLOWANCE',
+        'CALL ALLOWANCE',
+        'OTHER ALLOWANCE',
+        'PAID HOLIDAY AMOUNT',
+        'BONUS',
+        'OT RATE',
+        'INCENTIVE',
+        'GROSS',
+        'PROVIDENT FUND',
+        'ESIC',
+        'PROFESSIONAL TAX',
+        'LOAN',
+        'ADVANCE',
+        'TAX DEDUCTED AT SOURCE',
+        'AMOUNT AFTER TDS',
+        'RETENTION AMOUNT',
+        'TOTAL DED',
+        'NET SAL',
+        'Signature',
+      ];
+
+      const headerRow = sheet.getRow(6);
+      headers.forEach((header, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = header;
+        cell.font = { bold: true, size: 10 };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      });
+
+      slips.forEach((slip, index) => {
+        const row = sheet.getRow(7 + index);
+        const gross = slip.gross || slip.total_earnings || 0;
+        const tds = slip.tds || 0;
+
+        const values = [
+          slip.employee_code || '',
+          slip.full_name || '',
+          slip.designation || '',
+          slip.uan || '',
+          slip.pf_no || '',
+          slip.esi_no || '--',
+          slip.standard_working_days || 26,
+          slip.days_present || 0,
+          slip.payable_days || 0,
+          slip.lop_days || 0,
+          slip.days_leave || 0,
+          4,
+          0,
+          slip.overtime_hours || 0,
+          slip.basic || 0,
+          slip.da || slip.da_used || 0,
+          slip.hra || 0,
+          slip.conveyance || 0,
+          slip.call_allowance || 0,
+          slip.other_allowances || 0,
+          0,
+          slip.bonus || 0,
+          0,
+          slip.incentive || 0,
+          gross,
+          slip.pf_employee || 0,
+          slip.esic_employee || 0,
+          slip.pt || 0,
+          0,
+          0,
+          tds,
+          gross - tds,
+          slip.retention || 0,
+          slip.total_deductions || 0,
+          slip.net_pay || 0,
+          '',
+        ];
+
+        values.forEach((val, colIndex) => {
+          const cell = row.getCell(colIndex + 1);
+          cell.value = val;
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          if (colIndex >= 14 && typeof val === 'number') {
+            cell.numFmt = '#,##0';
+          }
+        });
+      });
+
+      const columnWidths = [
+        12, 25, 20, 15, 25, 15,
+        10, 10, 10, 10, 8, 8, 10, 8,
+        12, 10, 10, 15, 12, 14, 14, 10, 8, 10,
+        12, 14, 10, 14, 10, 10, 18, 18, 15, 12, 12, 12,
+      ];
+      columnWidths.forEach((width, index) => {
+        sheet.getColumn(index + 1).width = width;
+      });
+    }
+
     const buffer = await workbook.xlsx.writeBuffer();
-
-    // Return Excel file
     const filename = `Salary_Sheet_${month.substring(0, 7)}.xlsx`;
-    
+
     return new NextResponse(buffer, {
       status: 200,
       headers: {

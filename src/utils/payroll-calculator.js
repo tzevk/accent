@@ -634,30 +634,38 @@ export async function generatePayrollSlip(employeeId, month) {
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
  * @returns {Promise<object>} Summary of generation results
  */
-export async function generateMonthlyPayroll(month) {
+export async function generateMonthlyPayroll(month, salaryType = null) {
   const db = await dbConnect();
   
   try {
+    const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom'];
+    const filterBySalaryType = salaryType && validSalaryTypes.includes(salaryType);
+
     // Get all employees with active salary structures (newer table)
-    const [ssEmployees] = await db.execute(
-      `SELECT DISTINCT ss.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name 
+    let ssQuery = `SELECT DISTINCT ss.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name 
        FROM salary_structures ss
        JOIN employees e ON e.id = ss.employee_id
        WHERE (e.status = 'active' OR e.status IS NULL)
-         AND ss.is_active = 1`,
-      []
-    );
+         AND ss.is_active = 1`;
+    const ssParams = [];
+
+    const [ssEmployees] = await db.execute(ssQuery, ssParams);
     
     // Get all employees with active salary profiles (legacy table) not already in salary_structures
-    const [espEmployees] = await db.execute(
-      `SELECT DISTINCT esp.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name 
+    let espQuery = `SELECT DISTINCT esp.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name 
        FROM employee_salary_profile esp
        JOIN employees e ON e.id = esp.employee_id
        WHERE (e.status = 'active' OR e.status IS NULL)
          AND esp.is_active = 1
-         AND esp.employee_id NOT IN (SELECT employee_id FROM salary_structures WHERE is_active = 1)`,
-      []
-    );
+         AND esp.employee_id NOT IN (SELECT employee_id FROM salary_structures WHERE is_active = 1)`;
+    const espParams = [];
+
+    if (filterBySalaryType) {
+      espQuery += ` AND (esp.salary_type = ? OR (esp.salary_type IS NULL AND ? = 'monthly'))`;
+      espParams.push(salaryType, salaryType);
+    }
+
+    const [espEmployees] = await db.execute(espQuery, espParams);
     
     // Combine both lists
     const employees = [...ssEmployees, ...espEmployees];

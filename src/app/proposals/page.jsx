@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import { RESOURCES as RBAC_RESOURCES, PERMISSIONS as RBAC_PERMISSIONS } from '@/utils/rbac';
 import { 
   DocumentTextIcon,
   EyeIcon,
@@ -17,6 +19,8 @@ import { ArrowRightIcon } from '@heroicons/react/24/outline';
 
 export default function Proposals() {
   const router = useRouter();
+  const { can, loading: rbacLoading } = useSessionRBAC();
+  const canConvert = !rbacLoading && can(RBAC_RESOURCES.PROPOSALS, RBAC_PERMISSIONS.CONVERT);
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -434,6 +438,7 @@ export default function Proposals() {
                             >
                               <PencilIcon className="h-4 w-4" />
                             </button>
+                            {canConvert && (
                             <button
                               onClick={() => handleConvert(proposal)}
                               className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
@@ -441,6 +446,7 @@ export default function Proposals() {
                             >
                               <ArrowRightIcon className="h-4 w-4" />
                             </button>
+                            )}
                             <button 
                               onClick={() => handleDelete(proposal.id)}
                               className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"

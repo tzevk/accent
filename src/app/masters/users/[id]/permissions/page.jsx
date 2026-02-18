@@ -1191,6 +1191,19 @@ const MODULE_FIELDS = {
   }
 };
 
+// Define which modules have special permissions beyond standard CRUD
+const SPECIAL_PERMS = {
+  leads: ['convert'],
+  proposals: ['convert', 'approve'],
+  projects: ['assign'],
+  activities: ['assign']
+};
+
+const getModulePerms = (module) => [
+  'read', 'create', 'update', 'delete', 'export', 'import',
+  ...(SPECIAL_PERMS[module] || [])
+];
+
 // Permission levels for fields
 const FIELD_PERMISSIONS = {
   hidden: { label: 'Hidden', icon: EyeSlashIcon, color: 'text-red-500 bg-red-50 border-red-200' },
@@ -1316,15 +1329,18 @@ export default function UserPermissionsPage() {
             // Load from nested structure
             const savedModule = fieldPerms.modules[moduleKey];
             enabled[moduleKey] = savedModule.enabled || false;
-            modulePerms[moduleKey] = {
+            const permObj = {
               read: savedModule.crud?.read || false,
               create: savedModule.crud?.create || false,
               update: savedModule.crud?.update || false,
               delete: savedModule.crud?.delete || false,
               export: savedModule.crud?.export || false,
               import: savedModule.crud?.import || false,
-              convert: savedModule.crud?.convert || false
+              convert: savedModule.crud?.convert || false,
+              approve: savedModule.crud?.approve || false,
+              assign: savedModule.crud?.assign || false
             };
+            modulePerms[moduleKey] = permObj;
             
             // Load sections and fields
             const sections = moduleDef.sections || {};
@@ -1349,6 +1365,8 @@ export default function UserPermissionsPage() {
             const hasImport = existingPerms.includes(`${moduleKey}:import`);
             
             const hasConvert = existingPerms.includes(`${moduleKey}:convert`);
+            const hasApprove = existingPerms.includes(`${moduleKey}:approve`);
+            const hasAssign = existingPerms.includes(`${moduleKey}:assign`);
             
             modulePerms[moduleKey] = {
               read: hasRead,
@@ -1357,10 +1375,12 @@ export default function UserPermissionsPage() {
               delete: hasDelete,
               export: hasExport,
               import: hasImport,
-              convert: hasConvert
+              convert: hasConvert,
+              approve: hasApprove,
+              assign: hasAssign
             };
             
-            enabled[moduleKey] = hasRead || hasCreate || hasUpdate || hasDelete || hasExport || hasImport || hasConvert;
+            enabled[moduleKey] = hasRead || hasCreate || hasUpdate || hasDelete || hasExport || hasImport || hasConvert || hasApprove || hasAssign;
             
             // Load legacy field permissions
             const sections = moduleDef.sections || {};
@@ -1446,7 +1466,9 @@ export default function UserPermissionsPage() {
           delete: false,
           export: false,
           import: false,
-          convert: false
+          convert: false,
+          approve: false,
+          assign: false
         }
       }));
       // Disable all sections in this module
@@ -1542,7 +1564,9 @@ export default function UserPermissionsPage() {
         delete: true,
         export: true,
         import: true,
-        convert: module === 'leads' ? true : false
+        convert: (SPECIAL_PERMS[module] || []).includes('convert'),
+        approve: (SPECIAL_PERMS[module] || []).includes('approve'),
+        assign: (SPECIAL_PERMS[module] || []).includes('assign')
       }
     }));
     // Enable all sections
@@ -1566,7 +1590,9 @@ export default function UserPermissionsPage() {
         delete: false,
         export: false,
         import: false,
-        convert: false
+        convert: false,
+        approve: false,
+        assign: false
       }
     }));
     // Disable all sections
@@ -1611,7 +1637,9 @@ export default function UserPermissionsPage() {
             delete: !!modulePerms.delete,
             export: !!modulePerms.export,
             import: !!modulePerms.import,
-            convert: !!modulePerms.convert
+            convert: !!modulePerms.convert,
+            approve: !!modulePerms.approve,
+            assign: !!modulePerms.assign
           },
           sections: {}
         };
@@ -1649,6 +1677,8 @@ export default function UserPermissionsPage() {
           if (modulePerms.export) permissionsArray.push(`${moduleKey}:export`);
           if (modulePerms.import) permissionsArray.push(`${moduleKey}:import`);
           if (modulePerms.convert) permissionsArray.push(`${moduleKey}:convert`);
+          if (modulePerms.approve) permissionsArray.push(`${moduleKey}:approve`);
+          if (modulePerms.assign) permissionsArray.push(`${moduleKey}:assign`);
         }
       });
       
@@ -1663,6 +1693,8 @@ export default function UserPermissionsPage() {
         if (perms.export) oldPermissionsArray.push(`${module}:export`);
         if (perms.import) oldPermissionsArray.push(`${module}:import`);
         if (perms.convert) oldPermissionsArray.push(`${module}:convert`);
+        if (perms.approve) oldPermissionsArray.push(`${module}:approve`);
+        if (perms.assign) oldPermissionsArray.push(`${module}:assign`);
       });
 
       const res = await fetch('/api/users', {
@@ -1890,7 +1922,7 @@ export default function UserPermissionsPage() {
                               </span>
                               {isEnabled && (
                                 <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                                  {moduleCount}/6
+                                  {moduleCount}/{getModulePerms(module).length}
                                 </span>
                               )}
                             </div>
@@ -1940,7 +1972,7 @@ export default function UserPermissionsPage() {
                               </span>
                               {isEnabled && (
                                 <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
-                                  {moduleCount}/6
+                                  {moduleCount}/{getModulePerms(module).length}
                                 </span>
                               )}
                             </div>
@@ -1990,7 +2022,7 @@ export default function UserPermissionsPage() {
                               </span>
                               {isEnabled && (
                                 <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">
-                                  {moduleCount}/6
+                                  {moduleCount}/{getModulePerms(module).length}
                                 </span>
                               )}
                             </div>
@@ -1998,6 +2030,56 @@ export default function UserPermissionsPage() {
                           </div>
                           {isEnabled && (
                             <ChevronRightIcon className="h-4 w-4 text-emerald-400 ml-2" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Admin */}
+                <div className="mb-4">
+                  <div className="px-2 py-1 text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2 bg-amber-50 rounded">
+                    Admin
+                  </div>
+                  <div className="space-y-1">
+                    {Object.keys(MODULE_FIELDS).filter(m => MODULE_FIELDS[m].category === 'admin').map(module => {
+                      const moduleDef = MODULE_FIELDS[module];
+                      const isEnabled = enabledModules[module];
+                      const isActive = activeModule === module;
+                      const moduleCount = getModulePermCount(module);
+                      
+                      return (
+                        <div
+                          key={module}
+                          className={`flex items-center p-3 rounded-lg transition-all cursor-pointer ${
+                            isActive ? 'bg-amber-50 ring-2 ring-amber-500' : isEnabled ? 'bg-amber-50/50 hover:bg-amber-100' : 'bg-gray-50 hover:bg-gray-100'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={() => toggleModuleEnabled(module)}
+                            className="h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500"
+                          />
+                          <div 
+                            className="ml-3 flex-1"
+                            onClick={() => isEnabled && setActiveModule(module)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={`font-medium text-sm ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>
+                                {moduleDef.name}
+                              </span>
+                              {isEnabled && (
+                                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
+                                  {moduleCount}/{getModulePerms(module).length}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">{moduleDef.description}</p>
+                          </div>
+                          {isEnabled && (
+                            <ChevronRightIcon className="h-4 w-4 text-gray-400 ml-2" />
                           )}
                         </div>
                       );
@@ -2066,7 +2148,7 @@ export default function UserPermissionsPage() {
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <h3 className="font-medium text-gray-900 mb-3">Module Access (CRUD)</h3>
                     <div className="flex flex-wrap gap-2">
-                      {['read', 'create', 'update', 'delete', 'export', 'import', ...(activeModule === 'leads' ? ['convert'] : [])].map(perm => (
+                      {getModulePerms(activeModule).map(perm => (
                         <button
                           key={perm}
                           onClick={() => toggleModulePerm(activeModule, perm)}
