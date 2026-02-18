@@ -24,6 +24,7 @@ export default function MyWorkLogsPage() {
   const [editingLog, setEditingLog] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterType, setFilterType] = useState('all');
+  const [projects, setProjects] = useState([]);
 
   const [formData, setFormData] = useState({
     log_date: new Date().toISOString().split('T')[0],
@@ -40,9 +41,22 @@ export default function MyWorkLogsPage() {
   useEffect(() => {
     if (!authLoading && user) {
       fetchLogs();
+      fetchProjects();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, selectedDate, filterType]);
+
+  const fetchProjects = async () => {
+    try {
+      const response = await fetch('/api/projects');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.data)) {
+        setProjects(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch projects:', error);
+    }
+  };
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -350,14 +364,19 @@ export default function MyWorkLogsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Project ID</label>
-                      <input
-                        type="text"
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Project</label>
+                      <select
                         value={formData.project_id}
                         onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
-                        placeholder="Related project ID"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      />
+                      >
+                        <option value="">-- Select Project --</option>
+                        {projects.map((p) => (
+                          <option key={p.id ?? p.project_id} value={p.id ?? p.project_id}>
+                            {p.project_id ? `${p.project_id} — ` : ''}{p.name || `Project #${p.id}`}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -427,6 +446,18 @@ export default function MyWorkLogsPage() {
                             {log.time_spent} mins
                           </div>
                         )}
+                        {log.project_id && (() => {
+                          const proj = projects.find(p => String(p.id) === String(log.project_id) || String(p.project_id) === String(log.project_id));
+                          return proj ? (
+                            <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs font-medium">
+                              {proj.project_id ? `${proj.project_id} — ` : ''}{proj.name || `Project #${proj.id}`}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                              Project #{log.project_id}
+                            </span>
+                          );
+                        })()}
                         {log.category && (
                           <span className="px-2 py-1 bg-gray-100 rounded text-xs">
                             {log.category}

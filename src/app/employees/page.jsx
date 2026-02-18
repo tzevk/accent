@@ -1843,13 +1843,17 @@ export default function EmployeesPage() {
         };
       } else if (salaryType === 'contract') {
         const contractAmount = parseFloat(salaryPreview.contract_amount) || 0;
+        const tdsPercent = parseFloat(salaryPreview.tds_percentage) || 0;
+        const tdsAmount = contractAmount * tdsPercent / 100;
+        const netAfterTds = contractAmount - tdsAmount;
         payload = {
           ...payload,
           contract_amount: contractAmount,
           contract_duration: salaryPreview.contract_duration || 'monthly',
           contract_end_date: salaryPreview.contract_end_date || null,
+          tds_percentage: tdsPercent || null,
           gross_salary: contractAmount,
-          net_pay: contractAmount,
+          net_pay: netAfterTds,
           employer_cost: contractAmount,
         };
       } else if (salaryType === 'lumpsum') {

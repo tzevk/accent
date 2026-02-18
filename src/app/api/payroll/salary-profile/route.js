@@ -52,6 +52,7 @@ export async function POST(request) {
       contract_end_date,
       lumpsum_amount,
       lumpsum_description,
+      tds_percentage,
       // Additional breakdown fields
       basic_plus_da,
       da,
@@ -171,7 +172,8 @@ export async function POST(request) {
       { name: 'contract_duration', definition: "VARCHAR(20) DEFAULT 'monthly'" },
       { name: 'contract_end_date', definition: 'DATE' },
       { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
-      { name: 'lumpsum_description', definition: 'VARCHAR(255)' },
+      { name: 'lumpsum_description', definition: 'TEXT' },
+      { name: 'tds_percentage', definition: 'DECIMAL(5, 2) DEFAULT NULL' },
     ];
     
     for (const col of columnsToAdd) {
@@ -191,6 +193,12 @@ export async function POST(request) {
       await db.query(`ALTER TABLE employee_salary_profile MODIFY COLUMN gross DECIMAL(12, 2) DEFAULT 0`);
     } catch {
       // Ignore if column doesn't exist
+    }
+    // Widen lumpsum_description to TEXT if it was previously VARCHAR(255)
+    try {
+      await db.query(`ALTER TABLE employee_salary_profile MODIFY COLUMN lumpsum_description TEXT`);
+    } catch {
+      // Ignore
     }
     
     console.log('Table schema verified/updated successfully');
@@ -264,7 +272,8 @@ export async function POST(request) {
       contract_duration || 'monthly',
       contract_end_date || null,
       parseFloat(lumpsum_amount) || null,
-      lumpsum_description || null
+      lumpsum_description || null,
+      parseFloat(tds_percentage) || null
     ];
 
     if (id) {
@@ -280,7 +289,7 @@ export async function POST(request) {
           retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
           is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, std_in_time = ?, std_out_time = ?, ot_multiplier = ?,
           daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
-          lumpsum_amount = ?, lumpsum_description = ?, updated_at = CURRENT_TIMESTAMP
+          lumpsum_amount = ?, lumpsum_description = ?, tds_percentage = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND employee_id = ?`,
         [...values, id, employee_id]
       );
@@ -288,7 +297,7 @@ export async function POST(request) {
     } else {
       // Check if a profile already exists for this employee and effective_from date
       const [existing] = await db.query(
-        `SELECT id FROM employee_salary_profile WHERE employee_id = ? AND effective_from = ? AND is_active = 1 LIMIT 1`,
+        `SELECT id FROM employee_salary_profile WHERE employee_id = ? AND effective_from = ? LIMIT 1`,
         [employee_id, effective_from]
       );
       
@@ -306,7 +315,7 @@ export async function POST(request) {
             retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
             is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, std_in_time = ?, std_out_time = ?, ot_multiplier = ?,
             daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
-            lumpsum_amount = ?, lumpsum_description = ?, updated_at = CURRENT_TIMESTAMP
+            lumpsum_amount = ?, lumpsum_description = ?, tds_percentage = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
           [...values, existingId]
         );
@@ -323,8 +332,8 @@ export async function POST(request) {
             pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
             total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
             salary_type, hourly_rate, std_hours_per_day, std_in_time, std_out_time, ot_multiplier, daily_rate, std_working_days,
-            contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description, tds_percentage) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [employee_id, ...values]
         );
       }
@@ -432,7 +441,8 @@ export async function GET(request) {
         { name: 'contract_duration', definition: "VARCHAR(20) DEFAULT 'monthly'" },
         { name: 'contract_end_date', definition: 'DATE' },
         { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
-        { name: 'lumpsum_description', definition: 'VARCHAR(255)' },
+        { name: 'lumpsum_description', definition: 'TEXT' },
+        { name: 'tds_percentage', definition: 'DECIMAL(5, 2) DEFAULT NULL' },
       ];
       
       for (const col of columnsToAdd) {
