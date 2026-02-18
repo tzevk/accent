@@ -8,11 +8,12 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let connection;
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit')) || 1000; // Default high limit for master data
     
-    const connection = await dbConnect();
+    connection = await dbConnect();
 
     // Get all active employees with essential fields for master dropdown
     const [employees] = await connection.execute(
@@ -33,8 +34,6 @@ export async function GET(request) {
       [limit]
     );
 
-    await connection.end();
-
     return NextResponse.json({
       success: true,
       data: employees,
@@ -51,5 +50,7 @@ export async function GET(request) {
       },
       { status: 500 }
     );
+  } finally {
+    if (connection) connection.release();
   }
 }

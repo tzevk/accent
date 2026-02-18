@@ -46,10 +46,11 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('project_id');
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureTable(db);
 
     let rows;
@@ -69,11 +70,13 @@ export async function GET(request) {
       );
       rows = r;
     }
-    await db.end();
+
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('project-docs GET error:', error);
     return NextResponse.json({ success: false, error: 'Failed to load project documents', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -82,19 +85,20 @@ export async function POST(request) {
   const authResultPost = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const body = await request.json();
     const { project_id, name, file_url = null, thumb_url = null, description = '', status = 'active', doc_master_id = null, metadata = null } = body;
     if (!project_id || !name) {
       return NextResponse.json({ success: false, error: 'project_id and name are required' }, { status: 400 });
     }
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureTable(db);
 
     // Ensure project exists
     const [proj] = await db.execute('SELECT id FROM projects WHERE id = ?', [project_id]);
     if (proj.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
@@ -104,11 +108,13 @@ export async function POST(request) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, project_id, doc_master_id || null, name, file_url, thumb_url, description, status, metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null]
     );
-    await db.end();
+
     return NextResponse.json({ success: true, data: { id }, message: 'Document linked to project' }, { status: 201 });
   } catch (error) {
     console.error('project-docs POST error:', error);
     return NextResponse.json({ success: false, error: 'Failed to add project document', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -117,13 +123,14 @@ export async function PUT(request) {
   const authResultPut = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   if (authResultPut.authorized === false) return authResultPut.response;
 
+  let db;
   try {
     const body = await request.json();
     const { id, name, description, status, metadata } = body;
     if (!id) {
       return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
     }
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureTable(db);
     await db.execute(
       `UPDATE project_documents SET
@@ -134,11 +141,13 @@ export async function PUT(request) {
        WHERE id = ?`,
       [name ?? null, description ?? null, status ?? null, metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null, id]
     );
-    await db.end();
+
     return NextResponse.json({ success: true, message: 'Project document updated' });
   } catch (error) {
     console.error('project-docs PUT error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update project document', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -147,19 +156,22 @@ export async function DELETE(request) {
   const authResultDel = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
   if (authResultDel.authorized === false) return authResultDel.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) {
       return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
     }
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureTable(db);
     await db.execute('DELETE FROM project_documents WHERE id = ?', [id]);
-    await db.end();
+
     return NextResponse.json({ success: true, message: 'Project document removed' });
   } catch (error) {
     console.error('project-docs DELETE error:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete project document', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

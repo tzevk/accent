@@ -8,8 +8,9 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
     // Ensure tables exist
     await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
       id VARCHAR(36) PRIMARY KEY,
@@ -33,6 +34,8 @@ export async function GET(request) {
       await db.execute(`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`);
     } catch (e) {
       // Column already exists, ignore
+    } finally {
+      if (db) db.release();
     }
 
     const [functions] = await db.execute(
@@ -42,8 +45,6 @@ export async function GET(request) {
     const [activities] = await db.execute(
       'SELECT id, function_id, activity_name, COALESCE(default_manhours, 0) as default_manhours FROM activities_master ORDER BY activity_name'
     );
-
-    await db.end();
 
     // Group activities by function
     const grouped = functions.map((func) => ({
@@ -71,6 +72,7 @@ export async function POST(request) {
   const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const { function_id, activity_name, default_manhours } = await request.json();
 
@@ -83,13 +85,12 @@ export async function POST(request) {
     const parsed = parseFloat(default_manhours);
     const manhours = isNaN(parsed) ? 0 : parsed;
     console.log('Creating activity:', { id, function_id, activity_name, default_manhours, manhours });
-    const db = await dbConnect();
+    db = await dbConnect();
     
     await db.execute(
       'INSERT INTO activities_master (id, function_id, activity_name, default_manhours) VALUES (?, ?, ?, ?)',
       [id, function_id, activity_name, manhours]
     );
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -100,6 +101,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('POST /api/activities error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create activity', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -108,6 +111,7 @@ export async function PUT(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const body = await request.json();
     const { id, activity_name, default_manhours } = body;
@@ -118,7 +122,7 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: 'Activity ID is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Build dynamic update query based on what fields are provided
     const updates = [];
@@ -139,7 +143,7 @@ export async function PUT(request) {
     }
     
     if (updates.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
     }
     
@@ -149,12 +153,13 @@ export async function PUT(request) {
     
     const [result] = await db.execute(query, values);
     console.log('Update result:', result);
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Activity updated successfully' });
   } catch (error) {
     console.error('PUT /api/activities error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update activity', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -163,6 +168,7 @@ export async function DELETE(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -172,7 +178,7 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, error: 'Activity ID or Function ID is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     if (functionId) {
       // Bulk delete all activities for a function/discipline
@@ -186,8 +192,7 @@ export async function DELETE(request) {
       
       // Delete all activities for this function
       const [result] = await db.execute('DELETE FROM activities_master WHERE function_id = ?', [functionId]);
-      
-      await db.end();
+
       return NextResponse.json({ success: true, message: `${result.affectedRows} activities deleted successfully` });
     } else {
       // Single activity delete
@@ -196,12 +201,13 @@ export async function DELETE(request) {
       
       // Then delete the activity itself
       await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
-      
-      await db.end();
+
       return NextResponse.json({ success: true, message: 'Activity and its sub-activities deleted successfully' });
     }
   } catch (error) {
     console.error('DELETE /api/activities error:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete activity', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

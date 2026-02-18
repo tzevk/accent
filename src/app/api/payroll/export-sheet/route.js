@@ -13,6 +13,7 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
@@ -26,7 +27,7 @@ export async function GET(request) {
     }
 
     const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom'];
-    const db = await dbConnect();
+    db = await dbConnect();
 
     let query = `SELECT 
         ps.*,
@@ -52,7 +53,6 @@ export async function GET(request) {
     query += ` ORDER BY e.employee_id ASC`;
 
     const [slips] = await db.execute(query, params);
-    await db.end();
 
     if (slips.length === 0) {
       return NextResponse.json(
@@ -310,5 +310,7 @@ export async function GET(request) {
       { success: false, error: 'Failed to export salary sheet', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }

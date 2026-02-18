@@ -1,18 +1,11 @@
 import { NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'accent_crm',
-};
+import { dbConnect } from '@/utils/database';
 
 // GET - Generate next requisition number
 export async function GET() {
   let db;
   try {
-    db = await mysql.createConnection(dbConfig);
+    db = await dbConnect();
     
     // Create table if not exists
     await db.query(`
@@ -53,8 +46,6 @@ export async function GET() {
       }
     }
     
-    await db.end();
-    
     return NextResponse.json({
       success: true,
       requisition_number: nextNumber
@@ -62,10 +53,11 @@ export async function GET() {
     
   } catch (error) {
     console.error('Error generating requisition number:', error);
-    if (db) await db.end();
     return NextResponse.json({ 
       success: true, 
       requisition_number: `ATSPL/PUR-${Date.now().toString().slice(-4)}` 
     });
+  } finally {
+    if (db) db.release();
   }
 }

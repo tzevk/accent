@@ -4,6 +4,7 @@ import { getServerAuth } from '@/utils/server-auth';
 
 // GET - Fetch single ticket with comments
 export async function GET(request, { params }) {
+  let connection;
   try {
     const session = await getServerAuth();
     if (!session?.user) {
@@ -16,7 +17,7 @@ export async function GET(request, { params }) {
       return NextResponse.json({ success: false, error: 'Ticket ID is required' }, { status: 400 });
     }
     
-    const connection = await dbConnect();
+    connection = await dbConnect();
     
     // Fetch ticket
     const [tickets] = await connection.execute(
@@ -70,11 +71,14 @@ export async function GET(request, { params }) {
   } catch (error) {
     console.error('Error fetching ticket:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
 // POST - Add comment to ticket
 export async function POST(request, { params }) {
+  let connection;
   try {
     const session = await getServerAuth();
     if (!session?.user) {
@@ -92,7 +96,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ success: false, error: 'Comment is required' }, { status: 400 });
     }
     
-    const connection = await dbConnect();
+    connection = await dbConnect();
     
     // Check ticket exists and user has access
     const [tickets] = await connection.execute(
@@ -140,11 +144,14 @@ export async function POST(request, { params }) {
   } catch (error) {
     console.error('Error adding comment:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
 // DELETE - Delete ticket (admin only or owner if not yet assigned)
 export async function DELETE(request, { params }) {
+  let connection;
   try {
     const session = await getServerAuth();
     if (!session?.user) {
@@ -155,7 +162,7 @@ export async function DELETE(request, { params }) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Ticket ID is required' }, { status: 400 });
     }
-    const connection = await dbConnect();
+    connection = await dbConnect();
     
     const [tickets] = await connection.execute(
       `SELECT * FROM support_tickets WHERE id = ?`,
@@ -181,5 +188,7 @@ export async function DELETE(request, { params }) {
   } catch (error) {
     console.error('Error deleting ticket:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }

@@ -8,12 +8,13 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const department = searchParams.get('department');
     const includeInactive = searchParams.get('include_inactive') === 'true';
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     let query = `
       SELECT id, role_code, role_name, role_hierarchy, department, permissions, description, status
@@ -40,7 +41,6 @@ export async function GET(request) {
     query += ' ORDER BY role_hierarchy DESC, role_name ASC';
 
     const [rows] = await db.execute(query, params);
-    await db.end();
 
     // Parse permissions JSON for each role
     const rolesWithPermissions = rows.map(role => ({
@@ -52,6 +52,8 @@ export async function GET(request) {
   } catch (error) {
     console.error('Error fetching roles:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch roles' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -61,6 +63,7 @@ export async function POST(request) {
   const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const data = await request.json();
     const { role_code, role_name, role_hierarchy, department, permissions, description } = data;
@@ -69,12 +72,12 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'role_code and role_name are required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Check if role code already exists
     const [existing] = await db.execute('SELECT id FROM roles_master WHERE role_code = ?', [role_code]);
     if (existing.length > 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'Role code already exists' }, { status: 409 });
     }
 
@@ -92,7 +95,6 @@ export async function POST(request) {
     );
 
     const [newRole] = await db.execute('SELECT * FROM roles_master WHERE id = ?', [result.insertId]);
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -105,6 +107,8 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error creating role:', error);
     return NextResponse.json({ success: false, error: 'Failed to create role' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -114,6 +118,7 @@ export async function PUT(request) {
   const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPut.authorized === false) return authResultPut.response;
 
+  let db;
   try {
     const data = await request.json();
     const { id, role_code, role_name, role_hierarchy, department, permissions, description, status } = data;
@@ -122,12 +127,12 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: 'Role ID is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Check if role exists
     const [existing] = await db.execute('SELECT id FROM roles_master WHERE id = ?', [id]);
     if (existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'Role not found' }, { status: 404 });
     }
 
@@ -165,7 +170,7 @@ export async function PUT(request) {
     }
 
     if (updates.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
     }
 
@@ -173,7 +178,6 @@ export async function PUT(request) {
     await db.execute(`UPDATE roles_master SET ${updates.join(', ')} WHERE id = ?`, params);
 
     const [updatedRole] = await db.execute('SELECT * FROM roles_master WHERE id = ?', [id]);
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -186,5 +190,7 @@ export async function PUT(request) {
   } catch (error) {
     console.error('Error updating role:', error);
     return NextResponse.json({ success: false, error: 'Failed to update role' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

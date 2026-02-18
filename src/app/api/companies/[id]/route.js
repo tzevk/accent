@@ -3,6 +3,7 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
 
 // GET specific company
 export async function GET(request, { params }) {
+  let db;
   try {
     // RBAC: read companies
     const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.READ);
@@ -11,15 +12,13 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const companyId = parseInt(id);
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     const [rows] = await db.execute(
       'SELECT * FROM companies WHERE id = ?',
       [companyId]
     );
-    
-    await db.end();
-    
+
     if (rows.length === 0) {
       return Response.json({ 
         success: false, 
@@ -37,11 +36,14 @@ export async function GET(request, { params }) {
       success: false, 
       error: 'Failed to fetch company' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // PUT - Update company
 export async function PUT(request, { params }) {
+  let db;
   try {
     // RBAC: update companies
     const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.UPDATE);
@@ -78,7 +80,7 @@ export async function PUT(request, { params }) {
       company_profile
     } = data;
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Update the company
     const [result] = await db.execute(
@@ -116,9 +118,7 @@ export async function PUT(request, { params }) {
         mobile_number, sector, gstin, pan_number, company_profile, companyId
       ]
     );
-    
-    await db.end();
-    
+
     if (result.affectedRows === 0) {
       return Response.json({ 
         success: false, 
@@ -136,11 +136,14 @@ export async function PUT(request, { params }) {
       success: false, 
       error: 'Failed to update company' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // DELETE company
 export async function DELETE(request, { params }) {
+  let db;
   try {
     // RBAC: delete companies
     const auth = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.DELETE);
@@ -149,15 +152,13 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const companyId = parseInt(id);
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     const [result] = await db.execute(
       'DELETE FROM companies WHERE id = ?',
       [companyId]
     );
-    
-    await db.end();
-    
+
     if (result.affectedRows === 0) {
       return Response.json({ 
         success: false, 
@@ -175,5 +176,7 @@ export async function DELETE(request, { params }) {
       success: false, 
       error: 'Failed to delete company' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

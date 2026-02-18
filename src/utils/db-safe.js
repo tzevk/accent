@@ -1,14 +1,27 @@
 /**
  * Database connection safety utilities
- * Ensures connections are always released even if errors occur
+ * Ensures connections are always released even if errors occur.
+ *
+ * IMPORTANT: All API routes should use withDB() or withTransaction() instead
+ * of calling dbConnect() directly — this guarantees the connection is returned
+ * to the pool in every code-path (success, early return, or error).
  */
 
 import { dbConnect } from './database.js';
 
 /**
- * Execute a database operation with automatic connection management
- * @param {Function} operation - Async function that receives db connection
+ * Execute a database operation with automatic connection management.
+ * The connection is released back to the pool when the operation completes
+ * (or throws).
+ *
+ * @param {Function} operation - Async function that receives the db connection
  * @returns {Promise<any>} - Result from the operation
+ *
+ * @example
+ *   const rows = await withDB(async (db) => {
+ *     const [rows] = await db.execute('SELECT * FROM users');
+ *     return rows;
+ *   });
  */
 export async function withDB(operation) {
   let db;
@@ -18,8 +31,10 @@ export async function withDB(operation) {
   } finally {
     if (db) {
       try {
-        await db.end();
+        db.release();
       } catch (err) {
+        // release() is idempotent (double-release is a no-op) so errors here
+        // indicate the connection was already destroyed — safe to ignore.
         console.error('Error releasing DB connection:', err);
       }
     }
@@ -27,9 +42,18 @@ export async function withDB(operation) {
 }
 
 /**
- * Execute multiple database operations in sequence with single connection
- * @param {Function} operation - Async function that receives db connection
+ * Execute database operations inside a transaction with automatic
+ * connection management.  The transaction is committed on success and
+ * rolled back on error.  The connection is always released.
+ *
+ * @param {Function} operation - Async function that receives the db connection
  * @returns {Promise<any>} - Result from the operation
+ *
+ * @example
+ *   await withTransaction(async (db) => {
+ *     await db.execute('INSERT INTO orders ...', [...]);
+ *     await db.execute('UPDATE inventory ...', [...]);
+ *   });
  */
 export async function withTransaction(operation) {
   let db;
@@ -51,7 +75,7 @@ export async function withTransaction(operation) {
   } finally {
     if (db) {
       try {
-        await db.end();
+        db.release();
       } catch (err) {
         console.error('Error releasing DB connection:', err);
       }

@@ -3,12 +3,12 @@ import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 
 export async function GET() {
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
     const [activities] = await db.execute(
       'SELECT id, function_id, activity_name, created_at, updated_at FROM activities_master ORDER BY activity_name'
     );
-    await db.end();
 
     return NextResponse.json({ success: true, data: activities });
   } catch (error) {
@@ -17,10 +17,13 @@ export async function GET() {
       { success: false, error: 'Failed to fetch activities', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
 export async function POST(request) {
+  let db;
   try {
     const body = await request.json();
     const { function_id, activity_name } = body;
@@ -30,12 +33,11 @@ export async function POST(request) {
     }
 
     const id = randomUUID();
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(
       'INSERT INTO activities_master (id, function_id, activity_name) VALUES (?, ?, ?)',
       [id, function_id, activity_name]
     );
-    await db.end();
 
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
@@ -44,10 +46,13 @@ export async function POST(request) {
       { success: false, error: 'Failed to create sub-activity', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
 export async function PUT(request) {
+  let db;
   try {
     const body = await request.json();
     const { id, activity_name, function_id } = body;
@@ -56,7 +61,7 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(
       `UPDATE activities_master
        SET activity_name = COALESCE(?, activity_name),
@@ -64,7 +69,6 @@ export async function PUT(request) {
        WHERE id = ?`,
       [activity_name ?? null, function_id ?? null, id]
     );
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Sub-activity updated' });
   } catch (error) {
@@ -73,10 +77,13 @@ export async function PUT(request) {
       { success: false, error: 'Failed to update sub-activity', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
 export async function DELETE(request) {
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -85,9 +92,8 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute('DELETE FROM sub_activities WHERE id = ?', [id]);
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Sub-activity deleted' });
   } catch (error) {
@@ -96,5 +102,7 @@ export async function DELETE(request) {
       { success: false, error: 'Failed to delete sub-activity', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }

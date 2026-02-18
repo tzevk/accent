@@ -5,46 +5,50 @@ import { getServerAuth } from '@/utils/server-auth';
 // Ensure tickets table exists with all necessary columns
 async function ensureTicketsTable() {
   const connection = await dbConnect();
-  await connection.execute(`
-    CREATE TABLE IF NOT EXISTS support_tickets (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      ticket_number VARCHAR(20) UNIQUE NOT NULL,
-      user_id INT NOT NULL,
-      subject VARCHAR(255) NOT NULL,
-      description TEXT NOT NULL,
-      category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
-      priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
-      status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
-      routed_to ENUM('hr', 'admin') NOT NULL,
-      attachment_url VARCHAR(500),
-      assigned_to INT,
-      resolution_notes TEXT,
-      resolved_at DATETIME,
-      resolved_by INT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_user_id (user_id),
-      INDEX idx_status (status),
-      INDEX idx_priority (priority),
-      INDEX idx_routed_to (routed_to),
-      INDEX idx_category (category),
-      INDEX idx_created_at (created_at)
-    )
-  `);
-  
-  // Create ticket comments table for conversation
-  await connection.execute(`
-    CREATE TABLE IF NOT EXISTS ticket_comments (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      ticket_id INT NOT NULL,
-      user_id INT NOT NULL,
-      comment TEXT NOT NULL,
-      is_internal BOOLEAN DEFAULT FALSE,
-      attachments JSON,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_ticket_id (ticket_id)
-    )
-  `);
+  try {
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_number VARCHAR(20) UNIQUE NOT NULL,
+        user_id INT NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
+        priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
+        status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
+        routed_to ENUM('hr', 'admin') NOT NULL,
+        attachment_url VARCHAR(500),
+        assigned_to INT,
+        resolution_notes TEXT,
+        resolved_at DATETIME,
+        resolved_by INT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_user_id (user_id),
+        INDEX idx_status (status),
+        INDEX idx_priority (priority),
+        INDEX idx_routed_to (routed_to),
+        INDEX idx_category (category),
+        INDEX idx_created_at (created_at)
+      )
+    `);
+    
+    // Create ticket comments table for conversation
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS ticket_comments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        user_id INT NOT NULL,
+        comment TEXT NOT NULL,
+        is_internal BOOLEAN DEFAULT FALSE,
+        attachments JSON,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_ticket_id (ticket_id)
+      )
+    `);
+  } finally {
+    connection.release();
+  }
 }
 
 // Route ticket based on category
@@ -84,6 +88,7 @@ async function generateTicketNumber(connection) {
 
 // GET - Fetch tickets (all for admin, own for users)
 export async function GET(request) {
+  let connection;
   try {
     await ensureTicketsTable();
     
@@ -99,7 +104,7 @@ export async function GET(request) {
     const routedTo = searchParams.get('routed_to');
     const showAll = searchParams.get('all') === 'true';
     
-    const connection = await dbConnect();
+    connection = await dbConnect();
     
     let query = `
       SELECT 
@@ -157,11 +162,14 @@ export async function GET(request) {
   } catch (error) {
     console.error('Error fetching tickets:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
 // POST - Create new ticket
 export async function POST(request) {
+  let connection;
   try {
     await ensureTicketsTable();
     
@@ -186,7 +194,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
     
-    const connection = await dbConnect();
+    connection = await dbConnect();
     const ticketNumber = await generateTicketNumber(connection);
     
     // Auto-route ticket based on category
@@ -223,11 +231,14 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error creating ticket:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
 // PUT - Update ticket (for admins to update status, assign, etc.)
 export async function PUT(request) {
+  let connection;
   try {
     const session = await getServerAuth();
     if (!session?.user) {
@@ -241,7 +252,7 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: 'Ticket ID required' }, { status: 400 });
     }
     
-    const connection = await dbConnect();
+    connection = await dbConnect();
     
     // Check if user owns the ticket or is admin
     const [existing] = await connection.execute(
@@ -315,5 +326,7 @@ export async function PUT(request) {
   } catch (error) {
     console.error('Error updating ticket:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }

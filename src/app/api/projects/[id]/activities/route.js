@@ -8,11 +8,12 @@ export async function GET(request, { params }) {
   const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     const [activities] = await db.execute(
       `SELECT * FROM project_activities 
@@ -20,9 +21,7 @@ export async function GET(request, { params }) {
        ORDER BY created_at DESC`,
       [projectId]
     );
-    
-    await db.end();
-    
+
     return Response.json({ 
       success: true, 
       data: activities 
@@ -33,11 +32,14 @@ export async function GET(request, { params }) {
       success: false, 
       error: 'Failed to fetch project activities' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // POST - Add new activity to project
 export async function POST(request, { params }) {
+  let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
@@ -65,7 +67,7 @@ export async function POST(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     let finalActivityId = activity_id;
     let finalDisciplineId = discipline_id;
@@ -83,6 +85,8 @@ export async function POST(request, { params }) {
       } catch (masterError) {
         console.error('Warning: Failed to save to activities_master:', masterError);
         // Continue anyway - we'll still save to project_activities
+      } finally {
+        if (db) db.release();
       }
     }
     
@@ -112,9 +116,7 @@ export async function POST(request, { params }) {
         notes || null
       ]
     );
-    
-    await db.end();
-    
+
     return Response.json({ 
       success: true,
       message: 'Activity added successfully',
@@ -133,6 +135,7 @@ export async function POST(request, { params }) {
 
 // PUT - Update existing project activity
 export async function PUT(request, { params }) {
+  let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
@@ -157,7 +160,7 @@ export async function PUT(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     await db.execute(
       `UPDATE project_activities SET 
@@ -184,9 +187,7 @@ export async function PUT(request, { params }) {
         projectId
       ]
     );
-    
-    await db.end();
-    
+
     return Response.json({ 
       success: true,
       message: 'Activity updated successfully'
@@ -198,11 +199,14 @@ export async function PUT(request, { params }) {
       error: 'Failed to update activity',
       details: error.message
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // DELETE - Remove activity from project
 export async function DELETE(request, { params }) {
+  let db;
   try {
     const { id } = await params;
     const projectId = parseInt(id);
@@ -216,15 +220,13 @@ export async function DELETE(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     await db.execute(
       'DELETE FROM project_activities WHERE id = ? AND project_id = ?',
       [activityRecordId, projectId]
     );
-    
-    await db.end();
-    
+
     return Response.json({ 
       success: true,
       message: 'Activity removed successfully'
@@ -236,5 +238,7 @@ export async function DELETE(request, { params }) {
       error: 'Failed to remove activity',
       details: error.message
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

@@ -1,12 +1,5 @@
 import { NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'accent_crm',
-};
+import { dbConnect } from '@/utils/database';
 
 // GET - Download/Print material requisition
 export async function GET(request) {
@@ -19,7 +12,7 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
     }
     
-    db = await mysql.createConnection(dbConfig);
+    db = await dbConnect();
     
     const [rows] = await db.query(
       `SELECT * FROM material_requisitions WHERE id = ?`,
@@ -27,7 +20,6 @@ export async function GET(request) {
     );
     
     if (rows.length === 0) {
-      await db.end();
       return NextResponse.json({ success: false, error: 'Requisition not found' }, { status: 404 });
     }
     
@@ -35,8 +27,6 @@ export async function GET(request) {
     const lineItems = typeof requisition.line_items === 'string' 
       ? JSON.parse(requisition.line_items) 
       : requisition.line_items || [];
-    
-    await db.end();
     
     // Format date
     const formatDate = (date) => {
@@ -318,7 +308,8 @@ export async function GET(request) {
     
   } catch (error) {
     console.error('Error downloading material requisition:', error);
-    if (db) await db.end();
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

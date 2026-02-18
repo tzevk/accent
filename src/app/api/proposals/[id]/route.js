@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
 export async function GET(request, { params }) {
+  let pool;
   try {
     // RBAC: read proposals
     const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
@@ -11,7 +12,7 @@ export async function GET(request, { params }) {
     
     // Get database connection
     const { dbConnect } = await import('@/utils/database');
-    const pool = await dbConnect();
+    pool = await dbConnect();
 
     // Ensure audit columns exist on both proposals and projects (best-effort)
     try {
@@ -48,11 +49,14 @@ export async function GET(request, { params }) {
       { success: false, error: 'Failed to fetch proposal' },
       { status: 500 }
     );
+  } finally {
+    if (pool) pool.release();
   }
 }
 
 // Convert proposal to project
 export async function POST(request, { params }) {
+  let pool;
   try {
     // RBAC: approve proposals (conversion requires approval permission)
     const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.APPROVE);
@@ -64,12 +68,11 @@ export async function POST(request, { params }) {
     const body = await request.json();
     // Load DB
     const { dbConnect } = await import('@/utils/database');
-    const pool = await dbConnect();
+    pool = await dbConnect();
 
     // Fetch proposal
     const [rows] = await pool.execute('SELECT * FROM proposals WHERE id = ?', [id]);
     if (!rows || rows.length === 0) {
-      await pool.end?.();
       return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
     }
     const proposal = rows[0];
@@ -392,7 +395,6 @@ export async function POST(request, { params }) {
     } catch (e) {
       console.warn('Failed to set audit fields on project:', e?.message || e);
     }
-
     // Fetch created project: detect primary key name and select by it (DB schema may differ)
     let created;
     try {
@@ -478,7 +480,7 @@ export async function POST(request, { params }) {
       created = lastRows;
     }
 
-    await pool.end?.();
+    // Connection will be released in the finally block
 
     // If we couldn't fetch the created project row for any reason, fall back to a minimal project object
     let createdProject = null;
@@ -508,6 +510,8 @@ export async function POST(request, { params }) {
   } catch (err) {
     console.error('Convert proposal to project error:', err);
     return NextResponse.json({ success: false, error: 'Failed to convert proposal', details: err.message }, { status: 500 });
+  } finally {
+    if (pool) pool.release();
   }
 }
 
@@ -515,6 +519,7 @@ export async function POST(request, { params }) {
 let proposalsSchemaInitialized = false;
 
 export async function PUT(request, { params }) {
+  let pool;
   try {
     // RBAC: update proposals
     const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
@@ -525,7 +530,7 @@ export async function PUT(request, { params }) {
     
     // Get database connection
     const { dbConnect } = await import('@/utils/database');
-    const pool = await dbConnect();
+    pool = await dbConnect();
     
     // Only run ALTER statements once per server session, not on every save
     if (!proposalsSchemaInitialized) {
@@ -816,10 +821,13 @@ export async function PUT(request, { params }) {
       { success: false, error: 'Failed to update proposal' },
       { status: 500 }
     );
+  } finally {
+    if (pool) pool.release();
   }
 }
 
 export async function DELETE(request, { params }) {
+  let pool;
   try {
     // RBAC: delete proposals
     const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.DELETE);
@@ -829,7 +837,7 @@ export async function DELETE(request, { params }) {
     
     // Get database connection
     const { dbConnect } = await import('@/utils/database');
-    const pool = await dbConnect();
+    pool = await dbConnect();
     
     const [result] = await pool.execute(
       'DELETE FROM proposals WHERE id = ?',
@@ -854,5 +862,7 @@ export async function DELETE(request, { params }) {
       { success: false, error: 'Failed to delete proposal' },
       { status: 500 }
     );
+  } finally {
+    if (pool) pool.release();
   }
 }

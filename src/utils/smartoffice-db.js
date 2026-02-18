@@ -6,11 +6,11 @@
 import sql from 'mssql';
 
 const config = {
-  server: process.env.SMARTOFFICE_SERVER || '172.16.1.40',
+  server: process.env.SMARTOFFICE_SERVER,
   port: parseInt(process.env.SMARTOFFICE_PORT || '84'),
-  database: process.env.SMARTOFFICE_DATABASE || 'SmartOfficedb',
-  user: process.env.SMARTOFFICE_USER || 'sa',
-  password: process.env.SMARTOFFICE_PASSWORD || 'Biomax@123',
+  database: process.env.SMARTOFFICE_DATABASE,
+  user: process.env.SMARTOFFICE_USER,
+  password: process.env.SMARTOFFICE_PASSWORD,
   options: {
     encrypt: false,
     trustServerCertificate: true,
@@ -18,10 +18,12 @@ const config = {
     instanceName: process.env.SMARTOFFICE_INSTANCE || 'SQLEXPRESS',
   },
   pool: {
-    max: 5,
+    max: 3,               // Reduced from 5 for shared server
     min: 0,
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis: 20000, // Reduced from 30s — close idle connections sooner
   },
+  requestTimeout: 15000,    // 15s query timeout to prevent hanging connections
+  connectionTimeout: 10000, // 10s connection timeout
 };
 
 let pool = null;
@@ -31,15 +33,33 @@ let pool = null;
  * @returns {Promise<sql.ConnectionPool>}
  */
 export async function connectSmartOffice() {
-  if (pool) {
+  if (!config.server || !config.user || !config.password) {
+    throw new Error('SmartOffice DB credentials not configured. Set SMARTOFFICE_SERVER, SMARTOFFICE_USER, SMARTOFFICE_PASSWORD, and SMARTOFFICE_DATABASE in .env.local');
+  }
+  
+  if (pool && pool.connected) {
     return pool;
+  }
+  
+  // If pool exists but isn't connected (e.g., disconnected), close and recreate
+  if (pool) {
+    try { await pool.close(); } catch (e) { /* ignore */ }
+    pool = null;
   }
   
   try {
     pool = await sql.connect(config);
     console.log('Connected to SmartOffice SQL Server');
+    
+    // Handle unexpected disconnections
+    pool.on('error', (err) => {
+      console.error('SmartOffice pool error:', err);
+      pool = null;
+    });
+    
     return pool;
   } catch (error) {
+    pool = null;
     console.error('SmartOffice DB connection error:', error);
     throw error;
   }
@@ -50,7 +70,11 @@ export async function connectSmartOffice() {
  */
 export async function closeSmartOffice() {
   if (pool) {
-    await pool.close();
+    try {
+      await pool.close();
+    } catch (err) {
+      console.error('Error closing SmartOffice pool:', err);
+    }
     pool = null;
   }
 }

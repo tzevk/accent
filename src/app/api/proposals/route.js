@@ -94,12 +94,13 @@ async function ensureProposalColumns(pool) {
 }
 
 export async function GET(request) {
+  let pool;
   try {
     // RBAC: read proposals
     const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
     if (auth instanceof Response) return auth;
     
-    const pool = await dbConnect();
+    pool = await dbConnect();
     
     // Ensure all columns exist before fetching
     await ensureProposalColumns(pool);
@@ -118,10 +119,14 @@ export async function GET(request) {
       { success: false, error: 'Failed to fetch proposals' },
       { status: 500 }
     );
+  } finally {
+    if (pool) pool.release();
   }
 }
+  
 
 export async function POST(request) {
+  let pool;
   try {
     // RBAC: create proposals
     const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.CREATE);
@@ -227,7 +232,7 @@ export async function POST(request) {
     } = data;
 
     // Get database connection
-    const pool = await dbConnect();
+    pool = await dbConnect();
 
     // Use provided proposal_id if converting from lead, otherwise generate one
     var proposal_id;
@@ -413,5 +418,7 @@ ATS is allowed to use the contract as a customer reference. However, no data or 
       { success: false, error: 'Failed to create proposal', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (pool) pool.release();
   }
 }

@@ -10,15 +10,14 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
     
     const [rows] = await db.execute(
       `SELECT * FROM da_schedule ORDER BY effective_from DESC`
     );
-    
-    await db.end();
-    
+
     return NextResponse.json({ 
       success: true, 
       data: rows 
@@ -29,6 +28,8 @@ export async function GET(request) {
       { success: false, error: 'Failed to fetch DA schedule', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -40,6 +41,7 @@ export async function POST(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.CREATE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { da_amount, effective_from, effective_to, is_active, remarks } = await request.json();
     
@@ -50,7 +52,7 @@ export async function POST(request) {
       );
     }
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // If marking as active, deactivate all other entries
     if (is_active) {
@@ -62,9 +64,7 @@ export async function POST(request) {
        VALUES (?, ?, ?, ?, ?)`,
       [da_amount, effective_from, effective_to || null, is_active ? 1 : 0, remarks || null]
     );
-    
-    await db.end();
-    
+
     return NextResponse.json({
       success: true,
       message: 'DA schedule entry created successfully',
@@ -76,6 +76,8 @@ export async function POST(request) {
       { success: false, error: 'Failed to create DA schedule entry', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -87,6 +89,7 @@ export async function PUT(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.UPDATE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { id, da_amount, effective_from, effective_to, is_active, remarks } = await request.json();
     
@@ -97,7 +100,7 @@ export async function PUT(request) {
       );
     }
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // If marking as active, deactivate all other entries
     if (is_active) {
@@ -121,9 +124,7 @@ export async function PUT(request) {
         id
       ]
     );
-    
-    await db.end();
-    
+
     return NextResponse.json({
       success: true,
       message: 'DA schedule entry updated successfully'
@@ -134,6 +135,8 @@ export async function PUT(request) {
       { success: false, error: 'Failed to update DA schedule entry', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -145,6 +148,7 @@ export async function DELETE(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.DELETE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -156,12 +160,10 @@ export async function DELETE(request) {
       );
     }
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     await db.execute(`DELETE FROM da_schedule WHERE id = ?`, [id]);
-    
-    await db.end();
-    
+
     return NextResponse.json({
       success: true,
       message: 'DA schedule entry deleted successfully'
@@ -172,5 +174,7 @@ export async function DELETE(request) {
       { success: false, error: 'Failed to delete DA schedule entry', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }

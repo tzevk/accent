@@ -8,8 +8,9 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Create documents_master table if it doesn't exist
     await db.execute(`
@@ -27,12 +28,13 @@ export async function GET(request) {
     const [rows] = await db.execute(
       'SELECT id, doc_key, name, status, description, created_at, updated_at FROM documents_master ORDER BY name'
     );
-    await db.end();
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Document master GET error:', error);
     return NextResponse.json({ success: false, error: 'Failed to load documents master', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -41,6 +43,7 @@ export async function POST(request) {
   const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const body = await request.json();
     const { doc_key, name, status = 'active', description = '' } = body;
@@ -50,17 +53,18 @@ export async function POST(request) {
     }
 
     const id = randomUUID();
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(
       'INSERT INTO documents_master (id, doc_key, name, status, description) VALUES (?, ?, ?, ?, ?)',
       [id, doc_key, name, status, description]
     );
-    await db.end();
 
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
     console.error('Document master POST error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create document type', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -69,6 +73,7 @@ export async function PUT(request) {
   const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPut.authorized === false) return authResultPut.response;
 
+  let db;
   try {
     const body = await request.json();
     const { id, doc_key, name, status, description } = body;
@@ -77,7 +82,7 @@ export async function PUT(request) {
       return NextResponse.json({ success: false, error: 'Document id is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(
       `UPDATE documents_master
        SET doc_key = COALESCE(?, doc_key),
@@ -87,12 +92,13 @@ export async function PUT(request) {
        WHERE id = ?`,
       [doc_key ?? null, name ?? null, status ?? null, description ?? null, id]
     );
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Document updated' });
   } catch (error) {
     console.error('Document master PUT error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update document', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -101,6 +107,7 @@ export async function DELETE(request) {
   const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
   if (authResultDel.authorized === false) return authResultDel.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -109,13 +116,14 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, error: 'Document id is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute('DELETE FROM documents_master WHERE id = ?', [id]);
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Document deleted' });
   } catch (error) {
     console.error('Document master DELETE error:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete document', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

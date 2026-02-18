@@ -80,6 +80,7 @@ export async function POST(request) {
   const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.CREATE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const formData = await request.formData();
     const file = formData.get('file');
@@ -106,6 +107,8 @@ export async function POST(request) {
       { success: false, error: 'Failed to import leads: ' + error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -131,7 +134,7 @@ async function importLeadsFromCSV(file) {
         { status: 400 }
       );
     }
-    const db = await dbConnect();
+    db = await dbConnect();
 
     let importedCount = 0;
     const errors = [];
@@ -218,8 +221,6 @@ async function importLeadsFromCSV(file) {
         errors.push(`Row ${i + 1}: ${err.message}`);
       }
     }
-
-    await db.end();
 
     if (importedCount === 0) {
       return Response.json(

@@ -70,6 +70,7 @@ async function ensureUsersTable(db) {
 
 // GET - list users with optional pagination and role information
 export async function GET(request) {
+  let db;
   try {
     // RBAC: read users
     const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.READ);
@@ -79,7 +80,7 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit')) || 50;
     const offset = (page - 1) * limit;
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureUsersTable(db);
 
     const [rows] = await db.execute(
@@ -105,8 +106,6 @@ export async function GET(request) {
       'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE'
     );
 
-    await db.end();
-
     return NextResponse.json({ 
       success: true, 
       data: rows,
@@ -120,6 +119,8 @@ export async function GET(request) {
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -155,7 +156,7 @@ export async function POST(request) {
       [username, email || null]
     );
     if (existing && existing.length > 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'User with this username or email already exists' }, { status: 409 });
     }
 
@@ -168,7 +169,7 @@ export async function POST(request) {
       // Ensure employee exists and get employee details
       const [emp] = await db.execute('SELECT id, first_name, last_name, email as emp_email, department FROM employees WHERE id = ? LIMIT 1', [employee_id]);
       if (!emp || emp.length === 0) {
-        await db.end();
+
         return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 400 });
       }
       const employee = emp[0];
@@ -179,7 +180,7 @@ export async function POST(request) {
       // Ensure vendor exists and get vendor details
       const [vnd] = await db.execute('SELECT id, vendor_name, contact_person, email as vendor_email FROM vendors WHERE id = ? LIMIT 1', [vendor_id]);
       if (!vnd || vnd.length === 0) {
-        await db.end();
+
         return NextResponse.json({ success: false, error: 'Vendor not found' }, { status: 400 });
       }
       const vendor = vnd[0];
@@ -193,7 +194,7 @@ export async function POST(request) {
     if (role_id) {
       const [role] = await db.execute('SELECT * FROM roles_master WHERE id = ? AND status = "active" LIMIT 1', [role_id]);
       if (!role || role.length === 0) {
-        await db.end();
+
         return NextResponse.json({ success: false, error: 'Invalid role selected' }, { status: 400 });
       }
       roleData = role[0];
@@ -228,8 +229,6 @@ export async function POST(request) {
       LEFT JOIN vendors v ON u.vendor_id = v.id
       LEFT JOIN roles_master r ON u.role_id = r.id
       WHERE u.id = ?`, [result.insertId]);
-    
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -238,13 +237,16 @@ export async function POST(request) {
     }, { status: 201 });
   } catch (error) {
     console.error('Error creating user:', error);
-    if (db) await db.end();
+
     return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // PUT - update user
 export async function PUT(request) {
+  let db;
   try {
     // RBAC: update users
     const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.UPDATE);
@@ -252,12 +254,12 @@ export async function PUT(request) {
     const data = await request.json();
     if (!data.id) return NextResponse.json({ success: false, error: 'User id is required' }, { status: 400 });
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureUsersTable(db);
 
     const [existing] = await db.execute('SELECT id FROM users WHERE id = ? LIMIT 1', [data.id]);
     if (!existing || existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
@@ -265,7 +267,7 @@ export async function PUT(request) {
     if (data.username || data.email) {
       const [dups] = await db.execute('SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?', [data.username || '', data.email || '', data.id]);
       if (dups.length > 0) {
-        await db.end();
+
         return NextResponse.json({ success: false, error: 'Username or email already in use' }, { status: 409 });
       }
     }
@@ -300,24 +302,26 @@ export async function PUT(request) {
     });
 
     if (fields.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
     }
 
     vals.push(data.id);
     await db.execute(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, vals);
     const [rows] = await db.execute('SELECT * FROM users WHERE id = ?', [data.id]);
-    await db.end();
 
     return NextResponse.json({ success: true, data: rows[0], message: 'User updated' });
   } catch (error) {
     console.error('Error updating user:', error);
     return NextResponse.json({ success: false, error: 'Failed to update user' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // DELETE - delete user by id query param
 export async function DELETE(request) {
+  let db;
   try {
     // RBAC: delete users
     const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.DELETE);
@@ -326,21 +330,22 @@ export async function DELETE(request) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, error: 'User id is required' }, { status: 400 });
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await ensureUsersTable(db);
 
     const [existing] = await db.execute('SELECT id FROM users WHERE id = ? LIMIT 1', [id]);
     if (!existing || existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
     await db.execute('DELETE FROM users WHERE id = ?', [id]);
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'User deleted' });
   } catch (error) {
     console.error('Error deleting user:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete user' }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

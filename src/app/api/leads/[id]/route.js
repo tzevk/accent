@@ -4,6 +4,7 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
 
 // GET individual lead by ID
 export async function GET(request, { params }) {
+  let db;
   try {
     // RBAC: read leads
     const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
@@ -11,15 +12,13 @@ export async function GET(request, { params }) {
     
     const { id } = await params;
     const leadId = parseInt(id);
-    const db = await dbConnect();
+    db = await dbConnect();
     
     const [rows] = await db.execute(
       'SELECT * FROM leads WHERE id = ?',
       [leadId]
     );
-    
-    await db.end();
-    
+
     if (rows.length === 0) {
       return Response.json({ 
         success: false, 
@@ -37,11 +36,14 @@ export async function GET(request, { params }) {
       success: false, 
       error: 'Failed to fetch lead: ' + error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // PUT update lead by ID
 export async function PUT(request, { params }) {
+  let db;
   try {
     // RBAC: update leads
     const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.UPDATE);
@@ -50,7 +52,7 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const leadId = parseInt(id);
     const data = await request.json();
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Update the lead
     const [result] = await db.execute(`
@@ -92,9 +94,7 @@ export async function PUT(request, { params }) {
       data.notes,
       leadId
     ]);
-    
-    await db.end();
-    
+
     if (result.affectedRows === 0) {
       return Response.json({ 
         success: false, 
@@ -126,11 +126,14 @@ export async function PUT(request, { params }) {
       success: false, 
       error: 'Failed to update lead: ' + error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // DELETE lead by ID
 export async function DELETE(request, { params }) {
+  let db;
   try {
     // RBAC: delete leads
     const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.DELETE);
@@ -138,7 +141,7 @@ export async function DELETE(request, { params }) {
     
     const { id } = await params;
     const leadId = parseInt(id);
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Get lead info before deleting for logging
     const [leadRows] = await db.execute(
@@ -150,9 +153,7 @@ export async function DELETE(request, { params }) {
       'DELETE FROM leads WHERE id = ?',
       [leadId]
     );
-    
-    await db.end();
-    
+
     if (result.affectedRows === 0) {
       return Response.json({ 
         success: false, 
@@ -184,5 +185,7 @@ export async function DELETE(request, { params }) {
       success: false, 
       error: 'Failed to delete lead: ' + error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

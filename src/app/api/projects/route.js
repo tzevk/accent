@@ -22,6 +22,7 @@ function isUserInProjectTeam(projectTeam, userId, userEmail) {
 
 // GET all projects
 export async function GET(request) {
+  let db;
   try {
     // Get current user first
     const user = await getCurrentUser(request);
@@ -32,7 +33,7 @@ export async function GET(request) {
     // Only super admins can see all projects; everyone else sees only their team's projects
     const canSeeAllProjects = user.is_super_admin;
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Create projects table if it doesn't exist
     await db.execute(`
@@ -97,6 +98,8 @@ export async function GET(request) {
         }
       } catch (modifyErr) {
         console.warn('Skipping MODIFY COLUMN for enum fields due to schema inspection error:', modifyErr?.message || modifyErr);
+      } finally {
+        if (db) db.release();
       }
     } catch (err) {
       console.warn('Some ALTER TABLE statements failed, table might already be updated:', err);
@@ -147,9 +150,7 @@ export async function GET(request) {
       const [r] = await db.execute(`SELECT p.* FROM projects p ORDER BY p.created_at DESC`);
       rows = r;
     }
-    
-    await db.end();
-    
+
     // Filter to only projects where user is in the team (unless super admin)
     let filteredRows = rows;
     if (!canSeeAllProjects) {
@@ -175,6 +176,7 @@ export async function GET(request) {
 
 // POST - Create new project
 export async function POST(request) {
+  let db;
   try {
     // RBAC: create projects
     const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.CREATE);
@@ -214,7 +216,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
   // If a proposal_id is provided, prefer company information from that proposal
   let effectiveCompanyId = company_id || null;
@@ -243,6 +245,8 @@ export async function POST(request) {
         }
       } catch (e) {
         console.warn('Failed to lookup proposal for company override:', e?.message || e);
+      } finally {
+        if (db) db.release();
       }
     }
 
@@ -271,7 +275,7 @@ export async function POST(request) {
       // Validate format: should be serial-month-year (e.g., 001-10-2024)
       const projectIdPattern = /^\d{3}-\d{2}-\d{4}$/;
       if (!projectIdPattern.test(trimmedId)) {
-        await db.end();
+
         return NextResponse.json({ 
           success: false, 
           error: 'Invalid project number format. Use format: 001-10-2024 (serial-month-year)' 
@@ -285,7 +289,7 @@ export async function POST(request) {
       );
       
       if (existing.length > 0) {
-        await db.end();
+
         return NextResponse.json({ 
           success: false, 
           error: `Project number ${trimmedId} already exists` 
@@ -347,9 +351,7 @@ export async function POST(request) {
       'SELECT * FROM projects WHERE id = ?',
       [result.insertId]
     );
-    
-    await db.end();
-    
+
     // Log the activity
     logActivity({
       actionType: 'create',
@@ -381,6 +383,7 @@ export async function POST(request) {
 
 // PUT - Update project
 export async function PUT(request) {
+  let db;
   try {
     const data = await request.json();
     const {
@@ -415,7 +418,7 @@ export async function PUT(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // If a proposal_id is provided, prefer company information from that proposal
     let effectiveCompanyId = company_id || null;
@@ -433,6 +436,8 @@ export async function PUT(request) {
         }
       } catch (e) {
         console.warn('Failed to lookup proposal for company override:', e?.message || e);
+      } finally {
+        if (db) db.release();
       }
     }
 
@@ -456,7 +461,7 @@ export async function PUT(request) {
     );
 
     if (existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'Project not found' 
@@ -523,9 +528,7 @@ export async function PUT(request) {
       'SELECT * FROM projects WHERE project_id = ?',
       [projectId]
     );
-    
-    await db.end();
-    
+
     // Log the activity
     logActivity({
       actionType: 'update',
@@ -557,6 +560,7 @@ export async function PUT(request) {
 
 // DELETE - Delete project
 export async function DELETE(request) {
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -568,7 +572,7 @@ export async function DELETE(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Inspect projects columns to determine a suitable key column to use for lookup/delete
     let keyCol = null;
@@ -589,6 +593,8 @@ export async function DELETE(request) {
     } catch (inspErr) {
       console.warn('Could not inspect projects table schema for DELETE, falling back to id:', inspErr?.message || inspErr);
       keyCol = 'id';
+    } finally {
+      if (db) db.release();
     }
 
     if (!keyCol) {
@@ -601,15 +607,13 @@ export async function DELETE(request) {
     const [existing] = await db.execute(query, [id]);
 
     if (!existing || existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
     // Delete project using the resolved key
     await db.execute(`DELETE FROM projects WHERE ${keyCol} = ?`, [id]);
 
-    await db.end();
-    
     // Log the activity
     logActivity({
       actionType: 'delete',

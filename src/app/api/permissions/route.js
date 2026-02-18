@@ -16,6 +16,7 @@ function safeParse(json, fallback = []) {
 
 // GET - Get permissions for a specific user or role
 export async function GET(request) {
+  let db;
   try {
     // Only admins can view user/role permission details; meta is open to all
     const { searchParams } = new URL(request.url);
@@ -38,7 +39,7 @@ export async function GET(request) {
     const roleId = searchParams.get('role_id');
     // 'user' or 'role' or 'all' or 'meta'
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     let response = {
       success: true,
@@ -109,7 +110,6 @@ export async function GET(request) {
       }
     }
 
-    await db.end();
     return NextResponse.json(response);
 
   } catch (error) {
@@ -118,11 +118,14 @@ export async function GET(request) {
       success: false, 
       error: 'Failed to fetch permissions' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // POST - Update permissions for user or role
 export async function POST(request) {
+  let db;
   try {
     // Only super admins can modify permissions
     const user = await getCurrentUser(request);
@@ -157,7 +160,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     if (type === 'user' && user_id) {
       // Update user permissions
@@ -167,7 +170,7 @@ export async function POST(request) {
       );
 
       if (existingUser.length === 0) {
-        await db.end();
+
         return NextResponse.json({ 
           success: false, 
           error: 'User not found' 
@@ -201,7 +204,6 @@ export async function POST(request) {
         permissions: newPermissions
       });
 
-      await db.end();
       return NextResponse.json({ 
         success: true, 
         message: 'User permissions updated successfully',
@@ -216,7 +218,7 @@ export async function POST(request) {
       );
 
       if (existingRole.length === 0) {
-        await db.end();
+
         return NextResponse.json({ 
           success: false, 
           error: 'Role not found' 
@@ -250,7 +252,6 @@ export async function POST(request) {
         [role_id]
       );
 
-      await db.end();
       return NextResponse.json({ 
         success: true, 
         message: 'Role permissions updated successfully',
@@ -258,7 +259,7 @@ export async function POST(request) {
       });
 
     } else {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'Either user_id or role_id must be provided with appropriate type' 
@@ -271,11 +272,14 @@ export async function POST(request) {
       success: false, 
       error: error?.message || 'Failed to update permissions' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
 // PUT - Bulk permission operations
 export async function PUT(request) {
+  let db;
   try {
     // Only super admins can perform bulk permission operations
     const user = await getCurrentUser(request);
@@ -300,7 +304,7 @@ export async function PUT(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     const results = [];
 
     // Begin transaction
@@ -384,7 +388,6 @@ export async function PUT(request) {
       }
 
       await db.execute('COMMIT');
-      await db.end();
 
       return NextResponse.json({ 
         success: true, 
@@ -395,6 +398,8 @@ export async function PUT(request) {
     } catch (error) {
       await db.execute('ROLLBACK');
       throw error;
+    } finally {
+      if (db) db.release();
     }
 
   } catch (error) {

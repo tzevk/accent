@@ -8,8 +8,9 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
 
     await db.execute(`CREATE TABLE IF NOT EXISTS softwares (
       id VARCHAR(36) PRIMARY KEY,
@@ -21,11 +22,13 @@ export async function GET(request) {
     )`);
 
     const [rows] = await db.execute('SELECT id, category_id, name, provider, created_at, updated_at FROM softwares ORDER BY name');
-    await db.end();
+
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Softwares GET error:', error);
     return NextResponse.json({ success: false, error: 'Failed to load softwares', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -34,13 +37,14 @@ export async function POST(request) {
   const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const body = await request.json();
     const { category_id, name, provider } = body;
     if (!category_id || !name) return NextResponse.json({ success: false, error: 'category_id and name are required' }, { status: 400 });
 
     const id = randomUUID();
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(`CREATE TABLE IF NOT EXISTS softwares (
       id VARCHAR(36) PRIMARY KEY,
       category_id VARCHAR(36) NOT NULL,
@@ -51,11 +55,13 @@ export async function POST(request) {
     )`);
 
     await db.execute('INSERT INTO softwares (id, category_id, name, provider) VALUES (?, ?, ?, ?)', [id, category_id, name, provider]);
-    await db.end();
+
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
     console.error('Softwares POST error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create software', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -64,18 +70,21 @@ export async function PUT(request) {
   const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPut.authorized === false) return authResultPut.response;
 
+  let db;
   try {
     const body = await request.json();
     const { id, name, provider, category_id } = body;
     if (!id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute('UPDATE softwares SET name = COALESCE(?, name), provider = COALESCE(?, provider), category_id = COALESCE(?, category_id) WHERE id = ?', [name ?? null, provider ?? null, category_id ?? null, id]);
-    await db.end();
+
     return NextResponse.json({ success: true, message: 'Software updated' });
   } catch (error) {
     console.error('Softwares PUT error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update software', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -84,17 +93,20 @@ export async function DELETE(request) {
   const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
   if (authResultDel.authorized === false) return authResultDel.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
 
-    const db = await dbConnect();
+    db = await dbConnect();
     try {
       await db.execute('DELETE FROM software_versions WHERE software_id = ?', [id]);
-    } catch {}
+    } catch {} finally {
+      if (db) db.release();
+    }
     await db.execute('DELETE FROM softwares WHERE id = ?', [id]);
-    await db.end();
+
     return NextResponse.json({ success: true, message: 'Software deleted' });
   } catch (error) {
     console.error('Softwares DELETE error:', error);

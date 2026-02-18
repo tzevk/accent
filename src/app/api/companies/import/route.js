@@ -7,6 +7,7 @@ export async function POST(request) {
   const authResult = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.CREATE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const contentType = request.headers.get('content-type');
     
@@ -35,6 +36,8 @@ export async function POST(request) {
       success: false, 
       error: 'Failed to import companies: ' + error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -46,7 +49,7 @@ async function importCompaniesFromData(companies, fileType) {
     }, { status: 400 });
   }
 
-  const db = await dbConnect();
+  db = await dbConnect();
   let importedCount = 0;
   const errors = [];
 
@@ -95,9 +98,7 @@ async function importCompaniesFromData(companies, fileType) {
       errors.push(`Row ${i + 1}: ${error.message}`);
     }
   }
-  
-  await db.end();
-  
+
   if (importedCount === 0) {
     return Response.json({ 
       success: false, 
@@ -138,7 +139,7 @@ async function importCompaniesFromExcel(file) {
     }, { status: 400 });
   }
 
-  const db = await dbConnect();
+  db = await dbConnect();
   
   // Skip header row and process data
   const dataRows = jsonData.slice(1);
@@ -176,9 +177,7 @@ async function importCompaniesFromExcel(file) {
       errors.push(`Row ${i + 2}: ${error.message}`);
     }
   }
-  
-  await db.end();
-  
+
   if (importedCount === 0) {
     return Response.json({ 
       success: false, 

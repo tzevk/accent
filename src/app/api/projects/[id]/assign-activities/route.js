@@ -26,6 +26,7 @@ import { randomUUID } from 'crypto';
  * }
  */
 export async function POST(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -44,7 +45,7 @@ export async function POST(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Verify project exists
     const [projectCheck] = await db.execute(
@@ -53,7 +54,7 @@ export async function POST(request, { params }) {
     );
 
     if (projectCheck.length === 0) {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'Project not found' 
@@ -161,10 +162,10 @@ export async function POST(request, { params }) {
           index: i, 
           error: error.message || 'Unknown error occurred' 
         });
+      } finally {
+        if (db) db.release();
       }
     }
-
-    await db.end();
 
     const successCount = assignmentIds.length;
     const errorCount = errors.length;
@@ -203,6 +204,7 @@ export async function POST(request, { params }) {
  * Useful for viewing who is assigned to what in the project
  */
 export async function GET(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -210,7 +212,7 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const projectId = parseInt(id);
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     const [assignments] = await db.execute(`
       SELECT 
@@ -229,8 +231,6 @@ export async function GET(request, { params }) {
       WHERE uaa.project_id = ?
       ORDER BY uaa.due_date ASC, u.full_name ASC
     `, [projectId]);
-
-    await db.end();
 
     // Group by user for easier display
     const groupedByUser = assignments.reduce((acc, assignment) => {
@@ -263,6 +263,8 @@ export async function GET(request, { params }) {
       success: false, 
       error: 'Failed to fetch project assignments' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -271,6 +273,7 @@ export async function GET(request, { params }) {
  * Reassign or update existing assignments in bulk
  */
 export async function PUT(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -289,7 +292,7 @@ export async function PUT(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     const updateCount = [];
     const errors = [];
 
@@ -363,10 +366,10 @@ export async function PUT(request, { params }) {
 
       } catch (error) {
         errors.push({ index: i, error: error.message });
+      } finally {
+        if (db) db.release();
       }
     }
-
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -390,6 +393,7 @@ export async function PUT(request, { params }) {
  * Remove an activity assignment from a project
  */
 export async function DELETE(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -406,14 +410,12 @@ export async function DELETE(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     const [result] = await db.execute(
       'DELETE FROM user_activity_assignments WHERE id = ? AND project_id = ?',
       [assignmentId, projectId]
     );
-
-    await db.end();
 
     if (result.affectedRows === 0) {
       return NextResponse.json({ 
@@ -433,5 +435,7 @@ export async function DELETE(request, { params }) {
       success: false, 
       error: 'Failed to delete assignment' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

@@ -1,40 +1,11 @@
 import { NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'accent_crm',
-};
+import { dbConnect } from '@/utils/database';
 
 // GET - List all material requisitions
 export async function GET(request) {
   let db;
   try {
-    db = await mysql.createConnection(dbConfig);
-    
-    // Create table if not exists
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS material_requisitions (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        requisition_number VARCHAR(50) NOT NULL UNIQUE,
-        requisition_date DATE NOT NULL,
-        requested_by VARCHAR(100),
-        department VARCHAR(100),
-        line_items JSON,
-        status ENUM('pending', 'approved', 'fulfilled', 'rejected') DEFAULT 'pending',
-        prepared_by VARCHAR(100),
-        checked_by VARCHAR(100),
-        approved_by VARCHAR(100),
-        received_by VARCHAR(100),
-        receipt_date DATE,
-        notes TEXT,
-        created_by INT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
+    db = await dbConnect();
     
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -80,7 +51,7 @@ export async function GET(request) {
       FROM material_requisitions
     `);
     
-    await db.end();
+    await db.release();
     
     return NextResponse.json({
       success: true,
@@ -102,8 +73,9 @@ export async function GET(request) {
     
   } catch (error) {
     console.error('Error fetching material requisitions:', error);
-    if (db) await db.end();
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -111,9 +83,7 @@ export async function GET(request) {
 export async function POST(request) {
   let db;
   try {
-    db = await mysql.createConnection(dbConfig);
-    
-    const body = await request.json();
+    db = await dbConnect();
     const {
       requisition_number,
       requisition_date,
@@ -147,7 +117,7 @@ export async function POST(request) {
       ]
     );
     
-    await db.end();
+    await db.release();
     
     return NextResponse.json({
       success: true,
@@ -157,8 +127,9 @@ export async function POST(request) {
     
   } catch (error) {
     console.error('Error creating material requisition:', error);
-    if (db) await db.end();
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -173,11 +144,9 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 });
     }
     
-    db = await mysql.createConnection(dbConfig);
+    db = await dbConnect();
     
     await db.query('DELETE FROM material_requisitions WHERE id = ?', [id]);
-    
-    await db.end();
     
     return NextResponse.json({
       success: true,
@@ -186,7 +155,8 @@ export async function DELETE(request) {
     
   } catch (error) {
     console.error('Error deleting material requisition:', error);
-    if (db) await db.end();
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

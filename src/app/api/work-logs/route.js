@@ -7,6 +7,7 @@ import { dbConnect } from '@/utils/database';
  * Admins can see all logs (except their own), employees see only their own
  */
 export async function GET(request) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
     if (!auth.authorized) {
@@ -22,7 +23,7 @@ export async function GET(request) {
     const page = parseInt(searchParams.get('page') || '1');
     const offset = (page - 1) * limit;
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Build query
     let query = `
@@ -81,8 +82,6 @@ export async function GET(request) {
 
     const [logs] = await db.execute(query, params);
 
-    await db.end();
-
     return NextResponse.json({
       success: true,
       data: logs,
@@ -100,6 +99,8 @@ export async function GET(request) {
       success: false, 
       error: 'Failed to fetch work logs' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -107,6 +108,7 @@ export async function GET(request) {
  * POST - Create a new work log entry
  */
 export async function POST(request) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
     if (!auth.authorized) {
@@ -134,7 +136,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     const [result] = await db.execute(
       `INSERT INTO user_work_logs 
@@ -154,8 +156,6 @@ export async function POST(request) {
       ]
     );
 
-    await db.end();
-
     return NextResponse.json({
       success: true,
       data: {
@@ -170,6 +170,8 @@ export async function POST(request) {
       success: false, 
       error: 'Failed to create work log' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -177,6 +179,7 @@ export async function POST(request) {
  * PUT - Update a work log entry
  */
 export async function PUT(request) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
     if (!auth.authorized) {
@@ -204,7 +207,7 @@ export async function PUT(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Check ownership - users can only update their own logs
     const [existing] = await db.execute(
@@ -213,7 +216,7 @@ export async function PUT(request) {
     );
 
     if (existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'Work log not found' 
@@ -221,7 +224,7 @@ export async function PUT(request) {
     }
 
     if (existing[0].user_id !== auth.user.id) {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'You can only update your own work logs' 
@@ -247,8 +250,6 @@ export async function PUT(request) {
       ]
     );
 
-    await db.end();
-
     return NextResponse.json({
       success: true,
       message: 'Work log updated successfully'
@@ -260,6 +261,8 @@ export async function PUT(request) {
       success: false, 
       error: 'Failed to update work log' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -267,6 +270,7 @@ export async function PUT(request) {
  * DELETE - Delete a work log entry
  */
 export async function DELETE(request) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
     if (!auth.authorized) {
@@ -283,7 +287,7 @@ export async function DELETE(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Check ownership - users can only delete their own logs
     const [existing] = await db.execute(
@@ -292,7 +296,7 @@ export async function DELETE(request) {
     );
 
     if (existing.length === 0) {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'Work log not found' 
@@ -300,7 +304,7 @@ export async function DELETE(request) {
     }
 
     if (existing[0].user_id !== auth.user.id) {
-      await db.end();
+
       return NextResponse.json({ 
         success: false, 
         error: 'You can only delete your own work logs' 
@@ -308,7 +312,6 @@ export async function DELETE(request) {
     }
 
     await db.execute('DELETE FROM user_work_logs WHERE id = ?', [id]);
-    await db.end();
 
     return NextResponse.json({
       success: true,
@@ -321,5 +324,7 @@ export async function DELETE(request) {
       success: false, 
       error: 'Failed to delete work log' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

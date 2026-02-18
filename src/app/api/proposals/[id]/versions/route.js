@@ -7,19 +7,22 @@ export async function GET(request, { params }) {
   const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { id } = await params;
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Try to load versions from a backing table if present, otherwise return empty list
     try {
       const [rows] = await db.execute('SELECT * FROM proposal_versions WHERE proposal_id = ? ORDER BY created_at DESC', [id]);
-      await db.end();
+
       return NextResponse.json({ success: true, data: rows });
     } catch {
       // Table doesn't exist or query failed; return empty list
-      await db.end();
+
       return NextResponse.json({ success: true, data: [] });
+    } finally {
+      if (db) db.release();
     }
   } catch (err) {
     console.error('Proposal versions GET error:', err);
@@ -32,10 +35,11 @@ export async function POST(request, { params }) {
   const authResultPost = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const { id } = await params;
     const body = await request.json();
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Try to insert into proposal_versions if table exists; otherwise, accept request but do no DB work
     try {
@@ -51,12 +55,14 @@ export async function POST(request, { params }) {
           body.notes || null
         ]
       );
-      await db.end();
+
       return NextResponse.json({ success: true, message: 'Version recorded' }, { status: 201 });
     } catch {
       // Table missing or insert failed — accept as no-op to keep client working
-      await db.end();
+
       return NextResponse.json({ success: true, message: 'Version accepted (no backing table)' }, { status: 201 });
+    } finally {
+      if (db) db.release();
     }
   } catch (err) {
     console.error('Proposal versions POST error:', err);

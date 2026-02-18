@@ -73,6 +73,8 @@ export async function GET(request, { params }) {
   } catch (error) {
     console.error('Error fetching invoices:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
@@ -135,6 +137,8 @@ export async function POST(request, { params }) {
   } catch (error) {
     console.error('Error creating invoice:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
@@ -198,6 +202,8 @@ export async function PUT(request, { params }) {
   } catch (error) {
     console.error('Error updating invoice:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }
 
@@ -228,5 +234,7 @@ export async function DELETE(request, { params }) {
   } catch (error) {
     console.error('Error deleting invoice:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    if (connection) connection.release();
   }
 }

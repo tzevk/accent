@@ -2,6 +2,7 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
+  let db;
   try {
     const { username, password } = await request.json();
 
@@ -12,15 +13,13 @@ export async function POST(request) {
       );
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Query to fetch user with username and password
     const [rows] = await db.execute(
       'SELECT username, password_hash FROM users WHERE username = ? AND password_hash = ?',
       [username, password]
     );
-
-    await db.end();
 
     if (rows.length > 0) {
       return NextResponse.json(
@@ -40,5 +39,7 @@ export async function POST(request) {
       { error: 'Internal server error' },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }

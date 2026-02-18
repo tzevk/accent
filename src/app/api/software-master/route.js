@@ -8,8 +8,9 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
-    const db = await dbConnect();
+    db = await dbConnect();
 
     await db.execute(`CREATE TABLE IF NOT EXISTS software_categories (
       id VARCHAR(36) PRIMARY KEY,
@@ -46,6 +47,8 @@ export async function GET(request) {
       softwares = sws;
     } catch {
       softwares = [];
+    } finally {
+      if (db) db.release();
     }
 
     let versions = [];
@@ -55,8 +58,6 @@ export async function GET(request) {
     } catch {
       versions = [];
     }
-
-    await db.end();
 
     const mapped = cats.map((cat) => ({
       id: cat.id,
@@ -87,13 +88,14 @@ export async function POST(request) {
   const authResultPost = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPost.authorized === false) return authResultPost.response;
 
+  let db;
   try {
     const body = await request.json();
     const { name, description = '', status = 'active' } = body;
     if (!name) return NextResponse.json({ success: false, error: 'Category name is required' }, { status: 400 });
 
     const id = randomUUID();
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(`CREATE TABLE IF NOT EXISTS software_categories (
       id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -104,12 +106,13 @@ export async function POST(request) {
     )`);
 
     await db.execute('INSERT INTO software_categories (id, name, description, status) VALUES (?, ?, ?, ?)', [id, name, description, status]);
-    await db.end();
 
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
     console.error('Software master POST error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create category', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -118,19 +121,21 @@ export async function PUT(request) {
   const authResultPut = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.UPDATE);
   if (authResultPut.authorized === false) return authResultPut.response;
 
+  let db;
   try {
     const body = await request.json();
     const { id, name, description, status } = body;
     if (!id) return NextResponse.json({ success: false, error: 'Category id is required' }, { status: 400 });
 
-    const db = await dbConnect();
+    db = await dbConnect();
     await db.execute(`UPDATE software_categories SET name = COALESCE(?, name), description = COALESCE(?, description), status = COALESCE(?, status) WHERE id = ?`, [name ?? null, description ?? null, status ?? null, id]);
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Category updated' });
   } catch (error) {
     console.error('Software master PUT error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update category', details: error.message }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -139,16 +144,19 @@ export async function DELETE(request) {
   const authResultDel = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.DELETE);
   if (authResultDel.authorized === false) return authResultDel.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, error: 'Category id is required' }, { status: 400 });
 
-    const db = await dbConnect();
+    db = await dbConnect();
     try {
       await db.execute('DELETE FROM software_versions WHERE software_id IN (SELECT id FROM softwares WHERE category_id = ?)', [id]);
     } catch {
       // ignore if table missing
+    } finally {
+      if (db) db.release();
     }
     try {
       await db.execute('DELETE FROM softwares WHERE category_id = ?', [id]);
@@ -156,7 +164,6 @@ export async function DELETE(request) {
       // ignore
     }
     await db.execute('DELETE FROM software_categories WHERE id = ?', [id]);
-    await db.end();
 
     return NextResponse.json({ success: true, message: 'Category deleted' });
   } catch (error) {

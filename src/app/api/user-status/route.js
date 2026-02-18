@@ -10,6 +10,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
  * - include_stats: include today's activity statistics (default: true)
  */
 export async function GET(request) {
+  let db;
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
@@ -20,7 +21,7 @@ export async function GET(request) {
     const userIdParam = searchParams.get('user_id');
     const includeStats = searchParams.get('include_stats') !== 'false';
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // If no user_id provided, get all active users
     if (!userIdParam) {
@@ -64,7 +65,6 @@ export async function GET(request) {
         })
       );
 
-      await db.end();
       return NextResponse.json({ success: true, data: usersWithStatus });
     }
 
@@ -117,7 +117,6 @@ export async function GET(request) {
       })
     );
 
-    await db.end();
     return NextResponse.json({ 
       success: true, 
       data: userIds.length === 1 ? usersWithStatus[0] : usersWithStatus 
@@ -129,6 +128,8 @@ export async function GET(request) {
       { success: false, error: 'Failed to fetch user status' },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -138,6 +139,7 @@ export async function GET(request) {
  * Body: { status: string, user_id?: number }
  */
 export async function POST(request) {
+  let db;
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
@@ -157,7 +159,7 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Status is required' }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Log status change as activity
     await db.execute(
@@ -166,8 +168,6 @@ export async function POST(request) {
       ) VALUES (?, 'status_change', 'user_status', ?, ?, 'success')`,
       [targetUserId, `Manual status update: ${status}`, JSON.stringify({ manual_status: status })]
     );
-
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -181,6 +181,8 @@ export async function POST(request) {
       { success: false, error: 'Failed to update user status' },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 

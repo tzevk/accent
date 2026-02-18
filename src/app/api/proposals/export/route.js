@@ -17,8 +17,9 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let pool;
   try {
-    const pool = await dbConnect();
+    pool = await dbConnect();
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
 
@@ -63,6 +64,8 @@ export async function GET(request) {
               return;
             } catch {
               /* not JSON */
+            } finally {
+              if (pool) pool.release();
             }
           }
           data[k] = s;

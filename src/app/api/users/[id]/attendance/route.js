@@ -7,6 +7,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
  * Fetch attendance data for a user including in/out time, leaves, etc.
  */
 export async function GET(request, { params }) {
+  let db;
   try {
     const { id } = await params;
     const requestedUserId = parseInt(id);
@@ -26,7 +27,7 @@ export async function GET(request, { params }) {
       }, { status: 403 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
@@ -113,6 +114,8 @@ export async function GET(request, { params }) {
         if (date.getDay() === 0) weeklyOff++; // Sunday
       }
       attendanceData.weeklyOff = weeklyOff;
+    } finally {
+      if (db) db.release();
     }
 
     // Try to get leave data
@@ -140,8 +143,6 @@ export async function GET(request, { params }) {
       // Leave table might not exist, use defaults
       console.log('Leave table not found, using defaults:', leaveError.message);
     }
-
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 

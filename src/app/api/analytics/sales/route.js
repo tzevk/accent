@@ -43,9 +43,10 @@ export async function GET(request) {
     const conversion = metric === 'value' ? cached.data.conversion.value : cached.data.conversion.count;
     return Response.json({ success: true, data: pick, total, conversion, period, metric });
   }
+  let db;
   try {
     const { start, end } = getWindow(period);
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Ensure helpful composite index exists (created_at, status) for time-window + group by
     try {
@@ -55,6 +56,8 @@ export async function GET(request) {
       }
     } catch {
       // Silent fail; index creation is opportunistic
+    } finally {
+      if (db) db.release();
     }
 
     const [rows] = await db.execute(
@@ -66,7 +69,6 @@ export async function GET(request) {
        GROUP BY LOWER(COALESCE(status, ''))`,
       [start, end]
     );
-    await db.end();
 
     const outCount = { Pending: 0, Approved: 0, Draft: 0 };
     const outAmount = { Pending: 0, Approved: 0, Draft: 0 };

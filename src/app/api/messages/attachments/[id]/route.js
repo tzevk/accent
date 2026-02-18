@@ -10,6 +10,7 @@ import path from 'path';
  * Download an attachment (with security check)
  */
 export async function GET(request, { params }) {
+  let db;
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
@@ -19,7 +20,7 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const attachmentId = parseInt(id);
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Get attachment with message info
     const [attachments] = await db.execute(`
@@ -82,5 +83,7 @@ export async function GET(request, { params }) {
       error: 'Failed to download attachment',
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

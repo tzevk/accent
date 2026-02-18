@@ -4,6 +4,7 @@ import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permission
 
 // GET all leads with pagination and filtering
 export async function GET(request) {
+  let db;
   try {
     // RBAC: read leads
     const auth = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.READ);
@@ -20,7 +21,7 @@ export async function GET(request) {
     
     const offset = (page - 1) * limit;
     
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Ensure leads table exists with the columns dashboard expects
     try {
@@ -58,6 +59,8 @@ export async function GET(request) {
       await db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
     } catch (schemaErr) {
       console.warn('Leads table ensure failed (will continue, may already exist):', schemaErr?.message || schemaErr);
+    } finally {
+      if (db) db.release();
     }
     
     // Build WHERE clause for filtering
@@ -127,9 +130,7 @@ export async function GET(request) {
         SUM(CASE WHEN enquiry_status = 'Closed Lost' THEN 1 ELSE 0 END) as closed_lost
       FROM leads
     `);
-    
-    await db.end();
-    
+
     return Response.json({ 
       success: true, 
       data: {
@@ -226,6 +227,7 @@ export async function POST(request) {
     return typeof v === 'string' ? v.trim() : v;
   };
 
+  let db;
   try {
     const data = await request.json();
     
@@ -256,7 +258,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Add columns if they don't exist
     try {
@@ -267,6 +269,8 @@ export async function POST(request) {
         await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS designation VARCHAR(255)');
     } catch (err) {
       console.warn('Columns might already exist:', err.message);
+    } finally {
+      if (db) db.release();
     }
     
     // Convert empty company_id to null
@@ -345,9 +349,7 @@ export async function POST(request) {
       normalizedPriority,
       normalizedNotes
     ]);
-    
-    await db.end();
-    
+
     // Log the activity
     logActivity({
       actionType: 'create',

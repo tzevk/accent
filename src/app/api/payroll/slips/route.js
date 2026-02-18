@@ -14,13 +14,14 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const employee_id = searchParams.get('employee_id');
     const payment_status = searchParams.get('payment_status');
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     let query = `
       SELECT ps.*, 
@@ -53,9 +54,7 @@ export async function GET(request) {
     query += ` ORDER BY ps.month DESC, e.first_name ASC`;
     
     const [rows] = await db.execute(query, params);
-    
-    await db.end();
-    
+
     return NextResponse.json({ 
       success: true, 
       data: rows 
@@ -66,6 +65,8 @@ export async function GET(request) {
       { success: false, error: 'Failed to fetch payroll slips', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -78,6 +79,7 @@ export async function PUT(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.UPDATE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { id, payment_status, payment_date, payment_reference, remarks } = await request.json();
     
@@ -88,7 +90,7 @@ export async function PUT(request) {
       );
     }
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // Only allow updating payment-related fields (slip data is immutable)
     await db.execute(
@@ -106,9 +108,7 @@ export async function PUT(request) {
         id
       ]
     );
-    
-    await db.end();
-    
+
     return NextResponse.json({
       success: true,
       message: 'Payroll slip updated successfully'
@@ -119,6 +119,8 @@ export async function PUT(request) {
       { success: false, error: 'Failed to update payroll slip', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -130,18 +132,18 @@ export async function DELETE(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.DELETE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const all = searchParams.get('all');
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     if (all === 'true') {
       // Delete all payroll slips
       const [result] = await db.execute('DELETE FROM payroll_slips');
-      await db.end();
-      
+
       return NextResponse.json({
         success: true,
         message: `All payroll slips deleted successfully (${result.affectedRows} records)`
@@ -156,9 +158,7 @@ export async function DELETE(request) {
     }
     
     await db.execute('DELETE FROM payroll_slips WHERE id = ?', [id]);
-    
-    await db.end();
-    
+
     return NextResponse.json({
       success: true,
       message: 'Payroll slip deleted successfully'
@@ -169,5 +169,7 @@ export async function DELETE(request) {
       { success: false, error: 'Failed to delete payroll slip', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) db.release();
   }
 }

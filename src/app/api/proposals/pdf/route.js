@@ -13,6 +13,7 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let pool;
   try {
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
@@ -20,7 +21,7 @@ export async function GET(request) {
     
     console.log('PDF Generation request - ID:', id, 'All:', exportAll);
     
-    const pool = await dbConnect();
+    pool = await dbConnect();
     let proposals = [];
     
     if (exportAll) {
@@ -30,22 +31,20 @@ export async function GET(request) {
       console.log(`Exporting all proposals: ${proposals.length} total`);
     } else {
       if (!id) {
-        await pool.end();
+
         return NextResponse.json({ error: 'Proposal ID is required' }, { status: 400 });
       }
       
       const [rows] = await pool.execute('SELECT * FROM proposals WHERE id = ? LIMIT 1', [id]);
       
       if (!rows || rows.length === 0) {
-        await pool.end();
+
         return NextResponse.json({ error: 'Proposal not found' }, { status: 404 });
       }
       
       proposals = [rows[0]];
       console.log('Found proposal:', proposals[0].proposal_title || proposals[0].title);
     }
-    
-    await pool.end();
 
     // Generate the PDF document with all proposals
     const pdfDoc = createPDFDocument(proposals);
@@ -71,6 +70,8 @@ export async function GET(request) {
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     }, { status: 500 });
+  } finally {
+    if (pool) pool.release();
   }
 }
 

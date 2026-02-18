@@ -3,6 +3,7 @@ import { dbConnect } from '@/utils/database';
 import { cookies } from 'next/headers';
 
 export async function GET() {
+  let db;
   try {
     const cookieStore = await cookies();
     const userCookie = cookieStore.get('user');
@@ -16,7 +17,7 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Get users who were active in the last 10 minutes
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -42,8 +43,6 @@ export async function GET() {
       ORDER BY last_activity DESC
     `, [tenMinutesAgo]);
 
-    await db.end();
-
     return NextResponse.json({ 
       success: true, 
       data: activeUsers.map(user => ({
@@ -58,5 +57,7 @@ export async function GET() {
       error: 'Failed to fetch active users', 
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }

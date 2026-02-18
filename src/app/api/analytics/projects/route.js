@@ -68,13 +68,14 @@ export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || 'Weekly';
     const metric = (searchParams.get('metric') || 'count').toLowerCase(); // 'count' | 'value'
     const { start, end } = getWindow(period);
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Ensure projects table exists (best effort, mirrors core schema)
     try {
@@ -98,7 +99,9 @@ export async function GET(request) {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
       `);
-    } catch {}
+    } catch {} finally {
+      if (db) db.release();
+    }
 
     // Detect if `budget` column exists on projects table; fall back if not
     const dbName = process.env.DB_NAME || null;
@@ -253,8 +256,6 @@ export async function GET(request) {
         series[idx].value = map.get(key) || 0;
       }
     }
-
-    await db.end();
 
     return Response.json({
       success: true,

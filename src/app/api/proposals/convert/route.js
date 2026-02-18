@@ -6,13 +6,14 @@ export async function POST(request) {
   const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.APPROVE);
   if (authResult.authorized === false) return authResult.response;
 
+  let db;
   try {
     const body = await request.json();
     const proposalIdentifier = body.proposalId || body.id || null;
     if (!proposalIdentifier) return NextResponse.json({ success: false, error: 'proposalId required' }, { status: 400 });
 
     const { dbConnect } = await import('@/utils/database');
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Try to find proposal by numeric id or proposal_id string
     let rows;
@@ -133,6 +134,8 @@ export async function POST(request) {
       if (created && created.length > 0) createdProject = created[0];
     } catch (e) {
       console.warn('Unexpected created result shape in convert route:', e?.message || e, { created });
+    } finally {
+      if (db) db.release();
     }
 
     if (!createdProject) {

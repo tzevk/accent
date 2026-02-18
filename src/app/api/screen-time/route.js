@@ -4,6 +4,7 @@ import { dbConnect } from '@/utils/database';
 
 // GET - Fetch screen time analytics
 export async function GET(request) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.USERS, PERMISSIONS.READ);
     if (!auth.authorized) {
@@ -29,7 +30,7 @@ export async function GET(request) {
 
     const finalUserId = currentUser.is_super_admin ? requestedUserId : currentUser.id;
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Get daily screen time summary
     let query = `
@@ -127,8 +128,6 @@ export async function GET(request) {
         : 0
     };
 
-    await db.end();
-
     return NextResponse.json({
       success: true,
       data: {
@@ -145,5 +144,7 @@ export async function GET(request) {
       success: false, 
       error: 'Failed to fetch screen time data' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
