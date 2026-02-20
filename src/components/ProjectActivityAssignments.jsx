@@ -25,6 +25,7 @@ export default function ProjectActivityAssignments({ userId }) {
   const [expandedRows, setExpandedRows] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [successModal, setSuccessModal] = useState(false);
 
   // Ensure every activity has an unlocked entry for today
   const ensureTodayEntry = (list) => {
@@ -144,12 +145,19 @@ export default function ProjectActivityAssignments({ userId }) {
     const entries = activity.daily_entries || [];
     const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
     const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    setSaving(true);
     try {
-      await fetch(`/api/users/${userId}/activity-assignments`, {
+      const res = await fetch(`/api/users/${userId}/activity-assignments`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours })
       });
-    } catch (err) { console.error('Failed to save daily entries:', err); }
+      const data = await res.json();
+      if (data.success) {
+        setSuccessModal(true);
+        setTimeout(() => setSuccessModal(false), 2000);
+      } else { alert('Failed to submit: ' + (data.error || 'Unknown error')); }
+    } catch (err) { console.error('Failed to save daily entries:', err); alert('Failed to submit entry'); }
+    finally { setSaving(false); }
   };
 
   const startEditing = (assignment) => {
@@ -309,12 +317,7 @@ export default function ProjectActivityAssignments({ userId }) {
 
                       {/* Due Date */}
                       <td className="py-2.5 px-2 text-center align-middle">
-                        {isEditing ? (
-                          <input type="date" value={editForm.due_date} onChange={(e) => setEditForm({...editForm, due_date: e.target.value})}
-                            className="w-24 px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:border-blue-500 focus:outline-none" />
-                        ) : (
                           <span className={`text-[10px] ${isDuePast ? 'text-red-500 font-semibold' : 'text-gray-600'}`}>{formatShortDate(activity.due_date)}</span>
-                        )}
                       </td>
 
                       {/* Status */}
@@ -446,6 +449,17 @@ export default function ProjectActivityAssignments({ userId }) {
           </table>
         )}
       </div>
+
+      {/* Success Modal */}
+      {successModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSuccessModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 animate-in" onClick={e => e.stopPropagation()}>
+            <CheckCircleIcon className="w-12 h-12 text-green-500" />
+            <p className="text-sm font-semibold text-gray-900">Submitted Successfully!</p>
+            <p className="text-xs text-gray-500">Your entry has been saved.</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Footer */}
       {assignments.length > 0 && (
