@@ -12,7 +12,7 @@ import {
   ChevronUpIcon
 } from '@heroicons/react/24/outline';
 
-export default function ProjectActivityAssignments({ userId }) {
+export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [assignments, setAssignments] = useState([]);
   const [stats, setStats] = useState({
     totalAssignments: 0, totalProjects: 0, totalQtyAssigned: 0, totalQtyCompleted: 0,
@@ -47,8 +47,20 @@ export default function ProjectActivityAssignments({ userId }) {
     setExpandedRows(expanded);
   };
 
+  // Use preloaded data if available (from parent dashboard), skip duplicate fetch
   useEffect(() => {
-    if (!userId) return;
+    if (preloadedData) {
+      const processed = ensureTodayEntry(preloadedData.assignments || []);
+      setAssignments(processed);
+      setStats(preloadedData.stats || {});
+      autoExpandAll(processed);
+      setLoading(false);
+    }
+  }, [preloadedData]);
+
+  // Only fetch if no preloaded data provided
+  useEffect(() => {
+    if (!userId || preloadedData) return;
     const loadData = async () => {
       try {
         const response = await fetch(`/api/users/${userId}/activity-assignments`);
@@ -64,7 +76,7 @@ export default function ProjectActivityAssignments({ userId }) {
       finally { setLoading(false); }
     };
     loadData();
-  }, [userId]);
+  }, [userId, preloadedData]);
 
   const loadAssignments = async () => {
     try {

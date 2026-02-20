@@ -755,62 +755,88 @@ export async function PUT(request, context) {
             [projectId]
           );
 
-          // Insert new assignments for activities that have assigned_user
+          // Helper to insert a user assignment row
+          const insertAssignment = async (userId, activity, userSpecificData = {}) => {
+            const activityName = activity.activity_name || activity.name || '';
+            const subActivityName = activity.sub_activity_name || '';
+            const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
+            
+            const priorityMap = { 'LOW': 'Low', 'MEDIUM': 'Medium', 'HIGH': 'High', 'URGENT': 'Critical' };
+            const statusMap = { 'NOT_STARTED': 'Not Started', 'IN_PROGRESS': 'In Progress', 'ON_HOLD': 'On Hold', 'COMPLETED': 'Completed', 'CANCELLED': 'Cancelled' };
+            
+            const priority = priorityMap[activity.priority] || 'Medium';
+            const status = statusMap[userSpecificData.status || activity.status_completed] || userSpecificData.status || 'Not Started';
+            const activityId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`;
+            
+            await db.execute(
+              `INSERT INTO user_activity_assignments 
+               (id, user_id, project_id, activity_name, discipline_name, due_date, priority, estimated_hours, status, notes, assigned_date, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
+              [
+                activityId,
+                userId,
+                projectId,
+                fullActivityName,
+                activity.function_name || activity.discipline || '',
+                userSpecificData.due_date || activity.due_date || null,
+                priority,
+                parseFloat(userSpecificData.planned_hours || activity.planned_hours) || 0,
+                status,
+                userSpecificData.remarks || activity.deliverables || activity.remarks || ''
+              ]
+            );
+          };
+
+          // Collect all valid user IDs to batch-verify
+          const allUserIds = new Set();
           for (const activity of activities) {
+            // New multi-user format: assigned_users array
+            if (Array.isArray(activity.assigned_users)) {
+              for (const u of activity.assigned_users) {
+                const uid = parseInt(typeof u === 'object' ? u.user_id : u);
+                if (!isNaN(uid) && uid > 0) allUserIds.add(uid);
+              }
+            }
+            // Old single-user format: assigned_user
             if (activity.assigned_user && activity.assigned_user !== '') {
-              const userId = parseInt(activity.assigned_user);
-              if (!isNaN(userId) && userId > 0) {
-                // Verify user exists before inserting
-                const [userCheck] = await db.execute('SELECT id FROM users WHERE id = ?', [userId]);
-                if (userCheck.length === 0) {
-                  console.warn(`Skipping activity assignment: user_id ${userId} does not exist`);
-                  continue;
+              const uid = parseInt(activity.assigned_user);
+              if (!isNaN(uid) && uid > 0) allUserIds.add(uid);
+            }
+          }
+
+          // Batch verify which user IDs exist
+          const validUserIds = new Set();
+          if (allUserIds.size > 0) {
+            const placeholders = [...allUserIds].map(() => '?').join(',');
+            const [existingUsers] = await db.execute(
+              `SELECT id FROM users WHERE id IN (${placeholders})`,
+              [...allUserIds]
+            );
+            for (const row of existingUsers) validUserIds.add(row.id);
+          }
+
+          // Insert assignments for each activity
+          for (const activity of activities) {
+            const insertedForActivity = new Set(); // avoid duplicates per activity
+
+            // Handle new multi-user format: assigned_users array
+            if (Array.isArray(activity.assigned_users) && activity.assigned_users.length > 0) {
+              for (const u of activity.assigned_users) {
+                const uid = parseInt(typeof u === 'object' ? u.user_id : u);
+                if (!isNaN(uid) && uid > 0 && validUserIds.has(uid) && !insertedForActivity.has(uid)) {
+                  const userData = typeof u === 'object' ? u : {};
+                  await insertAssignment(uid, activity, userData);
+                  insertedForActivity.add(uid);
                 }
-                
-                // Use activity_name (frontend field) with fallback to name
-                const activityName = activity.activity_name || activity.name || '';
-                const subActivityName = activity.sub_activity_name || '';
-                const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
-                
-                // Map priority to table's enum values
-                const priorityMap = {
-                  'LOW': 'Low',
-                  'MEDIUM': 'Medium', 
-                  'HIGH': 'High',
-                  'URGENT': 'Critical'
-                };
-                const priority = priorityMap[activity.priority] || 'Medium';
-                
-                // Map status to table's enum values
-                const statusMap = {
-                  'NOT_STARTED': 'Not Started',
-                  'IN_PROGRESS': 'In Progress',
-                  'ON_HOLD': 'On Hold',
-                  'COMPLETED': 'Completed',
-                  'CANCELLED': 'Cancelled'
-                };
-                const status = statusMap[activity.status_completed] || 'Not Started';
-                
-                // Generate UUID for id
-                const activityId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                
-                await db.execute(
-                  `INSERT INTO user_activity_assignments 
-                   (id, user_id, project_id, activity_name, discipline_name, due_date, priority, estimated_hours, status, notes, assigned_date, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
-                  [
-                    activityId,
-                    userId,
-                    projectId,
-                    fullActivityName,
-                    activity.function_name || activity.discipline || '',
-                    activity.due_date || null,
-                    priority,
-                    parseFloat(activity.planned_hours) || 0,
-                    status,
-                    activity.deliverables || activity.remarks || ''
-                  ]
-                );
+              }
+            }
+
+            // Handle old single-user format: assigned_user (only if not already inserted)
+            if (activity.assigned_user && activity.assigned_user !== '') {
+              const uid = parseInt(activity.assigned_user);
+              if (!isNaN(uid) && uid > 0 && validUserIds.has(uid) && !insertedForActivity.has(uid)) {
+                await insertAssignment(uid, activity, {});
+                insertedForActivity.add(uid);
               }
             }
           }

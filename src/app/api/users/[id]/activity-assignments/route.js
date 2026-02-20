@@ -29,7 +29,7 @@ export async function GET(request, { params }) {
 
     db = await dbConnect();
     
-    // Get all projects with their activities
+    // Get projects where this user might be assigned (filter by JSON content for speed)
     const [projects] = await db.execute(`
       SELECT 
         p.project_id,
@@ -43,8 +43,9 @@ export async function GET(request, { params }) {
       WHERE p.project_activities_list IS NOT NULL 
         AND p.project_activities_list != '' 
         AND p.project_activities_list != '[]'
+        AND p.project_activities_list LIKE ?
       ORDER BY p.start_date DESC
-    `);
+    `, [`%${requestedUserId}%`]);
 
     const assignments = [];
 

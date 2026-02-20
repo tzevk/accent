@@ -22,6 +22,7 @@ export default function UserDashboard({ verifiedUser }) {
   const { user: contextUser } = useSessionRBAC();
   const user = verifiedUser || contextUser;
   const [loading, setLoading] = useState(true);
+  const [statsReady, setStatsReady] = useState(false);
   
   // Attendance & Time data
   const [attendance, setAttendance] = useState({
@@ -153,42 +154,13 @@ export default function UserDashboard({ verifiedUser }) {
             .catch(() => setModuleAccess(prev => ({ ...prev, todos: false })))
         );
 
-        // 5. Dashboard stats with upcoming deadlines and overdue
-        promises.push(
-          fetch(`/api/users/${userId}/dashboard`, { cache: 'no-store' })
-            .then(async (response) => {
-              if (response.status === 401 || response.status === 403) {
-                setModuleAccess(prev => ({ ...prev, dashboard: false }));
-                return;
-              }
-              const res = await response.json();
-              if (res.success && res.data) {
-                setModuleAssignments(prev => ({
-                  ...prev,
-                  upcomingDeadlines: res.data.upcoming_deadlines || [],
-                  overdueActivities: res.data.overdue_count || 0,
-                  statusSummary: res.data.status_summary || prev.statusSummary,
-                  workloadSummary: res.data.workload_summary || prev.workloadSummary,
-                  priorityBreakdown: res.data.priority_breakdown || [],
-                  activeProjects: res.data.active_projects || [],
-                  recentUpdates: res.data.recent_updates || []
-                }));
-              }
-            })
-            .catch(() => setModuleAccess(prev => ({ ...prev, dashboard: false })))
-        );
-
-        // 5b. Activity assignments from project_activities_list (JSON-based)
+        // 5. Activity assignments - single fetch, used for both stats cards and activity table
         promises.push(
           fetch(`/api/users/${userId}/activity-assignments`, { cache: 'no-store' })
             .then(async (response) => {
-              if (response.status === 401 || response.status === 403) {
-                return;
-              }
+              if (response.status === 401 || response.status === 403) return;
               const res = await response.json();
-              console.log('Activity assignments response:', res);
               if (res.success && res.data) {
-                console.log('Activity assignments stats:', res.data.stats);
                 setModuleAssignments(prev => ({
                   ...prev,
                   activityAssignments: {
@@ -196,6 +168,7 @@ export default function UserDashboard({ verifiedUser }) {
                     stats: res.data.stats || prev.activityAssignments.stats
                   }
                 }));
+                setStatsReady(true);
               }
             })
             .catch((err) => console.error('Activity assignments fetch error:', err))
@@ -391,8 +364,8 @@ export default function UserDashboard({ verifiedUser }) {
               </div>
             )}
 
-            {/* Project Activity Assignments - Main Focus */}
-            {user?.id && <ProjectActivityAssignments userId={user.id} />}
+            {/* Project Activity Assignments - Pass preloaded data to avoid duplicate fetch */}
+            {user?.id && <ProjectActivityAssignments userId={user.id} preloadedData={statsReady ? moduleAssignments.activityAssignments : null} />}
           </div>
         </div>
       </div>
