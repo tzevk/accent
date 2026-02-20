@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon, ArrowTopRightOnSquareIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
@@ -2328,6 +2328,7 @@ function EditProjectForm() {
         id: activityId,
         type,
         name: activity.activity_name || activity.name,
+        activity_description: activity.activity_description || '',
         function_id: functionId,
         activity_id: activity.activity_id || null
       }]);
@@ -2343,6 +2344,7 @@ function EditProjectForm() {
       type: 'manual',
       source: 'manual',
       name,
+      activity_description: '',
       status: 'NEW',
       deliverables: '',
       manhours: 0,
@@ -2592,6 +2594,7 @@ function EditProjectForm() {
             discipline: func.function_name,
             discipline_id: func.id,
             activity_name: activity.activity_name,
+            activity_description: activity.activity_description || '',
             planned_hours: parseFloat(activity.default_manhours) || 0,
             actual_hours: 0,
             assigned_user: '',
@@ -2842,7 +2845,7 @@ function EditProjectForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col overflow-hidden" style={{ background: '#ffffff' }}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: '#ffffff' }}>
       <Navbar />
       
       {/* Animated Background */}
@@ -2859,7 +2862,7 @@ function EditProjectForm() {
         }} />
       </div>
       
-      <div className="flex-1 overflow-hidden relative" style={{ zIndex: 1 }}>
+      <div className="flex-1 relative" style={{ zIndex: 1 }}>
         <div className="h-full overflow-y-auto">
           <form onSubmit={handleSubmit}>
           {/* Premium Header - Full Width Sticky */}
@@ -3890,8 +3893,7 @@ function EditProjectForm() {
                                       <select
                                         value={member.role}
                                         onChange={(e) => updateTeamMemberRole(member.id, e.target.value)}
-                                        disabled
-                                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-gray-50 cursor-not-allowed"
+                                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white hover:border-blue-400 focus:border-blue-500 focus:outline-none cursor-pointer"
                                       >
                                         <option value="Team Member">Team Member</option>
                                         <option value="Project Lead">Project Lead</option>
@@ -5090,24 +5092,37 @@ function EditProjectForm() {
 
             {/* Project Activity Tab - Admin view for all team members */}
             {activeTab === 'project_activity' && (
-              <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                  <h2 className="font-semibold text-gray-800 text-lg">Project Activities</h2>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-500">{projectActivities.length} activities</span>
-                    <span className="text-blue-600 font-medium">Plan: {projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</span>
-                    <span className="text-green-600 font-medium">Actual: {projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</span>
+              <section className="bg-white border border-gray-200 rounded-xl shadow-sm" style={{ overflow: 'visible' }}>
+                <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white rounded-t-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="p-1.5 bg-blue-100 rounded-lg">
+                      <ClipboardDocumentListIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h2 className="font-semibold text-gray-800 text-base">Project Activities</h2>
+                      <p className="text-xs text-gray-500 mt-0.5">{projectActivities.length} activities across {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                      <ClockIcon className="h-3.5 w-3.5 text-blue-500" />
+                      <span className="text-xs text-blue-700 font-medium">Plan: {projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
+                      <CheckCircleIcon className="h-3.5 w-3.5 text-green-500" />
+                      <span className="text-xs text-green-700 font-medium">Actual: {projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="p-5 space-y-5">
+                <div className="p-5 space-y-5" style={{ overflow: 'visible' }}>
                   {functions.length > 0 && (
                     <div className="flex items-center justify-between">
                       <button
                         type="button"
                         onClick={toggleActivitySelector}
-                        className={`px-3 py-1.5 rounded text-sm font-medium flex items-center gap-1.5 transition-all ${
-                          showActivitySelector ? 'bg-gray-200 text-gray-700' : 'bg-blue-600 text-white hover:bg-blue-700'
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all shadow-sm ${
+                          showActivitySelector ? 'bg-gray-100 text-gray-700 border border-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
                       >
                         {showActivitySelector ? (
@@ -5116,7 +5131,7 @@ function EditProjectForm() {
                           <><PlusIcon className="h-4 w-4" />Add Activities</>
                         )}
                       </button>
-                      {projectActivities.length > 0 && <div className="text-sm text-gray-500">{projectActivities.length} added</div>}
+                      {projectActivities.length > 0 && <div className="text-xs text-gray-400 font-medium">{projectActivities.length} added</div>}
                     </div>
                   )}
 
@@ -5167,138 +5182,212 @@ function EditProjectForm() {
                   {projectActivities.length === 0 ? (
                     <div className="text-center py-6 text-gray-400 text-sm">No activities added yet. Click the button above to add activities.</div>
                   ) : (
-                    <div className="space-y-4">
-                      {(() => {
-                        const grouped = projectActivities.reduce((acc, act) => { const discipline = act.discipline || act.function_name || 'Manual Entry'; if (!acc[discipline]) acc[discipline] = []; acc[discipline].push(act); return acc; }, {});
-                        return Object.entries(grouped).map(([discipline, acts]) => (
-                          <div key={discipline} style={{ overflow: 'visible' }}>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-semibold text-gray-800 text-sm">{discipline} <span className="font-normal text-gray-400 text-xs">({acts.length})</span></span>
-                              <div className="flex items-center gap-3 text-xs">
-                                <span className="text-blue-600 font-medium">{acts.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h plan</span>
-                                <span className="text-green-600 font-medium">{acts.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h actual</span>
-                              </div>
-                            </div>
-                            <div style={{ overflow: 'visible' }}>
-                              <table className="w-full text-xs border-collapse" style={{ overflow: 'visible' }}>
-                                <thead>
-                                  <tr className="border-b border-gray-200">
-                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '3%' }}></th>
-                                    <th className="text-left py-1 px-2 font-medium text-gray-400 text-[10px] uppercase" style={{ width: '20%' }}></th>
-                                    <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-green-50 border-l border-r border-green-200" style={{ width: '10%' }}>Team</th>
-                                    <th colSpan={2} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-purple-50 border-l border-r border-purple-200" style={{ width: '10%' }}>Unit/Qty</th>
-                                    <th colSpan={4} className="text-center py-1 px-1 font-medium text-gray-500 text-[10px] uppercase bg-blue-50 border-l border-r border-blue-200" style={{ width: '24%' }}>Progress</th>
-                                    <th className="text-center py-1 px-2 font-medium text-gray-500 text-[10px] uppercase bg-amber-50 border-l border-r border-amber-200" style={{ width: '15%' }}>Notes</th>
-                                    <th className="py-1 px-1" style={{ width: '4%' }}></th>
-                                  </tr>
-                                  <tr className="border-b border-gray-300">
-                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">#</th>
-                                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[11px] uppercase">Activity</th>
-                                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-green-50 border-l border-r border-green-200">Member</th>
-                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-l border-purple-200">Asgn</th>
-                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-purple-50 border-r border-purple-200">Done</th>
-                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-l border-blue-200">Plan</th>
-                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Actual</th>
-                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50">Due</th>
-                                    <th className="text-center py-2 px-1 font-medium text-gray-500 text-[11px] uppercase bg-blue-50 border-r border-blue-200">Status</th>
-                                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[11px] uppercase bg-amber-50 border-l border-r border-amber-200">Remarks</th>
-                                    <th className="py-2 px-1"></th>
-                                  </tr>
-                                </thead>
-                                <tbody style={{ overflow: 'visible' }}>
-                                  {acts.map((act, idx) => {
-                                    const assignedUsers = act.assigned_users || [];
-                                    const hasUsers = assignedUsers.length > 0;
+                    <div>
+                      <div className="overflow-visible">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b-2 border-gray-300">
+                              <th className="text-left py-2.5 px-3 font-semibold text-indigo-600 bg-indigo-50/50 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Activity Name</th>
+                              <th className="text-left py-2.5 px-3 font-semibold text-slate-600 bg-slate-50/50 text-[11px] uppercase tracking-wider" style={{ width: '20%' }}>Activity Description</th>
+                              <th className="text-left py-2.5 px-3 font-semibold text-emerald-600 bg-emerald-50/50 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Team Member</th>
+                              <th className="text-left py-2.5 px-3 font-semibold text-gray-600 bg-gray-50/50 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Description</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-purple-600 bg-purple-50/40 text-[11px] uppercase tracking-wider" style={{ width: '6%' }}>Unit Qty</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-blue-600 bg-blue-50/40 text-[11px] uppercase tracking-wider" style={{ width: '8%' }}>Start Date</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-orange-600 bg-orange-50/40 text-[11px] uppercase tracking-wider" style={{ width: '8%' }}>Due Date</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-cyan-600 bg-cyan-50/40 text-[11px] uppercase tracking-wider" style={{ width: '7%' }}>Status</th>
+                              <th className="text-left py-2.5 px-2 font-semibold text-amber-600 bg-amber-50/40 text-[11px] uppercase tracking-wider" style={{ width: '11%' }}>Notes</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-gray-500 bg-gray-50/30 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {projectActivities.map((act, actIdx) => {
+                              const assignedUsers = act.assigned_users || [];
+                              const rowCount = Math.max(assignedUsers.length, 1);
+                              const discipline = act.discipline || act.function_name || '';
+                              const disciplineColors = {
+                                0: 'border-l-indigo-400',
+                                1: 'border-l-teal-400',
+                                2: 'border-l-rose-400',
+                                3: 'border-l-amber-400',
+                                4: 'border-l-cyan-400',
+                                5: 'border-l-violet-400',
+                                6: 'border-l-emerald-400',
+                                7: 'border-l-orange-400',
+                              };
+                              const leftBorderColor = disciplineColors[actIdx % 8];
+                              const avatarColors = ['bg-blue-100 text-blue-600', 'bg-emerald-100 text-emerald-600', 'bg-purple-100 text-purple-600', 'bg-rose-100 text-rose-600', 'bg-amber-100 text-amber-600', 'bg-cyan-100 text-cyan-600'];
+
+                              return (
+                                <Fragment key={`${act.id}-${act.type}-${actIdx}`}>
+                                  {Array.from({ length: rowCount }).map((_, uIdx) => {
+                                    const assignment = assignedUsers[uIdx];
+                                    const hasAssignment = !!assignment;
+                                    const odUserId = hasAssignment ? (typeof assignment === 'object' ? assignment.user_id : assignment) : null;
+                                    
+                                    let name = '';
+                                    if (odUserId) {
+                                      const userList = allUsers.length > 0 ? allUsers : userMaster;
+                                      const user = userList.find(u => String(u.id) === String(odUserId));
+                                      const teamMember = !user ? projectTeamMembers.find(m => String(m.id) === String(odUserId)) : null;
+                                      name = user 
+                                        ? (user.full_name || user.employee_name || user.username || user.email || '?') 
+                                        : teamMember 
+                                          ? (teamMember.name || teamMember.full_name || teamMember.email || '?')
+                                          : '?';
+                                    }
+
+                                    const description = hasAssignment && typeof assignment === 'object' ? (assignment.description || '') : '';
+                                    const qtyAssigned = hasAssignment && typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
+                                    const startDate = hasAssignment && typeof assignment === 'object' ? (assignment.start_date || '') : '';
+                                    const dueDate = hasAssignment && typeof assignment === 'object' ? (assignment.due_date || '') : '';
+                                    const status = hasAssignment && typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
+                                    const remarks = hasAssignment && typeof assignment === 'object' ? (assignment.remarks || '') : '';
+
+                                    const statusStyles = {
+                                      'Completed': 'text-green-700 bg-green-50 border-green-200',
+                                      'In Progress': 'text-blue-700 bg-blue-50 border-blue-200',
+                                      'On Hold': 'text-amber-700 bg-amber-50 border-amber-200',
+                                      'Not Started': 'text-gray-500 bg-gray-50 border-gray-200',
+                                    };
+                                    const isDuePast = dueDate && new Date(dueDate) < new Date() && status !== 'Completed';
+                                    const isFirstRow = uIdx === 0;
+                                    const isLastRow = uIdx === rowCount - 1;
+
                                     return (
-                                      <Fragment key={`${act.id}-${act.type}-${idx}`}>
-                                        <tr className="border-b border-gray-200 bg-gray-50/50">
-                                          <td className="py-2 px-2 text-gray-500 font-medium align-middle">{idx + 1}</td>
-                                          <td className="py-2 px-2" colSpan={9}>
-                                            <div className="flex items-center gap-2">
-                                              <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="flex-1 max-w-xs px-2 py-1 text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:outline-none text-gray-800 bg-transparent font-medium" placeholder="Activity name" />
-                                              <div className="relative" data-user-selector-dropdown>
-                                                <button type="button" onClick={(e) => { e.stopPropagation(); setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id); }} className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap">+ Add User</button>
-                                                {openUserSelectorForActivity === act.id && (
-                                                  <div className="absolute z-[9999] mt-1 right-0 w-48 bg-white border border-gray-200 rounded-md shadow-lg" onClick={(e) => e.stopPropagation()}>
-                                                    <div className="px-2 py-1.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-700 flex items-center justify-between">
-                                                      <span>Select Member</span>
-                                                      <button type="button" onClick={() => setOpenUserSelectorForActivity(null)} className="text-gray-400 hover:text-gray-600">×</button>
-                                                    </div>
-                                                    <div className="max-h-40 overflow-y-auto">
-                                                      {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).map(user => (
-                                                        <div key={user.id} onClick={() => toggleUserForActivity(act.id, user.id)} className="px-2 py-1.5 cursor-pointer text-xs text-gray-700 hover:bg-blue-50 border-b border-gray-100 last:border-b-0">
-                                                          {user.full_name || user.employee_name || user.username || user.email || 'Unknown'}
-                                                        </div>
-                                                      ))}
-                                                      {(allUsers.length > 0 ? allUsers : userMaster).filter(user => !isUserAssigned(act.assigned_users, user.id)).length === 0 && <div className="px-2 py-1.5 text-xs text-gray-500 text-center">All assigned</div>}
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </div>
+                                      <tr key={`${act.id}-row-${uIdx}`} className={`${isLastRow ? 'border-b-2 border-b-gray-200' : 'border-b border-b-gray-100'} transition-colors ${status === 'Completed' ? 'bg-green-50/20' : status === 'On Hold' ? 'bg-amber-50/20' : 'hover:bg-gray-50/30'} border-l-3 ${leftBorderColor}`}>
+                                        {/* Activity Name */}
+                                        {isFirstRow && (
+                                          <td className="py-2 px-3 align-top bg-indigo-50/20 border-r border-gray-100" rowSpan={rowCount}>
+                                            <div className="flex flex-col gap-1">
+                                              <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="w-full px-1.5 py-1 text-xs font-medium border border-transparent hover:border-gray-300 focus:border-blue-500 rounded focus:outline-none text-gray-800 bg-transparent" placeholder="Activity name" />
+                                              {discipline && <span className="text-[10px] text-gray-400 pl-1.5">{discipline}</span>}
                                             </div>
                                           </td>
-                                          <td className="py-2 px-1 text-center align-middle"><button type="button" onClick={() => removeScopeActivity(act.id)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
-                                        </tr>
-                                        {hasUsers && assignedUsers.map((assignment, uIdx) => {
-                                          const odUserId = typeof assignment === 'object' ? assignment.user_id : assignment;
-                                          const userList = allUsers.length > 0 ? allUsers : userMaster;
-                                          const user = userList.find(u => String(u.id) === String(odUserId));
-                                          const name = user ? (user.full_name || user.employee_name || user.username || user.email || '?') : '?';
-                                          const plannedHrs = typeof assignment === 'object' ? (assignment.planned_hours || '') : '';
-                                          const actualHrs = typeof assignment === 'object' ? (assignment.actual_hours || '') : '';
-                                          const qtyAssigned = typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
-                                          const qtyCompleted = typeof assignment === 'object' ? (assignment.qty_completed || '') : '';
-                                          const dueDate = typeof assignment === 'object' ? (assignment.due_date || '') : '';
-                                          const status = typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
-                                          const remarks = typeof assignment === 'object' ? (assignment.remarks || '') : '';
-                                          const description = typeof assignment === 'object' ? (assignment.description || '') : '';
-                                          return (
-                                            <tr key={`${act.id}-user-${odUserId}`} className="border-b border-gray-100">
-                                              <td className="py-1.5 px-2"></td>
-                                              <td className="py-1.5 px-2">
-                                                <input type="text" value={description} onChange={(e) => updateUserManhours(act.id, odUserId, 'description', e.target.value)} className="w-full px-1 py-0.5 text-xs border border-gray-200 rounded focus:border-blue-500 focus:outline-none bg-white" placeholder="Description for this user..." />
-                                              </td>
-                                              <td className="py-1.5 px-2 text-gray-600 text-xs bg-green-50/50"><span className="text-gray-400 mr-1">{uIdx + 1}.</span>{name}</td>
-                                              <td className="py-1.5 px-1 bg-purple-50/50"><input type="number" value={qtyAssigned} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_assigned', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-purple-200 text-center focus:border-purple-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
-                                              <td className="py-1.5 px-1 bg-purple-50/50"><input type="number" value={qtyCompleted} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_completed', e.target.value)} className="w-full px-1 py-0.5 text-xs border-0 border-b border-purple-200 text-center focus:border-purple-500 focus:outline-none bg-transparent" placeholder="–" min="0" /></td>
-                                              <td className="py-1.5 px-1 bg-blue-50/50"><input type="number" value={plannedHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'planned_hours', e.target.value)} className="w-full px-0.5 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
-                                              <td className="py-1.5 px-1 bg-blue-50/50"><input type="number" value={actualHrs} onChange={(e) => updateUserManhours(act.id, odUserId, 'actual_hours', e.target.value)} className="w-full px-0.5 py-0.5 text-xs border-0 border-b border-blue-200 text-center focus:border-blue-500 focus:outline-none bg-transparent" placeholder="–" min="0" step="0.5" /></td>
-                                              <td className="py-1.5 px-0.5 bg-blue-50/50" style={{ width: '60px' }}><input type="date" value={dueDate} onChange={(e) => updateUserManhours(act.id, odUserId, 'due_date', e.target.value)} className="w-full px-0 py-0.5 text-[9px] border-0 border-b border-blue-200 focus:border-blue-500 focus:outline-none bg-transparent" /></td>
-                                              <td className="py-1.5 px-1 bg-blue-50/50" style={{ minWidth: '85px' }}><select value={status} onChange={(e) => updateUserManhours(act.id, odUserId, 'status', e.target.value)} className="w-full px-0.5 py-0.5 text-[10px] border-0 border-b border-blue-200 focus:border-blue-500 focus:outline-none bg-transparent"><option value="Not Started">Not Started</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="On Hold">On Hold</option></select></td>
-                                              <td className="py-1.5 px-2 bg-amber-50/50"><textarea value={remarks} onChange={(e) => updateUserManhours(act.id, odUserId, 'remarks', e.target.value)} className="w-full px-1 py-0.5 text-xs border border-amber-200 rounded focus:border-amber-500 focus:outline-none bg-transparent resize-y min-h-[24px]" placeholder="–" rows={1} /></td>
-                                              <td className="py-1.5 px-1 text-center"><button type="button" onClick={() => toggleUserForActivity(act.id, odUserId)} className="text-gray-300 hover:text-red-500" title="Remove">×</button></td>
-                                            </tr>
-                                          );
-                                        })}
-                                        {hasUsers && (
-                                          <tr className="border-t border-gray-200 bg-gray-50/30">
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2"></td>
-                                            <td className="py-1.5 px-2 text-right text-gray-400 text-xs bg-green-50/50">Total</td>
-                                            <td className="py-1.5 px-1 font-semibold text-purple-700 text-xs text-center bg-purple-50/50">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_assigned : 0) || 0), 0)}</td>
-                                            <td className="py-1.5 px-1 font-semibold text-purple-700 text-xs text-center bg-purple-50/50">{(act.assigned_users || []).reduce((sum, u) => sum + (parseFloat(typeof u === 'object' ? u.qty_completed : 0) || 0), 0)}</td>
-                                            <td className="py-1.5 px-2 font-semibold text-blue-700 text-xs text-center bg-blue-50/50">{getActivityTotalPlanned(act).toFixed(1)}</td>
-                                            <td className="py-1.5 px-2 font-semibold text-blue-700 text-xs text-center bg-blue-50/50">{getActivityTotalActual(act).toFixed(1)}</td>
-                                            <td className="py-1.5 px-2 bg-blue-50/50"></td>
-                                            <td className="py-1.5 px-2 bg-blue-50/50"></td>
-                                            <td className="py-1.5 px-2 bg-amber-50/50"></td>
-                                            <td className="py-1.5 px-1"></td>
-                                          </tr>
                                         )}
-                                      </Fragment>
+                                        {/* Activity Description */}
+                                        {isFirstRow && (
+                                          <td className="py-2 px-3 align-top bg-slate-50/20 border-r border-gray-100" rowSpan={rowCount}>
+                                            <textarea value={act.activity_description || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_description', e.target.value)} className="w-full px-1.5 py-1 text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 rounded focus:outline-none text-gray-700 bg-transparent resize-none" placeholder="Activity description..." rows={Math.max(2, rowCount)} />
+                                          </td>
+                                        )}
+                                        {/* Team Member — one per row, same level as other fields */}
+                                        <td className="py-2 px-3 bg-emerald-50/10">
+                                          {hasAssignment ? (
+                                            <div className="flex items-center gap-1.5">
+                                              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${avatarColors[uIdx % avatarColors.length]}`}>
+                                                <span className="text-[9px] font-bold">{name.charAt(0).toUpperCase()}</span>
+                                              </div>
+                                              <span className="text-gray-800 font-medium truncate text-xs">{name}</span>
+                                              <a href={`/users/${odUserId}/activity`} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 text-blue-400 hover:text-blue-600 transition-colors" title={`View ${name}'s activity`} onClick={(e) => e.stopPropagation()}>
+                                                <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                                              </a>
+                                            </div>
+                                          ) : (
+                                            <span className="text-gray-300 text-xs italic">No members</span>
+                                          )}
+                                        </td>
+                                        {/* Description */}
+                                        <td className="py-2 px-3">
+                                          {hasAssignment ? (
+                                            <input type="text" value={description} onChange={(e) => updateUserManhours(act.id, odUserId, 'description', e.target.value)} className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:border-blue-400 focus:outline-none bg-white" placeholder="Description..." />
+                                          ) : <span className="text-gray-300 text-xs italic">—</span>}
+                                        </td>
+                                        {/* Unit Qty */}
+                                        <td className="py-2 px-2 bg-purple-50/10">
+                                          {hasAssignment ? (
+                                            <input type="number" value={qtyAssigned} onChange={(e) => updateUserManhours(act.id, odUserId, 'qty_assigned', e.target.value)} className="w-full px-1 py-1 text-xs border border-purple-200 rounded text-center focus:border-purple-400 focus:outline-none bg-white" placeholder="–" min="0" />
+                                          ) : null}
+                                        </td>
+                                        {/* Start Date */}
+                                        <td className="py-2 px-2 bg-blue-50/10">
+                                          {hasAssignment ? (
+                                            <input type="date" value={startDate} onChange={(e) => updateUserManhours(act.id, odUserId, 'start_date', e.target.value)} className="w-full px-1 py-1 text-[10px] border border-blue-200 rounded focus:border-blue-400 focus:outline-none bg-white" />
+                                          ) : null}
+                                        </td>
+                                        {/* Due Date */}
+                                        <td className={`py-2 px-2 ${isDuePast ? 'bg-red-50/20' : 'bg-orange-50/10'}`}>
+                                          {hasAssignment ? (
+                                            <input type="date" value={dueDate} onChange={(e) => updateUserManhours(act.id, odUserId, 'due_date', e.target.value)} className={`w-full px-1 py-1 text-[10px] border rounded focus:outline-none bg-white ${isDuePast ? 'border-red-300 text-red-600 focus:border-red-400' : 'border-orange-200 focus:border-orange-400'}`} />
+                                          ) : null}
+                                        </td>
+                                        {/* Status */}
+                                        <td className="py-2 px-2 bg-cyan-50/10">
+                                          {hasAssignment ? (
+                                            <select value={status} onChange={(e) => updateUserManhours(act.id, odUserId, 'status', e.target.value)} className={`w-full px-1 py-1 text-[10px] border rounded focus:outline-none font-medium ${statusStyles[status] || statusStyles['Not Started']}`}>
+                                              <option value="Not Started">Not Started</option>
+                                              <option value="In Progress">In Progress</option>
+                                              <option value="Completed">Completed</option>
+                                              <option value="On Hold">On Hold</option>
+                                            </select>
+                                          ) : null}
+                                        </td>
+                                        {/* Notes */}
+                                        <td className="py-2 px-2 bg-amber-50/10">
+                                          {hasAssignment ? (
+                                            <input type="text" value={remarks} onChange={(e) => updateUserManhours(act.id, odUserId, 'remarks', e.target.value)} className="w-full px-2 py-1 text-xs border border-amber-200 rounded focus:border-amber-400 focus:outline-none bg-white" placeholder="Notes..." />
+                                          ) : null}
+                                        </td>
+                                        {/* Actions */}
+                                        <td className="py-2 px-2 text-center">
+                                          <div className="flex items-center justify-center gap-1">
+                                            {hasAssignment && (
+                                              <button type="button" onClick={() => toggleUserForActivity(act.id, odUserId)} className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors" title={`Remove ${name}`}>
+                                                <XMarkIcon className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                            {isFirstRow && (
+                                              <>
+                                                <div className="relative" data-user-selector-dropdown>
+                                                  <button type="button" id={`add-member-btn-${act.id}`} onClick={(e) => { e.stopPropagation(); setOpenUserSelectorForActivity(openUserSelectorForActivity === act.id ? null : act.id); }} className="p-1 rounded hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 transition-colors" title="Add team member">
+                                                    <PlusIcon className="h-3.5 w-3.5" />
+                                                  </button>
+                                                  {openUserSelectorForActivity === act.id && (() => {
+                                                    const btnEl = document.getElementById(`add-member-btn-${act.id}`);
+                                                    const rect = btnEl?.getBoundingClientRect() || { bottom: 0, right: 0 };
+                                                    return (
+                                                      <div className="fixed z-[99999] w-56 bg-white border border-gray-200 rounded-lg shadow-2xl" style={{ top: rect.bottom + 4, left: Math.max(8, rect.right - 224) }} onClick={(e) => e.stopPropagation()}>
+                                                        <div className="px-3 py-2 bg-emerald-50 border-b border-gray-200 text-xs font-semibold text-emerald-700 flex items-center justify-between rounded-t-lg">
+                                                          <span>Select Team Member</span>
+                                                          <button type="button" onClick={() => setOpenUserSelectorForActivity(null)} className="text-gray-400 hover:text-gray-600 text-sm">×</button>
+                                                        </div>
+                                                        <div className="max-h-48 overflow-y-auto">
+                                                          {projectTeamMembers.filter(user => !isUserAssigned(act.assigned_users, user.id)).map(user => (
+                                                            <div key={user.id} onClick={() => { toggleUserForActivity(act.id, user.id); setOpenUserSelectorForActivity(null); }} className="px-3 py-2 cursor-pointer text-xs text-gray-700 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 flex items-center gap-2">
+                                                              <UserIcon className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                                                              {user.name || user.full_name || user.employee_name || user.username || user.email || 'Unknown'}
+                                                            </div>
+                                                          ))}
+                                                          {projectTeamMembers.filter(user => !isUserAssigned(act.assigned_users, user.id)).length === 0 && <div className="px-3 py-2 text-xs text-gray-400 text-center">All assigned</div>}
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  })()}
+                                                </div>
+                                                <button type="button" onClick={() => { /* edit mode placeholder */ }} className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors" title="Edit activity">
+                                                  <PencilIcon className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button type="button" onClick={() => removeScopeActivity(act.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Delete activity">
+                                                  <TrashIcon className="h-3.5 w-3.5" />
+                                                </button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
                                     );
                                   })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        ));
-                      })()}
-                      <div className="pt-3 mt-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
-                        <span>{projectActivities.length} activities • {Object.keys(projectActivities.reduce((acc, a) => { acc[a.discipline || a.function_name || 'Manual'] = true; return acc; }, {})).length} disciplines</span>
-                        <div className="flex items-center gap-4">
-                          <span>Plan: <strong className="text-blue-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0).toFixed(1)}h</strong></span>
-                          <span>Actual: <strong className="text-green-600">{projectActivities.reduce((sum, a) => sum + getActivityTotalActual(a), 0).toFixed(1)}h</strong></span>
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Summary Footer */}
+                      <div className="pt-3 mt-3 border-t border-gray-200 flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-medium border border-indigo-100">{projectActivities.length} activities</span>
+                          <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium border border-emerald-100">{(() => { const s = new Set(); projectActivities.forEach(a => (a.assigned_users || []).forEach(u => { const uid = typeof u === 'object' ? u.user_id : u; if (uid) s.add(String(uid)); })); return s.size; })()} members</span>
                         </div>
                       </div>
                     </div>

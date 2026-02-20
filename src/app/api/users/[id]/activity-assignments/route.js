@@ -78,15 +78,20 @@ export async function GET(request, { params }) {
                 project_end_date: project.end_date,
                 activity_id: activity.id,
                 activity_name: activity.activity_name || activity.name || 'Unnamed Activity',
+                activity_description: activity.activity_description || '',
                 discipline: activity.discipline || activity.function_name || 'General',
                 // User-specific data
+                description: userAssignment.description || '',
                 qty_assigned: userAssignment.qty_assigned || 0,
                 qty_completed: userAssignment.qty_completed || 0,
                 planned_hours: userAssignment.planned_hours || 0,
                 actual_hours: userAssignment.actual_hours || 0,
+                start_date: userAssignment.start_date || null,
                 due_date: userAssignment.due_date || null,
                 status: userAssignment.status || 'Not Started',
-                remarks: userAssignment.remarks || ''
+                notes: userAssignment.notes || '',
+                remarks: userAssignment.remarks || '',
+                daily_entries: userAssignment.daily_entries || []
               });
             }
           }
@@ -158,7 +163,7 @@ export async function PUT(request, { params }) {
     }
 
     const body = await request.json();
-    const { project_id, activity_id, qty_completed, actual_hours, status, remarks } = body;
+    const { project_id, activity_id, qty_assigned, qty_completed, actual_hours, status, remarks, description, start_date, due_date, notes, daily_entries } = body;
 
     if (!project_id || !activity_id) {
       return NextResponse.json({ 
@@ -203,20 +208,31 @@ export async function PUT(request, { params }) {
           if (String(assignedUserId) === String(requestedUserId)) {
             // Update this user's assignment
             if (typeof assignment === 'object') {
+              if (qty_assigned !== undefined) assignedUsers[i].qty_assigned = parseFloat(qty_assigned) || 0;
               if (qty_completed !== undefined) assignedUsers[i].qty_completed = parseFloat(qty_completed) || 0;
               if (actual_hours !== undefined) assignedUsers[i].actual_hours = parseFloat(actual_hours) || 0;
               if (status !== undefined) assignedUsers[i].status = status;
               if (remarks !== undefined) assignedUsers[i].remarks = remarks;
+              if (description !== undefined) assignedUsers[i].description = description;
+              if (start_date !== undefined) assignedUsers[i].start_date = start_date;
+              if (due_date !== undefined) assignedUsers[i].due_date = due_date;
+              if (notes !== undefined) assignedUsers[i].notes = notes;
+              if (daily_entries !== undefined) assignedUsers[i].daily_entries = daily_entries;
             } else {
               // Convert to object
               assignedUsers[i] = {
                 user_id: assignedUserId,
-                qty_assigned: 0,
+                qty_assigned: parseFloat(qty_assigned) || 0,
                 qty_completed: parseFloat(qty_completed) || 0,
                 planned_hours: 0,
                 actual_hours: parseFloat(actual_hours) || 0,
                 status: status || 'Not Started',
-                remarks: remarks || ''
+                remarks: remarks || '',
+                description: description || '',
+                start_date: start_date || null,
+                due_date: due_date || null,
+                notes: notes || '',
+                daily_entries: daily_entries || []
               };
             }
             updated = true;

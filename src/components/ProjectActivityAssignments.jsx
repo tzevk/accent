@@ -1,64 +1,67 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Fragment } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { 
   ClipboardDocumentListIcon,
   CheckCircleIcon,
   PencilSquareIcon,
-  XMarkIcon
+  XMarkIcon,
+  PlusIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/outline';
 
 export default function ProjectActivityAssignments({ userId }) {
   const [assignments, setAssignments] = useState([]);
   const [stats, setStats] = useState({
-    totalAssignments: 0,
-    totalProjects: 0,
-    totalQtyAssigned: 0,
-    totalQtyCompleted: 0,
-    totalPlannedHours: 0,
-    totalActualHours: 0,
-    completedCount: 0,
-    inProgressCount: 0,
-    notStartedCount: 0
+    totalAssignments: 0, totalProjects: 0, totalQtyAssigned: 0, totalQtyCompleted: 0,
+    totalPlannedHours: 0, totalActualHours: 0, completedCount: 0, inProgressCount: 0, notStartedCount: 0
   });
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [hasAccess, setHasAccess] = useState(true);
+  const [expandedRows, setExpandedRows] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState('all'); // all, pending, in-progress, completed
-  const [hasAccess, setHasAccess] = useState(true);
+
+  // Ensure every activity has an unlocked entry for today
+  const ensureTodayEntry = (list) => {
+    const today = new Date().toISOString().split('T')[0];
+    return list.map(a => {
+      const entries = a.daily_entries || [];
+      const hasUnlockedToday = entries.some(e => e.date === today && !e.isLocked);
+      if (!hasUnlockedToday) {
+        const locked = entries.map(e => ({ ...e, isLocked: true }));
+        return { ...a, daily_entries: [...locked, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }] };
+      }
+      return a;
+    });
+  };
+
+  const autoExpandAll = (list) => {
+    const expanded = {};
+    list.forEach(a => { expanded[`${a.project_id}-${a.activity_id}`] = true; });
+    setExpandedRows(expanded);
+  };
 
   useEffect(() => {
     if (!userId) return;
-    
     const loadData = async () => {
       try {
         const response = await fetch(`/api/users/${userId}/activity-assignments`);
-        
-        // Handle unauthorized gracefully
-        if (response.status === 401 || response.status === 403) {
-          setHasAccess(false);
-          setLoading(false);
-          return;
-        }
-        
+        if (response.status === 401 || response.status === 403) { setHasAccess(false); setLoading(false); return; }
         const res = await response.json();
         if (res.success) {
-          setAssignments(res.data.assignments || []);
-          setStats(res.data.stats || {});
-        } else {
-          // If not successful, hide the section
-          setHasAccess(false);
+          const processed = ensureTodayEntry(res.data.assignments || []);
+          setAssignments(processed); setStats(res.data.stats || {});
+          autoExpandAll(processed);
         }
-      } catch (err) {
-        console.error('Failed to load activity assignments:', err);
-        setHasAccess(false);
-      } finally {
-        setLoading(false);
-      }
+        else { setHasAccess(false); }
+      } catch (err) { console.error('Failed to load activity assignments:', err); setHasAccess(false); }
+      finally { setLoading(false); }
     };
-    
     loadData();
   }, [userId]);
 
@@ -66,64 +69,121 @@ export default function ProjectActivityAssignments({ userId }) {
     try {
       const res = await fetchJSON(`/api/users/${userId}/activity-assignments`);
       if (res.success) {
-        setAssignments(res.data.assignments || []);
-        setStats(res.data.stats || {});
+        const processed = ensureTodayEntry(res.data.assignments || []);
+        setAssignments(processed); setStats(res.data.stats || {});
+        autoExpandAll(processed);
       }
-    } catch (err) {
-      console.error('Failed to load activity assignments:', err);
+    } catch (err) { console.error('Failed to load activity assignments:', err); }
+  };
+
+  const toggleExpand = (rowKey) => {
+    setExpandedRows(prev => ({ ...prev, [rowKey]: !prev[rowKey] }));
+  };
+
+  const addDailyEntry = async (activity) => {
+    const dailyEntries = [...(activity.daily_entries || [])];
+    let nextDate;
+    if (dailyEntries.length > 0) {
+      const lastDate = new Date(dailyEntries[dailyEntries.length - 1].date);
+      lastDate.setDate(lastDate.getDate() + 1);
+      nextDate = lastDate.toISOString().split('T')[0];
+    } else {
+      nextDate = new Date().toISOString().split('T')[0];
     }
+    const lockedEntries = dailyEntries.map(e => ({ ...e, isLocked: true }));
+    const updatedEntries = [...lockedEntries, { date: nextDate, qty_done: '', hours: '', remarks: '', isLocked: false }];
+    const totalQtyDone = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+    const totalHours = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/users/${userId}/activity-assignments`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: updatedEntries, qty_completed: totalQtyDone, actual_hours: totalHours })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadAssignments();
+        setExpandedRows(prev => ({ ...prev, [`${activity.project_id}-${activity.activity_id}`]: true }));
+      } else { alert('Failed to add entry: ' + (data.error || 'Unknown error')); }
+    } catch (err) { console.error('Failed to add daily entry:', err); alert('Failed to add daily entry'); }
+    finally { setSaving(false); }
+  };
+
+  const updateDailyEntryLocal = (activityKey, entryIndex, field, value) => {
+    setAssignments(prev => prev.map(a => {
+      if (`${a.project_id}-${a.activity_id}` === activityKey) {
+        const entries = [...(a.daily_entries || [])];
+        if (entries[entryIndex]) entries[entryIndex] = { ...entries[entryIndex], [field]: value };
+        const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+        const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+        return { ...a, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours };
+      }
+      return a;
+    }));
+  };
+
+  const removeDailyEntry = async (activity, entryIndex) => {
+    const entries = [...(activity.daily_entries || [])];
+    entries.splice(entryIndex, 1);
+    const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+    const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/users/${userId}/activity-assignments`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours })
+      });
+      const data = await res.json();
+      if (data.success) await loadAssignments();
+    } catch (err) { console.error('Failed to remove entry:', err); }
+    finally { setSaving(false); }
+  };
+
+  const saveDailyEntries = async (activity) => {
+    const entries = activity.daily_entries || [];
+    const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+    const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    try {
+      await fetch(`/api/users/${userId}/activity-assignments`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours })
+      });
+    } catch (err) { console.error('Failed to save daily entries:', err); }
   };
 
   const startEditing = (assignment) => {
     setEditingId(`${assignment.project_id}-${assignment.activity_id}`);
     setEditForm({
-      project_id: assignment.project_id,
-      activity_id: assignment.activity_id,
-      qty_completed: assignment.qty_completed || 0,
-      actual_hours: assignment.actual_hours || 0,
+      project_id: assignment.project_id, activity_id: assignment.activity_id,
       status: assignment.status || 'Not Started',
+      due_date: assignment.due_date ? new Date(assignment.due_date).toISOString().split('T')[0] : '',
       remarks: assignment.remarks || ''
     });
   };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditForm({});
-  };
+  const cancelEditing = () => { setEditingId(null); setEditForm({}); };
 
   const saveProgress = async () => {
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm)
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm)
       });
       const data = await res.json();
-      if (data.success) {
-        // Reload assignments
-        await loadAssignments();
-        setEditingId(null);
-        setEditForm({});
-      } else {
-        alert('Failed to save: ' + (data.error || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error('Failed to save progress:', err);
-      alert('Failed to save progress');
-    } finally {
-      setSaving(false);
-    }
+      if (data.success) { await loadAssignments(); setEditingId(null); setEditForm({}); }
+      else { alert('Failed to save: ' + (data.error || 'Unknown error')); }
+    } catch (err) { console.error('Failed to save progress:', err); alert('Failed to save progress'); }
+    finally { setSaving(false); }
   };
 
   const getStatusBadge = (status) => {
-    const statusMap = {
+    const map = {
       'Completed': 'bg-green-100 text-green-700 border-green-200',
       'In Progress': 'bg-blue-100 text-blue-700 border-blue-200',
       'Not Started': 'bg-gray-100 text-gray-600 border-gray-200',
       'On Hold': 'bg-yellow-100 text-yellow-700 border-yellow-200'
     };
-    return statusMap[status] || statusMap['Not Started'];
+    return map[status] || map['Not Started'];
   };
 
   const filteredAssignments = assignments.filter(a => {
@@ -134,20 +194,10 @@ export default function ProjectActivityAssignments({ userId }) {
     return true;
   });
 
-  // Group by project
-  const groupedByProject = filteredAssignments.reduce((acc, a) => {
-    const key = a.project_id;
-    if (!acc[key]) {
-      acc[key] = {
-        project_id: a.project_id,
-        project_name: a.project_name,
-        project_code: a.project_code,
-        activities: []
-      };
-    }
-    acc[key].activities.push(a);
-    return acc;
-  }, {});
+  const formatShortDate = (dateStr) => {
+    if (!dateStr) return '–';
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  };
 
   if (loading) {
     return (
@@ -157,10 +207,7 @@ export default function ProjectActivityAssignments({ userId }) {
     );
   }
 
-  // Hide section completely if user doesn't have access
-  if (!hasAccess) {
-    return null;
-  }
+  if (!hasAccess) return null;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
@@ -176,32 +223,16 @@ export default function ProjectActivityAssignments({ userId }) {
               <p className="text-xs text-gray-500">{stats.totalAssignments} assignments across {stats.totalProjects} projects</p>
             </div>
           </div>
-          
-          {/* Stats Pills */}
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-              {stats.notStartedCount} Pending
-            </span>
-            <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-medium">
-              {stats.inProgressCount} In Progress
-            </span>
-            <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-xs font-medium">
-              {stats.completedCount} Completed
-            </span>
+            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">{stats.notStartedCount} Pending</span>
+            <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-medium">{stats.inProgressCount} In Progress</span>
+            <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-xs font-medium">{stats.completedCount} Completed</span>
           </div>
         </div>
-
-        {/* Filter Tabs */}
         <div className="flex items-center gap-2 mt-3">
           {['all', 'pending', 'in-progress', 'completed'].map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                filter === f 
-                  ? 'bg-purple-600 text-white' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${filter === f ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
               {f === 'all' ? 'All' : f === 'pending' ? 'Pending' : f === 'in-progress' ? 'In Progress' : 'Completed'}
             </button>
@@ -209,150 +240,210 @@ export default function ProjectActivityAssignments({ userId }) {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        {Object.keys(groupedByProject).length === 0 ? (
+      {/* Table */}
+      <div className="overflow-x-auto">
+        {filteredAssignments.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
             <ClipboardDocumentListIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
             <p>No activities assigned to you</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {Object.values(groupedByProject).map(project => (
-              <div key={project.project_id} className="border border-gray-200 rounded-lg overflow-hidden">
-                {/* Project Header */}
-                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                  <p className="font-semibold text-gray-800 text-sm">{project.project_name}</p>
-                  <p className="text-xs text-gray-500">{project.project_code} • {project.activities.length} activities</p>
-                </div>
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-500 uppercase tracking-wider">Project</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-500 uppercase tracking-wider">Activity</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Plan Hrs</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Manhours</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Qty Asgn</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Qty Done</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredAssignments.map((activity) => {
+                const rowKey = `${activity.project_id}-${activity.activity_id}`;
+                const isEditing = editingId === rowKey;
+                const isExpanded = expandedRows[rowKey];
+                const isDuePast = activity.due_date && new Date(activity.due_date) < new Date() && activity.status !== 'Completed';
+                const dailyEntries = activity.daily_entries || [];
+                const qtyAssigned = parseFloat(activity.qty_assigned) || 0;
+                const qtyDone = parseFloat(activity.qty_completed) || 0;
+                const balance = qtyAssigned - qtyDone;
 
-                {/* Activities Table */}
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left py-2 px-3 font-medium text-gray-500 uppercase">Activity</th>
-                      <th className="text-left py-2 px-2 font-medium text-gray-500 uppercase">Discipline</th>
-                      <th className="text-center py-2 px-2 font-medium text-gray-500 uppercase bg-purple-50">Qty Asgn</th>
-                      <th className="text-center py-2 px-2 font-medium text-gray-500 uppercase bg-purple-50">Qty Done</th>
-                      <th className="text-center py-2 px-2 font-medium text-gray-500 uppercase bg-blue-50">Plan Hrs</th>
-                      <th className="text-center py-2 px-2 font-medium text-gray-500 uppercase bg-blue-50">Actual Hrs</th>
-                      <th className="text-center py-2 px-2 font-medium text-gray-500 uppercase bg-blue-50">Due</th>
-                      <th className="text-center py-2 px-2 font-medium text-gray-500 uppercase bg-blue-50">Status</th>
-                      <th className="text-left py-2 px-2 font-medium text-gray-500 uppercase bg-amber-50">Remarks</th>
-                      <th className="py-2 px-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {project.activities.map(activity => {
-                      const rowKey = `${activity.project_id}-${activity.activity_id}`;
-                      const isEditing = editingId === rowKey;
+                return (
+                  <Fragment key={rowKey}>
+                    {/* Main Activity Row */}
+                    <tr className={`hover:bg-gray-50/80 transition-colors ${isDuePast ? 'bg-red-50/30' : ''}`}>
+                      {/* Project */}
+                      <td className="py-2.5 px-3 align-middle">
+                        <div className="font-mono text-[11px] text-purple-700 font-semibold">{activity.project_code || '–'}</div>
+                        <div className="text-[10px] text-gray-500 truncate max-w-[120px]" title={activity.project_name}>{activity.project_name}</div>
+                      </td>
 
-                      return (
-                        <tr key={rowKey} className="border-t border-gray-100 hover:bg-gray-50">
-                          <td className="py-2 px-3 font-medium text-gray-800">{activity.activity_name}</td>
-                          <td className="py-2 px-2 text-gray-600">{activity.discipline}</td>
-                          <td className="py-2 px-2 text-center bg-purple-50/50">{activity.qty_assigned || '–'}</td>
-                          <td className="py-2 px-2 text-center bg-purple-50/50">
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                value={editForm.qty_completed}
-                                onChange={(e) => setEditForm({...editForm, qty_completed: e.target.value})}
-                                className="w-14 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                                min="0"
-                              />
-                            ) : (
-                              activity.qty_completed || '–'
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-center bg-blue-50/50">{activity.planned_hours || '–'}</td>
-                          <td className="py-2 px-2 text-center bg-blue-50/50">
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                value={editForm.actual_hours}
-                                onChange={(e) => setEditForm({...editForm, actual_hours: e.target.value})}
-                                className="w-14 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                                min="0"
-                                step="0.5"
-                              />
-                            ) : (
-                              activity.actual_hours || '–'
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-center bg-blue-50/50 text-gray-600">
-                            {activity.due_date ? new Date(activity.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '–'}
-                          </td>
-                          <td className="py-2 px-2 text-center bg-blue-50/50">
-                            {isEditing ? (
-                              <select
-                                value={editForm.status}
-                                onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-                                className="px-1 py-0.5 text-xs border border-gray-300 rounded"
-                              >
-                                <option value="Not Started">Not Started</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Completed">Completed</option>
-                                <option value="On Hold">On Hold</option>
-                              </select>
-                            ) : (
-                              <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusBadge(activity.status)}`}>
-                                {activity.status}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 bg-amber-50/50">
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={editForm.remarks}
-                                onChange={(e) => setEditForm({...editForm, remarks: e.target.value})}
-                                className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded"
-                                placeholder="Add remarks..."
-                              />
-                            ) : (
-                              <span className="text-gray-600 truncate block max-w-[120px]" title={activity.remarks}>
-                                {activity.remarks || '–'}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            {isEditing ? (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={saveProgress}
-                                  disabled={saving}
-                                  className="p-1 text-green-600 hover:bg-green-100 rounded"
-                                  title="Save"
-                                >
-                                  <CheckCircleIcon className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={cancelEditing}
-                                  className="p-1 text-gray-400 hover:bg-gray-100 rounded"
-                                  title="Cancel"
-                                >
-                                  <XMarkIcon className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => startEditing(activity)}
-                                className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                                title="Update Progress"
-                              >
-                                <PencilSquareIcon className="w-4 h-4" />
+                      {/* Activity */}
+                      <td className="py-2.5 px-3 align-middle">
+                        <div className="font-medium text-gray-900 text-[11px]">{activity.activity_name}</div>
+                        {activity.activity_description && <div className="text-[10px] text-gray-400 truncate max-w-[200px]" title={activity.activity_description}>{activity.activity_description}</div>}
+                      </td>
+
+                      {/* Plan Hrs */}
+                      <td className="py-2.5 px-2 text-center align-middle text-gray-600">{activity.planned_hours || 0}</td>
+
+                      {/* Manhours */}
+                      <td className="py-2.5 px-2 text-center align-middle font-medium text-blue-600">{activity.actual_hours || 0}</td>
+
+                      {/* Qty Asgn */}
+                      <td className="py-2.5 px-2 text-center align-middle text-gray-600">{qtyAssigned}</td>
+
+                      {/* Qty Done */}
+                      <td className="py-2.5 px-2 text-center align-middle font-medium text-purple-600">{qtyDone}</td>
+
+                      {/* Balance */}
+                      <td className="py-2.5 px-2 text-center align-middle">
+                        <span className={`font-medium ${balance > 0 ? 'text-amber-600' : balance === 0 ? 'text-green-600' : 'text-red-500'}`}>{balance}</span>
+                      </td>
+
+                      {/* Due Date */}
+                      <td className="py-2.5 px-2 text-center align-middle">
+                        {isEditing ? (
+                          <input type="date" value={editForm.due_date} onChange={(e) => setEditForm({...editForm, due_date: e.target.value})}
+                            className="w-24 px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:border-blue-500 focus:outline-none" />
+                        ) : (
+                          <span className={`text-[10px] ${isDuePast ? 'text-red-500 font-semibold' : 'text-gray-600'}`}>{formatShortDate(activity.due_date)}</span>
+                        )}
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-2.5 px-2 text-center align-middle">
+                        {isEditing ? (
+                          <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})}
+                            className="px-1 py-0.5 text-[10px] border border-gray-300 rounded">
+                            <option value="Not Started">Not Started</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                            <option value="On Hold">On Hold</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadge(activity.status)}`}>{activity.status}</span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-2.5 px-2 text-center align-middle">
+                        <div className="flex items-center justify-center gap-0.5">
+                          {isEditing ? (
+                            <>
+                              <button onClick={saveProgress} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors" title="Save">
+                                <CheckCircleIcon className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
+                              <button onClick={cancelEditing} className="p-1 text-gray-400 hover:bg-gray-100 rounded transition-colors" title="Cancel">
+                                <XMarkIcon className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => addDailyEntry(activity)} disabled={saving}
+                                className="p-1 text-emerald-600 hover:bg-emerald-100 rounded transition-colors" title="Add Daily Entry">
+                                <PlusIcon className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => startEditing(activity)}
+                                className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Status/Date">
+                                <PencilSquareIcon className="w-3.5 h-3.5" />
+                              </button>
+                              {dailyEntries.length > 0 && (
+                                <button onClick={() => toggleExpand(rowKey)}
+                                  className="p-1 text-gray-500 hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
+                                  {isExpanded ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Daily Entry Sub-Rows */}
+                    {isExpanded && dailyEntries.length > 0 && (
+                      <tr>
+                        <td colSpan={10} className="px-3 py-2 bg-slate-50/80">
+                          <div className="ml-4 border-l-2 border-purple-200 pl-3">
+                            <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1.5">Daily Entries</div>
+                            <table className="w-full text-[10px]">
+                              <thead>
+                                <tr className="text-gray-400 uppercase">
+                                  <th className="text-left py-1 pr-2 font-semibold">Date</th>
+                                  <th className="text-center py-1 px-2 font-semibold">Qty Done</th>
+                                  <th className="text-center py-1 px-2 font-semibold">Manhours</th>
+                                  <th className="text-left py-1 px-2 font-semibold">Remarks</th>
+                                  <th className="text-center py-1 pl-2 font-semibold w-8"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {dailyEntries.map((entry, eIdx) => {
+                                  const isLocked = entry.isLocked;
+                                  return (
+                                    <tr key={eIdx} className={`${isLocked ? 'text-gray-400' : 'text-gray-700'}`}>
+                                      <td className="py-1 pr-2">
+                                        <span className="text-[10px]">{formatShortDate(entry.date)}</span>
+                                      </td>
+                                      <td className="py-1 px-2 text-center">
+                                        {isLocked ? (
+                                          <span>{entry.qty_done || 0}</span>
+                                        ) : (
+                                          <input type="number" value={entry.qty_done || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'qty_done', e.target.value)}
+                                            onBlur={() => saveDailyEntries(activity)} min="0"
+                                            className="w-14 px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none" />
+                                        )}
+                                      </td>
+                                      <td className="py-1 px-2 text-center">
+                                        {isLocked ? (
+                                          <span>{entry.hours || 0}</span>
+                                        ) : (
+                                          <input type="number" value={entry.hours || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'hours', e.target.value)}
+                                            onBlur={() => saveDailyEntries(activity)} min="0" step="0.5"
+                                            className="w-14 px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none" />
+                                        )}
+                                      </td>
+                                      <td className="py-1 px-2">
+                                        {isLocked ? (
+                                          <span className="text-[10px] truncate max-w-[200px] block" title={entry.remarks}>{entry.remarks || '–'}</span>
+                                        ) : (
+                                          <input type="text" value={entry.remarks || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'remarks', e.target.value)}
+                                            onBlur={() => saveDailyEntries(activity)} placeholder="Remarks..."
+                                            className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:border-blue-500 focus:outline-none" />
+                                        )}
+                                      </td>
+                                      <td className="py-1 pl-2 text-center">
+                                        {!isLocked && (
+                                          <div className="flex items-center gap-0.5 justify-center">
+                                            <button onClick={() => { saveDailyEntries(activity); }} disabled={saving}
+                                              className="px-1.5 py-0.5 text-[9px] font-medium text-white bg-purple-600 hover:bg-purple-700 rounded transition-colors disabled:opacity-50" title="Submit entry">
+                                              {saving ? '...' : 'Submit'}
+                                            </button>
+                                            <button onClick={() => removeDailyEntry(activity, eIdx)} className="p-0.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove entry">
+                                              <XMarkIcon className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
@@ -360,16 +451,10 @@ export default function ProjectActivityAssignments({ userId }) {
       {assignments.length > 0 && (
         <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
           <div className="flex items-center gap-4">
-            <span className="text-gray-600">
-              <span className="font-semibold text-purple-600">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units completed
-            </span>
-            <span className="text-gray-600">
-              <span className="font-semibold text-blue-600">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hours logged
-            </span>
+            <span className="text-gray-600"><span className="font-semibold text-purple-600">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units</span>
+            <span className="text-gray-600"><span className="font-semibold text-blue-600">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hrs</span>
           </div>
-          <div className="text-gray-500">
-            {Math.round((stats.completedCount / stats.totalAssignments) * 100) || 0}% activities completed
-          </div>
+          <div className="text-gray-500">{Math.round((stats.completedCount / stats.totalAssignments) * 100) || 0}% done</div>
         </div>
       )}
     </div>
