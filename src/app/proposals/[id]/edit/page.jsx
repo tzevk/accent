@@ -351,6 +351,17 @@ Dispute Resolution
         }
       });
 
+      // Normalize date fields to YYYY-MM-DD (strip time/timezone from ISO strings)
+      [
+        'planned_start_date', 'planned_end_date', 'target_date',
+        'kickoff_meeting_date', 'internal_meeting_date', 'next_internal_meeting',
+        'quotation_date', 'enquiry_date',
+      ].forEach((key) => {
+        if (processed[key] && typeof processed[key] === 'string' && processed[key].includes('T')) {
+          processed[key] = processed[key].split('T')[0];
+        }
+      });
+
   // No annexure_* mapping — API persists frontend fields directly now
 
       const res = await fetch(`/api/proposals/${proposalId}`, {
@@ -359,7 +370,11 @@ Dispute Resolution
         body: JSON.stringify(processed),
       });
       const result = await res.json();
-      alert(result?.success ? 'Proposal saved successfully!' : 'Failed to save proposal.');
+      if (result?.success) {
+        alert('Proposal saved successfully!');
+      } else {
+        alert('Failed to save proposal: ' + (result?.details || result?.error || 'Unknown error'));
+      }
     } catch (e) {
       alert('Error saving proposal: ' + e.message);
     }
@@ -1659,7 +1674,7 @@ function CommercialsForm({ proposalData, setProposalData }) {
 function QuotationForm({ proposalData, setProposalData }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
   const [termsOpen, setTermsOpen] = useState(false);
-  const [scopeTab, setScopeTab] = useState('schedule');
+  const [scopeTab, setScopeTab] = useState('scope_summary');
 
   return (
     <div>
@@ -1778,6 +1793,13 @@ function QuotationForm({ proposalData, setProposalData }) {
             <div className="flex items-center gap-2 mb-3">
               <button
                 type="button"
+                onClick={() => setScopeTab('scope_summary')}
+                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${scopeTab === 'scope_summary' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                Scope Summary
+              </button>
+              <button
+                type="button"
                 onClick={() => setScopeTab('documents')}
                 className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${scopeTab === 'documents' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
@@ -1792,6 +1814,9 @@ function QuotationForm({ proposalData, setProposalData }) {
               </button>
             </div>
             <div className="w-full px-3 py-3 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-800 min-h-[120px]">
+              {scopeTab === 'scope_summary' && (
+                <div className="whitespace-pre-line">{proposalData.description || <span className="text-gray-400">No scope summary defined. Edit it in the Scope of Work tab.</span>}</div>
+              )}
               {scopeTab === 'documents' && renderTextList(proposalData.input_document)}
               {scopeTab === 'deliverables' && renderTextList(proposalData.list_of_deliverables)}
             </div>
@@ -2574,65 +2599,16 @@ function Text({ label, value, onChange = () => {}, placeholder = '', required = 
 }
 
 function ProposalIdField({ label, value, onChange }) {
-  // Auto-generate prefix up to month: ATSPL/Q/MM/
-  // User can edit the suffix part after the prefix
-  const generatePrefix = useCallback(() => {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    return `ATSPL/Q/${month}/`;
-  }, []);
-
-  const [prefix] = useState(generatePrefix());
-  
-  // Extract suffix from value (everything after the auto-generated prefix pattern)
-  const extractSuffix = useCallback((val) => {
-    if (!val) return '';
-    const s = String(val).trim();
-    // Match pattern like ATSPL/Q/MM/ and get everything after
-    const match = s.match(/^ATSPL\/Q\/\d{2}\/(.*)$/);
-    if (match) {
-      return match[1] || '';
-    }
-    // If it doesn't match our pattern, check if it starts with something like ATSPL
-    if (s.startsWith('ATSPL')) {
-      // Try to find the last slash and get content after it
-      const lastSlashIndex = s.lastIndexOf('/');
-      if (lastSlashIndex !== -1 && lastSlashIndex < s.length - 1) {
-        return s.substring(lastSlashIndex + 1);
-      }
-    }
-    return '';
-  }, []);
-
-  const [suffix, setSuffix] = useState(() => extractSuffix(value));
-
-  // Keep suffix in sync if parent value changes
-  useEffect(() => {
-    const extracted = extractSuffix(value);
-    setSuffix(extracted);
-  }, [value, extractSuffix]);
-
-  const handleSuffixChange = (newSuffix) => {
-    setSuffix(newSuffix);
-    onChange(`${prefix}${newSuffix}`);
-  };
-
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
-      <div className="flex items-center">
-        <span className="px-3 py-2 bg-gray-100 border border-r-0 border-gray-300 rounded-l-lg text-gray-600 text-sm whitespace-nowrap">
-          {prefix}
-        </span>
-        <input
-          type="text"
-          value={suffix}
-          onChange={e => handleSuffixChange(e.target.value)}
-          placeholder="Enter ID suffix"
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
-        />
-      </div>
-      <p className="text-xs text-gray-500 mt-1">Auto-generated prefix: {prefix} — enter your suffix</p>
+      <input
+        type="text"
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Enter Proposal ID"
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
+      />
     </div>
   );
 }

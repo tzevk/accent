@@ -150,7 +150,7 @@ export default function LeadDetails({ params }) {
       const result = await fetchJSON('/api/proposals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, lead_id: lead.id, proposal_id: lead.lead_id })
+        body: JSON.stringify({ ...payload, lead_id: lead.id })
       });
 
       if (!result.success) {

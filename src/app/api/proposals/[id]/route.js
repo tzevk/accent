@@ -636,17 +636,24 @@ export async function PUT(request, { params }) {
     );
     const existing = new Set(cols.map(c => c.COLUMN_NAME));
 
-    // Helper to push if column exists
+    // Helper to push if column exists (with dedup to avoid duplicate SET clauses)
     const setParts = [];
     const values = [];
+    const pushedColumns = new Set();
     const pushIf = (colName, val) => {
-      if (existing.has(colName)) {
+      if (existing.has(colName) && !pushedColumns.has(colName)) {
+        pushedColumns.add(colName);
         setParts.push(`${colName} = ?`);
-        // Convert empty strings to null for date/datetime fields
-        // Check if field name suggests it's a date type or if value is empty string
-        const isDateField = colName.includes('date') || colName.includes('_at') || colName.includes('meeting');
-        if (isDateField && val === '') {
+        // Detect date/datetime fields by name
+        const isDateField = colName.includes('date') || colName.includes('_at');
+        // Also treat specific known DATE columns that contain 'meeting' in the name
+        const isDateMeetingField = colName === 'kickoff_meeting_date' || colName === 'internal_meeting_date' || colName === 'next_internal_meeting';
+        if ((isDateField || isDateMeetingField) && val === '') {
           values.push(null);
+        } else if ((isDateField || isDateMeetingField) && typeof val === 'string' && val.length > 10) {
+          // Strip time/timezone from ISO date strings for MySQL DATE columns (e.g. '2025-01-15T00:00:00.000Z' → '2025-01-15')
+          const dateOnly = val.split('T')[0];
+          values.push(dateOnly || null);
         } else {
           values.push(val);
         }
@@ -722,11 +729,9 @@ export async function PUT(request, { params }) {
     // Priority/Progress fields
     pushIf('priority', body.priority ?? null);
     pushIf('progress', body.progress ?? null);
-    pushIf('project_id', body.project_id ?? null);    // Ensure enquiry_no mirrors lead_id when lead_id is provided; otherwise accept explicit enquiry_no
-    if (existing.has('enquiry_no')) {
-      const enquiryVal = body.lead_id ?? body.enquiry_no ?? null;
-      pushIf('enquiry_no', enquiryVal);
-    }
+    pushIf('project_id', body.project_id ?? null);
+    // enquiry_no: prefer lead_id, then enquiry_no, then enquiry_number
+    pushIf('enquiry_no', body.lead_id ?? body.enquiry_no ?? body.enquiry_number ?? null);
 
     // Quotation / related fields
     pushIf('client_name', body.client_name ?? body.client ?? null);
@@ -737,7 +742,6 @@ export async function PUT(request, { params }) {
     pushIf('quotation_number', body.quotation_number ?? body.quotation_no ?? null);
     pushIf('quotation_date', body.quotation_date ?? body.date_of_quotation ?? null);
     pushIf('date_of_quotation', body.date_of_quotation ?? body.quotation_date ?? null);
-    pushIf('enquiry_no', body.enquiry_no ?? body.enquiry_number ?? null);
     pushIf('enquiry_number', body.enquiry_number ?? body.enquiry_no ?? null);
     pushIf('enquiry_date', body.enquiry_date ?? body.date_of_enquiry ?? null);
     pushIf('date_of_enquiry', body.date_of_enquiry ?? body.enquiry_date ?? null);
@@ -818,7 +822,7 @@ export async function PUT(request, { params }) {
   } catch (error) {
     console.error('Database error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update proposal' },
+      { success: false, error: 'Failed to update proposal', details: error.message },
       { status: 500 }
     );
   } finally {

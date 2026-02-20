@@ -13,11 +13,10 @@ import {
   BuildingOfficeIcon,
   ShieldCheckIcon,
   ChatBubbleLeftRightIcon,
-  CurrencyDollarIcon,
   TicketIcon,
   BanknotesIcon,
-  ClipboardDocumentListIcon,
-  CalendarDaysIcon
+  CalendarDaysIcon,
+  ChartBarSquareIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -236,6 +235,23 @@ export default function Sidebar() {
             )}
           </div>
         </div>
+
+        {/* Reports section - admin only */}
+        {isAdmin && (
+          <div className="px-2.5 pt-3.5 pb-2">
+            <div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
+              <span>REPORTS</span>
+            </div>
+            <div className="space-y-1 mt-1">
+              <NavRow 
+                icon={ChartBarSquareIcon} 
+                label="Project Activities" 
+                href="/admin/project-activities-report" 
+                active={pathname.startsWith('/admin/project-activities-report')} 
+              />
+            </div>
+          </div>
+        )}
 
         </div>
     </aside>

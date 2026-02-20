@@ -33,6 +33,7 @@ const navigationConfig = [
 // Reports menu items
 const reportsMenuConfig = [
   { name: 'Salary Slip', href: '/reports', icon: DocumentCurrencyDollarIcon, resource: 'reports' },
+  { name: 'Project Activities', href: '/reports/project-activities', icon: ChartBarIcon, resource: 'reports' },
 ];
 
 // Admin menu items with their resource keys
