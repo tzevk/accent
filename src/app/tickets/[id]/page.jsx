@@ -300,30 +300,53 @@ export default function TicketDetailPage() {
               {/* Comments List */}
               {ticket.comments && ticket.comments.length > 0 ? (
                 <div className="space-y-4 mb-6">
-                  {ticket.comments.map((comment) => (
-                    <div key={comment.id} className="border-l-4 border-indigo-400 bg-gray-50 rounded-r-lg p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-                          {comment.user_name?.charAt(0)?.toUpperCase() || '?'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-semibold text-gray-900">{comment.user_name}</span>
-                            <span className="text-xs text-gray-500">
-                              {new Date(comment.created_at).toLocaleString()}
-                            </span>
+                  {ticket.comments.map((comment) => {
+                    const isAdminReply = comment.commenter_is_admin || comment.user_id !== ticket.user_id;
+                    return (
+                      <div 
+                        key={comment.id} 
+                        className={`border-l-4 rounded-r-lg p-4 ${
+                          isAdminReply 
+                            ? 'border-green-500 bg-green-50' 
+                            : 'border-indigo-400 bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 ${
+                            isAdminReply ? 'bg-green-600' : 'bg-indigo-600'
+                          }`}>
+                            {isAdminReply ? '👤' : comment.user_name?.charAt(0)?.toUpperCase() || '?'}
                           </div>
-                          <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{comment.comment}</p>
-                          {comment.attachments && comment.attachments.length > 0 && (
-                            <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600">
-                              <PaperClipIcon className="h-3 w-3" />
-                              {comment.attachments.length} attachment(s)
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`font-semibold ${isAdminReply ? 'text-green-900' : 'text-gray-900'}`}>
+                                  {comment.user_name}
+                                </span>
+                                {isAdminReply && (
+                                  <span className="text-xs px-2 py-0.5 bg-green-200 text-green-800 rounded-full font-medium">
+                                    Support Team
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {new Date(comment.created_at).toLocaleString()}
+                              </span>
                             </div>
-                          )}
+                            <p className={`whitespace-pre-wrap leading-relaxed ${isAdminReply ? 'text-green-800' : 'text-gray-700'}`}>
+                              {comment.comment}
+                            </p>
+                            {comment.attachments && comment.attachments.length > 0 && (
+                              <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600">
+                                <PaperClipIcon className="h-3 w-3" />
+                                {comment.attachments.length} attachment(s)
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="bg-gray-50 rounded-lg p-8 text-center mb-6">

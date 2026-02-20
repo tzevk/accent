@@ -26,36 +26,6 @@ export async function GET(request) {
 
     const db = await dbConnect();
     
-    // Create companies table if it doesn't exist
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS companies (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        company_id VARCHAR(50) UNIQUE,
-        company_name VARCHAR(255) NOT NULL,
-        industry VARCHAR(100),
-        company_size VARCHAR(50),
-        website VARCHAR(255),
-        phone VARCHAR(20),
-        email VARCHAR(255),
-        address TEXT,
-        city VARCHAR(100),
-        state VARCHAR(100),
-        country VARCHAR(100),
-        postal_code VARCHAR(20),
-        description TEXT,
-        founded_year INT,
-        revenue VARCHAR(100),
-        notes TEXT,
-        location VARCHAR(255),
-        contact_person VARCHAR(100),
-        designation VARCHAR(100),
-        mobile_number VARCHAR(20),
-        sector VARCHAR(100),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-    
     // Build base SQL and optionally apply a search WHERE clause (case-insensitive)
     let sql = `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
        FROM companies c
@@ -135,38 +105,6 @@ export async function POST(request) {
 
     db = await dbConnect();
 
-    // Create companies table if it doesn't exist (ensure company_id uniqueness)
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS companies (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        company_id VARCHAR(50) UNIQUE,
-        company_name VARCHAR(255) NOT NULL,
-        industry VARCHAR(100),
-        company_size VARCHAR(50),
-        website VARCHAR(255),
-        phone VARCHAR(20),
-        email VARCHAR(255),
-        address TEXT,
-        city VARCHAR(100),
-        state VARCHAR(100),
-        country VARCHAR(100),
-        postal_code VARCHAR(20),
-        description TEXT,
-        founded_year INT,
-        revenue VARCHAR(100),
-        notes TEXT,
-        location VARCHAR(255),
-        contact_person VARCHAR(100),
-        designation VARCHAR(100),
-        mobile_number VARCHAR(20),
-        sector VARCHAR(100),
-        gstin VARCHAR(20),
-        pan_number VARCHAR(15),
-        company_profile TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
     // If company_id provided, check for duplicates
     if (company_id) {
       const [existing] = await db.execute('SELECT id FROM companies WHERE company_id = ? LIMIT 1', [company_id]);

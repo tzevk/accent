@@ -11,13 +11,17 @@ async function ensureTicketsTable() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         ticket_number VARCHAR(20) UNIQUE NOT NULL,
         user_id INT NOT NULL,
-        subject VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
         description TEXT NOT NULL,
         category ENUM('payroll', 'leave', 'policy', 'access_cards', 'seating', 'maintenance', 'general_request', 'confidential') DEFAULT 'general_request',
         priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
         status ENUM('new', 'under_review', 'in_progress', 'waiting_for_employee', 'resolved', 'closed') DEFAULT 'new',
-        routed_to ENUM('hr', 'admin') NOT NULL,
-        attachment_url VARCHAR(500),
+        screenshots JSON,
+        browser_info TEXT,
+        page_url VARCHAR(500),
+        steps_to_reproduce TEXT,
+        expected_behavior TEXT,
+        actual_behavior TEXT,
         assigned_to INT,
         resolution_notes TEXT,
         resolved_at DATETIME,
@@ -27,7 +31,6 @@ async function ensureTicketsTable() {
         INDEX idx_user_id (user_id),
         INDEX idx_status (status),
         INDEX idx_priority (priority),
-        INDEX idx_routed_to (routed_to),
         INDEX idx_category (category),
         INDEX idx_created_at (created_at)
       )
@@ -49,19 +52,6 @@ async function ensureTicketsTable() {
   } finally {
     connection.release();
   }
-}
-
-// Route ticket based on category
-function routeTicketByCategory(category) {
-  const hrCategories = ['payroll', 'leave', 'policy', 'confidential'];
-  const adminCategories = ['access_cards', 'seating', 'maintenance', 'general_request'];
-  
-  if (hrCategories.includes(category)) {
-    return 'hr';
-  } else if (adminCategories.includes(category)) {
-    return 'admin';
-  }
-  return 'admin'; // Default to admin
 }
 
 // Generate unique ticket number
@@ -101,7 +91,6 @@ export async function GET(request) {
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
     const category = searchParams.get('category');
-    const routedTo = searchParams.get('routed_to');
     const showAll = searchParams.get('all') === 'true';
     
     connection = await dbConnect();
@@ -109,6 +98,7 @@ export async function GET(request) {
     let query = `
       SELECT 
         t.*,
+        t.title AS subject,
         u.full_name as user_name,
         u.email as user_email,
         a.full_name as assigned_to_name,
@@ -121,8 +111,10 @@ export async function GET(request) {
     `;
     const params = [];
     
-    // Only show own tickets unless admin or showAll
-    if (!session.user.is_super_admin && !showAll) {
+    // Only show own tickets unless super admin requesting all
+    // Security: showAll only works for super admins
+    const canSeeAll = session.user.is_super_admin && showAll;
+    if (!canSeeAll) {
       query += ` AND t.user_id = ?`;
       params.push(session.user.id);
     }
@@ -140,11 +132,6 @@ export async function GET(request) {
     if (category) {
       query += ` AND t.category = ?`;
       params.push(category);
-    }
-    
-    if (routedTo) {
-      query += ` AND t.routed_to = ?`;
-      params.push(routedTo);
     }
     
     query += ` ORDER BY 
@@ -183,8 +170,7 @@ export async function POST(request) {
       subject,
       description,
       category = 'general_request',
-      priority = 'medium',
-      attachment_url
+      priority = 'medium'
     } = body;
     
     if (!subject || !description) {
@@ -197,36 +183,30 @@ export async function POST(request) {
     connection = await dbConnect();
     const ticketNumber = await generateTicketNumber(connection);
     
-    // Auto-route ticket based on category
-    const routedTo = routeTicketByCategory(category);
-    
     const [result] = await connection.execute(
       `INSERT INTO support_tickets (
-        ticket_number, user_id, subject, description, category, priority,
-        routed_to, attachment_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ticket_number, user_id, title, description, category, priority
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
       [
         ticketNumber,
         session.user.id,
         subject,
         description,
         category,
-        priority,
-        routedTo,
-        attachment_url || null
+        priority
       ]
     );
     
     // Fetch the created ticket
     const [tickets] = await connection.execute(
-      `SELECT * FROM support_tickets WHERE id = ?`,
+      `SELECT *, title AS subject FROM support_tickets WHERE id = ?`,
       [result.insertId]
     );
     
     return NextResponse.json({ 
       success: true, 
       data: tickets[0],
-      message: `Ticket ${ticketNumber} created successfully. Routed to ${routedTo.toUpperCase()}.`
+      message: `Ticket ${ticketNumber} created successfully.`
     });
   } catch (error) {
     console.error('Error creating ticket:', error);
@@ -256,7 +236,7 @@ export async function PUT(request) {
     
     // Check if user owns the ticket or is admin
     const [existing] = await connection.execute(
-      `SELECT * FROM support_tickets WHERE id = ?`,
+      `SELECT *, title AS subject FROM support_tickets WHERE id = ?`,
       [id]
     );
     
@@ -315,7 +295,7 @@ export async function PUT(request) {
     
     // Fetch updated ticket
     const [updated] = await connection.execute(
-      `SELECT * FROM support_tickets WHERE id = ?`,
+      `SELECT *, title AS subject FROM support_tickets WHERE id = ?`,
       [id]
     );
     

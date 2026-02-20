@@ -2,6 +2,9 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
 
+// Flag to run schema DDL at most once per process
+let _usersSchemaReady = false;
+
 // Ensure users table exists and has proper structure for role-based system
 async function ensureUsersTable(db) {
   await db.execute(`
@@ -81,7 +84,7 @@ export async function GET(request) {
     const offset = (page - 1) * limit;
 
     db = await dbConnect();
-    await ensureUsersTable(db);
+    if (!_usersSchemaReady) { await ensureUsersTable(db); _usersSchemaReady = true; }
 
     const [rows] = await db.execute(
       `SELECT u.*, 
@@ -148,7 +151,7 @@ export async function POST(request) {
     }
 
     db = await dbConnect();
-    await ensureUsersTable(db);
+    if (!_usersSchemaReady) { await ensureUsersTable(db); _usersSchemaReady = true; }
 
     // check duplicates
     const [existing] = await db.execute(
@@ -255,7 +258,7 @@ export async function PUT(request) {
     if (!data.id) return NextResponse.json({ success: false, error: 'User id is required' }, { status: 400 });
 
     db = await dbConnect();
-    await ensureUsersTable(db);
+    if (!_usersSchemaReady) { await ensureUsersTable(db); _usersSchemaReady = true; }
 
     const [existing] = await db.execute('SELECT id FROM users WHERE id = ? LIMIT 1', [data.id]);
     if (!existing || existing.length === 0) {
@@ -331,7 +334,7 @@ export async function DELETE(request) {
     if (!id) return NextResponse.json({ success: false, error: 'User id is required' }, { status: 400 });
 
     db = await dbConnect();
-    await ensureUsersTable(db);
+    if (!_usersSchemaReady) { await ensureUsersTable(db); _usersSchemaReady = true; }
 
     const [existing] = await db.execute('SELECT id FROM users WHERE id = ? LIMIT 1', [id]);
     if (!existing || existing.length === 0) {

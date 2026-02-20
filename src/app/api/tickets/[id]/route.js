@@ -23,6 +23,7 @@ export async function GET(request, { params }) {
     const [tickets] = await connection.execute(
       `SELECT 
         t.*,
+        t.title AS subject,
         u.full_name as user_name,
         u.email as user_email,
         a.full_name as assigned_to_name,
@@ -46,17 +47,25 @@ export async function GET(request, { params }) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
     }
     
-    // Fetch comments
-    const [comments] = await connection.execute(
-      `SELECT 
+    // Fetch comments - filter out internal comments for non-admin users
+    let commentQuery = `
+      SELECT 
         c.*,
-        u.full_name as user_name
+        u.full_name as user_name,
+        u.is_super_admin as commenter_is_admin
       FROM ticket_comments c
       LEFT JOIN users u ON c.user_id = u.id
       WHERE c.ticket_id = ?
-      ORDER BY c.created_at ASC`,
-      [id]
-    );
+    `;
+    
+    // Regular users should not see internal comments
+    if (!session.user.is_super_admin) {
+      commentQuery += ` AND (c.is_internal = 0 OR c.is_internal IS NULL)`;
+    }
+    
+    commentQuery += ` ORDER BY c.created_at ASC`;
+    
+    const [comments] = await connection.execute(commentQuery, [id]);
     
     return NextResponse.json({ 
       success: true, 

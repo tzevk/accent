@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
-// Helper to ensure all required columns exist in proposals table
+// Helper to ensure all required columns exist in proposals table (kept for reference, no longer called per-request)
+// eslint-disable-next-line no-unused-vars
 async function ensureProposalColumns(pool) {
   const alterStatements = [
     // Quotation related fields
@@ -101,9 +102,6 @@ export async function GET(request) {
     if (auth instanceof Response) return auth;
     
     pool = await dbConnect();
-    
-    // Ensure all columns exist before fetching
-    await ensureProposalColumns(pool);
     
     const [rows] = await pool.execute(
       'SELECT * FROM proposals ORDER BY created_at DESC'

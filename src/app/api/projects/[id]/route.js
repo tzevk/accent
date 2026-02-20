@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
+import { getTableColumns, getPrimaryKeyColumn } from '@/utils/schema-cache';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -42,15 +43,10 @@ export async function GET(request, { params }) {
   try {
     db = await dbConnect();
 
-    // Inspect schema to avoid referencing missing columns (some envs have different project schemas)
+    // Use cached schema inspection instead of INFORMATION_SCHEMA per request
     let pkCol = null;
     try {
-      const [pkRows] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
-      );
-      if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
-        pkCol = pkRows[0].COLUMN_NAME;
-      }
+      pkCol = await getPrimaryKeyColumn(db, 'projects');
     } catch (schemaErr) {
       console.warn('Could not inspect primary key for projects table:', schemaErr.message || schemaErr);
     }
@@ -59,15 +55,9 @@ export async function GET(request, { params }) {
     let hasProjectIdCol = false;
     let hasProjectCodeCol = false;
     try {
-      const [cols] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME IN ('project_id','project_code')`
-      );
-      if (cols && cols.length > 0) {
-        for (const c of cols) {
-          if (c.COLUMN_NAME === 'project_id') hasProjectIdCol = true;
-          if (c.COLUMN_NAME === 'project_code') hasProjectCodeCol = true;
-        }
-      }
+      const cols = await getTableColumns(db, 'projects');
+      hasProjectIdCol = cols.has('project_id');
+      hasProjectCodeCol = cols.has('project_code');
     } catch (colErr) {
       console.warn('Could not inspect projects columns:', colErr.message || colErr);
     }
@@ -383,16 +373,11 @@ export async function PUT(request, context) {
       
       db = await dbConnect();
 
-    // Detect primary key column (usually 'id' or 'project_id')
+    // Detect primary key column using cached schema
     let pkCol = 'project_id'; // default fallback
     try {
-      const [pkRows] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
-      );
-      if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
-        pkCol = pkRows[0].COLUMN_NAME;
-      }
+      const cachedPk = await getPrimaryKeyColumn(db, 'projects');
+      if (cachedPk) pkCol = cachedPk;
     } catch (schemaErr) {
       // Fallback to default primary key
     }
@@ -569,14 +554,8 @@ export async function PUT(request, context) {
       }
     }
 
-    // Build UPDATE query - check which columns exist
-    // TODO: OPTIMIZE THIS - Cache column list at app startup or use Redis cache
-    // Checking INFORMATION_SCHEMA on every request is slow, but necessary for partial schemas
-    const [colRows] = await db.execute(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
-    );
-    const existingCols = new Set((colRows || []).map(c => c.COLUMN_NAME));
+    // Build UPDATE query - use cached column list
+    const existingCols = await getTableColumns(db, 'projects');
 
     const fieldValues = [
       ['name', name],
@@ -755,8 +734,8 @@ export async function PUT(request, context) {
             [projectId]
           );
 
-          // Helper to insert a user assignment row
-          const insertAssignment = async (userId, activity, userSpecificData = {}) => {
+          // Helper to build a row tuple for batch insert
+          const buildRow = (userId, activity, userSpecificData = {}) => {
             const activityName = activity.activity_name || activity.name || '';
             const subActivityName = activity.sub_activity_name || '';
             const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
@@ -768,23 +747,18 @@ export async function PUT(request, context) {
             const status = statusMap[userSpecificData.status || activity.status_completed] || userSpecificData.status || 'Not Started';
             const activityId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`;
             
-            await db.execute(
-              `INSERT INTO user_activity_assignments 
-               (id, user_id, project_id, activity_name, discipline_name, due_date, priority, estimated_hours, status, notes, assigned_date, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
-              [
-                activityId,
-                userId,
-                projectId,
-                fullActivityName,
-                activity.function_name || activity.discipline || '',
-                userSpecificData.due_date || activity.due_date || null,
-                priority,
-                parseFloat(userSpecificData.planned_hours || activity.planned_hours) || 0,
-                status,
-                userSpecificData.remarks || activity.deliverables || activity.remarks || ''
-              ]
-            );
+            return [
+              activityId,
+              userId,
+              projectId,
+              fullActivityName,
+              activity.function_name || activity.discipline || '',
+              userSpecificData.due_date || activity.due_date || null,
+              priority,
+              parseFloat(userSpecificData.planned_hours || activity.planned_hours) || 0,
+              status,
+              userSpecificData.remarks || activity.deliverables || activity.remarks || ''
+            ];
           };
 
           // Collect all valid user IDs to batch-verify
@@ -815,7 +789,8 @@ export async function PUT(request, context) {
             for (const row of existingUsers) validUserIds.add(row.id);
           }
 
-          // Insert assignments for each activity
+          // Collect all rows for batch insert
+          const batchRows = [];
           for (const activity of activities) {
             const insertedForActivity = new Set(); // avoid duplicates per activity
 
@@ -825,7 +800,7 @@ export async function PUT(request, context) {
                 const uid = parseInt(typeof u === 'object' ? u.user_id : u);
                 if (!isNaN(uid) && uid > 0 && validUserIds.has(uid) && !insertedForActivity.has(uid)) {
                   const userData = typeof u === 'object' ? u : {};
-                  await insertAssignment(uid, activity, userData);
+                  batchRows.push(buildRow(uid, activity, userData));
                   insertedForActivity.add(uid);
                 }
               }
@@ -835,10 +810,24 @@ export async function PUT(request, context) {
             if (activity.assigned_user && activity.assigned_user !== '') {
               const uid = parseInt(activity.assigned_user);
               if (!isNaN(uid) && uid > 0 && validUserIds.has(uid) && !insertedForActivity.has(uid)) {
-                await insertAssignment(uid, activity, {});
+                batchRows.push(buildRow(uid, activity, {}));
                 insertedForActivity.add(uid);
               }
             }
+          }
+
+          // Batch INSERT all rows at once (max ~500 per batch to avoid packet limits)
+          const BATCH_SIZE = 500;
+          for (let i = 0; i < batchRows.length; i += BATCH_SIZE) {
+            const batch = batchRows.slice(i, i + BATCH_SIZE);
+            const valuePlaceholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())').join(',');
+            const flatValues = batch.flat();
+            await db.execute(
+              `INSERT INTO user_activity_assignments 
+               (id, user_id, project_id, activity_name, discipline_name, due_date, priority, estimated_hours, status, notes, assigned_date, created_at, updated_at)
+               VALUES ${valuePlaceholders}`,
+              flatValues
+            );
           }
         }
       } catch (syncErr) {

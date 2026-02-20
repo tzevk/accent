@@ -77,43 +77,11 @@ export async function GET(request) {
 
     db = await dbConnect();
 
-    // Ensure projects table exists (best effort, mirrors core schema)
-    try {
-      await db.execute(`
-        CREATE TABLE IF NOT EXISTS projects (
-          id INT PRIMARY KEY AUTO_INCREMENT,
-          project_id VARCHAR(50) UNIQUE,
-          name VARCHAR(255) NOT NULL,
-          description TEXT,
-          company_id INT,
-          client_name VARCHAR(255),
-          project_manager VARCHAR(255),
-          start_date DATE,
-          end_date DATE,
-          budget DECIMAL(15,2),
-          status VARCHAR(50) DEFAULT 'NEW',
-          priority VARCHAR(50) DEFAULT 'MEDIUM',
-          progress INT DEFAULT 0,
-          notes TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-    } catch {} finally {
-      if (db) db.release();
-    }
-
-    // Detect if `budget` column exists on projects table; fall back if not
-    const dbName = process.env.DB_NAME || null;
+    // Use cached schema check instead of DDL + INFORMATION_SCHEMA
     let hasBudget = false;
     try {
-      if (dbName) {
-        const [cols] = await db.execute(
-          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'projects'`,
-          [dbName]
-        );
-        hasBudget = cols.some(c => c.COLUMN_NAME === 'budget');
-      }
+      const { hasColumn } = await import('@/utils/schema-cache');
+      hasBudget = await hasColumn(db, 'projects', 'budget');
     } catch (e) {
       console.warn('Failed to inspect projects table columns for analytics:', e?.message || e);
     }

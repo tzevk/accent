@@ -13,16 +13,6 @@ export async function GET(request, { params }) {
     // Get database connection
     const { dbConnect } = await import('@/utils/database');
     pool = await dbConnect();
-
-    // Ensure audit columns exist on both proposals and projects (best-effort)
-    try {
-      await pool.execute(`ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_by VARCHAR(255) DEFAULT NULL`);
-      await pool.execute(`ALTER TABLE proposals ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP NULL`);
-      await pool.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS converted_by VARCHAR(255) DEFAULT NULL`);
-      await pool.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS converted_at TIMESTAMP NULL`);
-    } catch (e) {
-      console.warn('Schema alter warnings during convert:', e?.message || e);
-    }
     
     const [rows] = await pool.execute(
       'SELECT * FROM proposals WHERE id = ?',

@@ -165,8 +165,17 @@ export default function Sidebar() {
               icon={TicketIcon} 
               label="Support Tickets" 
               href="/tickets" 
-              active={pathname.startsWith('/tickets')} 
+              active={pathname === '/tickets' || pathname.startsWith('/tickets/')} 
             />
+            {/* Ticket Management - admin only */}
+            {isAdmin && (
+              <NavRow 
+                icon={TicketIcon} 
+                label="Manage Tickets" 
+                href="/admin/tickets" 
+                active={pathname === '/admin/tickets'} 
+              />
+            )}
           </div>
         </div>
 

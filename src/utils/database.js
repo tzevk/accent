@@ -120,9 +120,11 @@ export async function dbConnect() {
     }
   }, FORCE_RELEASE_MS);
   
-  // Track connection creation for debugging
+  // Track connection creation for debugging (only in development — Error().stack is expensive)
   conn._acquiredAt = Date.now();
-  conn._acquiredStack = new Error().stack;
+  if (process.env.NODE_ENV === 'development') {
+    conn._acquiredStack = new Error().stack;
+  }
   
   // Wrap release to clear the timeout and prevent double-release
   const originalRelease = conn.release.bind(conn);

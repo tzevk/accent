@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { getTableColumns } from '@/utils/schema-cache';
 
 // GET all leads with pagination and filtering
 export async function GET(request) {
@@ -22,46 +23,6 @@ export async function GET(request) {
     const offset = (page - 1) * limit;
     
     db = await dbConnect();
-
-    // Ensure leads table exists with the columns dashboard expects
-    try {
-      await db.execute(`
-        CREATE TABLE IF NOT EXISTS leads (
-          id INT PRIMARY KEY AUTO_INCREMENT,
-          lead_id VARCHAR(50),
-          company_id INT NULL,
-          company_name VARCHAR(255),
-          contact_name VARCHAR(255),
-          contact_email VARCHAR(255),
-          inquiry_email VARCHAR(255),
-          cc_emails TEXT,
-          phone VARCHAR(50),
-          designation VARCHAR(255),
-          city VARCHAR(255),
-          project_description TEXT,
-          enquiry_type VARCHAR(100),
-          enquiry_status VARCHAR(100),
-          enquiry_date DATE,
-          lead_source VARCHAR(100),
-          priority VARCHAR(50),
-          notes TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-      `);
-      // Best-effort backfill for columns that may be missing on older schemas
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_id VARCHAR(50)');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_id INT');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS inquiry_email VARCHAR(255)');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS cc_emails TEXT');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS designation VARCHAR(255)');
-      await db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
-      await db.execute("ALTER TABLE leads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
-    } catch (schemaErr) {
-      console.warn('Leads table ensure failed (will continue, may already exist):', schemaErr?.message || schemaErr);
-    } finally {
-      if (db) db.release();
-    }
     
     // Build WHERE clause for filtering
     let whereClause = 'WHERE 1=1';
@@ -91,12 +52,11 @@ export async function GET(request) {
     
     const total = countRows[0].total;
     
-    // Validate and sanitize sort parameters based on existing columns
+    // Validate sort parameters using cached schema
     let allowedSortFields = ['created_at', 'enquiry_date', 'company_name', 'contact_name', 'enquiry_status', 'lead_id'];
     try {
-      const [cols] = await db.execute(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads'`);
-      const existing = new Set((cols || []).map(c => c.COLUMN_NAME));
-      allowedSortFields = allowedSortFields.filter(c => existing.has(c));
+      const existingCols = await getTableColumns(db, 'leads');
+      allowedSortFields = allowedSortFields.filter(c => existingCols.has(c));
       if (allowedSortFields.length === 0) allowedSortFields = ['created_at'];
     } catch {}
     const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : allowedSortFields[0];
@@ -259,19 +219,6 @@ export async function POST(request) {
     }
 
     db = await dbConnect();
-    
-    // Add columns if they don't exist
-    try {
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS lead_id VARCHAR(50)');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_id INT');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS inquiry_email VARCHAR(255)');
-      await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS cc_emails TEXT');
-        await db.execute('ALTER TABLE leads ADD COLUMN IF NOT EXISTS designation VARCHAR(255)');
-    } catch (err) {
-      console.warn('Columns might already exist:', err.message);
-    } finally {
-      if (db) db.release();
-    }
     
     // Convert empty company_id to null
     const companyIdValue = company_id && company_id !== '' ? company_id : null;

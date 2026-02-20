@@ -1,17 +1,16 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
+import { getPrimaryKeyColumn } from '@/utils/schema-cache';
 
-// Helper to detect primary key column for employees table
+// Flag to ensure schema DDL runs at most once per process
+let _employeesSchemaReady = false;
+
+// Helper to detect primary key column for employees table (cached)
 async function detectEmployeePrimaryKey(connection) {
   try {
-    const [pkRows] = await connection.execute(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND CONSTRAINT_NAME = 'PRIMARY'`
-    );
-    if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) {
-      return pkRows[0].COLUMN_NAME;
-    }
+    const pk = await getPrimaryKeyColumn(connection, 'employees');
+    if (pk) return pk;
   } catch (err) {
     console.warn('Could not detect employees primary key:', err.message);
   }
@@ -143,10 +142,12 @@ export async function GET(request) {
     const offset = (page - 1) * limit;
 
   connection = await dbConnect();
-  // Ensure base table exists; ignore errors silently to not break read
-  try { await ensureBaseEmployeesTable(connection); } catch {}
-  // Do not let schema changes block reads
-  try { await ensureEmployeesTable(connection); } catch {}
+  // Run schema DDL at most once per process
+  if (!_employeesSchemaReady) {
+    try { await ensureBaseEmployeesTable(connection); } catch {}
+    try { await ensureEmployeesTable(connection); } catch {}
+    _employeesSchemaReady = true;
+  }
 
     // Build WHERE clause for filtering (use alias to avoid ambiguity with self-join)
     let whereClause = 'WHERE 1=1';
@@ -288,8 +289,11 @@ export async function POST(request) {
     }
 
   const connection = await dbConnect();
-  await ensureBaseEmployeesTable(connection);
-  await ensureEmployeesTable(connection);
+  if (!_employeesSchemaReady) {
+    try { await ensureBaseEmployeesTable(connection); } catch {}
+    try { await ensureEmployeesTable(connection); } catch {}
+    _employeesSchemaReady = true;
+  }
 
     // Check if employee_id or email already exists
     // Auto-generate ATS-prefixed employee_id when missing or only prefix provided
@@ -438,8 +442,11 @@ export async function PUT(request) {
     }
 
     const connection = await dbConnect();
-    await ensureBaseEmployeesTable(connection);
-    await ensureEmployeesTable(connection);
+    if (!_employeesSchemaReady) {
+      try { await ensureBaseEmployeesTable(connection); } catch {}
+      try { await ensureEmployeesTable(connection); } catch {}
+      _employeesSchemaReady = true;
+    }
     const pkCol = await detectEmployeePrimaryKey(connection);
 
     // Check if employee exists
@@ -575,7 +582,10 @@ export async function DELETE(request) {
     }
 
     const connection = await dbConnect();
-  await ensureBaseEmployeesTable(connection);
+    if (!_employeesSchemaReady) {
+      try { await ensureBaseEmployeesTable(connection); } catch {}
+      _employeesSchemaReady = true;
+    }
     const pkCol = await detectEmployeePrimaryKey(connection);
 
     // Check if employee exists

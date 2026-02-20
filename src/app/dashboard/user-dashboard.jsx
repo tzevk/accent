@@ -14,7 +14,10 @@ import {
   CheckCircleIcon,
   BellIcon,
   ClipboardDocumentListIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  TicketIcon,
+  PlusIcon,
+  ArrowRightIcon
 } from '@heroicons/react/24/outline';
 
 export default function UserDashboard({ verifiedUser }) {
@@ -45,6 +48,14 @@ export default function UserDashboard({ verifiedUser }) {
     overdueActivities: 0,
     recentWorkLogs: [],
     todayWorkHours: 0,
+    // Tickets data
+    tickets: [],
+    ticketStats: {
+      total: 0,
+      open: 0,
+      resolved: 0,
+      waitingForYou: 0
+    },
     // Enhanced stats from dashboard API
     statusSummary: {
       not_started: 0,
@@ -196,6 +207,30 @@ export default function UserDashboard({ verifiedUser }) {
             .catch(() => setModuleAccess(prev => ({ ...prev, workLogs: false })))
         );
 
+        // 7. Support tickets
+        promises.push(
+          fetch('/api/tickets')
+            .then(async (response) => {
+              if (response.status === 401 || response.status === 403) return;
+              const res = await response.json();
+              if (res.success && res.data) {
+                const tickets = res.data;
+                const stats = {
+                  total: tickets.length,
+                  open: tickets.filter(t => ['new', 'under_review', 'in_progress'].includes(t.status)).length,
+                  resolved: tickets.filter(t => ['resolved', 'closed'].includes(t.status)).length,
+                  waitingForYou: tickets.filter(t => t.status === 'waiting_for_employee').length
+                };
+                setModuleAssignments(prev => ({
+                  ...prev,
+                  tickets: tickets,
+                  ticketStats: stats
+                }));
+              }
+            })
+            .catch((err) => console.error('Tickets fetch error:', err))
+        );
+
         await Promise.all(promises);
         setLoading(false);
       } catch (error) {
@@ -244,7 +279,6 @@ export default function UserDashboard({ verifiedUser }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      <Sidebar />
       
       <div className="flex pt-16 sm:pl-16">
         {/* Todo List Panel */}
@@ -366,9 +400,139 @@ export default function UserDashboard({ verifiedUser }) {
 
             {/* Project Activity Assignments - Pass preloaded data to avoid duplicate fetch */}
             {user?.id && <ProjectActivityAssignments userId={user.id} preloadedData={statsReady ? moduleAssignments.activityAssignments : null} />}
+
+            {/* Support Tickets Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+              <div className="p-5 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <TicketIcon className="h-6 w-6 text-[#64126D]" />
+                    <h2 className="text-lg font-semibold text-gray-900">Support Tickets</h2>
+                    {moduleAssignments.ticketStats.waitingForYou > 0 && (
+                      <span className="px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full animate-pulse">
+                        {moduleAssignments.ticketStats.waitingForYou} waiting for you
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href="/tickets/new"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#64126D] text-white text-sm font-medium rounded-lg hover:bg-[#7a1785] transition-colors"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                      Raise Ticket
+                    </Link>
+                    <Link
+                      href="/tickets"
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      View All
+                      <ArrowRightIcon className="h-4 w-4" />
+                    </Link>
+                  </div>
+                </div>
+                
+                {/* Quick Stats */}
+                <div className="flex items-center gap-6 mt-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span className="text-sm text-gray-600">Open: <strong className="text-gray-900">{moduleAssignments.ticketStats.open}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    <span className="text-sm text-gray-600">Resolved: <strong className="text-gray-900">{moduleAssignments.ticketStats.resolved}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                    <span className="text-sm text-gray-600">Total: <strong className="text-gray-900">{moduleAssignments.ticketStats.total}</strong></span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Recent/Active Tickets List */}
+              <div className="p-5">
+                {moduleAssignments.tickets.length === 0 ? (
+                  <div className="text-center py-8">
+                    <TicketIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500 mb-3">No tickets yet</p>
+                    <Link
+                      href="/tickets/new"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#64126D] text-white text-sm font-medium rounded-lg hover:bg-[#7a1785] transition-colors"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                      Create Your First Ticket
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {moduleAssignments.tickets
+                      .filter(t => !['closed'].includes(t.status))
+                      .slice(0, 5)
+                      .map((ticket) => (
+                        <Link
+                          key={ticket.id}
+                          href={`/tickets/${ticket.id}`}
+                          className="block p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-mono text-gray-500">{ticket.ticket_number}</span>
+                                <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                  ticket.status === 'new' ? 'bg-blue-100 text-blue-700' :
+                                  ticket.status === 'under_review' ? 'bg-purple-100 text-purple-700' :
+                                  ticket.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' :
+                                  ticket.status === 'waiting_for_employee' ? 'bg-orange-100 text-orange-700' :
+                                  ticket.status === 'resolved' ? 'bg-green-100 text-green-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {ticket.status === 'waiting_for_employee' ? '⏳ Waiting for You' :
+                                   ticket.status === 'new' ? '🆕 New' :
+                                   ticket.status === 'under_review' ? '👀 Under Review' :
+                                   ticket.status === 'in_progress' ? '⚡ In Progress' :
+                                   ticket.status === 'resolved' ? '✅ Resolved' :
+                                   ticket.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                </span>
+                                <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${
+                                  ticket.priority === 'urgent' ? 'bg-red-50 text-red-700 border-red-200' :
+                                  ticket.priority === 'high' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                  ticket.priority === 'medium' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}>
+                                  {ticket.priority}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-gray-900 truncate">{ticket.subject}</p>
+                              <p className="text-xs text-gray-500 mt-1 truncate">{ticket.description}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs text-gray-400">
+                                {new Date(ticket.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                → {ticket.routed_to?.toUpperCase()}
+                              </p>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    
+                    {moduleAssignments.tickets.filter(t => !['closed'].includes(t.status)).length > 5 && (
+                      <Link
+                        href="/tickets"
+                        className="block text-center py-2 text-sm text-[#64126D] hover:text-[#7a1785] font-medium"
+                      >
+                        View all {moduleAssignments.tickets.filter(t => !['closed'].includes(t.status)).length} active tickets →
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
+

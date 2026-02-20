@@ -3,6 +3,7 @@ import { dbConnect } from '@/utils/database';
 import { logActivity } from '@/utils/activity-logger';
 import { ensurePermission, RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
+import { hasColumn, getTableColumns, getPrimaryKeyColumn } from '@/utils/schema-cache';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -35,88 +36,9 @@ export async function GET(request) {
     
     db = await dbConnect();
     
-    // Create projects table if it doesn't exist
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS projects (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        project_id VARCHAR(50) UNIQUE,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        company_id INT,
-        client_name VARCHAR(255),
-        project_manager VARCHAR(255),
-        start_date DATE,
-        end_date DATE,
-        budget DECIMAL(15,2),
-        status VARCHAR(50) DEFAULT 'NEW',
-        priority VARCHAR(50) DEFAULT 'MEDIUM',
-        progress INT DEFAULT 0,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
-      )
-    `);
-
-    // Add new columns if they don't exist
-    try {
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS target_date DATE');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255)');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT \'ONGOING\'');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS proposal_id INT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS assignments JSON');
-      
-      // Add new project fields requested by user
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_schedule TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS input_document TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS list_of_deliverables TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS kickoff_meeting TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS in_house_meeting TEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_assumption_list LONGTEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_lessons_learnt_list LONGTEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS software_items LONGTEXT');
-      await db.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_team TEXT');
-      
-      await db.execute('ALTER TABLE projects ADD FOREIGN KEY IF NOT EXISTS (proposal_id) REFERENCES proposals(id) ON DELETE SET NULL');
-
-      // Update enum fields to use VARCHAR instead for more flexibility
-      // Only run MODIFY if the column exists to avoid errors on older/newer schemas
-      try {
-        const [enumCols] = await db.execute(
-          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND COLUMN_NAME IN ('status','priority','type')`
-        );
-        const existingEnums = new Set((enumCols || []).map(c => c.COLUMN_NAME));
-        if (existingEnums.has('status')) {
-          await db.execute("ALTER TABLE projects MODIFY COLUMN status VARCHAR(50) DEFAULT 'NEW'");
-        }
-        if (existingEnums.has('priority')) {
-          await db.execute("ALTER TABLE projects MODIFY COLUMN priority VARCHAR(50) DEFAULT 'MEDIUM'");
-        }
-        if (existingEnums.has('type')) {
-          await db.execute("ALTER TABLE projects MODIFY COLUMN type VARCHAR(50) DEFAULT 'ONGOING'");
-        }
-      } catch (modifyErr) {
-        console.warn('Skipping MODIFY COLUMN for enum fields due to schema inspection error:', modifyErr?.message || modifyErr);
-      } finally {
-        if (db) db.release();
-      }
-    } catch (err) {
-      console.warn('Some ALTER TABLE statements failed, table might already be updated:', err);
-    }
-    
-    // Attempt to join companies only if company_id column truly exists; fallback safely if missing
+    // Use cached schema check instead of DDL on every request
+    const hasCompanyId = await hasColumn(db, 'projects', 'company_id');
     let rows;
-    let hasCompanyId = false;
-    try {
-      const [cols] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
-      );
-      hasCompanyId = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'company_id');
-    } catch (inspectErr) {
-      console.warn('Could not inspect projects table for company_id column:', inspectErr?.message || inspectErr);
-      hasCompanyId = false;
-    }
 
     if (hasCompanyId) {
       try {
@@ -171,6 +93,8 @@ export async function GET(request) {
       error: 'Failed to fetch projects',
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
 
@@ -574,27 +498,21 @@ export async function DELETE(request) {
 
     db = await dbConnect();
 
-    // Inspect projects columns to determine a suitable key column to use for lookup/delete
+    // Inspect projects columns using cached schema
     let keyCol = null;
     try {
-      const [pkRows] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects' AND CONSTRAINT_NAME = 'PRIMARY'`
-      );
-      const [cols] = await db.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
-      );
-      const existing = new Set((cols || []).map(c => c.COLUMN_NAME));
+      const existing = await getTableColumns(db, 'projects');
 
       if (existing.has('id')) keyCol = 'id';
       else if (existing.has('project_id')) keyCol = 'project_id';
       else if (existing.has('project_code')) keyCol = 'project_code';
-      else if (pkRows && pkRows.length > 0 && pkRows[0].COLUMN_NAME) keyCol = pkRows[0].COLUMN_NAME;
-      else keyCol = null;
+      else {
+        const pk = await getPrimaryKeyColumn(db, 'projects');
+        keyCol = pk || null;
+      }
     } catch (inspErr) {
       console.warn('Could not inspect projects table schema for DELETE, falling back to id:', inspErr?.message || inspErr);
       keyCol = 'id';
-    } finally {
-      if (db) db.release();
     }
 
     if (!keyCol) {
