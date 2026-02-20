@@ -1381,51 +1381,52 @@ function EditProjectForm() {
     }
   };
 
-  // Sync quotation data from project form fields (database values)
-  const syncQuotationFromProject = useCallback(async () => {
-    const projectValue = parseFloat(form.project_value) || 0;
-    const gstRate = quotationData.gst_percentage || 18;
-    const gstAmount = (projectValue * gstRate) / 100;
-    const netAmount = projectValue + gstAmount;
-    
-    // Get scope - try scope_of_work first, then fall back to description
-    const scopeText = form.scope_of_work || form.description || '';
-    
-    // Fetch existing quotation data and next quotation number from API
-    let existingQuotation = null;
-    let nextQuotationNumber = '';
+  // Fetch quotation data generated from proposal
+  const syncQuotationFromProposal = useCallback(async () => {
+    const proposalId = form.proposal_id;
+    if (!proposalId) {
+      // No linked proposal - show empty state
+      setQuotationData(prev => ({ ...prev }));
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/projects/${id}/quotation`);
+      const res = await fetch(`/api/admin/quotations/${proposalId}?source=proposal`);
       const json = await res.json();
-      if (json?.success) {
-        existingQuotation = json.data;
-        nextQuotationNumber = json.nextQuotationNumber || '';
+      if (json?.success && json.data) {
+        const q = json.data;
+        let scopeItems = [];
+        if (q.scope_items) {
+          try {
+            scopeItems = typeof q.scope_items === 'string' ? JSON.parse(q.scope_items) : q.scope_items;
+          } catch (e) { /* ignore */ }
+        }
+        setQuotationData({
+          quotation_number: q.quotation_number || '',
+          quotation_date: q.quotation_date ? q.quotation_date.split('T')[0] : '',
+          client_name: q.client_name || '',
+          enquiry_number: q.enquiry_number || '',
+          enquiry_quantity: scopeItems?.[0]?.qty || '',
+          scope_of_work: q.annexure_scope_of_work || q.scope_of_work || '',
+          gross_amount: q.gross_amount || '',
+          gst_percentage: q.gst_percentage || 18,
+          gst_amount: q.gst_amount || '',
+          net_amount: q.net_amount || '',
+          amount_in_words: q.amount_in_words || '',
+          scope_items: scopeItems,
+        });
       }
     } catch (err) {
-      console.warn('Failed to fetch quotation data:', err);
+      console.warn('Failed to fetch proposal quotation data:', err);
     }
-    
-    setQuotationData(prev => ({
-      ...prev,
-      quotation_number: existingQuotation?.quotation_number || prev.quotation_number || nextQuotationNumber,
-      quotation_date: existingQuotation?.quotation_date || prev.quotation_date || new Date().toISOString().split('T')[0],
-      client_name: existingQuotation?.client_name || form.client_name || '',
-      enquiry_number: existingQuotation?.enquiry_number || form.proposal_id || '',
-      enquiry_quantity: existingQuotation?.enquiry_quantity || form.unit_qty || '',
-      scope_of_work: existingQuotation?.scope_of_work || scopeText,
-      gross_amount: existingQuotation?.gross_amount || projectValue || '',
-      gst_percentage: existingQuotation?.gst_percentage || prev.gst_percentage || 18,
-      gst_amount: existingQuotation?.gst_amount || (projectValue > 0 ? gstAmount.toFixed(2) : ''),
-      net_amount: existingQuotation?.net_amount || (projectValue > 0 ? netAmount.toFixed(2) : '')
-    }));
-  }, [form.project_value, form.proposal_id, form.unit_qty, form.scope_of_work, form.description, form.client_name, quotationData.gst_percentage, id]);
+  }, [form.proposal_id]);
 
   // Auto-sync when switching to quotation tab (after project data is loaded)
   useEffect(() => {
     if (activeTab === 'quotation' && !loading && id) {
-      syncQuotationFromProject();
+      syncQuotationFromProposal();
     }
-  }, [activeTab, loading, id, syncQuotationFromProject]);
+  }, [activeTab, loading, id, syncQuotationFromProposal]);
 
   // Purchase Order Form Handlers
   const handlePurchaseOrderChange = (e) => {
@@ -5403,267 +5404,104 @@ function EditProjectForm() {
               </section>
             )}
 
-            {/* Quotation Tab */}
+            {/* Quotation Tab - Read Only Details (from Proposal) */}
             {activeTab === 'quotation' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                   <div>
-                    <h2 className="text-sm font-semibold text-black">Project Quotation</h2>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {canEditQuotations ? 'Quotation details fetched from project data' : 'View-only mode - You have read permission only'}
-                    </p>
+                    <h2 className="text-sm font-semibold text-black">Quotation Details</h2>
+                    <p className="text-xs text-gray-600 mt-1">Quotation generated from proposal{form.proposal_id ? ` (${form.proposal_id})` : ''}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {canEditQuotations && (
-                      <button
-                        type="button"
-                        onClick={syncQuotationFromProject}
-                        className="px-3 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-md hover:bg-gray-200 flex items-center gap-2 border border-gray-300"
-                        title="Refresh data from project fields"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Sync from Project
-                      </button>
-                    )}
-                    {canEditQuotations && (
-                      <button
-                        type="button"
-                        onClick={saveQuotation}
-                        disabled={quotationSaving}
-                        className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                      {quotationSaving ? (
-                        <>
-                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <CheckIcon className="h-4 w-4" />
-                          Save Quotation
-                        </>
-                      )}
-                      </button>
-                    )}
-                  </div>
+                  {canEditQuotations && form.proposal_id && (
+                    <button
+                      type="button"
+                      onClick={() => window.open(`/admin/quotation/${form.proposal_id}/edit?source=proposal`, '_blank')}
+                      className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] flex items-center gap-2"
+                    >
+                      Edit & Download Quotation
+                    </button>
+                  )}
                 </div>
-                
-                <div className="px-6 py-5 space-y-6">
-                    {/* Row 1: Quotation Number, Date & Client Name */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Quotation Number
-                        </label>
-                        <input
-                          type="text"
-                          name="quotation_number"
-                          value={quotationData.quotation_number}
-                          onChange={handleQuotationChange}
-                          placeholder="QTN-00001"
-                          readOnly={!canEditQuotations}
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Quotation Date</label>
-                        <input
-                          type="date"
-                          name="quotation_date"
-                          value={quotationData.quotation_date}
-                          onChange={handleQuotationChange}
-                          readOnly={!canEditQuotations}
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Client Name
-                        </label>
-                        <input
-                          type="text"
-                          name="client_name"
-                          value={quotationData.client_name}
-                          onChange={handleQuotationChange}
-                          placeholder="Client Name"
-                          readOnly={!canEditQuotations}
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-50 cursor-not-allowed'}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 2: Enquiry Number & Quantity */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Enquiry Number
-                        </label>
-                        <input
-                          type="text"
-                          name="enquiry_number"
-                          value={quotationData.enquiry_number}
-                          onChange={handleQuotationChange}
-                          placeholder="ENQ-001"
-                          readOnly={!canEditQuotations}
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">
-                          Enquiry Quantity
-                        </label>
-                        <input
-                          type="text"
-                          name="enquiry_quantity"
-                          value={quotationData.enquiry_quantity}
-                          onChange={handleQuotationChange}
-                          placeholder="e.g., 100 units"
-                          readOnly={!canEditQuotations}
-                          disabled={!canEditQuotations}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Row 3: Scope of Work */}
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Scope of Work
-                      </label>
-                      <textarea
-                        name="scope_of_work"
-                        value={quotationData.scope_of_work}
-                        onChange={handleQuotationChange}
-                        rows={4}
-                        placeholder="Enter scope of work..."
-                        readOnly={!canEditQuotations}
-                        disabled={!canEditQuotations}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-y ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                      />
-                    </div>
-
-                    {/* Row 4: Amount Section */}
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-4">Amount Details</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-6">
+                  {!form.proposal_id ? (
+                    <p className="text-sm text-gray-500 text-center py-8">No proposal linked to this project. Quotation data is generated from the proposal.</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         <div>
-                          <label className="block text-xs font-medium text-black mb-1">Gross Amount (₹)</label>
-                          <input
-                            type="number"
-                            name="gross_amount"
-                            value={quotationData.gross_amount}
-                            onChange={handleQuotationChange}
-                            placeholder="0.00"
-                            step="0.01"
-                            min="0"
-                            readOnly={!canEditQuotations}
-                            disabled={!canEditQuotations}
-                            className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                          />
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Quotation Number</label>
+                          <p className="text-sm text-gray-900">{quotationData.quotation_number || '—'}</p>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-black mb-1">GST @ {quotationData.gst_percentage}% (₹)</label>
-                          <input
-                            type="number"
-                            name="gst_amount"
-                            value={quotationData.gst_amount}
-                            disabled
-                            placeholder="0.00"
-                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
-                          />
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Quotation Date</label>
+                          <p className="text-sm text-gray-900">{quotationData.quotation_date ? new Date(quotationData.quotation_date).toLocaleDateString('en-IN') : '—'}</p>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-black mb-1">Net Amount (₹)</label>
-                          <input
-                            type="number"
-                            name="net_amount"
-                            value={quotationData.net_amount}
-                            disabled
-                            placeholder="0.00"
-                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-700 font-semibold cursor-not-allowed"
-                          />
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Client Name</label>
+                          <p className="text-sm text-gray-900">{quotationData.client_name || '—'}</p>
                         </div>
-                      </div>
-                      <div className="mt-3">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">GST Percentage</label>
-                        <select
-                          name="gst_percentage"
-                          value={quotationData.gst_percentage}
-                          onChange={handleQuotationChange}
-                          disabled={!canEditQuotations}
-                          className={`w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md ${canEditQuotations ? 'focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-white' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
-                        >
-                          <option value="0">0%</option>
-                          <option value="5">5%</option>
-                          <option value="12">12%</option>
-                          <option value="18">18%</option>
-                          <option value="28">28%</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Summary Card */}
-                    {quotationData.net_amount && parseFloat(quotationData.net_amount) > 0 && (
-                      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide">Total Quotation Value</p>
-                            <p className="text-2xl font-bold text-[#7F2487]">₹{parseFloat(quotationData.net_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Enquiry Number</label>
+                          <p className="text-sm text-gray-900">{quotationData.enquiry_number || '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Gross Amount</label>
+                          <p className="text-sm text-gray-900">{quotationData.gross_amount ? `₹ ${parseFloat(quotationData.gross_amount).toLocaleString('en-IN')}` : '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">GST ({quotationData.gst_percentage || '18'}%)</label>
+                          <p className="text-sm text-gray-900">{quotationData.gst_amount ? `₹ ${parseFloat(quotationData.gst_amount).toLocaleString('en-IN')}` : '—'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Net Amount</label>
+                          <p className="text-sm text-gray-900 font-semibold">{quotationData.net_amount ? `₹ ${parseFloat(quotationData.net_amount).toLocaleString('en-IN')}` : '—'}</p>
+                        </div>
+                        {quotationData.amount_in_words && (
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Amount in Words</label>
+                            <p className="text-sm text-gray-900">{quotationData.amount_in_words}</p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs text-gray-500">Gross: ₹{parseFloat(quotationData.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                            <p className="text-xs text-gray-500">GST ({quotationData.gst_percentage}%): ₹{parseFloat(quotationData.gst_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        )}
+                      </div>
+                      {/* Scope Items Table */}
+                      {quotationData.scope_items && quotationData.scope_items.length > 0 && quotationData.scope_items[0]?.description && (
+                        <div className="mt-6">
+                          <label className="block text-xs font-medium text-gray-500 mb-2">Scope Items</label>
+                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Sr.</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Description</th>
+                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Qty</th>
+                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Rate</th>
+                                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {quotationData.scope_items.map((item, idx) => (
+                                  <tr key={idx} className="border-t border-gray-100">
+                                    <td className="px-4 py-2 text-gray-600">{item.sr_no || idx + 1}</td>
+                                    <td className="px-4 py-2 text-gray-900">{item.description || '—'}</td>
+                                    <td className="px-4 py-2 text-right text-gray-600">{item.qty || '—'}</td>
+                                    <td className="px-4 py-2 text-right text-gray-600">{item.rate ? `₹ ${parseFloat(item.rate).toLocaleString('en-IN')}` : '—'}</td>
+                                    <td className="px-4 py-2 text-right text-gray-900 font-medium">{item.amount ? `₹ ${parseFloat(item.amount).toLocaleString('en-IN')}` : '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
-                      </div>
-                    )}
-
-                    {/* Save Button at Bottom */}
-                    {canEditQuotations && (
-                      <div className="pt-4 border-t border-gray-200 flex items-center justify-end gap-3">
-                        <button
-                          type="button"
-                          onClick={syncQuotationFromProject}
-                          className="px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 flex items-center gap-2 border border-gray-300 transition-colors"
-                        >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          Sync from Project
-                        </button>
-                        <button
-                          type="button"
-                          onClick={saveQuotation}
-                          disabled={quotationSaving}
-                          className="px-6 py-2.5 bg-[#7F2487] text-white text-sm font-medium rounded-lg hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
-                        >
-                          {quotationSaving ? (
-                            <>
-                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              Saving Quotation...
-                            </>
-                          ) : (
-                            <>
-                              <CheckIcon className="h-5 w-5" />
-                              Save Quotation
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                      {quotationData.scope_of_work && (
+                        <div className="mt-6">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Scope of Work</label>
+                          <p className="text-sm text-gray-900 whitespace-pre-wrap">{quotationData.scope_of_work}</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </section>
             )}
 

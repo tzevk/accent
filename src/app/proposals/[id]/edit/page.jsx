@@ -516,7 +516,7 @@ Dispute Resolution
               <CommercialsForm proposalData={proposalData} setProposalData={setProposalData} />
             )}
             {activeTab === 'quotation' && (
-              <QuotationForm proposalData={proposalData} setProposalData={setProposalData} />
+              <QuotationForm proposalData={proposalData} setProposalData={setProposalData} proposalId={proposalId} />
             )}
             {activeTab === 'meetings' && (
               <MeetingsForm proposalData={proposalData} setProposalData={setProposalData} />
@@ -1671,13 +1671,31 @@ function CommercialsForm({ proposalData, setProposalData }) {
   );
 }
 
-function QuotationForm({ proposalData, setProposalData }) {
+function QuotationForm({ proposalData, setProposalData, proposalId }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
   const [termsOpen, setTermsOpen] = useState(false);
   const [scopeTab, setScopeTab] = useState('scope_summary');
 
+  const handleGenerateQuotation = () => {
+    if (!proposalId) { alert('Proposal not saved yet.'); return; }
+    // Navigate to the editable quotation page (same as admin quotation editor)
+    window.open(`/admin/quotation/${proposalId}/edit?source=proposal`, '_blank');
+  };
+
   return (
     <div>
+      {/* Generate Quotation Button */}
+      <div className="flex items-center justify-end mb-5">
+        <button
+          type="button"
+          onClick={handleGenerateQuotation}
+          className="px-5 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+        >
+          <DocumentDuplicateIcon className="h-4 w-4" />
+          Generate Quotation
+        </button>
+      </div>
+
       {/* 4-Column Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
         

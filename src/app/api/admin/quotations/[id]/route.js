@@ -18,7 +18,73 @@ export async function GET(request, { params }) {
 
     let quotationData = null;
 
-    if (source === 'project') {
+    if (source === 'proposal') {
+      // Fetch from proposals table directly
+      const [rows] = await connection.execute(
+        `SELECT * FROM proposals WHERE id = ? LIMIT 1`,
+        [id]
+      );
+
+      if (rows.length === 0) {
+        return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
+      }
+
+      const p = rows[0];
+      quotationData = {
+        id: p.id,
+        quotation_number: p.quotation_number || p.proposal_id || '',
+        quotation_date: p.quotation_date || p.created_at || null,
+        enquiry_number: p.enquiry_number || p.enquiry_no || '',
+        enquiry_date: p.enquiry_date || null,
+        client_name: p.client_name || '',
+        client_address: p.client_address || '',
+        kind_attn: p.kind_attn || p.contact_person || '',
+        scope_items: p.scope_items || null,
+        scope_of_work: '',
+        gross_amount: p.gross_amount || p.budget || 0,
+        gst_percentage: p.gst_percentage || 18,
+        gst_amount: p.gst_amount || 0,
+        net_amount: p.net_amount || 0,
+        amount_in_words: p.amount_in_words || '',
+        gst_number: p.gst_number || '',
+        pan_number: p.pan_number || '',
+        tan_number: p.tan_number || '',
+        terms_and_conditions: p.terms_and_conditions || '',
+        // Annexure fields from proposal
+        annexure_scope_of_work: p.annexure_scope_of_work || p.scope_of_work || p.description || '',
+        annexure_input_document: p.annexure_input_document || p.input_document || '',
+        annexure_deliverables: p.annexure_deliverables || p.list_of_deliverables || '',
+        annexure_software: p.annexure_software || p.software || '',
+        software_included: p.software || '',
+        annexure_duration: p.annexure_duration || p.duration || '',
+        annexure_site_visit: p.annexure_site_visit || p.site_visit || '',
+        annexure_quotation_validity: p.annexure_quotation_validity || p.quotation_validity || '',
+        annexure_mode_of_delivery: p.annexure_mode_of_delivery || p.mode_of_delivery || '',
+        annexure_revision: p.annexure_revision || p.revision || '',
+        annexure_exclusions: p.annexure_exclusions || p.exclusions || '',
+        annexure_billing_payment_terms: p.annexure_billing_payment_terms || p.billing_payment_terms || '',
+        annexure_confidentiality: p.annexure_confidentiality || '',
+        annexure_codes_standards: p.annexure_codes_standards || '',
+        annexure_dispute_resolution: p.annexure_dispute_resolution || '',
+      };
+
+      // Try to fetch company details if company_id exists
+      if (p.company_id) {
+        try {
+          const [companies] = await connection.execute(
+            'SELECT company_name, address, phone, email, gst_number FROM companies WHERE id = ? LIMIT 1',
+            [p.company_id]
+          );
+          if (companies.length > 0) {
+            quotationData.company_name = companies[0].company_name;
+            quotationData.company_address = companies[0].address;
+            quotationData.company_phone = companies[0].phone;
+            quotationData.company_email = companies[0].email;
+            quotationData.gst_number = quotationData.gst_number || companies[0].gst_number;
+          }
+        } catch (e) { /* ignore */ }
+      }
+    } else if (source === 'project') {
       // Fetch from project_quotations
       const [rows] = await connection.execute(
         'SELECT * FROM project_quotations WHERE id = ?',
@@ -136,7 +202,117 @@ export async function PUT(request, { params }) {
 
     connection = await dbConnect();
 
-    if (source === 'project') {
+    if (source === 'proposal') {
+      // Add quotation-specific columns to proposals table if they don't exist
+      const columnsToAdd = [
+        'client_address TEXT',
+        'kind_attn VARCHAR(255)',
+        'scope_items JSON',
+        'amount_in_words TEXT',
+        'gross_amount DECIMAL(15,2) DEFAULT 0',
+        'gst_percentage DECIMAL(5,2) DEFAULT 18',
+        'gst_amount DECIMAL(15,2) DEFAULT 0',
+        'net_amount DECIMAL(15,2) DEFAULT 0',
+        'gst_number VARCHAR(50)',
+        'pan_number VARCHAR(50)',
+        'tan_number VARCHAR(50)',
+        'terms_and_conditions TEXT',
+        // Annexure columns
+        'annexure_scope_of_work TEXT',
+        'annexure_input_document TEXT',
+        'annexure_deliverables TEXT',
+        'annexure_software VARCHAR(255)',
+        'annexure_duration VARCHAR(255)',
+        'annexure_site_visit VARCHAR(255)',
+        'annexure_quotation_validity VARCHAR(255)',
+        'annexure_mode_of_delivery VARCHAR(255)',
+        'annexure_revision VARCHAR(255)',
+        'annexure_exclusions TEXT',
+        'annexure_billing_payment_terms TEXT',
+        'annexure_confidentiality TEXT',
+        'annexure_codes_standards TEXT',
+        'annexure_dispute_resolution TEXT'
+      ];
+
+      for (const col of columnsToAdd) {
+        try {
+          await connection.execute(`ALTER TABLE proposals ADD COLUMN ${col}`);
+        } catch (e) {
+          // Column already exists
+        }
+      }
+
+      // Update proposals table with quotation data
+      await connection.execute(
+        `UPDATE proposals SET
+          quotation_number = ?,
+          quotation_date = ?,
+          client_name = ?,
+          client_address = ?,
+          kind_attn = ?,
+          enquiry_number = ?,
+          enquiry_date = ?,
+          scope_items = ?,
+          gross_amount = ?,
+          gst_percentage = ?,
+          gst_amount = ?,
+          net_amount = ?,
+          amount_in_words = ?,
+          gst_number = ?,
+          pan_number = ?,
+          tan_number = ?,
+          terms_and_conditions = ?,
+          annexure_scope_of_work = ?,
+          annexure_input_document = ?,
+          annexure_deliverables = ?,
+          annexure_software = ?,
+          annexure_duration = ?,
+          annexure_site_visit = ?,
+          annexure_quotation_validity = ?,
+          annexure_mode_of_delivery = ?,
+          annexure_revision = ?,
+          annexure_exclusions = ?,
+          annexure_billing_payment_terms = ?,
+          annexure_confidentiality = ?,
+          annexure_codes_standards = ?,
+          annexure_dispute_resolution = ?
+        WHERE id = ?`,
+        [
+          body.quotation_number,
+          body.quotation_date || null,
+          body.client_name || null,
+          body.client_address || null,
+          body.kind_attn || null,
+          body.enquiry_number || null,
+          body.enquiry_date || null,
+          JSON.stringify(body.scope_items || []),
+          body.gross_amount || 0,
+          body.gst_percentage || 18,
+          body.gst_amount || 0,
+          body.net_amount || 0,
+          body.amount_in_words || null,
+          body.gst_number || null,
+          body.pan_number || null,
+          body.tan_number || null,
+          body.terms_and_conditions || null,
+          body.annexure_scope_of_work || null,
+          body.annexure_input_document || null,
+          body.annexure_deliverables || null,
+          body.annexure_software || null,
+          body.annexure_duration || null,
+          body.annexure_site_visit || null,
+          body.annexure_quotation_validity || null,
+          body.annexure_mode_of_delivery || null,
+          body.annexure_revision || null,
+          body.annexure_exclusions || null,
+          body.annexure_billing_payment_terms || null,
+          body.annexure_confidentiality || null,
+          body.annexure_codes_standards || null,
+          body.annexure_dispute_resolution || null,
+          id
+        ]
+      );
+    } else if (source === 'project') {
       // Add new columns if they don't exist
       const columnsToAdd = [
         'client_address TEXT',

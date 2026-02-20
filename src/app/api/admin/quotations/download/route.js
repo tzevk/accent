@@ -134,6 +134,67 @@ export async function GET(request) {
           }
         }
       }
+    } else if (source === 'proposal') {
+      // Fetch directly from proposals table
+      const [rows] = await connection.execute('SELECT * FROM proposals WHERE id = ? LIMIT 1', [id]);
+
+      if (rows.length === 0) {
+        return NextResponse.json({ success: false, error: 'Proposal not found' }, { status: 404 });
+      }
+
+      const p = rows[0];
+      quotationData = {
+        id: p.id,
+        quotation_number: p.quotation_number || p.proposal_id || '',
+        quotation_date: p.quotation_date || p.created_at || null,
+        enquiry_number: p.enquiry_number || p.enquiry_no || '',
+        enquiry_date: p.enquiry_date || null,
+        client_name: p.client_name || '',
+        client_address: p.client_address || '',
+        kind_attn: p.kind_attn || p.contact_person || '',
+        scope_items: p.scope_items || null,
+        scope_of_work: p.scope_of_work || p.description || '',
+        gross_amount: p.gross_amount || p.budget || 0,
+        gst_percentage: p.gst_percentage || 18,
+        gst_amount: p.gst_amount || 0,
+        net_amount: p.net_amount || 0,
+        amount_in_words: p.amount_in_words || '',
+        gst_number: p.gst_number || '',
+        pan_number: p.pan_number || '',
+        tan_number: p.tan_number || '',
+        terms_and_conditions: p.terms_and_conditions || '',
+        annexure_scope_of_work: p.annexure_scope_of_work || p.scope_of_work || p.description || '',
+        annexure_input_document: p.annexure_input_document || p.input_document || '',
+        annexure_deliverables: p.annexure_deliverables || p.list_of_deliverables || '',
+        annexure_software: p.annexure_software || p.software || '',
+        annexure_duration: p.annexure_duration || p.duration || '',
+        annexure_site_visit: p.annexure_site_visit || p.site_visit || '',
+        annexure_quotation_validity: p.annexure_quotation_validity || p.quotation_validity || '',
+        annexure_mode_of_delivery: p.annexure_mode_of_delivery || p.mode_of_delivery || '',
+        annexure_revision: p.annexure_revision || p.revision || '',
+        annexure_exclusions: p.annexure_exclusions || p.exclusions || '',
+        annexure_billing_payment_terms: p.annexure_billing_payment_terms || p.billing_payment_terms || '',
+        annexure_confidentiality: p.annexure_confidentiality || '',
+        annexure_codes_standards: p.annexure_codes_standards || '',
+        annexure_dispute_resolution: p.annexure_dispute_resolution || '',
+      };
+
+      // Try to fetch company details
+      if (p.company_id) {
+        try {
+          const [companies] = await connection.execute(
+            'SELECT company_name, address, phone, email, gst_number FROM companies WHERE id = ? LIMIT 1',
+            [p.company_id]
+          );
+          if (companies.length > 0) {
+            quotationData.company_name = companies[0].company_name;
+            quotationData.company_address = companies[0].address;
+            quotationData.company_phone = companies[0].phone;
+            quotationData.company_email = companies[0].email;
+            quotationData.gst_number = quotationData.gst_number || companies[0].gst_number;
+          }
+        } catch (e) { /* ignore */ }
+      }
     } else {
       // Fetch from quotations table
       const [rows] = await connection.execute('SELECT * FROM quotations WHERE id = ?', [id]);
