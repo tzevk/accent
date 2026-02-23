@@ -169,8 +169,6 @@ export async function POST(request) {
         }
       } catch (e) {
         console.warn('Failed to lookup proposal for company override:', e?.message || e);
-      } finally {
-        if (db) db.release();
       }
     }
 
@@ -302,6 +300,8 @@ export async function POST(request) {
       error: 'Failed to create project',
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch {}
   }
 }
 
@@ -360,8 +360,6 @@ export async function PUT(request) {
         }
       } catch (e) {
         console.warn('Failed to lookup proposal for company override:', e?.message || e);
-      } finally {
-        if (db) db.release();
       }
     }
 
@@ -479,6 +477,8 @@ export async function PUT(request) {
       error: 'Failed to update project',
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch {}
   }
 }
 
@@ -555,5 +555,7 @@ export async function DELETE(request) {
       error: 'Failed to delete project',
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch {}
   }
 }

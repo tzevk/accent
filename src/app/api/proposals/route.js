@@ -232,7 +232,7 @@ export async function POST(request) {
     // Get database connection
     pool = await dbConnect();
 
-    // Proposal ID is fully manual — use whatever was provided, or leave empty
+    // Proposal ID is manual entry — use whatever was provided, or leave null
     const proposal_id = custom_proposal_id || null;
     
     // Build columns and values explicitly to avoid column/value count mismatches
@@ -256,7 +256,7 @@ export async function POST(request) {
 
     const values = [
       proposal_id,
-      proposal_title || title || null,
+      proposal_title || title || 'Untitled Proposal',
       description || project_description || null,
       company_id || null,
       client_name || client || null,
