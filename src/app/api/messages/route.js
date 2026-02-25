@@ -76,7 +76,7 @@ export async function GET(request) {
         m.receiver_id,
         m.conversation_id,
         m.subject,
-        SUBSTRING(m.body, 1, 150) as body_preview,
+        SUBSTRING(m.body, 1, 300) as body,
         m.related_module,
         m.related_id,
         m.read_status,
@@ -84,9 +84,11 @@ export async function GET(request) {
         m.created_at,
         sender.full_name as sender_name,
         sender.email as sender_email,
+        receiver.full_name as receiver_name,
         (SELECT COUNT(*) FROM message_attachments WHERE message_id = m.id) as attachment_count
       FROM messages m
       LEFT JOIN users sender ON m.sender_id = sender.id
+      LEFT JOIN users receiver ON m.receiver_id = receiver.id
       WHERE ${whereClause}
       ORDER BY m.created_at DESC
       LIMIT ? OFFSET ?

@@ -27,17 +27,21 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [editForm, setEditForm] = useState({});
   const [successModal, setSuccessModal] = useState(false);
 
-  // Ensure every activity has an unlocked entry for today
+  // Deduplicate entries by date (keep last occurrence) and ensure today has an entry
   const ensureTodayEntry = (list) => {
     const today = new Date().toISOString().split('T')[0];
     return list.map(a => {
-      const entries = a.daily_entries || [];
-      const hasUnlockedToday = entries.some(e => e.date === today && !e.isLocked);
-      if (!hasUnlockedToday) {
+      const raw = a.daily_entries || [];
+      // Deduplicate by date — keep the last entry for each date
+      const seen = new Map();
+      raw.forEach(e => seen.set(e.date, e));
+      const entries = Array.from(seen.values());
+      const hasToday = entries.some(e => e.date === today);
+      if (!hasToday) {
         const locked = entries.map(e => ({ ...e, isLocked: true }));
         return { ...a, daily_entries: [...locked, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }] };
       }
-      return a;
+      return { ...a, daily_entries: entries };
     });
   };
 
@@ -102,6 +106,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       nextDate = lastDate.toISOString().split('T')[0];
     } else {
       nextDate = new Date().toISOString().split('T')[0];
+    }
+    // Prevent duplicate date entry
+    if (dailyEntries.some(e => e.date === nextDate)) {
+      alert('An entry for ' + nextDate + ' already exists.');
+      return;
     }
     const lockedEntries = dailyEntries.map(e => ({ ...e, isLocked: true }));
     const updatedEntries = [...lockedEntries, { date: nextDate, qty_done: '', hours: '', remarks: '', isLocked: false }];
@@ -216,13 +225,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
   const formatShortDate = (dateStr) => {
     if (!dateStr) return '–';
-    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const d = new Date(dateStr + 'T00:00:00');
+    const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
+    const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return `${date} (${day})`;
   };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="text-center text-gray-500">Loading assignments...</div>
+      <div className="bg-white rounded-xl shadow-md border-2 border-purple-200 p-6 mb-6">
+        <div className="text-center text-gray-500 text-sm">Loading assignments...</div>
       </div>
     );
   }
@@ -230,29 +242,29 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   if (!hasAccess) return null;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+    <div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 mb-6 ring-1 ring-purple-100">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-200">
+      <div className="px-4 py-3 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
               <ClipboardDocumentListIcon className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">My Project Activities</h3>
+              <h3 className="text-sm font-bold text-gray-900">My Project Activities</h3>
               <p className="text-xs text-gray-500">{stats.totalAssignments} assignments across {stats.totalProjects} projects</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">{stats.notStartedCount} Pending</span>
-            <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-medium">{stats.inProgressCount} In Progress</span>
-            <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-xs font-medium">{stats.completedCount} Completed</span>
+          <div className="flex items-center gap-1.5">
+            <span className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">{stats.notStartedCount} Pending</span>
+            <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{stats.inProgressCount} In Progress</span>
+            <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">{stats.completedCount} Completed</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2 mt-2">
           {['all', 'pending', 'in-progress', 'completed'].map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${filter === f ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${filter === f ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
             >
               {f === 'all' ? 'All' : f === 'pending' ? 'Pending' : f === 'in-progress' ? 'In Progress' : 'Completed'}
             </button>
@@ -263,27 +275,27 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       {/* Table */}
       <div className="overflow-x-auto">
         {filteredAssignments.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            <ClipboardDocumentListIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p>No activities assigned to you</p>
+          <div className="text-center py-10 text-gray-400">
+            <ClipboardDocumentListIcon className="w-14 h-14 mx-auto mb-3 opacity-50" />
+            <p className="text-sm">No activities assigned to you</p>
           </div>
         ) : (
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left py-2.5 px-3 font-semibold text-gray-500 uppercase tracking-wider">Project</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-gray-500 uppercase tracking-wider">Activity</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Plan Hrs</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Manhours</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Qty Asgn</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Qty Done</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="text-center py-2.5 px-2 font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+          <table className="w-full text-sm">
+            <thead className="bg-[#64126D]">
+              <tr className="divide-x divide-white/20">
+                <th className="text-center py-2.5 px-4 font-bold text-white uppercase tracking-wider text-xs">Project Number</th>
+                <th className="text-center py-2.5 px-4 font-bold text-white uppercase tracking-wider text-xs">Activity</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Plan Hrs</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Manhours</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Qty Asgn</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Qty Done</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Balance</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Due Date</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Status</th>
+                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-200">
               {filteredAssignments.map((activity) => {
                 const rowKey = `${activity.project_id}-${activity.activity_id}`;
                 const isEditing = editingId === rowKey;
@@ -297,82 +309,82 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                 return (
                   <Fragment key={rowKey}>
                     {/* Main Activity Row */}
-                    <tr className={`hover:bg-gray-50/80 transition-colors ${isDuePast ? 'bg-red-50/30' : ''}`}>
+                    <tr className={`hover:bg-purple-50/40 transition-colors divide-x divide-gray-200 ${isDuePast ? 'bg-red-50/40' : ''}`}>
                       {/* Project */}
-                      <td className="py-2.5 px-3 align-middle">
-                        <div className="font-mono text-[11px] text-purple-700 font-semibold">{activity.project_code || '–'}</div>
-                        <div className="text-[10px] text-gray-500 truncate max-w-[120px]" title={activity.project_name}>{activity.project_name}</div>
+                      <td className="py-3 px-4 align-middle">
+                        <div className="font-mono text-xs text-purple-700 font-bold">{activity.project_code || '–'}</div>
+                        <div className="text-xs text-gray-500 truncate max-w-[140px]" title={activity.project_name}>{activity.project_name}</div>
                       </td>
 
                       {/* Activity */}
-                      <td className="py-2.5 px-3 align-middle">
-                        <div className="font-medium text-gray-900 text-[11px]">{activity.activity_name}</div>
-                        {activity.activity_description && <div className="text-[10px] text-gray-400 truncate max-w-[200px]" title={activity.activity_description}>{activity.activity_description}</div>}
+                      <td className="py-3 px-4 align-middle">
+                        <div className="font-semibold text-gray-900 text-sm">{activity.activity_name}</div>
+                        {activity.activity_description && <div className="text-xs text-gray-400 truncate max-w-[220px]" title={activity.activity_description}>{activity.activity_description}</div>}
                       </td>
 
                       {/* Plan Hrs */}
-                      <td className="py-2.5 px-2 text-center align-middle text-gray-600">{activity.planned_hours || 0}</td>
+                      <td className="py-3 px-3 text-center align-middle text-gray-600">{activity.planned_hours || 0}</td>
 
                       {/* Manhours */}
-                      <td className="py-2.5 px-2 text-center align-middle font-medium text-blue-600">{activity.actual_hours || 0}</td>
+                      <td className="py-3 px-3 text-center align-middle font-semibold text-blue-600">{activity.actual_hours || 0}</td>
 
                       {/* Qty Asgn */}
-                      <td className="py-2.5 px-2 text-center align-middle text-gray-600">{qtyAssigned}</td>
+                      <td className="py-3 px-3 text-center align-middle text-gray-600">{qtyAssigned}</td>
 
                       {/* Qty Done */}
-                      <td className="py-2.5 px-2 text-center align-middle font-medium text-purple-600">{qtyDone}</td>
+                      <td className="py-3 px-3 text-center align-middle font-semibold text-purple-600">{qtyDone}</td>
 
                       {/* Balance */}
-                      <td className="py-2.5 px-2 text-center align-middle">
-                        <span className={`font-medium ${balance > 0 ? 'text-amber-600' : balance === 0 ? 'text-green-600' : 'text-red-500'}`}>{balance}</span>
+                      <td className="py-3 px-3 text-center align-middle">
+                        <span className={`font-semibold ${balance > 0 ? 'text-amber-600' : balance === 0 ? 'text-green-600' : 'text-red-500'}`}>{balance}</span>
                       </td>
 
                       {/* Due Date */}
-                      <td className="py-2.5 px-2 text-center align-middle">
-                          <span className={`text-[10px] ${isDuePast ? 'text-red-500 font-semibold' : 'text-gray-600'}`}>{formatShortDate(activity.due_date)}</span>
+                      <td className="py-3 px-3 text-center align-middle">
+                          <span className={`text-xs ${isDuePast ? 'text-red-500 font-bold' : 'text-gray-600'}`}>{formatShortDate(activity.due_date)}</span>
                       </td>
 
                       {/* Status */}
-                      <td className="py-2.5 px-2 text-center align-middle">
+                      <td className="py-3 px-3 text-center align-middle">
                         {isEditing ? (
                           <select value={editForm.status} onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-                            className="px-1 py-0.5 text-[10px] border border-gray-300 rounded">
+                            className="px-2 py-1 text-xs border border-gray-300 rounded">
                             <option value="Not Started">Not Started</option>
                             <option value="In Progress">In Progress</option>
                             <option value="Completed">Completed</option>
                             <option value="On Hold">On Hold</option>
                           </select>
                         ) : (
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadge(activity.status)}`}>{activity.status}</span>
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusBadge(activity.status)}`}>{activity.status}</span>
                         )}
                       </td>
 
                       {/* Actions */}
-                      <td className="py-2.5 px-2 text-center align-middle">
-                        <div className="flex items-center justify-center gap-0.5">
+                      <td className="py-3 px-3 text-center align-middle">
+                        <div className="flex items-center justify-center gap-1">
                           {isEditing ? (
                             <>
-                              <button onClick={saveProgress} disabled={saving} className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors" title="Save">
-                                <CheckCircleIcon className="w-3.5 h-3.5" />
+                              <button onClick={saveProgress} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors" title="Save">
+                                <CheckCircleIcon className="w-4 h-4" />
                               </button>
-                              <button onClick={cancelEditing} className="p-1 text-gray-400 hover:bg-gray-100 rounded transition-colors" title="Cancel">
-                                <XMarkIcon className="w-3.5 h-3.5" />
+                              <button onClick={cancelEditing} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors" title="Cancel">
+                                <XMarkIcon className="w-4 h-4" />
                               </button>
                             </>
                           ) : (
                             <>
                               <button onClick={() => addDailyEntry(activity)} disabled={saving}
-                                className="p-1 text-emerald-600 hover:bg-emerald-100 rounded transition-colors" title="Add Daily Entry">
-                                <PlusIcon className="w-3.5 h-3.5" />
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded transition-colors" title="Add Daily Entry">
+                                <PlusIcon className="w-4 h-4" />
                               </button>
                               <button onClick={() => startEditing(activity)}
-                                className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Status/Date">
-                                <PencilSquareIcon className="w-3.5 h-3.5" />
+                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Status/Date">
+                                <PencilSquareIcon className="w-4 h-4" />
                               </button>
                               {dailyEntries.length > 0 && (
                                 <button onClick={() => toggleExpand(rowKey)}
-                                  className="p-1 text-gray-500 hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
-                                  {isExpanded ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
+                                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
+                                  {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
                                 </button>
                               )}
                             </>
@@ -384,70 +396,146 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                     {/* Daily Entry Sub-Rows */}
                     {isExpanded && dailyEntries.length > 0 && (
                       <tr>
-                        <td colSpan={10} className="px-3 py-2 bg-slate-50/80">
-                          <div className="ml-4 border-l-2 border-purple-200 pl-3">
-                            <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1.5">Daily Entries</div>
-                            <table className="w-full text-[10px]">
+                        <td colSpan={10} className="px-4 py-3 bg-purple-50/40">
+                          <div className="ml-4 border-l-2 border-purple-300 pl-4">
+                            <div className="text-xs font-bold text-gray-600 uppercase mb-2 tracking-wide">Daily Work Progress</div>
+                            <table className="w-full text-xs">
                               <thead>
-                                <tr className="text-gray-400 uppercase">
-                                  <th className="text-left py-1 pr-2 font-semibold">Date</th>
-                                  <th className="text-center py-1 px-2 font-semibold">Qty Done</th>
-                                  <th className="text-center py-1 px-2 font-semibold">Manhours</th>
-                                  <th className="text-left py-1 px-2 font-semibold">Remarks</th>
-                                  <th className="text-center py-1 pl-2 font-semibold w-8"></th>
+                                <tr className="text-[#64126D] uppercase divide-x divide-[#64126D]/20">
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Date</th>
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Qty Asgn</th>
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Qty Done</th>
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Balance</th>
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Manhours</th>
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">% Done</th>
+                                  <th className="text-center py-1.5 px-3 font-extrabold text-[11px]">Remarks</th>
+                                  <th className="text-center py-1.5 pl-3 font-extrabold w-10"></th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {dailyEntries.map((entry, eIdx) => {
-                                  const isLocked = entry.isLocked;
-                                  return (
-                                    <tr key={eIdx} className={`${isLocked ? 'text-gray-400' : 'text-gray-700'}`}>
-                                      <td className="py-1 pr-2">
-                                        <span className="text-[10px]">{formatShortDate(entry.date)}</span>
+                                {(() => {
+                                  let runningBalance = qtyAssigned;
+                                  let cumDone = 0;
+                                  let lastWeek = null;
+                                  // Helper: get ISO week number
+                                  const getWeek = (dateStr) => {
+                                    if (!dateStr) return null;
+                                    const d = new Date(dateStr);
+                                    d.setHours(0, 0, 0, 0);
+                                    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+                                    const jan4 = new Date(d.getFullYear(), 0, 4);
+                                    return Math.round(((d - jan4) / 86400000 + jan4.getDay() + 1) / 7);
+                                  };
+                                  // Pre-compute weekly totals for summary
+                                  const weekTotals = {};
+                                  const weekMonths = {};
+                                  dailyEntries.forEach(e => {
+                                    const w = getWeek(e.date);
+                                    if (!w) return;
+                                    if (!weekTotals[w]) weekTotals[w] = { qty: 0, hours: 0, count: 0 };
+                                    weekTotals[w].qty += parseFloat(e.qty_done) || 0;
+                                    weekTotals[w].hours += parseFloat(e.hours) || 0;
+                                    weekTotals[w].count++;
+                                    if (!weekMonths[w] && e.date) {
+                                      const d = new Date(e.date);
+                                      weekMonths[w] = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+                                    }
+                                  });
+                                  const rows = [];
+                                  dailyEntries.forEach((entry, eIdx) => {
+                                    const week = getWeek(entry.date);
+                                    // Insert week header when week changes
+                                    if (week && week !== lastWeek) {
+                                      const wt = weekTotals[week] || { qty: 0, hours: 0, count: 0 };
+                                      rows.push(
+                                        <tr key={`week-${week}`} className="bg-purple-100/60">
+                                          <td colSpan={8} className="py-1.5 px-3">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">Week {week} &middot; {weekMonths[week] || ''}</span>
+                                              <div className="flex items-center gap-4 text-[10px] text-purple-600 font-semibold">
+                                                <span>{wt.count} {wt.count === 1 ? 'day' : 'days'}</span>
+                                                <span>Qty: {wt.qty}</span>
+                                                <span>Hrs: {wt.hours}</span>
+                                              </div>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                      lastWeek = week;
+                                    }
+                                    const isLocked = entry.isLocked;
+                                    const entryQtyDone = parseFloat(entry.qty_done) || 0;
+                                    const dayQtyAsgn = runningBalance;
+                                    runningBalance = runningBalance - entryQtyDone;
+                                    cumDone += entryQtyDone;
+                                    const cumPct = qtyAssigned > 0 ? Math.min(100, Math.round((cumDone / qtyAssigned) * 100)) : 0;
+                                    const barColor = cumPct >= 75 ? '#059669' : cumPct >= 40 ? '#d97706' : '#7e22ce';
+                                    rows.push(
+                                    <tr key={eIdx} className={`divide-x divide-gray-200 ${isLocked ? 'text-gray-400' : 'text-gray-700'}`}>
+                                      <td className="py-1.5 px-3 text-center">
+                                        <span className="text-xs">{formatShortDate(entry.date)}</span>
                                       </td>
-                                      <td className="py-1 px-2 text-center">
+                                      <td className="py-1.5 px-3 text-center">
+                                        <span className="text-xs font-medium text-gray-500">{dayQtyAsgn}</span>
+                                      </td>
+                                      <td className="py-1.5 px-3 text-center">
                                         {isLocked ? (
                                           <span>{entry.qty_done || 0}</span>
                                         ) : (
                                           <input type="number" value={entry.qty_done || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'qty_done', e.target.value)}
-                                            onBlur={() => saveDailyEntries(activity)} min="0"
-                                            className="w-14 px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none" />
+                                            min="0"
+                                            className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none" />
                                         )}
                                       </td>
-                                      <td className="py-1 px-2 text-center">
+                                      <td className="py-1.5 px-3 text-center">
+                                        <span className={`text-xs font-semibold ${runningBalance > 0 ? 'text-amber-600' : runningBalance === 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                          {runningBalance}
+                                        </span>
+                                      </td>
+                                      <td className="py-1.5 px-3 text-center">
                                         {isLocked ? (
                                           <span>{entry.hours || 0}</span>
                                         ) : (
                                           <input type="number" value={entry.hours || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'hours', e.target.value)}
-                                            onBlur={() => saveDailyEntries(activity)} min="0" step="0.5"
-                                            className="w-14 px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-blue-500 focus:outline-none" />
+                                            min="0" step="0.5"
+                                            className="w-16 px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none" />
                                         )}
                                       </td>
-                                      <td className="py-1 px-2">
+                                      <td className="py-1.5 px-3 text-center">
+                                        <div className="flex items-center gap-1.5 justify-center">
+                                          <div className="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                            <div className="h-full rounded-full transition-all" style={{ width: `${cumPct}%`, backgroundColor: barColor }} />
+                                          </div>
+                                          <span className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>{cumPct}%</span>
+                                        </div>
+                                      </td>
+                                      <td className="py-1.5 px-3 text-center">
                                         {isLocked ? (
-                                          <span className="text-[10px] truncate max-w-[200px] block" title={entry.remarks}>{entry.remarks || '–'}</span>
+                                          <span className="text-xs truncate max-w-[220px] inline-block" title={entry.remarks}>{entry.remarks || '–'}</span>
                                         ) : (
                                           <input type="text" value={entry.remarks || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'remarks', e.target.value)}
-                                            onBlur={() => saveDailyEntries(activity)} placeholder="Remarks..."
-                                            className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:border-blue-500 focus:outline-none" />
+                                            placeholder="Remarks..."
+                                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none" />
                                         )}
                                       </td>
-                                      <td className="py-1 pl-2 text-center">
+                                      <td className="py-1.5 pl-3 text-center">
                                         {!isLocked && (
-                                          <div className="flex items-center gap-0.5 justify-center">
+                                          <div className="flex items-center gap-1 justify-center">
                                             <button onClick={() => { saveDailyEntries(activity); }} disabled={saving}
-                                              className="px-1.5 py-0.5 text-[9px] font-medium text-white bg-purple-600 hover:bg-purple-700 rounded transition-colors disabled:opacity-50" title="Submit entry">
+                                              className="px-2.5 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded transition-colors disabled:opacity-50" title="Submit entry">
                                               {saving ? '...' : 'Submit'}
                                             </button>
-                                            <button onClick={() => removeDailyEntry(activity, eIdx)} className="p-0.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove entry">
-                                              <XMarkIcon className="w-3 h-3" />
+                                            <button onClick={() => removeDailyEntry(activity, eIdx)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Remove entry">
+                                              <XMarkIcon className="w-3.5 h-3.5" />
                                             </button>
                                           </div>
                                         )}
                                       </td>
                                     </tr>
-                                  );
-                                })}
+                                    );
+                                  });
+                                  return rows;
+                                })()}
                               </tbody>
                             </table>
                           </div>
@@ -475,12 +563,12 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
       {/* Summary Footer */}
       {assignments.length > 0 && (
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-4">
-            <span className="text-gray-600"><span className="font-semibold text-purple-600">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units</span>
-            <span className="text-gray-600"><span className="font-semibold text-blue-600">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hrs</span>
+        <div className="px-6 py-4 bg-purple-50/50 border-t-2 border-purple-100 flex items-center justify-between text-sm">
+          <div className="flex items-center gap-5">
+            <span className="text-gray-700"><span className="font-bold text-purple-700">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units</span>
+            <span className="text-gray-700"><span className="font-bold text-blue-700">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hrs</span>
           </div>
-          <div className="text-gray-500">{Math.round((stats.completedCount / stats.totalAssignments) * 100) || 0}% done</div>
+          <div className="font-semibold text-purple-700">{Math.round((stats.completedCount / stats.totalAssignments) * 100) || 0}% done</div>
         </div>
       )}
     </div>

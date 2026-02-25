@@ -17,8 +17,16 @@ import {
   DocumentTextIcon,
   TicketIcon,
   PlusIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  ArrowLeftStartOnRectangleIcon,
+  ArrowRightStartOnRectangleIcon,
+  CalendarDaysIcon,
+  CalendarIcon,
+  FireIcon,
+  ExclamationTriangleIcon,
+  ComputerDesktopIcon
 } from '@heroicons/react/24/outline';
+import { useIdleMonitor } from '@/hooks/useIdleMonitor';
 
 export default function UserDashboard({ verifiedUser }) {
   // Use verifiedUser prop if available, otherwise fall back to context
@@ -26,16 +34,40 @@ export default function UserDashboard({ verifiedUser }) {
   const user = verifiedUser || contextUser;
   const [loading, setLoading] = useState(true);
   const [statsReady, setStatsReady] = useState(false);
+  const [todoPanelOpen, setTodoPanelOpen] = useState(false);
+
+  // Sync todoPanelOpen from localStorage on mount & listen for sidebar toggle
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('todoPanelOpen') === 'true') setTodoPanelOpen(true);
+    } catch {}
+    const handler = (e) => setTodoPanelOpen(e.detail?.open ?? false);
+    window.addEventListener('toggleTodoPanel', handler);
+    return () => window.removeEventListener('toggleTodoPanel', handler);
+  }, []);
+
+  // Idle monitoring - tracks mouse/keyboard interaction
+  const { idleSeconds, isIdle, dismiss, dismissed, handleActivity } = useIdleMonitor();
+
+  // Live clock
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   
   // Attendance & Time data
   const [attendance, setAttendance] = useState({
     inTime: null,
     outTime: null,
+    loginTime: null,
+    logoutTime: null,
     currentMonth: '',
     daysInMonth: 0,
     daysPresent: 0,
     weeklyOff: 0,
     holidays: 0,
+    overtimeHours: 0,
     leaves: { total: 18, used: 0, balance: 18 }
   });
 
@@ -263,12 +295,13 @@ export default function UserDashboard({ verifiedUser }) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col">
         <Navbar />
-        <Sidebar />
         <div className="flex flex-1 pt-16">
-          <div className="todo-panel">
-            <TodoList />
-          </div>
-          <div className="flex-1 flex items-center justify-center ml-72">
+          {todoPanelOpen && (
+            <div className="todo-panel">
+              <TodoList />
+            </div>
+          )}
+          <div className={`flex-1 flex items-center justify-center ${todoPanelOpen ? 'ml-72' : 'ml-0'}`}>
             <div className="text-gray-500">Loading dashboard...</div>
           </div>
         </div>
@@ -276,100 +309,362 @@ export default function UserDashboard({ verifiedUser }) {
     );
   }
 
+  // Format idle duration for display
+  const formatIdleDuration = (seconds) => {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m < 60) return `${m}m ${s}s`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return `${h}h ${rm}m`;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      
-      <div className="flex pt-16 sm:pl-16">
-        {/* Todo List Panel */}
-        <div className="todo-panel">
-          <TodoList />
-        </div>
-        
-        {/* Main Content */}
-        <div className="flex-1 ml-72">
-          <div className="px-6 py-6">
-            {/* Header */}
-            <div className="mb-6">
-              <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
-                <ol className="inline-flex items-center gap-2">
-                  <li>Home</li>
-                  <li className="text-gray-300">/</li>
-                  <li className="text-gray-700">Dashboard</li>
-                </ol>
-              </nav>
-              <h1 className="text-3xl font-bold text-gray-900">Welcome, {user?.full_name || 'User'}!</h1>
-              <p className="text-sm text-gray-500 mt-1">{attendance.currentMonth}</p>
+
+      {/* Idle Warning Modal Popup */}
+      {isIdle && !dismissed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="idle-warning-title">
+          <div className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]">
+            {/* Amber header stripe */}
+            <div className="bg-gradient-to-r from-amber-400 to-amber-500 px-6 py-4 flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-white/25 flex items-center justify-center shrink-0">
+                <ExclamationTriangleIcon className="h-7 w-7 text-white" />
+              </div>
+              <h2 id="idle-warning-title" className="text-lg font-bold text-white">Idle Warning</h2>
             </div>
 
-            {/* Quick Actions & Alerts Bar */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-              {/* Total Assigned Tasks */}
-              <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
-                    <ClipboardDocumentListIcon className={`h-5 w-5 ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">Total Tasks</p>
-                    <p className={`text-2xl font-bold ${moduleAssignments.activityAssignments.stats.totalAssignments > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {moduleAssignments.activityAssignments.stats.totalAssignments}
-                    </p>
+            {/* Body */}
+            <div className="px-5 py-4">
+              <p className="text-base font-semibold text-gray-800">
+                You&apos;ve been idle for {formatIdleDuration(idleSeconds)}
+              </p>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                No mouse movement or keyboard activity has been detected. Your idle time is being logged and may affect your productivity report.
+              </p>
+
+              {/* Live idle timer */}
+              <div className="mt-4 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                <ClockIcon className="h-5 w-5 text-amber-600 shrink-0 animate-pulse" />
+                <div>
+                  <p className="text-xs font-medium text-amber-700">Current idle duration</p>
+                  <p className="text-lg font-bold text-amber-800 tabular-nums">{formatIdleDuration(idleSeconds)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="px-6 pb-5 flex gap-3">
+              <button
+                onClick={dismiss}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={() => { dismiss(); handleActivity?.(); }}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                I&apos;m Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="flex pt-4 sm:pl-11">
+        {/* Todo List Panel - toggled from sidebar */}
+        {todoPanelOpen && (
+          <div className="todo-panel">
+            <TodoList />
+          </div>
+        )}
+        
+        {/* Main Content */}
+        <div className={`flex-1 transition-[margin] duration-200 ${todoPanelOpen ? 'ml-72' : 'ml-0'}`}>
+          <div className="px-2 sm:px-3 lg:px-4 py-4 max-w-[1920px] mx-auto">
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-3 sm:p-4 space-y-6">
+            {/* Hero Header — Aesthetic-Usability + Peak-End Rule */}
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#64126D] via-[#7a1785] to-[#9333ea] px-5 py-3 shadow-lg">
+              {/* Decorative bg shapes */}
+              <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/5" />
+              <div className="absolute -bottom-14 -left-6 w-32 h-32 rounded-full bg-white/5" />
+              <div className="relative flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <nav className="text-[11px] text-white/60 mb-1" aria-label="Breadcrumb">
+                    <ol className="inline-flex items-center gap-1.5">
+                      <li>Home</li>
+                      <li className="text-white/30">/</li>
+                      <li className="text-white/90 font-medium">Dashboard</li>
+                    </ol>
+                  </nav>
+                  <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight tracking-tight">Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.full_name?.split(' ')[0] || 'User'}</h1>
+                  <p className="text-xs text-white/70 mt-0.5">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* Analog Clock */}
+                  {(() => {
+                    const h = currentTime.getHours() % 12;
+                    const m = currentTime.getMinutes();
+                    const s = currentTime.getSeconds();
+                    const hDeg = h * 30 + m * 0.5;
+                    const mDeg = m * 6 + s * 0.1;
+                    const sDeg = s * 6;
+                    return (
+                      <div className="relative flex items-center gap-2" title={currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" className="drop-shadow-md">
+                          {/* Face */}
+                          <circle cx="26" cy="26" r="25" fill="white" stroke="#7e22ce" strokeWidth="1.5" />
+                          {/* Hour markers */}
+                          {[...Array(12)].map((_, i) => {
+                            const angle = (i * 30 - 90) * (Math.PI / 180);
+                            const isMain = i % 3 === 0;
+                            const outer = 22;
+                            const inner = isMain ? 18 : 19.5;
+                            return (
+                              <line
+                                key={i}
+                                x1={26 + inner * Math.cos(angle)}
+                                y1={26 + inner * Math.sin(angle)}
+                                x2={26 + outer * Math.cos(angle)}
+                                y2={26 + outer * Math.sin(angle)}
+                                stroke={isMain ? '#581c87' : '#a855f7'}
+                                strokeWidth={isMain ? 1.5 : 0.8}
+                                strokeLinecap="round"
+                              />
+                            );
+                          })}
+                          {/* Hour hand */}
+                          <line
+                            x1="26" y1="26"
+                            x2={26 + 12 * Math.cos((hDeg - 90) * Math.PI / 180)}
+                            y2={26 + 12 * Math.sin((hDeg - 90) * Math.PI / 180)}
+                            stroke="#581c87" strokeWidth="2" strokeLinecap="round"
+                          />
+                          {/* Minute hand */}
+                          <line
+                            x1="26" y1="26"
+                            x2={26 + 17 * Math.cos((mDeg - 90) * Math.PI / 180)}
+                            y2={26 + 17 * Math.sin((mDeg - 90) * Math.PI / 180)}
+                            stroke="#7e22ce" strokeWidth="1.5" strokeLinecap="round"
+                          />
+                          {/* Second hand */}
+                          <line
+                            x1="26" y1="26"
+                            x2={26 + 19 * Math.cos((sDeg - 90) * Math.PI / 180)}
+                            y2={26 + 19 * Math.sin((sDeg - 90) * Math.PI / 180)}
+                            stroke="#ef4444" strokeWidth="0.7" strokeLinecap="round"
+                          />
+                          {/* Center dot */}
+                          <circle cx="26" cy="26" r="1.5" fill="#581c87" />
+                        </svg>
+                      </div>
+                    );
+                  })()}
+                  {/* Live idle indicator */}
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-colors duration-200 ${
+                    idleSeconds > 60
+                      ? 'bg-red-500/20 text-red-100 ring-1 ring-red-400/30'
+                      : idleSeconds > 30
+                        ? 'bg-amber-500/20 text-amber-100 ring-1 ring-amber-400/30'
+                        : 'bg-white/15 text-white/90 ring-1 ring-white/20'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      idleSeconds > 60 ? 'bg-red-400 animate-pulse' : idleSeconds > 30 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                    }`} />
+                    {idleSeconds > 30 ? `Idle: ${formatIdleDuration(idleSeconds)}` : 'Active'}
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* In Progress Tasks */}
-              <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
-                    <ClockIcon className={`h-5 w-5 ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">In Progress</p>
-                    <p className={`text-2xl font-bold ${moduleAssignments.activityAssignments.stats.inProgressCount > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {moduleAssignments.activityAssignments.stats.inProgressCount}
-                    </p>
-                  </div>
-                </div>
+            {/* Attendance — Law of Common Region + Proximity */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
+                <h2 className="text-xs font-semibold text-gray-800 tracking-wide">Today&apos;s Attendance</h2>
               </div>
-
-              {/* Completed Tasks */}
-              <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
-                    <CheckCircleIcon className={`h-5 w-5 ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">Completed</p>
-                    <p className={`text-2xl font-bold ${moduleAssignments.activityAssignments.stats.completedCount > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {moduleAssignments.activityAssignments.stats.completedCount}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Today's Work Hours - only show if user has access */}
-              {moduleAccess.workLogs && (
-                <div className="bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${moduleAssignments.todayWorkHours > 0 ? 'bg-white border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
-                      <DocumentTextIcon className={`h-5 w-5 ${moduleAssignments.todayWorkHours > 0 ? 'text-[#64126D]' : 'text-gray-400'}`} />
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {/* In Time */}
+                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-green-50/40 p-2.5 hover:shadow-md hover:border-green-300 transition-all duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.inTime ? 'bg-green-100 text-green-600 group-hover:bg-green-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 tracking-wider uppercase">Today&apos;s Logged</p>
-                      <p className={`text-2xl font-bold ${moduleAssignments.todayWorkHours > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                        {moduleAssignments.todayWorkHours}h
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">In Time</p>
+                      <p className={`text-sm font-bold mt-0.5 leading-tight ${attendance.inTime ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {formatTime(attendance.inTime)}
+                      </p>
+                      {attendance.loginTime && (
+                        <p className="text-[10px] text-green-600 mt-0.5 font-medium">Login {formatTime(attendance.loginTime)}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Out Time */}
+                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-red-50/40 p-2.5 hover:shadow-md hover:border-red-300 transition-all duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.outTime ? 'bg-red-100 text-red-600 group-hover:bg-red-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Out Time</p>
+                      <p className={`text-sm font-bold mt-0.5 leading-tight ${attendance.outTime ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {formatTime(attendance.outTime)}
+                      </p>
+                      {attendance.logoutTime && (
+                        <p className="text-[10px] text-red-600 mt-0.5 font-medium">Logout {formatTime(attendance.logoutTime)}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Present Days */}
+                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-blue-50/40 p-2.5 hover:shadow-md hover:border-blue-300 transition-all duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.daysPresent > 0 ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <CalendarDaysIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Present</p>
+                      <p className={`text-base font-bold mt-0.5 leading-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {attendance.daysPresent}<span className="text-sm font-normal text-gray-400">/{attendance.daysInMonth}</span>
                       </p>
                     </div>
                   </div>
+                  {/* Mini progress bar (Aesthetic-Usability) */}
+                  {attendance.daysInMonth > 0 && (
+                    <div className="mt-1.5 h-1 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${Math.round((attendance.daysPresent / attendance.daysInMonth) * 100)}%` }} />
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Leave Days */}
+                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-amber-50/40 p-2.5 hover:shadow-md hover:border-amber-300 transition-all duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.leaves.used > 0 ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <CalendarIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Leaves</p>
+                      <p className={`text-base font-bold mt-0.5 leading-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {attendance.leaves.used}<span className="text-sm font-normal text-gray-400">/{attendance.leaves.total}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-amber-600 font-medium mt-1.5">{attendance.leaves.balance} remaining</p>
+                </div>
+
+                {/* Overtime */}
+                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-orange-50/40 p-2.5 hover:shadow-md hover:border-orange-300 transition-all duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.overtimeHours > 0 ? 'bg-orange-100 text-orange-600 group-hover:bg-orange-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <FireIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Overtime</p>
+                      <p className={`text-base font-bold mt-0.5 leading-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {attendance.overtimeHours}<span className="text-sm font-normal text-gray-400">h</span>
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">this month</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Idle Time (Live) — Von Restorff: stands out when high */}
+                <div className={`group relative rounded-xl border p-2.5 hover:shadow-md transition-all duration-200 ${
+                  idleSeconds > 1800 ? 'border-red-200 bg-gradient-to-br from-red-50/80 to-red-100/50 ring-1 ring-red-100' : idleSeconds > 300 ? 'border-amber-200 bg-gradient-to-br from-white to-amber-50/40' : 'border-gray-100 bg-gradient-to-br from-white to-emerald-50/40'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${
+                      idleSeconds > 1800 ? 'bg-red-100 text-red-600' : idleSeconds > 300 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
+                    }`}>
+                      <ComputerDesktopIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Idle</p>
+                      <p className={`text-sm font-bold mt-0.5 leading-tight ${
+                        idleSeconds > 1800 ? 'text-red-700' : idleSeconds > 300 ? 'text-amber-700' : 'text-emerald-700'
+                      }`}>
+                        {formatIdleDuration(idleSeconds)}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{idleSeconds > 1800 ? 'action needed' : idleSeconds > 300 ? 'getting idle' : 'all good'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Upcoming Deadlines Details (if any) - only show if user has dashboard access */}
+            {/* Activity Overview — Miller's Law: chunked into 4 digestible KPIs */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
+                <h2 className="text-xs font-semibold text-gray-800 tracking-wide">Activity Overview</h2>
+              </div>
+              {(() => {
+                const stats = moduleAssignments.activityAssignments.stats;
+                const completionPct = stats.totalAssignments > 0 ? Math.round((stats.completedCount / stats.totalAssignments) * 100) : 0;
+                return (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {/* Total Tasks */}
+                    <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-purple-50/60 to-white p-2.5 hover:shadow-md hover:border-purple-300 transition-all duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-purple-100 text-[#64126D] flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                          <ClipboardDocumentListIcon className="h-4 w-4" />
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{stats.totalAssignments}</p>
+                      </div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">Total Tasks</p>
+                    </div>
+                    {/* In Progress */}
+                    <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-blue-50/60 to-white p-2.5 hover:shadow-md hover:border-blue-300 transition-all duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                          <ClockIcon className="h-4 w-4" />
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{stats.inProgressCount}</p>
+                      </div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">In Progress</p>
+                    </div>
+                    {/* Completed — with progress ring (Aesthetic-Usability) */}
+                    <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-emerald-50/60 to-white p-2.5 hover:shadow-md hover:border-emerald-300 transition-all duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="relative w-8 h-8">
+                          <svg viewBox="0 0 36 36" className="w-8 h-8 -rotate-90">
+                            <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+                            <circle cx="18" cy="18" r="15" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${completionPct * 0.942} 100`} className="transition-all duration-700" />
+                          </svg>
+                          <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-emerald-700">{completionPct}%</span>
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{stats.completedCount}</p>
+                      </div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">Completed</p>
+                    </div>
+                    {/* Today's Logged */}
+                    {moduleAccess.workLogs && (
+                      <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-violet-50/60 to-white p-2.5 hover:shadow-md hover:border-violet-300 transition-all duration-200">
+                        <div className="flex items-center justify-between">
+                          <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-600 flex items-center justify-center group-hover:bg-violet-200 transition-colors">
+                            <DocumentTextIcon className="h-4 w-4" />
+                          </div>
+                          <p className="text-xl font-bold text-gray-900">{moduleAssignments.todayWorkHours}<span className="text-sm font-semibold text-gray-400">h</span></p>
+                        </div>
+                        <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">Today&apos;s Logged</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Upcoming Deadlines — Von Restorff: visually distinct warning section */}
             {moduleAccess.dashboard && moduleAssignments.upcomingDeadlines.length > 0 && (
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-200 p-4 mb-6">
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl shadow-sm border border-amber-200/80 p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <BellIcon className="w-5 h-5 text-amber-600" />
                   <h3 className="font-semibold text-amber-800">Upcoming Deadlines (Next 7 Days)</h3>
@@ -401,13 +696,15 @@ export default function UserDashboard({ verifiedUser }) {
             {/* Project Activity Assignments - Pass preloaded data to avoid duplicate fetch */}
             {user?.id && <ProjectActivityAssignments userId={user.id} preloadedData={statsReady ? moduleAssignments.activityAssignments : null} />}
 
-            {/* Support Tickets Section */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+            {/* Support Tickets Section — Jakob's Law: familiar card-list pattern */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/60">
               <div className="p-5 border-b border-gray-100">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <TicketIcon className="h-6 w-6 text-[#64126D]" />
-                    <h2 className="text-lg font-semibold text-gray-900">Support Tickets</h2>
+                    <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+                      <TicketIcon className="h-5 w-5 text-[#64126D]" />
+                    </div>
+                    <h2 className="text-base font-semibold text-gray-900">Support Tickets</h2>
                     {moduleAssignments.ticketStats.waitingForYou > 0 && (
                       <span className="px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full animate-pulse">
                         {moduleAssignments.ticketStats.waitingForYou} waiting for you
@@ -432,20 +729,20 @@ export default function UserDashboard({ verifiedUser }) {
                   </div>
                 </div>
                 
-                {/* Quick Stats */}
-                <div className="flex items-center gap-6 mt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    <span className="text-sm text-gray-600">Open: <strong className="text-gray-900">{moduleAssignments.ticketStats.open}</strong></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                    <span className="text-sm text-gray-600">Resolved: <strong className="text-gray-900">{moduleAssignments.ticketStats.resolved}</strong></span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-gray-400"></span>
-                    <span className="text-sm text-gray-600">Total: <strong className="text-gray-900">{moduleAssignments.ticketStats.total}</strong></span>
-                  </div>
+                {/* Quick Stats — Law of Similarity: consistent pill badges */}
+                <div className="flex items-center gap-3 mt-4">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-xs font-medium text-blue-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                    Open {moduleAssignments.ticketStats.open}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-50 text-xs font-medium text-green-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                    Resolved {moduleAssignments.ticketStats.resolved}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 text-xs font-medium text-gray-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                    Total {moduleAssignments.ticketStats.total}
+                  </span>
                 </div>
               </div>
               
@@ -529,6 +826,7 @@ export default function UserDashboard({ verifiedUser }) {
                 )}
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

@@ -54,18 +54,23 @@ function persistToStorage(data) {
 }
 
 export function SessionProvider({ children }) {
-  // Initialize state from cache if available (for instant login or refresh)
-  const [user, setUser] = useState(() => sessionCache?.user || null);
-  const [loading, setLoading] = useState(() => {
-    // If cache exists and is valid, we're not loading
-    if (sessionCache?.authenticated && sessionCache?.user) {
-      return false;
-    }
-    return true;
-  });
-  const [authenticated, setAuthenticated] = useState(() => sessionCache?.authenticated || false);
+  // Always start with loading=true to match server render and avoid hydration mismatch.
+  // Cache is synced after mount via useEffect below.
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
   const fetchingRef = useRef(false);
   const mountedRef = useRef(true);
+
+  // After hydration, immediately sync from in-memory/sessionStorage cache
+  // so pages that already had a session skip the loading flash.
+  useEffect(() => {
+    if (sessionCache?.authenticated && sessionCache?.user) {
+      setUser(sessionCache.user);
+      setAuthenticated(true);
+      setLoading(false);
+    }
+  }, []);
 
   // Register the state updater so setSessionData can update state
   useEffect(() => {

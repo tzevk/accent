@@ -40,8 +40,18 @@ export async function GET(request, { params }) {
 
     const message = messages[0];
 
-    // Security check: Only sender or receiver can access the message
-    if (message.sender_id !== currentUser.id && message.receiver_id !== currentUser.id) {
+    // Security check: sender, receiver, or conversation member can access
+    let hasAccess = message.sender_id === currentUser.id || message.receiver_id === currentUser.id;
+    
+    if (!hasAccess && message.conversation_id) {
+      const [membership] = await db.execute(
+        'SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
+        [message.conversation_id, currentUser.id]
+      );
+      hasAccess = membership.length > 0;
+    }
+
+    if (!hasAccess) {
       await db.end();
       return NextResponse.json({ success: false, error: 'Access denied' }, { status: 403 });
     }
@@ -120,7 +130,7 @@ export async function PATCH(request, { params }) {
 
     // Fetch message
     const [messages] = await db.execute(
-      'SELECT sender_id, receiver_id FROM messages WHERE id = ?',
+      'SELECT sender_id, receiver_id, conversation_id FROM messages WHERE id = ?',
       [messageId]
     );
 
@@ -131,18 +141,32 @@ export async function PATCH(request, { params }) {
 
     const message = messages[0];
 
-    // Security check
-    if (message.sender_id !== currentUser.id && message.receiver_id !== currentUser.id) {
+    // Security check: sender, receiver, or conversation member can update
+    let hasAccess = message.sender_id === currentUser.id || message.receiver_id === currentUser.id;
+    
+    if (!hasAccess && message.conversation_id) {
+      const [membership] = await db.execute(
+        'SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
+        [message.conversation_id, currentUser.id]
+      );
+      hasAccess = membership.length > 0;
+    }
+
+    if (!hasAccess) {
       await db.end();
       return NextResponse.json({ success: false, error: 'Access denied' }, { status: 403 });
     }
 
-    if (action === 'mark_read' && message.receiver_id === currentUser.id) {
+    // For mark_read/mark_unread, allow any conversation member (not just receiver_id)
+    const isRecipient = message.receiver_id === currentUser.id || 
+      (message.sender_id !== currentUser.id && hasAccess);
+
+    if (action === 'mark_read' && isRecipient) {
       await db.execute(
         'UPDATE messages SET read_status = TRUE, read_at = NOW() WHERE id = ?',
         [messageId]
       );
-    } else if (action === 'mark_unread' && message.receiver_id === currentUser.id) {
+    } else if (action === 'mark_unread' && isRecipient) {
       await db.execute(
         'UPDATE messages SET read_status = FALSE, read_at = NULL WHERE id = ?',
         [messageId]

@@ -16,7 +16,8 @@ import {
   TicketIcon,
   BanknotesIcon,
   CalendarDaysIcon,
-  ChartBarSquareIcon
+  ChartBarSquareIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
 
 export default function Sidebar() {
@@ -27,6 +28,23 @@ export default function Sidebar() {
   const [pinned, setPinned] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [accountMasterExpanded, setAccountMasterExpanded] = useState(false);
+  const [todoPanelOpen, setTodoPanelOpen] = useState(false);
+
+  // Sync todoPanelOpen from localStorage on mount
+  useEffect(() => {
+    if (!mounted || isSignin) return;
+    try {
+      const saved = localStorage.getItem('todoPanelOpen');
+      if (saved === 'true') setTodoPanelOpen(true);
+    } catch {}
+  }, [mounted, isSignin]);
+
+  // Listen for external toggle events (e.g. panel closed from dashboard)
+  useEffect(() => {
+    const handler = (e) => setTodoPanelOpen(e.detail?.open ?? false);
+    window.addEventListener('todoPanelChanged', handler);
+    return () => window.removeEventListener('todoPanelChanged', handler);
+  }, []);
   
   // Determine if user is admin - but also respect the current route
   // If we're on /user/dashboard, treat as non-admin regardless of context state
@@ -160,6 +178,26 @@ export default function Sidebar() {
               active={pathname.startsWith('/messages')} 
               badge={unreadMessages > 0 ? unreadMessages : null}
             />
+            {/* Tasks - toggle todo panel */}
+            <button
+              onClick={() => {
+                const next = !todoPanelOpen;
+                setTodoPanelOpen(next);
+                try { localStorage.setItem('todoPanelOpen', String(next)); } catch {}
+                window.dispatchEvent(new CustomEvent('toggleTodoPanel', { detail: { open: next } }));
+              }}
+              className={`group/nav-row w-full flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                todoPanelOpen ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
+              }`}
+              title="Tasks"
+            >
+              <ClipboardDocumentListIcon className={`h-[18px] w-[18px] transition-colors ${todoPanelOpen ? 'text-white' : 'text-[#64126D]'}`} />
+              <span className={`ml-2.5 hidden sidebar-open:inline ${
+                todoPanelOpen ? 'text-white' : 'text-gray-900 group-hover/nav-row:text-[#64126D]'
+              } transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}>
+                Tasks
+              </span>
+            </button>
             {/* Support Tickets - always visible for reporting issues */}
             <NavRow 
               icon={TicketIcon} 

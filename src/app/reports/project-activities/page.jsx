@@ -80,7 +80,7 @@ export default function ProjectActivitiesReport() {
     return (
       (p.project_name || '').toLowerCase().includes(s) ||
       (p.project_code || '').toLowerCase().includes(s) ||
-      (p.project_id || '').toLowerCase().includes(s) ||
+      String(p.project_id || '').toLowerCase().includes(s) ||
       p.activities?.some(a =>
         (a.activity_name || '').toLowerCase().includes(s) ||
         a.members?.some(m => (m.user_name || '').toLowerCase().includes(s))
@@ -119,9 +119,9 @@ export default function ProjectActivitiesReport() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
 
-      <div className="flex-shrink-0 pt-4 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1800px] mx-auto w-full">
-        <div className="flex-1">
-          <div className="px-6 py-6">
+      <div className="pt-4 px-3 sm:px-4 lg:px-6 pb-4 w-full max-w-[1920px] mx-auto">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm">
+          <div className="px-5 py-5">
             {/* Header */}
             <div className="mb-6">
               <nav className="text-xs text-gray-500 mb-1">
@@ -289,20 +289,20 @@ export default function ProjectActivitiesReport() {
                                                 <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Daily Entries</div>
                                                 <table className="w-full text-[10px]">
                                                   <thead>
-                                                    <tr className="text-gray-400 uppercase">
-                                                      <th className="text-left py-1 pr-2 font-semibold">Date</th>
+                                                    <tr className="text-purple-400 uppercase">
+                                                      <th className="text-center py-1 pr-2 font-semibold">Date</th>
                                                       <th className="text-center py-1 px-2 font-semibold">Qty Done</th>
                                                       <th className="text-center py-1 px-2 font-semibold">Manhours</th>
-                                                      <th className="text-left py-1 px-2 font-semibold">Remarks</th>
+                                                      <th className="text-center py-1 px-2 font-semibold">Remarks</th>
                                                     </tr>
                                                   </thead>
                                                   <tbody>
                                                     {dailyEntries.map((entry, eIdx) => (
                                                       <tr key={eIdx} className="text-gray-600">
-                                                        <td className="py-1 pr-2 text-[10px]">{formatShortDate(entry.date)}</td>
+                                                        <td className="py-1 pr-2 text-center">{formatShortDate(entry.date)}</td>
                                                         <td className="py-1 px-2 text-center">{entry.qty_done || 0}</td>
                                                         <td className="py-1 px-2 text-center">{entry.hours || 0}</td>
-                                                        <td className="py-1 px-2 text-[10px] text-gray-500">{entry.remarks || '–'}</td>
+                                                        <td className="py-1 px-2 text-center text-gray-500">{entry.remarks || '–'}</td>
                                                       </tr>
                                                     ))}
                                                     {/* Totals row */}

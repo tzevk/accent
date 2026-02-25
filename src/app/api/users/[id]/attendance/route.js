@@ -38,11 +38,14 @@ export async function GET(request, { params }) {
     let attendanceData = {
       inTime: null,
       outTime: null,
+      loginTime: null,
+      logoutTime: null,
       currentMonth: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
       daysInMonth: daysInMonth,
       daysPresent: 0,
       weeklyOff: 0,
       holidays: 0,
+      overtimeHours: 0,
       leaves: {
         total: 18, // Default annual leave
         used: 0,
@@ -81,6 +84,32 @@ export async function GET(request, { params }) {
         attendanceData.weeklyOff = monthlyAttendance[0].weekly_off || 0;
         attendanceData.holidays = monthlyAttendance[0].holidays || 0;
       }
+
+      // Calculate overtime hours for the month
+      // Overtime = total hours worked beyond 8h per day, summed across all days
+      try {
+        const [overtimeRows] = await db.execute(`
+          SELECT 
+            COALESCE(SUM(
+              GREATEST(
+                TIMESTAMPDIFF(MINUTE, in_time, out_time) / 60.0 - 8,
+                0
+              )
+            ), 0) as overtime_hours
+          FROM attendance 
+          WHERE user_id = ? 
+          AND MONTH(date) = ? 
+          AND YEAR(date) = ?
+          AND in_time IS NOT NULL 
+          AND out_time IS NOT NULL
+        `, [requestedUserId, currentMonth, currentYear]);
+
+        if (overtimeRows.length > 0) {
+          attendanceData.overtimeHours = Math.round((parseFloat(overtimeRows[0].overtime_hours) || 0) * 10) / 10;
+        }
+      } catch (otErr) {
+        console.log('Overtime calculation skipped:', otErr.message);
+      }
     } catch {
       // Attendance table might not exist, use activity logs to estimate
       console.log('Attendance table not found, using activity logs');
@@ -114,11 +143,37 @@ export async function GET(request, { params }) {
         if (date.getDay() === 0) weeklyOff++; // Sunday
       }
       attendanceData.weeklyOff = weeklyOff;
-    } finally {
-      if (db) db.release();
     }
 
-    // Try to get leave data
+    // Fetch login/logout times from user_daily_summary / user_work_sessions
+    try {
+      const [dailySummary] = await db.execute(
+        `SELECT first_login, last_activity FROM user_daily_summary WHERE user_id = ? AND date = CURDATE() LIMIT 1`,
+        [requestedUserId]
+      );
+      if (dailySummary.length > 0) {
+        if (dailySummary[0].first_login) {
+          const fl = new Date(dailySummary[0].first_login);
+          attendanceData.loginTime = fl.toTimeString().slice(0, 5); // HH:MM
+        }
+      }
+
+      // Get latest ended session_end as logout time
+      const [lastSession] = await db.execute(
+        `SELECT session_end FROM user_work_sessions
+         WHERE user_id = ? AND DATE(session_start) = CURDATE() AND status = 'ended' AND session_end IS NOT NULL
+         ORDER BY session_end DESC LIMIT 1`,
+        [requestedUserId]
+      );
+      if (lastSession.length > 0 && lastSession[0].session_end) {
+        const se = new Date(lastSession[0].session_end);
+        attendanceData.logoutTime = se.toTimeString().slice(0, 5);
+      }
+    } catch (loginErr) {
+      console.log('Login/logout time fetch skipped:', loginErr.message);
+    }
+
+    // Try to get leave data (still using same db connection)
     try {
       // First check if employee_leaves table exists
       const [leaveTable] = await db.execute(`SHOW TABLES LIKE 'employee_leaves'`);
@@ -154,5 +209,7 @@ export async function GET(request, { params }) {
       success: false, 
       error: 'Failed to fetch attendance data' 
     }, { status: 500 });
+  } finally {
+    if (db) db.release();
   }
 }
