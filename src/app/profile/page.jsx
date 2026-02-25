@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
+import { clearSessionCache } from '@/context/SessionContext';
 
 export default function ProfilePage() {
   const { loading, user } = useSessionRBAC();
@@ -58,6 +59,7 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async () => {
+    clearSessionCache();
     try {
       await fetch('/api/logout', { method: 'POST', credentials: 'include' });
     } catch {}

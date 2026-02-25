@@ -60,12 +60,13 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
   const { loading: userLoading, user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
-  const displayName = user?.full_name || user?.username || (userLoading ? '...' : 'Account');
+  const displayName = user?.full_name || user?.username || (userLoading ? '' : 'Account');
   const displayEmail = user?.email || '';
 
   // Filter navigation items based on user permissions
   const navigation = useMemo(() => {
-    if (userLoading || !user) return navigationConfig; // Show all while loading
+    if (userLoading && !user) return []; // Hide nav while loading (prevents flash)
+    if (!user) return [];
     if (user.is_super_admin) return navigationConfig; // Super admin sees all
     
     return navigationConfig.filter(item => {
@@ -367,8 +368,12 @@ export default function Navbar() {
               <div className="hidden md:flex items-center space-x-3">
                 <div className="flex items-center space-x-2 px-3 py-2 rounded-xl text-white/90">
                   <UserCircleIcon className="h-6 w-6" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">{displayName}</span>
+                  <div className="flex flex-col min-w-[60px]">
+                    {userLoading && !displayName ? (
+                      <span className="h-4 w-20 bg-white/20 rounded animate-pulse" />
+                    ) : (
+                      <span className="text-sm font-medium">{displayName}</span>
+                    )}
                     {displayEmail && (
                       <span className="text-xs text-white/60">{displayEmail}</span>
                     )}

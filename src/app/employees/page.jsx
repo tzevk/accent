@@ -3518,8 +3518,6 @@ export default function EmployeesPage() {
                                               <>
                                                 <span className="text-lg font-bold text-gray-900">₹{formatCurrency(amt)}</span>
                                                 <span className="text-sm text-gray-500 capitalize">{profile.contract_duration?.replace('_', ' ') || 'Monthly'}</span>
-                                                <span className="text-sm text-red-500 font-medium">• TDS {tdsRate}%: ₹{formatCurrency(tdsAmt)}</span>
-                                                <span className="text-sm text-green-600 font-medium">• In-Hand: ₹{formatCurrency(inHand)}</span>
                                               </>
                                             );
                                           })()}
@@ -3539,6 +3537,32 @@ export default function EmployeesPage() {
                                           )}
                                         </div>
                                         
+                                        {/* Contract TDS & In-Hand Breakdown */}
+                                        {profile.salary_type === 'contract' && (() => {
+                                          const amt = parseFloat(profile.contract_amount || profile.gross_salary) || 0;
+                                          const tdsRate = parseFloat(profile.tds_percentage) || 10;
+                                          const tdsAmt = Math.round(amt * tdsRate / 100);
+                                          const inHand = amt - tdsAmt;
+                                          if (amt <= 0) return null;
+                                          return (
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                              <div className="inline-flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1">
+                                                <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <span className="text-xs text-red-700 font-medium">TDS @ {tdsRate}%: ₹{formatCurrency(tdsAmt)}</span>
+                                              </div>
+                                              <div className="inline-flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1">
+                                                <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <span className="text-xs text-green-700 font-medium">In-Hand: ₹{formatCurrency(inHand)}</span>
+                                              </div>
+                                              <span className="text-[10px] text-gray-400 italic">No PF/ESIC</span>
+                                            </div>
+                                          );
+                                        })()}
+
                                         {/* Date range */}
                                         <p className="text-xs text-gray-500 mt-2">
                                           <span className="font-medium">Effective:</span> {profile.effective_from ? new Date(profile.effective_from).toLocaleDateString('en-IN') : '-'}
@@ -3917,15 +3941,28 @@ export default function EmployeesPage() {
                             {/* Contract Amount Fields */}
                             {salaryPreview.salary_type === 'contract' && (
                               <div className="space-y-4 mb-3">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₹) *</label>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Contract Amount (₹) *</label>
                                     <input 
                                       type="number" 
                                       value={salaryPreview.contract_amount} 
                                       onChange={(e) => setSalaryPreview({ ...salaryPreview, contract_amount: e.target.value })}
                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
                                       placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">TDS Rate (%)</label>
+                                    <input 
+                                      type="number" 
+                                      step="0.1"
+                                      min="0"
+                                      max="30"
+                                      value={salaryPreview.tds_percentage} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, tds_percentage: e.target.value })}
+                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
+                                      placeholder="10"
                                     />
                                   </div>
                                   <div>
@@ -3952,28 +3989,73 @@ export default function EmployeesPage() {
                                     />
                                   </div>
                                 </div>
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
-                                  <p className="text-xs text-amber-700">
-                                    {(() => {
-                                      const amt = parseFloat(salaryPreview.contract_amount) || 0;
-                                      const tdsRate = parseFloat(salaryPreview.tds_percentage) || 10;
-                                      const tdsAmt = Math.round(amt * tdsRate / 100);
-                                      const inHand = amt - tdsAmt;
-                                      return amt > 0
-                                        ? `💡 No PF/ESIC. TDS @ ${tdsRate}% = ₹${tdsAmt.toLocaleString('en-IN')} | In-Hand CTC: ₹${inHand.toLocaleString('en-IN')}`
-                                        : '💡 No PF/ESIC. 10% TDS will be deducted by default.';
-                                    })()}
-                                  </p>
-                                  <button
-                                    onClick={handleSaveSalaryProfile}
-                                    disabled={salaryProfileSaving || !salaryPreview.contract_amount}
-                                    className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
-                                      editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'
-                                    }`}
-                                  >
-                                    {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update' : '+ Add'}
-                                  </button>
-                                </div>
+
+                                {/* TDS & In-Hand CTC Breakdown Card */}
+                                {(() => {
+                                  const amt = parseFloat(salaryPreview.contract_amount) || 0;
+                                  const tdsRate = parseFloat(salaryPreview.tds_percentage) || 10;
+                                  const tdsAmt = Math.round(amt * tdsRate / 100);
+                                  const inHand = amt - tdsAmt;
+                                  const annualContract = salaryPreview.contract_duration === 'monthly' ? amt * 12
+                                    : salaryPreview.contract_duration === 'quarterly' ? amt * 4
+                                    : salaryPreview.contract_duration === 'half_yearly' ? amt * 2
+                                    : amt;
+                                  const annualTds = Math.round(annualContract * tdsRate / 100);
+                                  const annualInHand = annualContract - annualTds;
+                                  return (
+                                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4">
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                        <h6 className="text-sm font-semibold text-amber-800">TDS & In-Hand Breakdown</h6>
+                                        <span className="ml-auto text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">No PF / ESIC</span>
+                                      </div>
+                                      {amt > 0 ? (
+                                        <>
+                                          <div className="grid grid-cols-3 gap-3 mb-3">
+                                            <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                                              <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-0.5">Contract Amount</p>
+                                              <p className="text-lg font-bold text-gray-900">₹{amt.toLocaleString('en-IN')}</p>
+                                              <p className="text-[10px] text-gray-400 capitalize">{salaryPreview.contract_duration?.replace('_', ' ') || 'Monthly'}</p>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3 text-center shadow-sm border border-red-100">
+                                              <p className="text-[10px] text-red-500 uppercase tracking-wide mb-0.5">TDS Deduction</p>
+                                              <p className="text-lg font-bold text-red-600">₹{tdsAmt.toLocaleString('en-IN')}</p>
+                                              <p className="text-[10px] text-red-400">@ {tdsRate}%</p>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-3 text-center shadow-sm border border-green-100">
+                                              <p className="text-[10px] text-green-600 uppercase tracking-wide mb-0.5">In-Hand CTC</p>
+                                              <p className="text-lg font-bold text-green-600">₹{inHand.toLocaleString('en-IN')}</p>
+                                              <p className="text-[10px] text-green-400">After TDS</p>
+                                            </div>
+                                          </div>
+                                          {salaryPreview.contract_duration !== 'project' && (
+                                            <div className="bg-white/60 rounded-lg px-3 py-2 flex items-center justify-between text-xs">
+                                              <span className="text-gray-500">Annual Projection:</span>
+                                              <span className="text-gray-700 font-medium">
+                                                Contract ₹{annualContract.toLocaleString('en-IN')} − TDS ₹{annualTds.toLocaleString('en-IN')} = <span className="text-green-700 font-bold">₹{annualInHand.toLocaleString('en-IN')}</span> /yr
+                                              </span>
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <p className="text-xs text-amber-600">💡 Enter contract amount above to see TDS & in-hand breakdown. Default TDS rate is 10%.</p>
+                                      )}
+                                      <div className="flex justify-end mt-3">
+                                        <button
+                                          onClick={handleSaveSalaryProfile}
+                                          disabled={salaryProfileSaving || !salaryPreview.contract_amount}
+                                          className={`px-5 py-2 text-sm rounded-lg text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow ${
+                                            editingSalaryProfileId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'
+                                          }`}
+                                        >
+                                          {salaryProfileSaving ? '⏳' : editingSalaryProfileId ? 'Update' : '+ Add'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             )}
 
@@ -5211,33 +5293,56 @@ export default function EmployeesPage() {
                                   const tdsRate = parseFloat(salaryPreview.tds_percentage) || 10;
                                   const tdsAmt = Math.round(amt * tdsRate / 100);
                                   const inHand = amt - tdsAmt;
+                                  const durationLabel = salaryPreview.contract_duration === 'monthly' ? 'Monthly'
+                                    : salaryPreview.contract_duration === 'quarterly' ? 'Quarterly'
+                                    : salaryPreview.contract_duration === 'half_yearly' ? '6 Months'
+                                    : salaryPreview.contract_duration === 'yearly' ? 'Yearly'
+                                    : salaryPreview.contract_duration === 'project' ? 'Project'
+                                    : 'Monthly';
+                                  const periodsPerYear = salaryPreview.contract_duration === 'monthly' ? 12
+                                    : salaryPreview.contract_duration === 'quarterly' ? 4
+                                    : salaryPreview.contract_duration === 'half_yearly' ? 2
+                                    : 1;
+                                  const annualContract = amt * periodsPerYear;
+                                  const annualTds = Math.round(annualContract * tdsRate / 100);
+                                  const annualInHand = annualContract - annualTds;
                                   return (
                                     <>
-                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">TDS Deduction ({tdsRate}%)</p>
+                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center border-2 border-red-100">
+                                        <p className="text-xs text-red-500 uppercase tracking-wide mb-1">TDS Deduction</p>
                                         <p className="text-xl font-bold text-red-600">₹{formatCurrency(tdsAmt)}</p>
+                                        <p className="text-[10px] text-red-400 mt-0.5">@ {tdsRate}%</p>
                                       </div>
-                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">In-Hand CTC</p>
+                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center border-2 border-green-100">
+                                        <p className="text-xs text-green-600 uppercase tracking-wide mb-1">In-Hand CTC</p>
                                         <p className="text-xl font-bold text-green-600">₹{formatCurrency(inHand)}</p>
+                                        <p className="text-[10px] text-green-400 mt-0.5">After TDS</p>
                                       </div>
                                       <div className="bg-white rounded-xl p-4 shadow-sm text-center">
                                         <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</p>
-                                        <p className="text-lg font-bold text-gray-700">
-                                          {salaryPreview.contract_duration === 'monthly' && 'Monthly'}
-                                          {salaryPreview.contract_duration === 'quarterly' && 'Quarterly'}
-                                          {salaryPreview.contract_duration === 'half_yearly' && '6 Months'}
-                                          {salaryPreview.contract_duration === 'yearly' && 'Yearly'}
-                                          {salaryPreview.contract_duration === 'project' && 'Project'}
-                                          {!salaryPreview.contract_duration && 'Monthly'}
-                                        </p>
-                                      </div>
-                                      {salaryPreview.contract_end_date && (
-                                        <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">End Date</p>
-                                          <p className="text-lg font-bold text-orange-600">
-                                            {new Date(salaryPreview.contract_end_date).toLocaleDateString('en-IN')}
+                                        <p className="text-lg font-bold text-gray-700">{durationLabel}</p>
+                                        {salaryPreview.contract_end_date && (
+                                          <p className="text-[10px] text-orange-500 mt-0.5">
+                                            Till {new Date(salaryPreview.contract_end_date).toLocaleDateString('en-IN')}
                                           </p>
+                                        )}
+                                      </div>
+                                      {/* Annual projection row */}
+                                      {salaryPreview.contract_duration !== 'project' && amt > 0 && (
+                                        <div className="col-span-2 md:col-span-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 shadow-sm">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                              </svg>
+                                              <span className="text-xs font-semibold text-indigo-700">Annual Projection</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs">
+                                              <span className="text-gray-600">Contract: <span className="font-bold text-gray-900">₹{formatCurrency(annualContract)}</span></span>
+                                              <span className="text-red-600">TDS: <span className="font-bold">₹{formatCurrency(annualTds)}</span></span>
+                                              <span className="text-green-600">In-Hand: <span className="font-bold text-green-700">₹{formatCurrency(annualInHand)}</span></span>
+                                            </div>
+                                          </div>
                                         </div>
                                       )}
                                     </>

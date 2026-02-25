@@ -25,8 +25,36 @@ let forceNextFetch = false;
 // Callback to update provider state from outside (set by provider)
 let updateProviderState = null;
 
+// Hydrate memory cache from sessionStorage on module load (survives refresh)
+function hydrateFromStorage() {
+  if (typeof window === 'undefined') return;
+  try {
+    const stored = sessionStorage.getItem('_session');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed?.authenticated && parsed?.user) {
+        sessionCache = { authenticated: true, user: parsed.user };
+        sessionCacheTime = Date.now(); // treat as fresh
+      }
+    }
+  } catch {}
+}
+hydrateFromStorage();
+
+// Persist session to sessionStorage
+function persistToStorage(data) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (data?.authenticated && data?.user) {
+      sessionStorage.setItem('_session', JSON.stringify({ authenticated: true, user: data.user }));
+    } else {
+      sessionStorage.removeItem('_session');
+    }
+  } catch {}
+}
+
 export function SessionProvider({ children }) {
-  // Initialize state from cache if available (for instant login)
+  // Initialize state from cache if available (for instant login or refresh)
   const [user, setUser] = useState(() => sessionCache?.user || null);
   const [loading, setLoading] = useState(() => {
     // If cache exists and is valid, we're not loading
@@ -62,6 +90,7 @@ export function SessionProvider({ children }) {
       };
       sessionCacheTime = Date.now();
       forceNextFetch = false;
+      persistToStorage(sessionCache);
       setUser(userData);
       setAuthenticated(true);
       setLoading(false);
@@ -123,6 +152,7 @@ export function SessionProvider({ children }) {
             const data = await retryRes.json();
             sessionCache = { authenticated: data.authenticated || false, user: data.user || null };
             sessionCacheTime = Date.now();
+            persistToStorage(sessionCache);
             if (mountedRef.current) {
               setUser(data.user || null);
               setAuthenticated(data.authenticated || false);
@@ -133,6 +163,7 @@ export function SessionProvider({ children }) {
         
         sessionCache = { authenticated: false, user: null };
         sessionCacheTime = now;
+        persistToStorage(sessionCache);
         if (mountedRef.current) {
           setUser(null);
           setAuthenticated(false);
@@ -146,6 +177,7 @@ export function SessionProvider({ children }) {
         user: data.user || null
       };
       sessionCacheTime = now;
+      persistToStorage(sessionCache);
 
       if (mountedRef.current) {
         setUser(data.user || null);
@@ -157,6 +189,7 @@ export function SessionProvider({ children }) {
       console.error('Session fetch error:', error);
       sessionCache = { authenticated: false, user: null };
       sessionCacheTime = now;
+      persistToStorage(sessionCache);
       if (mountedRef.current) {
         setUser(null);
         setAuthenticated(false);
@@ -221,6 +254,7 @@ export function clearSessionCache() {
   sessionCache = null;
   sessionCacheTime = 0;
   forceNextFetch = true;
+  persistToStorage(null);
 }
 
 // Pre-set session data (used after login to avoid refetch delay)
@@ -232,6 +266,7 @@ export function setSessionData(userData) {
     };
     sessionCacheTime = Date.now();
     forceNextFetch = false;
+    persistToStorage(sessionCache);
     
     // Also update the provider state if it's mounted
     if (updateProviderState) {
