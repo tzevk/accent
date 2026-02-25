@@ -83,8 +83,8 @@ export default function ProfilePage() {
       <Navbar />
 
       <div className="flex-1 overflow-hidden">
-        <div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
-          <div className="mb-6 flex items-center justify-between max-w-screen-2xl mx-auto px-4">
+        <div className="h-full px-6 lg:px-8 pt-22 max-w-5xl mx-auto w-full">
+          <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
               <p className="text-sm text-gray-600">Manage your account details</p>
@@ -93,7 +93,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="h-full overflow-y-auto pb-8">
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-screen-2xl mx-auto px-4">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               <div className="xl:col-span-2 space-y-6">
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Information</h3>
