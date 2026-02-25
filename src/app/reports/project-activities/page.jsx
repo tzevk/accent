@@ -119,7 +119,7 @@ export default function ProjectActivitiesReport() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
 
-      <div className="flex-shrink-0 pt-4 px-8 pb-4">
+      <div className="flex-shrink-0 pt-4 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1800px] mx-auto w-full">
         <div className="flex-1">
           <div className="px-6 py-6">
             {/* Header */}

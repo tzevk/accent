@@ -252,7 +252,7 @@ export default function EditInvoicePage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <main className="px-6 py-6">
+      <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="flex items-center">

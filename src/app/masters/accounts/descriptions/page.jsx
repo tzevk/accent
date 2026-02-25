@@ -149,7 +149,7 @@ export default function DescriptionMasterPage() {
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         
-        <main className="max-w-10xl mx-auto px-4 py-8">
+        <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>

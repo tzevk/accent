@@ -1186,7 +1186,7 @@ COMP001,Example Corp,Technology,51-200,https://example.com,+91 9876543210,info@e
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
         
-        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20">
+        <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
           {/* Header */}
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>

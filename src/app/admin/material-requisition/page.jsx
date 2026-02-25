@@ -152,7 +152,7 @@ export default function MaterialRequisitionPage() {
       <div className="flex-1 flex flex-col">
         <Navbar />
         
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-6 lg:px-8 xl:px-12 2xl:px-16 overflow-auto max-w-[1800px] mx-auto w-full">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>

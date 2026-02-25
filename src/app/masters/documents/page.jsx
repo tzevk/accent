@@ -97,7 +97,7 @@ export default function DocumentMasterPage() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-8 pt-16 pb-8 space-y-6">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-16 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
             <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-black">Document Master Catalogue</h1>

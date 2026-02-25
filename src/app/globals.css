@@ -93,6 +93,33 @@ html, body, #__next, :root {
   pointer-events: none;
 }
 
+/* ===== Desktop Responsive Utilities ===== */
+/* Ensure tables always get horizontal scroll on smaller desktops */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Standard page content container — scales padding across desktops */
+.page-content {
+  padding-left: 1.5rem;    /* base: 24px */
+  padding-right: 1.5rem;
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+@media (min-width: 1024px) { .page-content { padding-left: 2rem; padding-right: 2rem; } }          /* lg */
+@media (min-width: 1280px) { .page-content { padding-left: 3rem; padding-right: 3rem; } }          /* xl */
+@media (min-width: 1536px) { .page-content { padding-left: 4rem; padding-right: 4rem; } }          /* 2xl */
+
+/* Prevent content from stretching too wide on ultrawide monitors */
+.max-content {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Ensure all form field text renders in black */
 input,
 textarea,

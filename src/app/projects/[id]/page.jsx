@@ -267,7 +267,7 @@ export default function ProjectViewPage() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-8 pt-22 pb-8 space-y-6">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
             <header className="bg-white border border-gray-200 rounded-lg shadow-sm px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="space-y-2">
                 <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#7F2487]/10 text-[#7F2487] text-xs font-semibold uppercase tracking-wide">

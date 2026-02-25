@@ -157,7 +157,7 @@ function NewProjectForm() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <form onSubmit={handleSubmit} className="px-8 pt-22 pb-8 space-y-6">
+          <form onSubmit={handleSubmit} className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
             <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <button

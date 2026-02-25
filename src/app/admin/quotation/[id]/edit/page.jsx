@@ -286,7 +286,7 @@ export default function EditQuotationPage() {
       <div className="flex-1 flex flex-col">
         <Navbar />
         
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto max-w-[1800px] mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">

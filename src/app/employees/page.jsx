@@ -1843,7 +1843,7 @@ export default function EmployeesPage() {
         };
       } else if (salaryType === 'contract') {
         const contractAmount = parseFloat(salaryPreview.contract_amount) || 0;
-        const tdsPercent = parseFloat(salaryPreview.tds_percentage) || 0;
+        const tdsPercent = parseFloat(salaryPreview.tds_percentage) || 10;
         const tdsAmount = contractAmount * tdsPercent / 100;
         const netAfterTds = contractAmount - tdsAmount;
         payload = {
@@ -1851,7 +1851,7 @@ export default function EmployeesPage() {
           contract_amount: contractAmount,
           contract_duration: salaryPreview.contract_duration || 'monthly',
           contract_end_date: salaryPreview.contract_end_date || null,
-          tds_percentage: tdsPercent || null,
+          tds_percentage: tdsPercent,
           gross_salary: contractAmount,
           net_pay: netAfterTds,
           employer_cost: contractAmount,
@@ -2232,7 +2232,7 @@ export default function EmployeesPage() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-8 pt-24 pb-8">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-24 pb-8 max-w-[1800px] mx-auto w-full">
             {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
@@ -3509,15 +3509,20 @@ export default function EmployeesPage() {
                                               <span className="text-sm text-gray-500">{profile.std_working_days || 26} days/month</span>
                                             </>
                                           )}
-                                          {profile.salary_type === 'contract' && (
-                                            <>
-                                              <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.contract_amount || profile.gross_salary || 0)}</span>
-                                              <span className="text-sm text-gray-500 capitalize">{profile.contract_duration?.replace('_', ' ') || 'Monthly'}</span>
-                                              {profile.tds_percentage ? (
-                                                <span className="text-sm text-green-600 font-medium">• After TDS: ₹{formatCurrency((profile.contract_amount || profile.gross_salary || 0) - ((profile.contract_amount || profile.gross_salary || 0) * (parseFloat(profile.tds_percentage) || 0) / 100))}</span>
-                                              ) : null}
-                                            </>
-                                          )}
+                                          {profile.salary_type === 'contract' && (() => {
+                                            const amt = parseFloat(profile.contract_amount || profile.gross_salary) || 0;
+                                            const tdsRate = parseFloat(profile.tds_percentage) || 10;
+                                            const tdsAmt = Math.round(amt * tdsRate / 100);
+                                            const inHand = amt - tdsAmt;
+                                            return (
+                                              <>
+                                                <span className="text-lg font-bold text-gray-900">₹{formatCurrency(amt)}</span>
+                                                <span className="text-sm text-gray-500 capitalize">{profile.contract_duration?.replace('_', ' ') || 'Monthly'}</span>
+                                                <span className="text-sm text-red-500 font-medium">• TDS {tdsRate}%: ₹{formatCurrency(tdsAmt)}</span>
+                                                <span className="text-sm text-green-600 font-medium">• In-Hand: ₹{formatCurrency(inHand)}</span>
+                                              </>
+                                            );
+                                          })()}
                                           {profile.salary_type === 'lumpsum' && (
                                             <>
                                               <span className="text-lg font-bold text-gray-900">₹{formatCurrency(profile.lumpsum_amount || profile.gross_salary || 0)}</span>
@@ -3912,7 +3917,7 @@ export default function EmployeesPage() {
                             {/* Contract Amount Fields */}
                             {salaryPreview.salary_type === 'contract' && (
                               <div className="space-y-4 mb-3">
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                   <div>
                                     <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₹) *</label>
                                     <input 
@@ -3946,23 +3951,18 @@ export default function EmployeesPage() {
                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
                                     />
                                   </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">TDS %</label>
-                                    <input 
-                                      type="number" 
-                                      step="0.01"
-                                      min="0"
-                                      max="100"
-                                      value={salaryPreview.tds_percentage || ''} 
-                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, tds_percentage: e.target.value })}
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500" 
-                                      placeholder="e.g. 10"
-                                    />
-                                  </div>
                                 </div>
                                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
                                   <p className="text-xs text-amber-700">
-                                    💡 No PF/ESIC.{salaryPreview.tds_percentage ? ` TDS @ ${salaryPreview.tds_percentage}% = ₹${((parseFloat(salaryPreview.contract_amount) || 0) * (parseFloat(salaryPreview.tds_percentage) || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })} | Amount After TDS: ₹${((parseFloat(salaryPreview.contract_amount) || 0) - ((parseFloat(salaryPreview.contract_amount) || 0) * (parseFloat(salaryPreview.tds_percentage) || 0) / 100)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : ' TDS may apply (optional).'}
+                                    {(() => {
+                                      const amt = parseFloat(salaryPreview.contract_amount) || 0;
+                                      const tdsRate = parseFloat(salaryPreview.tds_percentage) || 10;
+                                      const tdsAmt = Math.round(amt * tdsRate / 100);
+                                      const inHand = amt - tdsAmt;
+                                      return amt > 0
+                                        ? `💡 No PF/ESIC. TDS @ ${tdsRate}% = ₹${tdsAmt.toLocaleString('en-IN')} | In-Hand CTC: ₹${inHand.toLocaleString('en-IN')}`
+                                        : '💡 No PF/ESIC. 10% TDS will be deducted by default.';
+                                    })()}
                                   </p>
                                   <button
                                     onClick={handleSaveSalaryProfile}
@@ -5206,33 +5206,49 @@ export default function EmployeesPage() {
                                     </p>
                                   </div>
                                 )}
-                                {salaryPreview.salary_type === 'contract' && (
-                                  <>
-                                    <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</p>
-                                      <p className="text-lg font-bold text-gray-700">
-                                        {salaryPreview.contract_duration === 'monthly' && 'Monthly'}
-                                        {salaryPreview.contract_duration === 'quarterly' && 'Quarterly'}
-                                        {salaryPreview.contract_duration === 'half_yearly' && '6 Months'}
-                                        {salaryPreview.contract_duration === 'yearly' && 'Yearly'}
-                                        {salaryPreview.contract_duration === 'project' && 'Project'}
-                                        {!salaryPreview.contract_duration && 'Monthly'}
-                                      </p>
-                                    </div>
-                                    {salaryPreview.contract_end_date && (
+                                {salaryPreview.salary_type === 'contract' && (() => {
+                                  const amt = parseFloat(salaryPreview.contract_amount) || 0;
+                                  const tdsRate = parseFloat(salaryPreview.tds_percentage) || 10;
+                                  const tdsAmt = Math.round(amt * tdsRate / 100);
+                                  const inHand = amt - tdsAmt;
+                                  return (
+                                    <>
                                       <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">End Date</p>
-                                        <p className="text-lg font-bold text-orange-600">
-                                          {new Date(salaryPreview.contract_end_date).toLocaleDateString('en-IN')}
+                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">TDS Deduction ({tdsRate}%)</p>
+                                        <p className="text-xl font-bold text-red-600">₹{formatCurrency(tdsAmt)}</p>
+                                      </div>
+                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">In-Hand CTC</p>
+                                        <p className="text-xl font-bold text-green-600">₹{formatCurrency(inHand)}</p>
+                                      </div>
+                                      <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</p>
+                                        <p className="text-lg font-bold text-gray-700">
+                                          {salaryPreview.contract_duration === 'monthly' && 'Monthly'}
+                                          {salaryPreview.contract_duration === 'quarterly' && 'Quarterly'}
+                                          {salaryPreview.contract_duration === 'half_yearly' && '6 Months'}
+                                          {salaryPreview.contract_duration === 'yearly' && 'Yearly'}
+                                          {salaryPreview.contract_duration === 'project' && 'Project'}
+                                          {!salaryPreview.contract_duration && 'Monthly'}
                                         </p>
                                       </div>
-                                    )}
-                                  </>
+                                      {salaryPreview.contract_end_date && (
+                                        <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">End Date</p>
+                                          <p className="text-lg font-bold text-orange-600">
+                                            {new Date(salaryPreview.contract_end_date).toLocaleDateString('en-IN')}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                                {salaryPreview.salary_type !== 'contract' && (
+                                  <div className="bg-white rounded-xl p-4 shadow-sm text-center">
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Statutory</p>
+                                    <p className="text-lg font-bold text-gray-500">N/A</p>
+                                  </div>
                                 )}
-                                <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-                                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Statutory</p>
-                                  <p className="text-lg font-bold text-gray-500">N/A</p>
-                                </div>
                               </div>
                             </div>
                           )}

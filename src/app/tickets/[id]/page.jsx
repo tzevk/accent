@@ -136,7 +136,7 @@ export default function TicketDetailPage() {
         <Sidebar />
         <div className="flex pt-16 sm:pl-16">
           <div className="flex-1">
-            <div className="px-4 sm:px-6 lg:px-8 py-8">
+            <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
               <div className="text-center py-12">
                 <ArrowPathIcon className="h-8 w-8 text-gray-400 animate-spin mx-auto mb-4" />
                 <p className="text-gray-500">Loading ticket...</p>
@@ -155,7 +155,7 @@ export default function TicketDetailPage() {
         <Sidebar />
         <div className="flex pt-16 sm:pl-16">
           <div className="flex-1">
-            <div className="px-4 sm:px-6 lg:px-8 py-8">
+            <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
               <div className="text-center py-12">
                 <TicketIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Ticket not found</h3>
@@ -182,7 +182,7 @@ export default function TicketDetailPage() {
       
       <div className="flex pt-16 sm:pl-16">
         <div className="flex-1">
-          <div className="px-4 sm:px-6 lg:px-8 py-8">
+          <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
             {/* Breadcrumb */}
             <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
               <ol className="inline-flex items-center gap-2">

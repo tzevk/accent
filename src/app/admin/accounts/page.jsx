@@ -160,7 +160,7 @@ export default function AccountsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       
-      <main className="px-6 py-6">
+      <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>

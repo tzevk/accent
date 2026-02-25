@@ -188,7 +188,7 @@ export default function TodoList() {
   const completedCount = todos.filter(t => t.status === 'completed').length;
 
   return (
-    <div className="w-72 bg-white border-r border-gray-200 flex flex-col h-full">
+    <div className="w-64 lg:w-72 xl:w-80 bg-white border-r border-gray-200 flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-3">

@@ -268,7 +268,7 @@ export default function MessagesPage() {
       <div className="flex-1 flex pt-16 overflow-hidden gap-0">
         
         {/* Left Navigation Pane - Outlook Style */}
-        <div className="w-48 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0">
+        <div className="w-40 lg:w-48 xl:w-52 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0">
           
           {/* New Mail Button */}
           <div className="p-2">
@@ -371,7 +371,7 @@ export default function MessagesPage() {
         </div>
         
         {/* Message List Pane */}
-        <div className="w-[360px] bg-white border-r border-[#edebe9] flex flex-col flex-shrink-0">
+        <div className="w-72 lg:w-80 xl:w-[360px] 2xl:w-[400px] bg-white border-r border-[#edebe9] flex flex-col flex-shrink-0">
           
           {/* Search Bar */}
           <div className="p-2 border-b border-[#edebe9]">
@@ -677,7 +677,7 @@ export default function MessagesPage() {
                 ) : (
                   <>
                     {/* Thread Subject Header - Outlook style */}
-                    <div className="px-8 py-5 border-b border-[#edebe9]">
+                    <div className="px-6 lg:px-8 xl:px-10 py-5 border-b border-[#edebe9]">
                       <h1 className="text-[21px] font-semibold text-[#323130]" style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" }}>
                         {selectedConversation.lastMessage?.subject || '(No Subject)'}
                       </h1>
@@ -686,7 +686,7 @@ export default function MessagesPage() {
                     {/* Messages Thread */}
                     <div className="divide-y divide-[#edebe9]">
                       {messages.map((msg, idx) => (
-                        <div key={msg.id} className="px-8 py-5">
+                        <div key={msg.id} className="px-6 lg:px-8 xl:px-10 py-5">
                           {/* Message Header Row */}
                           <div className="flex items-start gap-4">
                             {/* Avatar */}

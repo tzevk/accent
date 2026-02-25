@@ -80,7 +80,7 @@ export default function CreateTicketPage() {
       
       <div className="flex pt-16 sm:pl-16">
         <div className="flex-1">
-          <div className="px-4 sm:px-6 lg:px-8 py-8">
+          <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
             {/* Breadcrumb */}
             <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
               <ol className="inline-flex items-center gap-2">

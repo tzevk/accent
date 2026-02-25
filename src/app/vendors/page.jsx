@@ -93,7 +93,7 @@ export default function Vendors() {
       <Navbar />
       
       <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-22 pb-6">
+        <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-6 max-w-[1800px] mx-auto w-full">
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
             <div>

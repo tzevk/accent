@@ -170,7 +170,7 @@ export default function LiveMonitoringPage() {
       
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-8 pt-24 pb-8">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-24 pb-8 max-w-[1800px] mx-auto w-full">
             {/* Header */}
             <div className="mb-6">
               <div className="flex items-center justify-between">

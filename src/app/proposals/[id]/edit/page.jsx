@@ -384,7 +384,7 @@ Dispute Resolution
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        <div className="w-full px-8 py-16">
+        <div className="w-full px-6 lg:px-8 xl:px-12 2xl:px-16 py-16 max-w-[1800px] mx-auto">
           <p className="text-gray-600">Loading proposal…</p>
         </div>
       </div>
@@ -398,7 +398,7 @@ Dispute Resolution
 
       {/* Header — compact, no extra margins */}
       <div className="flex-shrink-0 bg-gray-50">
-        <div className="w-full px-8 pt-8 pb-4">
+        <div className="w-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-8 pb-4 max-w-[1800px] mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
@@ -450,7 +450,7 @@ Dispute Resolution
 
       {/* Tabs — sticky below header (adjust top if your Navbar is fixed) */}
       <div className="sticky top-16 z-30 bg-white border-b border-gray-200">
-        <div className="w-full px-8">
+        <div className="w-full px-6 lg:px-8 xl:px-12 2xl:px-16 max-w-[1800px] mx-auto">
           <div className="flex flex-wrap -mb-px gap-2">
             {/* Reordered per user request: show primary tabs in the exact sequence specified */}
             <Tab label="Basic info" id="basic" activeTab={activeTab} setActiveTab={setActiveTab} icon={DocumentTextIcon} />
@@ -475,7 +475,7 @@ Dispute Resolution
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="w-full px-8 py-8">
+        <div className="w-full px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
           <div className="bg-white shadow-sm rounded-none p-8 w-full">
             {activeTab === 'basic' && (
               <BasicInfoForm proposalData={proposalData} setProposalData={setProposalData} />

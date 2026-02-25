@@ -221,7 +221,7 @@ export default function HolidayMasterPage() {
       <div className="h-full pt-16 flex flex-col">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 flex-shrink-0">
-          <div className="px-6 py-4">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-4 max-w-[1800px] mx-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Link 

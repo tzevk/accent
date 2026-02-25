@@ -537,7 +537,7 @@ export default function SoftwareMasterPage() {
     <AccessGuard resource="software" permission="read" showNavbar={false}>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20">
+        <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Software Master</h1>

@@ -328,7 +328,7 @@ export default function EditLead({ params }) {
       <Navbar />
 
       {/* Fixed header section */}
-      <div className="flex-shrink-0 pt-24 px-8 pb-4">
+      <div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4">
         <div className="mb-6">
           <div className="flex items-center space-x-4 mb-4">
             <button
@@ -373,7 +373,7 @@ export default function EditLead({ params }) {
       </div>
 
       {/* Scrollable content area */}
-      <div className="flex-1 px-8 overflow-hidden">
+      <div className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 overflow-hidden">
         <div className="h-full overflow-y-auto bg-white rounded-b-lg">
           <div className="p-6">
             {activeTab === 'details' && (

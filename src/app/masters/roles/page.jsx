@@ -202,7 +202,7 @@ export default function RolesMaster() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-16">
+      <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="mb-6">
           <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">

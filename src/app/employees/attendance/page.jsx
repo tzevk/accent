@@ -621,7 +621,7 @@ export default function EmployeeAttendancePage() {
       <div className="pt-16">
         {/* Hero Header */}
         <div className="bg-white border-b border-gray-200">
-          <div className="max-w-[1920px] mx-auto px-6 py-6">
+          <div className="max-w-[1800px] mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Link 

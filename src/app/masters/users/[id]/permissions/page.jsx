@@ -1779,7 +1779,7 @@ export default function UserPermissionsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20">
+        <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
           <div className="flex items-center justify-center h-[calc(100vh-120px)]">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -1795,7 +1795,7 @@ export default function UserPermissionsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20">
+        <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
           <div className="flex items-center justify-center h-[calc(100vh-120px)]">
             <div className="text-center">
               <LockClosedIcon className="h-16 w-16 text-gray-400 mx-auto" />
@@ -1815,7 +1815,7 @@ export default function UserPermissionsPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <div className="px-4 sm:px-6 lg:px-8 py-8 pt-20">
+      <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-20 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between">

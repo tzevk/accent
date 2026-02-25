@@ -837,7 +837,7 @@ export default function ProposalPage() {
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <Navbar />
       <div className="flex-1 overflow-hidden">
-        <div className="h-full px-8 pt-22">
+        <div className="h-full px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 max-w-[1800px] mx-auto w-full">
           {/* Header */}
           <div className="mb-6">
             <div className="flex items-center justify-between">

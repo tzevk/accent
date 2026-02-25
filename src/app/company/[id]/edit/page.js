@@ -182,7 +182,7 @@ export default function EditCompany({ params }) {
         <Navbar />
 
         {/* Fixed header section */}
-        <div className="flex-shrink-0 pt-24 px-4 sm:px-6 lg:px-8 pb-4">
+        <div className="flex-shrink-0 pt-24 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1800px] mx-auto w-full">
           <div className="mb-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">

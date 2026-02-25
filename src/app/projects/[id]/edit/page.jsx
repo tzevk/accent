@@ -2867,7 +2867,7 @@ function EditProjectForm() {
         <div className="h-full overflow-y-auto">
           <form onSubmit={handleSubmit}>
           {/* Premium Header - Full Width Sticky */}
-          <header className="px-8 py-5 sticky top-16 z-30" style={{
+          <header className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-5 sticky top-16 z-30" style={{
             background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)',
             backdropFilter: 'blur(20px)',
             borderBottom: '1.5px solid rgba(139, 92, 246, 0.1)',
@@ -2962,7 +2962,7 @@ function EditProjectForm() {
             </header>
 
             {/* Minimalistic Tab Navigation */}
-            <div className="px-8 sticky z-20" style={{ top: 'calc(4rem + 5.5rem)', paddingTop: '1rem', paddingBottom: '1rem', background: '#ffffff' }}>
+            <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 sticky z-20" style={{ top: 'calc(4rem + 5.5rem)', paddingTop: '1rem', paddingBottom: '1rem', background: '#ffffff' }}>
               <div className="rounded-lg overflow-hidden border border-gray-200" style={{
                 background: '#ffffff',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
@@ -3017,7 +3017,7 @@ function EditProjectForm() {
             </div>
 
             {/* Main Content Area */}
-            <div className="px-8 pb-8 space-y-6">
+            <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pb-8 space-y-6">
             {/* Enhanced Project Details Tab */}
             {(activeTab === 'general' || activeTab === 'project_details') && (
               <div className="space-y-5">
