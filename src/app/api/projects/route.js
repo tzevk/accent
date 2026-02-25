@@ -329,7 +329,8 @@ export async function PUT(request) {
       input_document,
       list_of_deliverables,
       kickoff_meeting,
-      in_house_meeting
+      in_house_meeting,
+      project_team
     } = data;
 
     // Support both id and project_id for backward compatibility
@@ -415,7 +416,8 @@ export async function PUT(request) {
         kickoff_meeting = ?,
         in_house_meeting = ?,
         project_assumption_list = ?,
-        project_lessons_learnt_list = ?
+        project_lessons_learnt_list = ?,
+        project_team = ?
       WHERE project_id = ?`,
       [
         name,
@@ -441,6 +443,7 @@ export async function PUT(request) {
         in_house_meeting || null,
         data.project_assumption_list ? (typeof data.project_assumption_list === 'string' ? data.project_assumption_list : JSON.stringify(data.project_assumption_list)) : null,
         data.project_lessons_learnt_list ? (typeof data.project_lessons_learnt_list === 'string' ? data.project_lessons_learnt_list : JSON.stringify(data.project_lessons_learnt_list)) : null,
+        project_team ? (typeof project_team === 'string' ? project_team : JSON.stringify(project_team)) : null,
         projectId
       ]
     );
