@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 
 // GET all companies
 export async function GET(request) {
+  let db;
   try {
     // RBAC: read companies OR read leads (leads page needs companies for dropdown)
     const user = await getCurrentUser(request);
@@ -24,7 +25,6 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim().toLowerCase();
 
-    let db;
     db = await dbConnect();
     
     // Build base SQL and optionally apply a search WHERE clause (case-insensitive)

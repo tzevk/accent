@@ -679,6 +679,9 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                     Company & Contact
                   </th>
                   <th className="w-56 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Project Description
+                  </th>
+                  <th className="w-56 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
                     Location
                   </th>
                   <th className="w-32 px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
@@ -727,6 +730,11 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
                             </div>
                           )}
                         </div>
+                      </div>
+                    </td>
+                    <td className="w-56 px-4 py-3">
+                      <div className="text-sm text-gray-900 line-clamp-2" title={lead.project_description || ''}>
+                        {lead.project_description || '-'}
                       </div>
                     </td>
                     <td className="w-56 px-4 py-3">
