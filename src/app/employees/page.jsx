@@ -2232,15 +2232,15 @@ export default function EmployeesPage() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-24 pb-8 max-w-[1800px] mx-auto w-full">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-24 pb-8 max-w-[1920px] mx-auto w-full">
             {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center">
-              <UserGroupIcon className="h-8 w-8 mr-3 text-purple-600" />
+            <h1 className="text-3xl xl:text-4xl font-bold text-gray-900 mb-2 flex items-center">
+              <UserGroupIcon className="h-8 w-8 xl:h-9 xl:w-9 mr-3 text-purple-600" />
               Employee Management
             </h1>
-            <p className="text-gray-600">Manage your team members and organizational structure</p>
+            <p className="text-gray-600 xl:text-lg">Manage your team members and organizational structure</p>
             {successMessage && (
               <div className="mt-2 text-sm text-green-600">{successMessage}</div>
             )}

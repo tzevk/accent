@@ -256,23 +256,23 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
       
-      <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
+      <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 xl:py-8 max-w-[1920px] mx-auto">
         {/* Header */}
-        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="mb-6 xl:mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+            <nav className="text-xs xl:text-sm text-gray-500 mb-1" aria-label="Breadcrumb">
               <ol className="inline-flex items-center gap-2">
                 <li>Home</li>
                 <li className="text-gray-300">/</li>
                 <li className="text-gray-700">Admin Dashboard</li>
               </ol>
             </nav>
-            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <h1 className="text-3xl xl:text-4xl font-bold text-gray-900">Admin Dashboard</h1>
           </div>
         </div>
 
         {/* Executive KPI Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <div className="grid grid-cols-1 gap-4 xl:gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-6 xl:mb-8">
           {[
             {
               title: 'TOTAL LEADS',
@@ -314,30 +314,30 @@ export default function AdminDashboard() {
             <Link
               key={card.title}
               href={card.href}
-              className="block bg-white rounded-xl border border-purple-200 p-5 hover:border-purple-400 hover:shadow-md transition-all group"
+              className="block bg-white rounded-xl border border-purple-200 p-5 xl:p-6 hover:border-purple-400 hover:shadow-md transition-all group"
             >
               <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 bg-white border border-purple-200 rounded-lg flex items-center justify-center">
-                  <card.Icon className="h-5 w-5 text-[#64126D]" />
+                <div className="w-10 h-10 xl:w-12 xl:h-12 bg-white border border-purple-200 rounded-lg flex items-center justify-center">
+                  <card.Icon className="h-5 w-5 xl:h-6 xl:w-6 text-[#64126D]" />
                 </div>
                 <Sparkline values={card.series} />
               </div>
-              <div className="text-xs font-medium text-gray-500 tracking-wider mb-1">{card.title}</div>
+              <div className="text-xs xl:text-sm font-medium text-gray-500 tracking-wider mb-1">{card.title}</div>
               <div className="flex items-end justify-between">
-                <span className="text-2xl font-bold text-gray-900">{fmtNum.format(card.value)}</span>
+                <span className="text-2xl xl:text-3xl font-bold text-gray-900">{fmtNum.format(card.value)}</span>
                 {card.delta !== 0 && (
-                  <span className={`text-xs font-medium ${card.delta > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-xs xl:text-sm font-medium ${card.delta > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {card.delta > 0 ? '+' : ''}{card.delta} this week
                   </span>
                 )}
               </div>
-              <div className="text-xs text-[#64126D] mt-2 group-hover:underline">{card.hint} →</div>
+              <div className="text-xs xl:text-sm text-[#64126D] mt-2 group-hover:underline">{card.hint} →</div>
             </Link>
           ))}
         </div>
 
         {/* Manhours Analytics Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8 mb-6 xl:mb-8">
           {/* Manhours Overview Card */}
           <div className="bg-white rounded-xl border border-purple-200 p-6">
             <div className="flex items-center justify-between mb-4">

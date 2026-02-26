@@ -145,6 +145,88 @@ html, body, #__next, :root {
   margin-right: auto;
 }
 
+/* ===== 1920x1080 / Full HD Laptop Optimizations ===== */
+/* Scale up tiny text sizes for standard HD resolution displays (most laptops) */
+@media (min-width: 1280px) {
+  /* Boost base font size slightly for readability on 1080p displays */
+  body {
+    font-size: 15px;
+  }
+
+  /* Scale up micro-text that's too small at 1080p */
+  .dashboard-content .text-\[9px\],
+  .dashboard-content .text-\[10px\] {
+    font-size: 12px !important;
+  }
+  .dashboard-content .text-\[11px\] {
+    font-size: 13px !important;
+  }
+  .dashboard-content .text-\[12px\] {
+    font-size: 13px !important;
+  }
+  .dashboard-content .text-\[13px\] {
+    font-size: 14px !important;
+  }
+
+  /* Scale up tiny icons inside dashboard cards */
+  .dashboard-content .h-3.w-3 {
+    height: 1rem !important;
+    width: 1rem !important;
+  }
+  .dashboard-content .w-6.h-6 {
+    width: 2rem !important;
+    height: 2rem !important;
+  }
+
+  /* Scale up compact card padding */
+  .dashboard-content .p-1\.5 {
+    padding: 0.625rem !important;
+  }
+  .dashboard-content .gap-1\.5 {
+    gap: 0.5rem !important;
+  }
+}
+
+@media (min-width: 1920px) {
+  body {
+    font-size: 16px;
+  }
+
+  /* Even more breathing room at full 1920x1080 */
+  .dashboard-content .text-\[9px\],
+  .dashboard-content .text-\[10px\] {
+    font-size: 13px !important;
+  }
+  .dashboard-content .text-\[11px\],
+  .dashboard-content .text-\[12px\] {
+    font-size: 14px !important;
+  }
+  .dashboard-content .text-\[13px\] {
+    font-size: 15px !important;
+  }
+
+  .dashboard-content .p-1\.5 {
+    padding: 0.75rem !important;
+  }
+  .dashboard-content .gap-1\.5 {
+    gap: 0.625rem !important;
+  }
+}
+
+/* Responsive scaling utility: auto-scale content for the viewport */
+.responsive-container {
+  width: 100%;
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 1024px) { .responsive-container { padding-left: 1.5rem; padding-right: 1.5rem; } }
+@media (min-width: 1280px) { .responsive-container { padding-left: 2rem; padding-right: 2rem; } }
+@media (min-width: 1536px) { .responsive-container { padding-left: 2.5rem; padding-right: 2.5rem; } }
+@media (min-width: 1920px) { .responsive-container { padding-left: 3rem; padding-right: 3rem; } }
+
 /* Ensure all form field text renders in black */
 input,
 textarea,
@@ -291,6 +373,23 @@ textarea::placeholder {
   /* When pinned via data attribute, keep content padded */
   .group\/sidebar[data-pinned="true"] + .content-with-sidebar { padding-left: 276px; }
 }
+@media (min-width: 1280px) {
+  .content-with-sidebar { padding-left: 80px; }
+  .group\/sidebar:hover + .content-with-sidebar { padding-left: 296px; }
+  .group\/sidebar[data-pinned="true"] + .content-with-sidebar { padding-left: 296px; }
+}
+
+/* On smaller screens without sidebar, still offset for fixed navbar */
+@media (max-width: 639px) {
+  .content-with-sidebar { padding-top: 64px; }
+}
+
+/* At 1920x1080+, give content area more breathing room */
+@media (min-width: 1280px) {
+  .content-with-sidebar {
+    min-height: 100vh;
+  }
+}
 
 /* Utilities for showing label content only when sidebar is hovered */
 .group\/sidebar:hover .sidebar-open\:inline { display: inline; }
@@ -317,10 +416,20 @@ textarea::placeholder {
 .group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
   left: 260px;
 }
+@media (min-width: 1280px) {
+  .group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
+    left: 280px;
+  }
+}
 
 /* When sidebar is pinned, keep todo panel at expanded position */
 .group\/sidebar[data-pinned="true"] ~ .content-with-sidebar .todo-panel {
   left: 260px;
+}
+@media (min-width: 1280px) {
+  .group\/sidebar[data-pinned="true"] ~ .content-with-sidebar .todo-panel {
+    left: 280px;
+  }
 }
 
 /* High-contrast text for Employees screen: override washed-out grays */

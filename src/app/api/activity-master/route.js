@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
+let _activityMasterSchemaReady = false;
+
 export async function GET(request) {
   // RBAC check
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
@@ -11,6 +13,7 @@ export async function GET(request) {
   let db;
   try {
     db = await dbConnect();
+    if (!_activityMasterSchemaReady) {
     // Ensure base tables exist
     await db.execute(`CREATE TABLE IF NOT EXISTS functions_master (
       id VARCHAR(36) PRIMARY KEY,
@@ -34,9 +37,9 @@ export async function GET(request) {
       await db.execute(`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`);
     } catch (e) {
       // Column already exists, ignore
-    } finally {
-      if (db) db.release();
     }
+    _activityMasterSchemaReady = true;
+    } // end schema check
     
     const [functions] = await db.execute(
       'SELECT id, function_name, status, description, created_at, updated_at FROM functions_master ORDER BY function_name'
@@ -77,6 +80,10 @@ export async function GET(request) {
       { success: false, error: 'Failed to load activity master', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (db) {
+      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
 

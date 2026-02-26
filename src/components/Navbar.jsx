@@ -167,7 +167,7 @@ export default function Navbar() {
             transition: 'filter 200ms ease, background 200ms ease'
           }}
         />
-        <div className="px-4 sm:px-6 lg:px-8">
+        <div className="px-4 sm:px-6 lg:px-8 xl:px-10">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <div className="flex items-center">
@@ -177,13 +177,13 @@ export default function Navbar() {
                   alt="Accent Techno Solutions logo"
                   width={100}
                   height={40}
-                  className="h-10 w-auto object-contain md:h-11"
+                  className="h-10 w-auto object-contain md:h-11 xl:h-12"
                 />
               </Link>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center space-x-2">
+            <div className="hidden md:flex items-center space-x-2 xl:space-x-3">
               {navigation.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
@@ -192,7 +192,7 @@ export default function Navbar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
+                    className={`group flex items-center space-x-2 px-4 py-2.5 xl:px-5 xl:py-3 rounded-xl text-sm xl:text-base font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
                       isActive
                         ? 'text-white shadow-lg'
                         : 'text-white/90 hover:text-white'

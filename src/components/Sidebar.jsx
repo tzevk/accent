@@ -110,12 +110,12 @@ export default function Sidebar() {
   const NavRow = ({ icon: Icon, label, href = '#', active = false, badge, caret }) => (
     <Link
       href={href}
-      className={`group/nav-row flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+      className={`group/nav-row flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
         active ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
       }`}
       title={label}
     >
-      <Icon className={`h-[18px] w-[18px] transition-colors ${active ? 'text-white' : 'text-[#64126D] group-hover/nav-row:text-[#64126D]'}`} />
+      <Icon className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${active ? 'text-white' : 'text-[#64126D] group-hover/nav-row:text-[#64126D]'}`} />
       <span className={`ml-2.5 hidden sidebar-open:inline ${
         active ? 'text-white' : 'text-gray-900 group-hover/nav-row:text-[#64126D]'
       } group-hover/nav-row:text-inherit transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}>
@@ -137,7 +137,7 @@ export default function Sidebar() {
   return (
     <aside
       data-pinned={pinned}
-      className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px]' : 'w-[64px] hover:w-[260px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
+      className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px] xl:w-[280px]' : 'w-[64px] hover:w-[260px] xl:hover:w-[280px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
     >  
       <div className="h-full flex flex-col">
         {/* Pin/Unpin control - at the top */}
@@ -145,12 +145,12 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setPinned((p) => !p)}
-            className={`group/nav-row w-full flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+            className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
               'text-[#64126D] hover:bg-purple-50'
             }`}
             title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
           >
-            <MapPinIcon className={`h-[18px] w-[18px] ${pinned ? 'text-[#64126D] fill-[#64126D]' : 'text-[#64126D]'}`} />
+            <MapPinIcon className={`h-[18px] w-[18px] xl:h-5 xl:w-5 ${pinned ? 'text-[#64126D] fill-[#64126D]' : 'text-[#64126D]'}`} />
             <span className="ml-2.5 hidden sidebar-open:inline text-gray-900">
               {pinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
             </span>
@@ -186,12 +186,12 @@ export default function Sidebar() {
                 try { localStorage.setItem('todoPanelOpen', String(next)); } catch {}
                 window.dispatchEvent(new CustomEvent('toggleTodoPanel', { detail: { open: next } }));
               }}
-              className={`group/nav-row w-full flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+              className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
                 todoPanelOpen ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
               }`}
               title="Tasks"
             >
-              <ClipboardDocumentListIcon className={`h-[18px] w-[18px] transition-colors ${todoPanelOpen ? 'text-white' : 'text-[#64126D]'}`} />
+              <ClipboardDocumentListIcon className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${todoPanelOpen ? 'text-white' : 'text-[#64126D]'}`} />
               <span className={`ml-2.5 hidden sidebar-open:inline ${
                 todoPanelOpen ? 'text-white' : 'text-gray-900 group-hover/nav-row:text-[#64126D]'
               } transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}>
@@ -248,11 +248,11 @@ export default function Sidebar() {
               <>
                 <button
                   onClick={() => setAccountMasterExpanded(!accountMasterExpanded)}
-                  className={`group/nav-row w-full flex items-center h-9 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+                  className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
                     pathname.startsWith('/masters/accounts') ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
                   }`}
                 >
-                  <BanknotesIcon className={`h-[18px] w-[18px] transition-colors ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`} />
+                  <BanknotesIcon className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`} />
                   <span className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-gray-900'}`}>
                     Account Master
                   </span>

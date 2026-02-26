@@ -296,18 +296,18 @@ function ProjectsInner() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 max-w-[1800px] mx-auto w-full">
+          <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 max-w-[1920px] mx-auto w-full">
             {/* Header */}
             <div className="mb-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Projects</h1>
-                  <p className="text-sm text-gray-600">Manage and track your client projects</p>
+                  <h1 className="text-3xl xl:text-4xl font-bold text-gray-900 mb-2">Projects</h1>
+                  <p className="text-sm xl:text-base text-gray-600">Manage and track your client projects</p>
                 </div>
 
               </div>
               {/* Quick Stats */}
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 xl:gap-6">
                 <div className="bg-white border border-purple-200 rounded-lg p-5">
                     <div className="flex items-center justify-between">
                       <div>

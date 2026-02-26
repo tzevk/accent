@@ -24,7 +24,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim().toLowerCase();
 
-    const db = await dbConnect();
+    let db;
+    db = await dbConnect();
     
     // Build base SQL and optionally apply a search WHERE clause (case-insensitive)
     let sql = `SELECT c.*, COALESCE(COUNT(DISTINCT l.id), 0) AS lead_count, COALESCE(COUNT(f.id), 0) AS follow_up_count
@@ -43,8 +44,6 @@ export async function GET(request) {
 
     const [rows] = await db.execute(sql, params);
     
-    await db.end();
-    
     return Response.json({ 
       success: true, 
       data: rows 
@@ -55,6 +54,10 @@ export async function GET(request) {
       success: false, 
       error: 'Failed to fetch companies' 
     }, { status: 500 });
+  } finally {
+    if (db) {
+      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
 
@@ -143,6 +146,8 @@ export async function POST(request) {
     return Response.json({ success: false, error: 'Failed to create company: ' + (error.message || String(error)) }, { status: 500 });
   }
   finally {
-    if (db) await db.end();
+    if (db) {
+      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }

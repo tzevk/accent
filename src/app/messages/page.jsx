@@ -401,7 +401,7 @@ export default function MessagesPage() {
       <div className="flex-1 flex pt-16 overflow-hidden gap-0" role="main" aria-label="Messages">
         
         {/* Left Navigation Pane - Outlook Style */}
-        <nav className="w-40 lg:w-48 xl:w-52 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0" aria-label="Mail folders">
+        <nav className="w-40 lg:w-48 xl:w-56 2xl:w-60 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0" aria-label="Mail folders">
           
           {/* New Mail Button */}
           <div className="p-2">

@@ -205,12 +205,12 @@ export default function Proposals() {
       <Navbar />
       
       {/* Fixed header section */}
-      <div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1800px] mx-auto w-full">
+      <div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1920px] mx-auto w-full">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-black mb-2">
+          <h1 className="text-3xl xl:text-4xl font-bold text-black mb-2">
             Proposals Management
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 xl:text-lg">
             Manage and track your business proposals
           </p>
         </div>
@@ -228,7 +228,7 @@ export default function Proposals() {
 
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
-        <div className="bg-white rounded-t-lg shadow-sm min-h-full">
+        <div className="bg-white rounded-t-lg shadow-sm min-h-full max-w-[1920px] mx-auto">
           
           {/* Search and Filters */}
           <div className="px-6 pt-6 pb-4 border-b border-gray-200">

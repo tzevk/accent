@@ -294,7 +294,7 @@ function EditProjectForm() {
   // Project Team Management
   const [projectTeamMembers, setProjectTeamMembers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(true);
   const [teamMemberSearch, setTeamMemberSearch] = useState('');
   
   // Software Management
@@ -489,81 +489,72 @@ function EditProjectForm() {
   const [invoiceSaving, setInvoiceSaving] = useState(false);
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState('');
 
-  // Fetch all required data
+  // Fetch all required reference/master data + project data in parallel (single DB connection for ref data)
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAllInitData = async () => {
       try {
-        // Fetch companies
-        try {
-          const companiesData = await fetchJSON('/api/companies');
-          if (companiesData.success) setCompanies(companiesData.data || []);
-        } catch (err) {
-          console.warn('Failed to fetch companies', err);
-        }
+        setLoadingVendors(true);
+        setUsersLoading(true);
+        const initData = await fetchJSON(`/api/projects/${id}/init-data`);
+        if (initData.success && initData.data) {
+          const d = initData.data;
+          setCompanies(d.companies || []);
+          setVendors(d.vendors || []);
+          setFunctions(d.functions || []);
+          setActivities(d.activities || []);
+          setSubActivities(d.subActivities || []);
+          setUserMaster(d.users || []);
+          setAllUsers(d.users || []);
+          setSoftwareCategories(d.softwareCategories || []);
+          setDocMaster(d.docMaster || []);
 
-        // Fetch vendors for Purchase Order dropdown
-        try {
-          setLoadingVendors(true);
-          const vendorsData = await fetchJSON('/api/vendors');
-          if (vendorsData.success) {
-            setVendors(vendorsData.data || []);
+          // If users were not returned by init-data, fetch them separately
+          if (!d.users || d.users.length === 0) {
+            console.warn('[init-data] No users returned, fetching from /api/users');
+            try {
+              const usersRes = await fetchJSON('/api/users?limit=500');
+              if (usersRes.success && usersRes.data) {
+                setUserMaster(usersRes.data);
+                setAllUsers(usersRes.data);
+              }
+            } catch (ue) {
+              console.error('Fallback users fetch failed:', ue);
+            }
           }
-        } catch (err) {
-          console.warn('Failed to fetch vendors', err);
-        } finally {
-          setLoadingVendors(false);
-        }
-
-        // Fetch functions (disciplines)
-        try {
-          const functionsData = await fetchJSON('/api/activity-master');
-          if (functionsData.success) {
-            console.log('Functions loaded:', functionsData.data);
-            console.log('Number of functions:', functionsData.data?.length);
-            setFunctions(functionsData.data || []);
+        } else {
+          // init-data failed, fetch users separately
+          console.warn('[init-data] Failed, fetching users separately');
+          try {
+            const usersRes = await fetchJSON('/api/users?limit=500');
+            if (usersRes.success && usersRes.data) {
+              setUserMaster(usersRes.data);
+              setAllUsers(usersRes.data);
+            }
+          } catch (ue) {
+            console.error('Fallback users fetch failed:', ue);
           }
-        } catch (err) {
-          console.warn('Failed to fetch functions', err);
-        }
-
-        // Fetch activities
-        try {
-          const activitiesData = await fetchJSON('/api/activity-master/activities');
-          if (activitiesData.success) {
-            console.log('Activities loaded:', activitiesData.data);
-            setActivities(activitiesData.data || []);
-          }
-        } catch (err) {
-          console.warn('Failed to fetch activities', err);
-        }
-
-        // Fetch sub-activities
-        try {
-          const subActivitiesData = await fetchJSON('/api/activity-master/subactivities');
-          if (subActivitiesData.success) {
-            console.log('Sub-activities loaded:', subActivitiesData.data);
-            setSubActivities(subActivitiesData.data || []);
-          }
-        } catch (err) {
-          console.warn('Failed to fetch sub-activities', err);
-        }
-        
-        // Fetch users from User Master (for Assigned To dropdowns and team selection)
-        try {
-          const usersData = await fetchJSON('/api/users?limit=10000');
-          if (usersData && usersData.success && Array.isArray(usersData.data)) {
-            console.log('Users loaded from User Master:', usersData.data);
-            setUserMaster(usersData.data || []);
-          }
-        } catch (err) {
-          console.warn('Failed to fetch users from User Master', err);
         }
       } catch (error) {
-        console.error('Failed to fetch data', error);
+        console.warn('Failed to fetch init data, falling back to individual calls', error);
+        // Fetch users as fallback
+        try {
+          const usersRes = await fetchJSON('/api/users?limit=500');
+          if (usersRes.success && usersRes.data) {
+            setUserMaster(usersRes.data);
+            setAllUsers(usersRes.data);
+          }
+        } catch (ue) {
+          console.error('Fallback users fetch failed:', ue);
+        }
+      } finally {
+        setLoadingVendors(false);
+        setUsersLoading(false);
       }
     };
-    fetchData();
-  }, []);
+    if (id && id !== 'undefined') {
+      fetchAllInitData();
+    }
+  }, [id]);
 
   // Fetch existing project data
   useEffect(() => {
@@ -1126,40 +1117,7 @@ function EditProjectForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Fetch Software Master data
-  useEffect(() => {
-    const fetchSoftwareMaster = async () => {
-      try {
-        const res = await fetch('/api/software-master');
-        const json = await res.json();
-        if (json?.success && Array.isArray(json.data)) {
-          setSoftwareCategories(json.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch software master:', error);
-      }
-    };
-    fetchSoftwareMaster();
-  }, []);
-
-  // Fetch all users for team selection
-  useEffect(() => {
-    const fetchUsers = async () => {
-      setUsersLoading(true);
-      try {
-        const res = await fetch('/api/users?limit=10000');
-        const json = await res.json();
-        if (json?.success && Array.isArray(json.data)) {
-          setAllUsers(json.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch users:', error);
-      } finally {
-        setUsersLoading(false);
-      }
-    };
-    fetchUsers();
-  }, []);
+  // Software Master, Users, and Document Master are now loaded via /api/projects/[id]/init-data
 
   // Fetch employees with their salary profiles for manhours rate lookup
   // Function to fetch attendance hours for an employee for a given year
@@ -1736,20 +1694,7 @@ function EditProjectForm() {
     }
   };
 
-  // Load document master for suggestions
-  useEffect(() => {
-    const loadDocMaster = async () => {
-      try {
-        const res = await fetchJSON('/api/document-master');
-        if (res?.success && Array.isArray(res.data)) {
-          setDocMaster(res.data);
-        }
-      } catch {
-        // non-fatal
-      }
-    };
-    loadDocMaster();
-  }, []);
+  // Document master is loaded via /api/projects/[id]/init-data
 
   // Software Management Functions
   const addSoftwareItem = () => {
@@ -3112,12 +3057,11 @@ function EditProjectForm() {
                                 value={form.name} 
                                 onChange={handleChange} 
                                 placeholder="Enter project name"
-                                readOnly
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300" 
                                 style={{
-                                  background: 'rgba(249, 250, 251, 0.95)',
+                                  background: 'rgba(255, 255, 255, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#6b7280',
+                                  color: '#1e293b',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                               />
@@ -3150,12 +3094,11 @@ function EditProjectForm() {
                                 name="start_date" 
                                 value={form.start_date} 
                                 onChange={handleChange} 
-                                readOnly
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300" 
                                 style={{
-                                  background: 'rgba(249, 250, 251, 0.95)',
+                                  background: 'rgba(255, 255, 255, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#6b7280',
+                                  color: '#1e293b',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                               />
@@ -3169,12 +3112,11 @@ function EditProjectForm() {
                                 name="end_date" 
                                 value={form.end_date} 
                                 onChange={handleChange} 
-                                readOnly
-                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 bg-gray-50 cursor-not-allowed" 
+                                className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 hover:border-violet-300" 
                                 style={{
-                                  background: 'rgba(249, 250, 251, 0.95)',
+                                  background: 'rgba(255, 255, 255, 0.95)',
                                   border: '1.5px solid rgba(139, 92, 246, 0.15)',
-                                  color: '#6b7280',
+                                  color: '#1e293b',
                                   boxShadow: '0 2px 4px rgba(15, 23, 42, 0.02)'
                                 }}
                               />
@@ -3187,8 +3129,7 @@ function EditProjectForm() {
                                 name="contract_type" 
                                 value={form.contract_type} 
                                 onChange={handleChange} 
-                                disabled
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                               >
                                 <option value="">Select Type</option>
                                 {TYPE_OPTIONS.map((type) => (
@@ -3205,8 +3146,7 @@ function EditProjectForm() {
                                 onChange={handleChange} 
                                 step="0.1" 
                                 placeholder="0.0"
-                                readOnly
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed" 
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" 
                               />
                             </div>
                           </div>
@@ -3257,8 +3197,7 @@ function EditProjectForm() {
                               onChange={handleChange} 
                               rows={4} 
                               placeholder="List the key deliverables for this project..."
-                              readOnly
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-y bg-gray-50 cursor-not-allowed" 
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-y focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" 
                             />
                           </div>
                         </div>
@@ -3307,8 +3246,7 @@ function EditProjectForm() {
                             <select
                               value={newInputDocument.category}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, category: e.target.value }))}
-                              disabled
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             >
                               <option value="lot">Lot</option>
                               <option value="sublot">Sub-lot</option>
@@ -3327,10 +3265,8 @@ function EditProjectForm() {
                                   setNewInputDocument(prev => ({ ...prev, subLot: e.target.value }));
                                 }
                               }}
-                              readOnly
-                              disabled
                               placeholder={newInputDocument.category === 'lot' ? 'LOT-001' : newInputDocument.category === 'sublot' ? 'SL-001' : 'N/A'}
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed text-gray-400"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3338,8 +3274,7 @@ function EditProjectForm() {
                               type="date"
                               value={newInputDocument.date_received}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: e.target.value }))}
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3349,8 +3284,7 @@ function EditProjectForm() {
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, description: e.target.value }))}
                               onKeyPress={handleInputDocumentKeyPress}
                               placeholder="Description*"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3359,8 +3293,7 @@ function EditProjectForm() {
                               value={newInputDocument.drawing_number}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, drawing_number: e.target.value }))}
                               placeholder="DWG-XXX"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3369,8 +3302,7 @@ function EditProjectForm() {
                               value={newInputDocument.sheet_number}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, sheet_number: e.target.value }))}
                               placeholder="SH-001"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3379,8 +3311,7 @@ function EditProjectForm() {
                               value={newInputDocument.revision_number}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, revision_number: e.target.value }))}
                               placeholder="Rev-A"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3389,8 +3320,7 @@ function EditProjectForm() {
                               value={newInputDocument.unit_qty}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, unit_qty: e.target.value }))}
                               placeholder="10 pcs"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3399,8 +3329,7 @@ function EditProjectForm() {
                               value={newInputDocument.document_sent_by}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, document_sent_by: e.target.value }))}
                               placeholder="Sender"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2">
@@ -3409,8 +3338,7 @@ function EditProjectForm() {
                               value={newInputDocument.remarks}
                               onChange={(e) => setNewInputDocument(prev => ({ ...prev, remarks: e.target.value }))}
                               placeholder="Notes"
-                              readOnly
-                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
                           <td className="py-2 px-2 text-center">
@@ -3438,8 +3366,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                disabled
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               >
                                 <option value="lot">Lot</option>
                                 <option value="sublot">Sub-lot</option>
@@ -3462,10 +3389,8 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                disabled
                                 placeholder={doc.category === 'lot' ? 'LOT-001' : doc.category === 'sublot' ? 'SL-001' : 'N/A'}
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed text-gray-400"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3479,8 +3404,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3494,8 +3418,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3509,8 +3432,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3524,8 +3446,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3539,8 +3460,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3554,8 +3474,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3569,8 +3488,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -3584,8 +3502,7 @@ function EditProjectForm() {
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
                                 }}
-                                readOnly
-                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed"
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                               />
                             </td>
                             <td className="py-2 px-2 text-center">
@@ -3640,8 +3557,7 @@ function EditProjectForm() {
                               setSelectedSoftware('');
                               setSelectedSoftwareVersion('');
                             }}
-                            disabled
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                           >
                             <option value="">Select Category</option>
                             {softwareCategories.map((cat) => (
@@ -3657,8 +3573,7 @@ function EditProjectForm() {
                               setSelectedSoftware(e.target.value);
                               setSelectedSoftwareVersion('');
                             }}
-                            disabled
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                           >
                             <option value="">Select Software</option>
                             {availableSoftware.map((sw) => (
@@ -3671,8 +3586,7 @@ function EditProjectForm() {
                           <select
                             value={selectedSoftwareVersion}
                             onChange={(e) => setSelectedSoftwareVersion(e.target.value)}
-                            disabled
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-gray-50 cursor-not-allowed"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                           >
                             <option value="">Select Version</option>
                             {availableVersions.map((ver) => (
@@ -3805,7 +3719,7 @@ function EditProjectForm() {
                             <table className="w-full text-xs">
                               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                                 <tr>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">User ID</th>
+                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Employee ID</th>
                                   <th className="px-3 py-2 text-left font-semibold text-gray-700">Name</th>
                                   <th className="px-3 py-2 text-left font-semibold text-gray-700">Email</th>
                                   <th className="px-3 py-2 text-left font-semibold text-gray-700">Role</th>
@@ -3815,7 +3729,7 @@ function EditProjectForm() {
                               <tbody className="divide-y divide-gray-100">
                                 {availableUsers.map((user) => (
                                   <tr key={user.id} className="hover:bg-purple-50 transition-colors">
-                                    <td className="px-3 py-2 text-gray-900 font-mono text-xs">{user.id}</td>
+                                    <td className="px-3 py-2 text-gray-900 font-mono text-xs">{user.employee_code || user.employee_id || user.id}</td>
                                     <td className="px-3 py-2 text-gray-900 font-medium">{user.full_name || user.username}</td>
                                     <td className="px-3 py-2 text-gray-600">{user.email || '-'}</td>
                                     <td className="px-3 py-2 text-gray-600">{user.role_name || '-'}</td>
@@ -3837,7 +3751,11 @@ function EditProjectForm() {
                           <div className="text-center py-6 text-gray-500">
                             <UserIcon className="h-10 w-10 mx-auto text-gray-300 mb-2" />
                             <p className="text-sm">
-                              {teamMemberSearch ? 'No users found matching your search' : 'All users have been added to the team'}
+                              {teamMemberSearch 
+                                ? 'No users found matching your search' 
+                                : allUsers.length === 0 
+                                  ? 'No users loaded. Please refresh the page.' 
+                                  : 'All users have been added to the team'}
                             </p>
                           </div>
                         )}
@@ -4015,8 +3933,8 @@ function EditProjectForm() {
                                   <input 
                                     type="text" 
                                     value={m.meeting_no || ''} 
-                                    disabled
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50" 
+                                    onChange={(e) => updateKickoffMeeting(m.id, 'meeting_no', e.target.value)}
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -4024,8 +3942,7 @@ function EditProjectForm() {
                                     type="date" 
                                     value={m.meeting_date || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'meeting_date', e.target.value)} 
-                                    readOnly
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -4033,8 +3950,7 @@ function EditProjectForm() {
                                     type="text" 
                                     value={m.meeting_title || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'meeting_title', e.target.value)} 
-                                    readOnly
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -4050,8 +3966,7 @@ function EditProjectForm() {
                                     type="text" 
                                     value={m.client_representative || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'client_representative', e.target.value)} 
-                                    readOnly
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -4059,8 +3974,7 @@ function EditProjectForm() {
                                     type="text" 
                                     value={m.meeting_location || ''} 
                                     onChange={(e) => updateKickoffMeeting(m.id, 'meeting_location', e.target.value)} 
-                                    readOnly
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded bg-gray-50 cursor-not-allowed" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -4070,8 +3984,7 @@ function EditProjectForm() {
                                     onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateKickoffMeeting)}
                                     rows={3}
                                     placeholder="Enter points (press Enter for new bullet)&#10;Project timeline&#10;Budget discussion&#10;Next steps"
-                                    readOnly
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded resize-y min-h-[60px] font-mono bg-gray-50 cursor-not-allowed" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded resize-y min-h-[60px] font-mono focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2">
@@ -4081,8 +3994,7 @@ function EditProjectForm() {
                                     onBlur={(e) => handlePointsBlur(m.id, e.target.value, updateKickoffMeeting, 'persons_involved')}
                                     rows={3}
                                     placeholder="Enter participants (press Enter for new bullet)&#10;John Doe&#10;Jane Smith&#10;Bob Johnson"
-                                    readOnly
-                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded resize-y min-h-[60px] font-mono bg-gray-50 cursor-not-allowed" 
+                                    className="w-full text-sm px-2 py-1 border border-gray-200 rounded resize-y min-h-[60px] font-mono focus:ring-1 focus:ring-[#7F2487]" 
                                   />
                                 </td>
                                 <td className="py-2 px-2 text-center">
@@ -5343,9 +5255,12 @@ function EditProjectForm() {
                                                   </button>
                                                   {openUserSelectorForActivity === act.id && (() => {
                                                     const btnEl = document.getElementById(`add-member-btn-${act.id}`);
-                                                    const rect = btnEl?.getBoundingClientRect() || { bottom: 0, right: 0 };
+                                                    const rect = btnEl?.getBoundingClientRect() || { bottom: 0, right: 0, top: 0 };
+                                                    const dropdownHeight = 220; // approximate max height of dropdown
+                                                    const spaceBelow = window.innerHeight - rect.bottom;
+                                                    const openUpward = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
                                                     return (
-                                                      <div className="fixed z-[99999] w-56 bg-white border border-gray-200 rounded-lg shadow-2xl" style={{ top: rect.bottom + 4, left: Math.max(8, rect.right - 224) }} onClick={(e) => e.stopPropagation()}>
+                                                      <div className="fixed z-[99999] w-56 bg-white border border-gray-200 rounded-lg shadow-2xl" style={{ ...(openUpward ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }), left: Math.max(8, rect.right - 224) }} onClick={(e) => e.stopPropagation()}>
                                                         <div className="px-3 py-2 bg-emerald-50 border-b border-gray-200 text-xs font-semibold text-emerald-700 flex items-center justify-between rounded-t-lg">
                                                           <span>Select Team Member</span>
                                                           <button type="button" onClick={() => setOpenUserSelectorForActivity(null)} className="text-gray-400 hover:text-gray-600 text-sm">×</button>
@@ -7192,8 +7107,8 @@ function EditProjectForm() {
                                   <input
                                     type="number"
                                     value={member.manhours}
-                                    disabled
-                                    className="w-20 px-2 py-1 text-xs border border-gray-300 rounded bg-gray-50"
+                                    onChange={(e) => updateActivityTeamMember(member.id, 'manhours', e.target.value)}
+                                    className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                                   />
                                 </td>
                                 <td className="py-2 px-3">

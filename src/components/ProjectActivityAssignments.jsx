@@ -27,19 +27,17 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [editForm, setEditForm] = useState({});
   const [successModal, setSuccessModal] = useState(false);
 
-  // Deduplicate entries by date (keep last occurrence) and ensure today has an entry
+  // Ensure each activity has an unlocked entry for today (allow multiple entries per date – additive)
   const ensureTodayEntry = (list) => {
     const today = new Date().toISOString().split('T')[0];
     return list.map(a => {
-      const raw = a.daily_entries || [];
-      // Deduplicate by date — keep the last entry for each date
-      const seen = new Map();
-      raw.forEach(e => seen.set(e.date, e));
-      const entries = Array.from(seen.values());
-      const hasToday = entries.some(e => e.date === today);
-      if (!hasToday) {
-        const locked = entries.map(e => ({ ...e, isLocked: true }));
-        return { ...a, daily_entries: [...locked, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }] };
+      const entries = a.daily_entries || [];
+      // Check if there's already an unlocked (editable) entry for today
+      const hasUnlockedToday = entries.some(e => e.date === today && !e.isLocked);
+      if (!hasUnlockedToday) {
+        // Mark all existing unlocked entries as locked and add fresh today entry
+        const updated = entries.map(e => e.isLocked ? e : { ...e, isLocked: true });
+        return { ...a, daily_entries: [...updated, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }] };
       }
       return { ...a, daily_entries: entries };
     });
@@ -99,21 +97,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
   const addDailyEntry = async (activity) => {
     const dailyEntries = [...(activity.daily_entries || [])];
-    let nextDate;
-    if (dailyEntries.length > 0) {
-      const lastDate = new Date(dailyEntries[dailyEntries.length - 1].date);
-      lastDate.setDate(lastDate.getDate() + 1);
-      nextDate = lastDate.toISOString().split('T')[0];
-    } else {
-      nextDate = new Date().toISOString().split('T')[0];
-    }
-    // Prevent duplicate date entry
-    if (dailyEntries.some(e => e.date === nextDate)) {
-      alert('An entry for ' + nextDate + ' already exists.');
-      return;
-    }
+    const today = new Date().toISOString().split('T')[0];
+    // Lock all currently unlocked entries before adding a new additional entry
     const lockedEntries = dailyEntries.map(e => ({ ...e, isLocked: true }));
-    const updatedEntries = [...lockedEntries, { date: nextDate, qty_done: '', hours: '', remarks: '', isLocked: false }];
+    // Add a new entry for today (additional entries per day are counted cumulatively)
+    const updatedEntries = [...lockedEntries, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }];
     const totalQtyDone = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
     const totalHours = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
 
@@ -164,18 +152,22 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
   const saveDailyEntries = async (activity) => {
     const entries = activity.daily_entries || [];
-    const totalQtyDone = entries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
-    const totalHours = entries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+    // Lock all entries on submit — they become read-only
+    const lockedEntries = entries.map(e => ({ ...e, isLocked: true }));
+    const totalQtyDone = lockedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+    const totalHours = lockedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
     setSaving(true);
     try {
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: entries, qty_completed: totalQtyDone, actual_hours: totalHours })
+        body: JSON.stringify({ project_id: activity.project_id, activity_id: activity.activity_id, daily_entries: lockedEntries, qty_completed: totalQtyDone, actual_hours: totalHours })
       });
       const data = await res.json();
       if (data.success) {
         setSuccessModal(true);
         setTimeout(() => setSuccessModal(false), 2000);
+        // Reload to reflect locked state in the table
+        await loadAssignments();
       } else { alert('Failed to submit: ' + (data.error || 'Unknown error')); }
     } catch (err) { console.error('Failed to save daily entries:', err); alert('Failed to submit entry'); }
     finally { setSaving(false); }
@@ -495,10 +487,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                     cumDone += entryQtyDone;
                                     const cumPct = qtyAssigned > 0 ? Math.min(100, Math.round((cumDone / qtyAssigned) * 100)) : 0;
                                     const barColor = cumPct >= 75 ? '#059669' : cumPct >= 40 ? '#d97706' : '#7e22ce';
+                                    // Count same-date entries for labelling additional entries
+                                    const sameDateCount = dailyEntries.filter((x, xi) => xi <= eIdx && x.date === entry.date).length;
                                     rows.push(
-                                    <tr key={eIdx} className={`divide-x divide-gray-200 ${isLocked ? 'text-[#4A1254]/50' : 'text-[#4A1254]'}`}>
+                                    <tr key={eIdx} className={`divide-x divide-gray-200 ${isLocked ? 'bg-gray-50/60 text-[#4A1254]/60' : 'text-[#4A1254] bg-white'}`}>
                                       <td className="py-1.5 px-3 text-center">
-                                        <span className="text-xs font-bold text-[#64126D]">{formatShortDate(entry.date)}</span>
+                                        <div className="flex items-center justify-center gap-1">
+                                          {isLocked && <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
+                                          <span className="text-xs font-bold text-[#64126D]">{formatShortDate(entry.date)}</span>
+                                          {sameDateCount > 1 && <span className="text-[9px] font-semibold text-purple-500 bg-purple-100 px-1 rounded">#{sameDateCount}</span>}
+                                        </div>
                                       </td>
                                       <td className="py-1.5 px-3 text-center">
                                         <span className="text-xs font-medium text-[#4A1254]">{dayQtyAsgn}</span>

@@ -1,6 +1,8 @@
 import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
+let _vendorsSchemaReady = false;
+
 export async function GET(request) {
   // RBAC check
   const authResult = await ensurePermission(request, RESOURCES.VENDORS, PERMISSIONS.READ);
@@ -9,6 +11,7 @@ export async function GET(request) {
   try {
     db = await dbConnect();
     
+    if (!_vendorsSchemaReady) {
     // Create vendors table if it doesn't exist
     const createTableQuery = `
       CREATE TABLE IF NOT EXISTS vendors (
@@ -104,6 +107,8 @@ export async function GET(request) {
         }
       }
     }
+    _vendorsSchemaReady = true;
+    } // end schema check
 
     // Fetch all vendors
     const [vendors] = await db.query('SELECT * FROM vendors ORDER BY created_at DESC');
@@ -121,7 +126,7 @@ export async function GET(request) {
     }, { status: 500 });
   } finally {
     if (db) {
-      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
     }
   }
 }
@@ -249,7 +254,7 @@ export async function POST(request) {
     }, { status: 500 });
   } finally {
     if (db) {
-      try { await db.end(); } catch (e) { console.error('Error releasing connection:', e); }
+      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
     }
   }
 }

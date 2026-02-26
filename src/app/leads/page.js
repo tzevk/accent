@@ -1232,12 +1232,12 @@ Example Corp,John Smith,Sales Manager,john@example.com,+91 9876543210,Mumbai,Web
       <Navbar />
       
       {/* Fixed header section */}
-      <div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4">
+      <div className="flex-shrink-0 pt-24 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1920px] mx-auto w-full">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-black mb-2">
+          <h1 className="text-3xl xl:text-4xl font-bold text-black mb-2">
             Leads Management
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 xl:text-lg">
             Manage your leads through manual entry or Excel/CSV import
           </p>
         </div>

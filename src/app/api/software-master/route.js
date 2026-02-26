@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
+let _softwareMasterSchemaReady = false;
+
 export async function GET(request) {
   // RBAC check
   const authResult = await ensurePermission(request, RESOURCES.SETTINGS, PERMISSIONS.READ);
@@ -12,6 +14,7 @@ export async function GET(request) {
   try {
     db = await dbConnect();
 
+    if (!_softwareMasterSchemaReady) {
     await db.execute(`CREATE TABLE IF NOT EXISTS software_categories (
       id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -39,6 +42,8 @@ export async function GET(request) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
+    _softwareMasterSchemaReady = true;
+    } // end schema check
 
     const [cats] = await db.execute('SELECT id, name, description, status, created_at, updated_at FROM software_categories ORDER BY name');
     let softwares = [];
@@ -47,8 +52,6 @@ export async function GET(request) {
       softwares = sws;
     } catch {
       softwares = [];
-    } finally {
-      if (db) db.release();
     }
 
     let versions = [];
@@ -80,6 +83,10 @@ export async function GET(request) {
   } catch (error) {
     console.error('Software master GET error:', error);
     return NextResponse.json({ success: false, error: 'Failed to load software master', details: error.message }, { status: 500 });
+  } finally {
+    if (db) {
+      try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+    }
   }
 }
 

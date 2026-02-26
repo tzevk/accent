@@ -332,7 +332,7 @@ export async function GET(request, { params }) {
   } finally {
     if (db) {
       try {
-        await db.end();
+        await db.release();
       } catch (e) {
         console.warn('Error releasing DB connection in GET /api/projects/[id]:', e?.message || e);
       }
@@ -364,7 +364,7 @@ export async function PUT(request, context) {
       // Get fresh connection for retry attempts
       if (db) {
         try {
-          await db.end();
+          await db.release();
         } catch (e) {
           console.warn('Error releasing old connection:', e.message);
         }
@@ -400,7 +400,7 @@ export async function PUT(request, context) {
 
     if (projectId === null) {
       // ensure DB connection closed before returning
-      try { await db.end(); } catch {}
+      try { await db.release(); } catch {}
       return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
     
@@ -415,7 +415,7 @@ export async function PUT(request, context) {
           const isTeamMember = isUserInProjectTeam(projectRows[0].project_team, user.id, user.email);
           if (!isTeamMember) {
             console.log(`[Projects API PUT] User ${user.email} denied update access to project ${id} - not a team member`);
-            try { await db.end(); } catch {}
+            try { await db.release(); } catch {}
             return Response.json({
               success: false,
               error: 'You do not have permission to update this project'
@@ -777,6 +777,7 @@ export async function PUT(request, context) {
           try {
             const uaaCols = await getTableColumns(db, 'user_activity_assignments');
             const requiredUaaCols = [
+              ['description', 'TEXT'],
               ['discipline_name', 'VARCHAR(255)'],
               ['notes', 'TEXT'],
               ['assigned_date', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
@@ -788,8 +789,17 @@ export async function PUT(request, context) {
             ];
             const missingUaaCols = requiredUaaCols.filter(([col]) => !uaaCols.has(col));
             if (missingUaaCols.length > 0) {
-              const addParts = missingUaaCols.map(([col, def]) => `ADD COLUMN IF NOT EXISTS \`${col}\` ${def}`).join(', ');
-              await db.execute(`ALTER TABLE user_activity_assignments ${addParts}`);
+              // Add each missing column individually to avoid syntax issues across MySQL versions
+              for (const [col, def] of missingUaaCols) {
+                try {
+                  await db.execute(`ALTER TABLE user_activity_assignments ADD COLUMN \`${col}\` ${def}`);
+                } catch (addErr) {
+                  // Column may already exist (race condition or cache stale) — ignore duplicate column errors
+                  if (!addErr.message?.includes('Duplicate column')) {
+                    console.warn(`Failed to add column ${col}:`, addErr.message);
+                  }
+                }
+              }
               invalidateCache('user_activity_assignments');
             }
           } catch (colErr) {
@@ -932,7 +942,7 @@ export async function PUT(request, context) {
       }
     }
 
-    await db.end();
+    await db.release();
 
     if (result.affectedRows === 0) {
       return Response.json({ 
@@ -956,7 +966,7 @@ export async function PUT(request, context) {
     // Ensure DB connection is closed before retry
     if (db) {
       try {
-        await db.end();
+        await db.release();
       } catch (closeErr) {
         // Ignore close errors
       }
@@ -1014,7 +1024,7 @@ export async function DELETE(request, { params }) {
         const isTeamMember = isUserInProjectTeam(projectRows[0].project_team, user.id, user.email);
         if (!isTeamMember) {
           console.log(`[Projects API DELETE] User ${user.email} denied delete access to project ${id} - not a team member`);
-          await db.end();
+          await db.release();
           return Response.json({
             success: false,
             error: 'You do not have permission to delete this project'
@@ -1022,7 +1032,7 @@ export async function DELETE(request, { params }) {
         }
         console.log(`[Projects API DELETE] User ${user.email} granted delete access to project ${id} as team member`);
       } else {
-        await db.end();
+        await db.release();
         return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
       }
     }
@@ -1032,7 +1042,7 @@ export async function DELETE(request, { params }) {
       [projectId]
     );
     
-    await db.end();
+    await db.release();
     
     if (result.affectedRows === 0) {
       return Response.json({ 

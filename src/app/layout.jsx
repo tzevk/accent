@@ -35,7 +35,7 @@ export default function RootLayout({ children }) {
             <AuthGate />
             <ActivityTracker />
             <AutoRefresh timeout={30000} />
-            <div className="content-with-sidebar">
+            <div className="content-with-sidebar dashboard-content">
               {children}
             </div>
           </SpellCheckProvider>
