@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 import { 
   generatePayrollSlip, 
+  generatePayrollSlipsBatch,
   generateMonthlyPayroll,
   calculateEmployeePayroll 
 } from '@/utils/payroll-calculator';
@@ -61,19 +62,9 @@ export async function POST(request) {
       });
     }
     
-    // Generate for multiple employees
+    // Generate for multiple employees (batch-optimized)
     if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
-      const results = { success: 0, failed: 0, errors: [] };
-      
-      for (const empId of employee_ids) {
-        try {
-          await generatePayrollSlip(empId, month);
-          results.success++;
-        } catch (err) {
-          results.failed++;
-          results.errors.push({ employee_id: empId, error: err.message });
-        }
-      }
+      const results = await generatePayrollSlipsBatch(employee_ids, month);
       
       return NextResponse.json({
         success: true,

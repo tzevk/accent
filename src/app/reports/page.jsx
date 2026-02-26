@@ -6,7 +6,6 @@ import Navbar from '@/components/Navbar';
 import { 
   DocumentCurrencyDollarIcon,
   MagnifyingGlassIcon,
-  FunnelIcon,
   ArrowPathIcon,
   ArrowDownTrayIcon,
   ChevronLeftIcon,
@@ -16,15 +15,13 @@ import {
   TrashIcon,
   EyeIcon,
   PrinterIcon,
-  XMarkIcon,
-  CalendarDaysIcon
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 export default function ReportsPage() {
   const { user, loading: authLoading } = useSessionRBAC();
   
   const [payrollSlips, setPayrollSlips] = useState([]);
-  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
@@ -36,10 +33,7 @@ export default function ReportsPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [selectedEmployees, setSelectedEmployees] = useState([]);
-  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
-  const [salaryTypeFilter, setSalaryTypeFilter] = useState('all');
-  const employeeDropdownRef = useRef(null);
+  const [salaryTypeFilter, setSalaryTypeFilter] = useState('payroll');
   
   // Stats
   const [stats, setStats] = useState({
@@ -58,22 +52,6 @@ export default function ReportsPage() {
   const [editForm, setEditForm] = useState({ payment_status: '', remarks: '' });
   const slipRef = useRef(null);
 
-  // Fetch employees with salary structures
-  useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const res = await fetch('/api/payroll/employees-with-profiles');
-        const data = await res.json();
-        if (data.success) {
-          setEmployees(data.data || []);
-        }
-      } catch (err) {
-        console.error('Failed to fetch employees:', err);
-      }
-    };
-    fetchEmployees();
-  }, []);
-
   // Fetch payroll slips
   const fetchPayrollSlips = useCallback(async (page = 1) => {
     setLoading(true);
@@ -83,7 +61,10 @@ export default function ReportsPage() {
         limit: pagination.limit.toString()
       });
       
+      // Always filter by selected month
+      params.append('month', `${selectedMonth}-01`);
       if (statusFilter !== 'all') params.append('payment_status', statusFilter);
+      params.append('salary_type', salaryTypeFilter);
 
       const res = await fetch(`/api/payroll/slips?${params}`);
       const data = await res.json();
@@ -111,91 +92,44 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, pagination.limit]);
+  }, [statusFilter, salaryTypeFilter, selectedMonth, pagination.limit]);
 
   useEffect(() => {
     if (!authLoading && user) {
       fetchPayrollSlips(1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, statusFilter]);
+  }, [authLoading, user, statusFilter, salaryTypeFilter, selectedMonth]);
 
-  // Generate payroll
-  const handleGeneratePayroll = async () => {
+  // Export salary sheet as Excel
+  const handleExportSheet = async () => {
     setGenerating(true);
     try {
       const month = `${selectedMonth}-01`;
+      const response = await fetch(`/api/payroll/export-sheet?month=${month}&salary_type=${salaryTypeFilter}`);
       
-      // If no employees selected (generate all), export Excel sheet instead
-      if (selectedEmployees.length === 0) {
-        // Download the Excel salary sheet
-        const salaryTypeParam = salaryTypeFilter !== 'all' ? `&salary_type=${salaryTypeFilter}` : '';
-        const response = await fetch(`/api/payroll/export-sheet?month=${month}${salaryTypeParam}`);
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          if (response.status === 404) {
-            alert(errorData.error || 'No payroll slips found for this month. Please generate individual slips first.');
-          } else {
-            alert(errorData.error || 'Failed to export salary sheet');
-          }
-          setGenerating(false);
-          return;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 404) {
+          alert(errorData.error || 'No payroll slips found for this month. Please generate slips first.');
+        } else {
+          alert(errorData.error || 'Failed to export salary sheet');
         }
-        
-        // Download the file
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Salary_Sheet_${selectedMonth}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        alert('Salary sheet downloaded successfully!');
         setGenerating(false);
         return;
       }
       
-      // Generate for selected employee(s)
-      const body = selectedEmployees.length === 1
-        ? { month, employee_id: parseInt(selectedEmployees[0]) }
-        : { month, employee_ids: selectedEmployees.map(id => parseInt(id)) };
-
-      const res = await fetch('/api/payroll/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        const successCount = data.results?.success || 1;
-        const failedCount = data.results?.failed || 0;
-        const skippedCount = data.results?.skipped || 0;
-        
-        let message = `Salary Slip generated successfully! Success: ${successCount}`;
-        if (failedCount > 0) message += `, Failed: ${failedCount}`;
-        if (skippedCount > 0) message += `, Skipped (already exists): ${skippedCount}`;
-        
-        // Show errors if any
-        if (data.results?.errors?.length > 0) {
-          message += '\n\nErrors:\n' + data.results.errors.map(e => `- Employee ${e.employee_id}: ${e.error}`).join('\n');
-        }
-        
-        alert(message);
-        fetchPayrollSlips(1);
-      } else {
-        // Show detailed error with suggestion if available
-        let errorMsg = data.error || 'Failed to generate Salary Slip';
-        if (data.suggestion) errorMsg += '\n\n' + data.suggestion;
-        alert(errorMsg);
-      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Salary_Sheet_${selectedMonth}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
     } catch {
-      alert('Failed to generate payroll');
+      alert('Failed to export salary sheet');
     } finally {
       setGenerating(false);
     }
@@ -203,7 +137,7 @@ export default function ReportsPage() {
 
   // Generate all individual slips (used before exporting sheet)
   const handleGenerateAllSlips = async () => {
-    if (!confirm(`This will generate individual salary slips for ${salaryTypeFilter !== 'all' ? salaryTypeFilter + ' ' : 'all '}employees for the selected month. Continue?`)) {
+    if (!confirm(`This will generate individual salary slips for ${salaryTypeFilter === 'contract' ? 'contract ' : 'payroll '}employees for the selected month. Continue?`)) {
       return;
     }
     
@@ -214,7 +148,7 @@ export default function ReportsPage() {
       const res = await fetch('/api/payroll/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month, all: true, salary_type: salaryTypeFilter !== 'all' ? salaryTypeFilter : undefined })
+        body: JSON.stringify({ month, all: true, salary_type: salaryTypeFilter })
       });
 
       const data = await res.json();
@@ -245,35 +179,6 @@ export default function ReportsPage() {
       setGenerating(false);
     }
   };
-
-  // Toggle employee selection
-  const toggleEmployee = (empId) => {
-    setSelectedEmployees(prev => 
-      prev.includes(empId) 
-        ? prev.filter(id => id !== empId)
-        : [...prev, empId]
-    );
-  };
-
-  // Select/Deselect all employees
-  const toggleAllEmployees = () => {
-    if (selectedEmployees.length === employees.length) {
-      setSelectedEmployees([]);
-    } else {
-      setSelectedEmployees(employees.map(emp => emp.id.toString()));
-    }
-  };
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
-        setEmployeeDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Filter slips by search term
   const filteredSlips = payrollSlips.filter(slip => {
@@ -376,6 +281,29 @@ export default function ReportsPage() {
       }
     } catch {
       alert('Failed to delete slip');
+    }
+  };
+
+  // Handle delete all
+  const handleDeleteAll = async () => {
+    if (!confirm(`Are you sure you want to delete ALL ${payrollSlips.length} payroll slips? This action cannot be undone.`)) {
+      return;
+    }
+    if (!confirm('This is irreversible. Type OK to confirm you want to delete ALL slips.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/payroll/slips?all=true', { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || 'All slips deleted successfully');
+        fetchPayrollSlips(1);
+      } else {
+        alert(data.error || 'Failed to delete all slips');
+      }
+    } catch {
+      alert('Failed to delete all slips');
     }
   };
 
@@ -710,145 +638,136 @@ export default function ReportsPage() {
       
       <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <DocumentCurrencyDollarIcon className="h-7 w-7 text-purple-600" />
-              Salary Reports
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">Generate and manage payroll slips</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Month Selector */}
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedMonth.split('-')[1]}
-                onChange={(e) => setSelectedMonth(`${selectedMonth.split('-')[0]}-${e.target.value}`)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <DocumentCurrencyDollarIcon className="h-7 w-7 text-purple-600" />
+            Salary Reports
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Generate and manage salary slips</p>
+        </div>
+
+        {/* Controls Row */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Salary Type Toggle */}
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                onClick={() => setSalaryTypeFilter('payroll')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  salaryTypeFilter === 'payroll'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
               >
-                <option value="01">January</option>
-                <option value="02">February</option>
-                <option value="03">March</option>
-                <option value="04">April</option>
-                <option value="05">May</option>
-                <option value="06">June</option>
-                <option value="07">July</option>
-                <option value="08">August</option>
-                <option value="09">September</option>
-                <option value="10">October</option>
-                <option value="11">November</option>
-                <option value="12">December</option>
-              </select>
-              <select
-                value={selectedMonth.split('-')[0]}
-                onChange={(e) => setSelectedMonth(`${e.target.value}-${selectedMonth.split('-')[1]}`)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                Payroll
+              </button>
+              <button
+                onClick={() => setSalaryTypeFilter('contract')}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  salaryTypeFilter === 'contract'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
               >
-                {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
+                Contract
+              </button>
             </div>
-            
-            {/* Salary Type Filter */}
+
+            {/* Month Selector */}
             <select
-              value={salaryTypeFilter}
-              onChange={(e) => setSalaryTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+              value={selectedMonth.split('-')[1]}
+              onChange={(e) => setSelectedMonth(`${selectedMonth.split('-')[0]}-${e.target.value}`)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
             >
-              <option value="all">All Salary Types</option>
-              <option value="monthly">Monthly</option>
-              <option value="hourly">Hourly</option>
-              <option value="daily">Daily</option>
-              <option value="contract">Contract</option>
-              <option value="lumpsum">Lumpsum</option>
-              <option value="custom">Custom</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            <select
+              value={selectedMonth.split('-')[0]}
+              onChange={(e) => setSelectedMonth(`${e.target.value}-${selectedMonth.split('-')[1]}`)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            >
+              {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
             </select>
 
-            {/* Employee Checkbox Dropdown */}
-            <div className="relative" ref={employeeDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setEmployeeDropdownOpen(!employeeDropdownOpen)}
-                className="px-3 py-2 border border-gray-300 rounded-lg bg-white min-w-[200px] text-left flex items-center justify-between focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              >
-                <span className="text-gray-700">
-                  {selectedEmployees.length === 0 
-                    ? 'All Employees' 
-                    : selectedEmployees.length === employees.length 
-                      ? 'All Employees' 
-                      : `${selectedEmployees.length} Selected`}
-                </span>
-                <ChevronLeftIcon className={`h-4 w-4 text-gray-400 transition-transform ${employeeDropdownOpen ? '-rotate-90' : ''}`} />
-              </button>
-              
-              {employeeDropdownOpen && (
-                <div className="absolute z-50 mt-1 w-72 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                  {/* Select All Option */}
-                  <label className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-200">
-                    <input
-                      type="checkbox"
-                      checked={selectedEmployees.length === employees.length && employees.length > 0}
-                      onChange={toggleAllEmployees}
-                      className="h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-                    />
-                    <span className="font-medium text-gray-900">Select All ({employees.length})</span>
-                  </label>
-                  
-                  {/* Employee List */}
-                  {employees.map((emp) => (
-                    <label 
-                      key={emp.id} 
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedEmployees.includes(emp.id.toString())}
-                        onChange={() => toggleEmployee(emp.id.toString())}
-                        className="h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-                      />
-                      <span className="text-gray-700">{emp.full_name}</span>
-                    </label>
-                  ))}
-                  
-                  {employees.length === 0 && (
-                    <div className="px-3 py-2 text-gray-500 text-sm">No employees found</div>
-                  )}
-                </div>
-              )}
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <MagnifyingGlassIcon className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by name, code, department..."
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
             </div>
-            
-            {/* Generate All Slips button - shown when no employees selected */}
-            {selectedEmployees.length === 0 && (
+
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="processed">Processed</option>
+              <option value="paid">Paid</option>
+              <option value="hold">On Hold</option>
+            </select>
+
+            <div className="flex items-center gap-2 ml-auto">
+              {/* Generate All Slips */}
               <button
                 onClick={handleGenerateAllSlips}
-                disabled={generating || employees.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
-                title="Generate individual salary slips for all employees"
+                disabled={generating}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
+                title="Generate salary slips for all employees"
               >
                 {generating ? (
-                  <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
                 ) : (
-                  <PlusIcon className="h-5 w-5" />
+                  <PlusIcon className="h-4 w-4" />
                 )}
-                Generate All Slips
+                Generate Slips
               </button>
-            )}
-            
-            <button
-              onClick={handleGeneratePayroll}
-              disabled={generating || employees.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50"
-            >
-              {generating ? (
-                <ArrowPathIcon className="h-5 w-5 animate-spin" />
-              ) : selectedEmployees.length === 0 ? (
-                <ArrowDownTrayIcon className="h-5 w-5" />
-              ) : (
-                <PlusIcon className="h-5 w-5" />
-              )}
-              {generating ? 'Processing...' : selectedEmployees.length === 0 ? 'Export Salary Sheet' : 'Generate Salary'}
-            </button>
+
+              {/* Export Sheet */}
+              <button
+                onClick={handleExportSheet}
+                disabled={generating}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {generating ? (
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowDownTrayIcon className="h-4 w-4" />
+                )}
+                Export Excel
+              </button>
+
+              {/* Delete All */}
+              <button
+                onClick={handleDeleteAll}
+                disabled={generating || payrollSlips.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
+                title="Delete all payroll slips"
+              >
+                <TrashIcon className="h-4 w-4" />
+                Delete All
+              </button>
+            </div>
           </div>
         </div>
 
@@ -856,32 +775,29 @@ export default function ReportsPage() {
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            <div className="text-sm text-gray-600">Total Slips</div>
+            <div className="text-xs text-gray-500">Total Slips</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-            <div className="text-sm text-gray-600">Pending</div>
+            <div className="text-xs text-gray-500">Pending</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-2xl font-bold text-blue-600">{stats.processed}</div>
-            <div className="text-sm text-gray-600">Processed</div>
+            <div className="text-xs text-gray-500">Processed</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-2xl font-bold text-green-600">{stats.paid}</div>
-            <div className="text-sm text-gray-600">Paid</div>
+            <div className="text-xs text-gray-500">Paid</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-2xl font-bold text-red-600">{stats.hold}</div>
-            <div className="text-sm text-gray-600">On Hold</div>
+            <div className="text-xs text-gray-500">On Hold</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="text-2xl font-bold text-purple-600">{formatCurrency(stats.totalAmount)}</div>
-            <div className="text-sm text-gray-600">Total Payout</div>
+            <div className="text-xs text-gray-500">Total Payout</div>
           </div>
         </div>
-
-
-        {/* Salary Slips Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -909,8 +825,8 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredSlips.map((slip) => (
-                    <tr key={slip.id} className="hover:bg-gray-50 transition-colors">
+                  {filteredSlips.map((slip, index) => (
+                    <tr key={`${slip.id}-${slip.employee_id || index}`} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="font-medium text-gray-900">{slip.employee_name}</div>
                         <div className="text-sm text-gray-500">{slip.employee_code}</div>

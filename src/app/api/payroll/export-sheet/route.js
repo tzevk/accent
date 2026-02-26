@@ -3,6 +3,11 @@ import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 import ExcelJS from 'exceljs';
 
+/** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
+const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+/** Safely convert to string, stripping null/undefined */
+const safeStr = (v) => (v == null ? '' : String(v));
+
 /**
  * GET - Export salary sheet as Excel file
  * Query params:
@@ -26,7 +31,7 @@ export async function GET(request) {
       );
     }
 
-    const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom'];
+    const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom', 'payroll'];
     db = await dbConnect();
 
     let query = `SELECT 
@@ -37,16 +42,20 @@ export async function GET(request) {
         e.uan,
         e.pf_no,
         e.esi_no,
-        e.department,
-        sp.salary_type
+        e.department
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
-      LEFT JOIN employee_salary_profile sp ON sp.employee_id = e.id AND sp.is_active = 1
       WHERE ps.month = ?`;
     const params = [month];
 
-    if (salaryType && validSalaryTypes.includes(salaryType)) {
-      query += ` AND (sp.salary_type = ? OR (sp.salary_type IS NULL AND ? = 'monthly'))`;
+    if (salaryType === 'payroll') {
+      // Payroll = everything except contract
+      query += ` AND NOT EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
+    } else if (salaryType === 'contract') {
+      // Contract = only contract
+      query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
+    } else if (salaryType && validSalaryTypes.includes(salaryType)) {
+      query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND (sp.salary_type = ? OR (sp.salary_type IS NULL AND ? = 'monthly')))`;
       params.push(salaryType, salaryType);
     }
 
@@ -66,124 +75,172 @@ export async function GET(request) {
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Sheet1');
-    const monthDate = new Date(month);
     const isContractExport = salaryType === 'contract';
 
-    // Row 1: Title
-    sheet.mergeCells('A1:L1');
+    // Total columns: contract is simple, payroll has full breakdown
+    const totalCols = isContractExport ? 5 : 37;
+    // For columns > 26, use AA, AB, etc.
+    const getColLetter = (n) => {
+      let s = '';
+      while (n > 0) {
+        n--;
+        s = String.fromCharCode(65 + (n % 26)) + s;
+        n = Math.floor(n / 26);
+      }
+      return s;
+    };
+    const lastCol = getColLetter(totalCols);
+
+    // Row 1: Title - PAY SHEET or CONTRACT PAY SHEET
+    sheet.mergeCells(`A1:${lastCol}1`);
     const titleCell = sheet.getCell('A1');
     titleCell.value = isContractExport ? 'CONTRACT PAY SHEET' : 'PAY SHEET';
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: 'center' };
+    titleCell.border = { bottom: { style: 'thin' } };
 
     // Row 2: Form reference
-    sheet.mergeCells('A2:L2');
+    sheet.mergeCells(`A2:${lastCol}2`);
     const formCell = sheet.getCell('A2');
     formCell.value = 'FORM II SEE RULE 27 (1)';
+    formCell.font = { bold: true, size: 11 };
     formCell.alignment = { horizontal: 'center' };
 
     // Row 3: Muster Roll
-    sheet.mergeCells('A3:L3');
+    sheet.mergeCells(`A3:${lastCol}3`);
     const musterCell = sheet.getCell('A3');
     musterCell.value = 'MUSTER ROLL CUM WAGES REGISTER';
-    musterCell.font = { bold: true };
+    musterCell.font = { bold: true, size: 12 };
     musterCell.alignment = { horizontal: 'center' };
 
-    // Row 4: Company name and month
-    sheet.mergeCells('A4:C4');
-    sheet.getCell('A4').value = 'ACCENT TECHNO SOLUTIONS PVT LTD';
-    sheet.getCell('A4').font = { bold: true };
+    // Row 4: Company name | gap | DATE OF PAYMENT | FOR THE MONTH OF | month
+    // IMPORTANT: Only set styles on merge master cells, NOT on cells inside merged ranges
+    // (accessing non-master cells creates extra <c> elements in OOXML that Excel flags as corrupt)
+    const quarterCol = Math.floor(totalCols / 4);
+    const companyEndCol = Math.max(quarterCol - 1, 1);
+    const row4Border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
-    sheet.mergeCells('G4:I4');
-    sheet.getCell('G4').value = 'DATE OF PAYMENT';
+    sheet.mergeCells(`A4:${getColLetter(companyEndCol)}4`);
+    const companyCell = sheet.getCell('A4');
+    companyCell.value = 'ACCENT TECHNO SOLUTIONS PVT LTD';
+    companyCell.font = { bold: true, size: 11 };
+    companyCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    companyCell.border = row4Border;
 
-    sheet.mergeCells('K4:L4');
-    sheet.getCell('K4').value = 'FOR THE MONTH OF';
+    // Gap cell between company and DOP (only when there is a column gap)
+    if (companyEndCol < quarterCol) {
+      sheet.getRow(4).getCell(quarterCol).border = row4Border;
+    }
 
-    sheet.mergeCells('N4:P4');
-    sheet.getCell('N4').value = monthDate;
-    sheet.getCell('N4').numFmt = 'mmm-yyyy';
+    const dopStartCol = quarterCol + 1;
+    const dopEndCol = quarterCol * 2;
+    sheet.mergeCells(`${getColLetter(dopStartCol)}4:${getColLetter(dopEndCol)}4`);
+    const dopCell = sheet.getCell(`${getColLetter(dopStartCol)}4`);
+    dopCell.value = 'DATE OF PAYMENT';
+    dopCell.font = { bold: true, size: 11 };
+    dopCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    dopCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    dopCell.border = row4Border;
+
+    const fmStartCol = dopEndCol + 1;
+    const fmEndCol = quarterCol * 3;
+    sheet.mergeCells(`${getColLetter(fmStartCol)}4:${getColLetter(fmEndCol)}4`);
+    const fmCell = sheet.getCell(`${getColLetter(fmStartCol)}4`);
+    fmCell.value = 'FOR THE MONTH OF';
+    fmCell.font = { bold: true, size: 11 };
+    fmCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    fmCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    fmCell.border = row4Border;
+
+    const mvStartCol = fmEndCol + 1;
+    sheet.mergeCells(`${getColLetter(mvStartCol)}4:${lastCol}4`);
+    const mvCell = sheet.getCell(`${getColLetter(mvStartCol)}4`);
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const [yr, mn] = month.split('-');
+    mvCell.value = `${monthNames[parseInt(mn, 10) - 1]}-${yr.slice(2)}`;
+    mvCell.font = { bold: true, size: 11 };
+    mvCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    mvCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    mvCell.border = row4Border;
+
+    // Row 5: Empty separator
+    sheet.getRow(5).height = 6;
+
+    // Shared style objects (reuse references for speed)
+    const thinBorder = { style: 'thin' };
+    const borderAll = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+    const borderTotals = { top: { style: 'double' }, left: thinBorder, bottom: thinBorder, right: thinBorder };
+    const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+    const alignMiddle = { vertical: 'middle' };
+    const alignRightMiddle = { horizontal: 'right', vertical: 'middle' };
+    const alignCenterMiddle = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    const numFmt = '#,##0.00';
+    const headerFont = { bold: true, size: 10 };
+    const boldFont = { bold: true };
 
     if (isContractExport) {
-      // ── Contract-specific sheet layout ──
-      const contractHeaders = [
-        'Emp Code',
-        'Full Name',
-        'Designation',
-        'Month Days',
-        'Working Days',
-        'Rate Per Month',
-        'Monthly Amount',
-        'OT Hours',
-        'OT Amount',
-        'Total Amount',
-        '10% TDS',
-        'Retention',
-        'Net Payable Amount',
-      ];
+      // ── Contract sheet: simple layout ──
+      const contractHeaders = ['Full Name', 'Designation', 'Contract Amount', 'TDS Deduction (10%)', 'In-Hand CTC'];
 
       const contractHeaderRow = sheet.getRow(6);
-      contractHeaders.forEach((header, index) => {
-        const cell = contractHeaderRow.getCell(index + 1);
+      contractHeaderRow.height = 24;
+      contractHeaders.forEach((header, i) => {
+        const cell = contractHeaderRow.getCell(i + 1);
         cell.value = header;
-        cell.font = { bold: true, size: 10 };
-        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.font = headerFont;
+        cell.alignment = alignCenterMiddle;
+        cell.fill = headerFill;
+        cell.border = borderAll;
       });
+
+      // Pre-compute totals
+      let sumContract = 0, sumTds = 0, sumInHand = 0;
 
       slips.forEach((slip, index) => {
+        const contractAmount = safeNum(slip.gross || slip.total_earnings);
+        const tds = safeNum(slip.tds);
+        const inHandCTC = contractAmount - tds;
+        sumContract += contractAmount;
+        sumTds += tds;
+        sumInHand += inHandCTC;
+
         const row = sheet.getRow(7 + index);
-        const gross = slip.gross || slip.total_earnings || 0;
-        const workingDays = slip.payable_days || slip.days_present || 0;
-        const monthDays = slip.standard_working_days || 26;
-        const ratePerMonth = slip.full_month_gross || gross;
-        const monthlyAmount = gross;
-        const otHours = slip.overtime_hours || 0;
-        const otAmount = 0; // OT amount from slip if available
-        const totalAmount = monthlyAmount + otAmount;
-        const tds = slip.tds || 0;
-        const retention = slip.retention || 0;
-        const netPayable = totalAmount - tds - retention;
-
-        const values = [
-          slip.employee_code || '',
-          slip.full_name || '',
-          slip.designation || '',
-          monthDays,
-          workingDays,
-          ratePerMonth,
-          monthlyAmount,
-          otHours,
-          otAmount,
-          totalAmount,
-          tds,
-          retention,
-          netPayable,
-        ];
-
-        values.forEach((val, colIndex) => {
-          const cell = row.getCell(colIndex + 1);
-          cell.value = val;
-          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-          if (colIndex >= 3 && typeof val === 'number') {
-            cell.numFmt = '#,##0';
-          }
-        });
+        row.values = [safeStr(slip.full_name), safeStr(slip.designation), contractAmount, tds, inHandCTC];
+        for (let c = 1; c <= 5; c++) {
+          const cell = row.getCell(c);
+          cell.border = borderAll;
+          cell.alignment = c >= 3 ? alignRightMiddle : alignMiddle;
+          if (c >= 3) cell.numFmt = numFmt;
+        }
       });
 
-      const contractColWidths = [12, 25, 20, 12, 12, 15, 15, 10, 12, 15, 12, 12, 18];
-      contractColWidths.forEach((width, index) => {
-        sheet.getColumn(index + 1).width = width;
-      });
+      // Totals row
+      const totalsRow = sheet.getRow(7 + slips.length);
+      totalsRow.values = ['TOTAL', '', sumContract, sumTds, sumInHand];
+      totalsRow.getCell(1).font = boldFont;
+      for (let c = 1; c <= 5; c++) {
+        const cell = totalsRow.getCell(c);
+        cell.border = borderTotals;
+        if (c >= 3) {
+          cell.numFmt = numFmt;
+          cell.font = boldFont;
+          cell.alignment = alignRightMiddle;
+        }
+      }
+
+      [25, 20, 18, 18, 18].forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
 
     } else {
-      // ── Standard (non-contract) sheet layout ──
+      // ── Payroll - Extensive salary breakdown ──
       const headers = [
+        // Employee Info (1-6)
+        'SR NO.',
         'Emp Code',
         'Full Name',
         'Designation',
+        'Department',
         'UAN',
+        // Attendance (7-14)
         'PF No.',
         'ESIC No.',
         'Total Days',
@@ -192,6 +249,7 @@ export async function GET(request) {
         'LWP Days',
         'Leave',
         'WeekOff',
+        // Earnings (15-25)
         'Paid Holiday',
         'OT Hours',
         'BASIC',
@@ -203,104 +261,156 @@ export async function GET(request) {
         'PAID HOLIDAY AMOUNT',
         'BONUS',
         'OT RATE',
+        // More Earnings (26)
         'INCENTIVE',
-        'GROSS',
+        // Gross (27)
+        'GROSS EARNING',
+        // Deductions (28-36)
         'PROVIDENT FUND',
         'ESIC',
         'PROFESSIONAL TAX',
         'LOAN',
         'ADVANCE',
-        'TAX DEDUCTED AT SOURCE',
-        'AMOUNT AFTER TDS',
-        'RETENTION AMOUNT',
-        'TOTAL DED',
-        'NET SAL',
-        'Signature',
+        'TDS',
+        'RETENTION',
+        'MLWF',
+        'TOTAL DEDUCTION',
+        // Net (37)
+        'NET SALARY',
       ];
 
+      // Row 6: Headers
+      const headerFont9 = { bold: true, size: 9 };
       const headerRow = sheet.getRow(6);
-      headers.forEach((header, index) => {
-        const cell = headerRow.getCell(index + 1);
+      headerRow.height = 30;
+      headers.forEach((header, i) => {
+        const cell = headerRow.getCell(i + 1);
         cell.value = header;
-        cell.font = { bold: true, size: 10 };
-        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.font = headerFont9;
+        cell.alignment = alignCenterMiddle;
+        cell.fill = headerFill;
+        cell.border = borderAll;
       });
+      // Highlight header cells for key columns
+      headerRow.getCell(27).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // GROSS
+      headerRow.getCell(36).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // DEDUCTIONS
+      headerRow.getCell(37).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } }; // NET
 
-      slips.forEach((slip, index) => {
-        const row = sheet.getRow(7 + index);
-        const gross = slip.gross || slip.total_earnings || 0;
-        const tds = slip.tds || 0;
+      const alignCenterVertMiddle = { horizontal: 'center', vertical: 'middle' };
+      const colCount = headers.length;
 
-        const values = [
-          slip.employee_code || '',
-          slip.full_name || '',
-          slip.designation || '',
-          slip.uan || '',
-          slip.pf_no || '',
-          slip.esi_no || '--',
-          slip.standard_working_days || 26,
-          slip.days_present || 0,
-          slip.payable_days || 0,
-          slip.lop_days || 0,
-          slip.days_leave || 0,
-          4,
-          0,
-          slip.overtime_hours || 0,
-          slip.basic || 0,
-          slip.da || slip.da_used || 0,
-          slip.hra || 0,
-          slip.conveyance || 0,
-          slip.call_allowance || 0,
-          slip.other_allowances || 0,
-          0,
-          slip.bonus || 0,
-          0,
-          slip.incentive || 0,
-          gross,
-          slip.pf_employee || 0,
-          slip.esic_employee || 0,
-          slip.pt || 0,
-          0,
-          0,
-          tds,
-          gross - tds,
-          slip.retention || 0,
-          slip.total_deductions || 0,
-          slip.net_pay || 0,
-          '',
+      // Pre-compute totals accumulators (columns 9..37, index 8..36)
+      const totals = new Float64Array(colCount); // zero-initialized
+
+      // Data rows - batch write
+      for (let idx = 0; idx < slips.length; idx++) {
+        const slip = slips[idx];
+        // All numeric values use safeNum() to guarantee finite numbers (never NaN/Infinity/strings)
+        const gross = safeNum(slip.gross || slip.total_earnings);
+        const tds = safeNum(slip.tds);
+        const basic = safeNum(slip.basic);
+        const da = safeNum(slip.da || slip.da_used);
+        const hra = safeNum(slip.hra);
+        const conveyance = safeNum(slip.conveyance);
+        const callAllowance = safeNum(slip.call_allowance);
+        const otherAllowances = safeNum(slip.other_allowances);
+        const bonus = safeNum(slip.bonus);
+        const incentive = safeNum(slip.incentive);
+        const pfEmployee = safeNum(slip.pf_employee);
+        const esicEmployee = safeNum(slip.esic_employee);
+        const pt = safeNum(slip.pt);
+        const loan = safeNum(slip.loan);
+        const advance = safeNum(slip.advance);
+        const retention = safeNum(slip.retention);
+        const mlwf = safeNum(slip.mlwf);
+        const totalDeductions = safeNum(slip.total_deductions);
+        const netPay = safeNum(slip.net_pay || slip.net_salary);
+        const paidHoliday = safeNum(slip.paid_holiday);
+        const otRate = safeNum(slip.ot_rate);
+        const totalDays = safeNum(slip.standard_working_days) || 26;
+        const daysPresent = safeNum(slip.days_present);
+        const payableDays = safeNum(slip.payable_days);
+        const lopDays = safeNum(slip.lop_days);
+        const daysLeave = safeNum(slip.days_leave);
+        const otHours = safeNum(slip.overtime_hours);
+
+        const row = sheet.getRow(7 + idx);
+        // ExcelJS contiguous array: index 0 → column 1, index 1 → column 2, etc.
+        row.values = [
+          idx + 1, safeStr(slip.employee_code), safeStr(slip.full_name),
+          safeStr(slip.designation), safeStr(slip.department), safeStr(slip.uan),
+          safeStr(slip.pf_no), safeStr(slip.esi_no) || '--',
+          totalDays, daysPresent, payableDays, lopDays, daysLeave, 4, 0, otHours,
+          basic, da, hra, conveyance, callAllowance, otherAllowances,
+          paidHoliday, bonus, otRate, incentive, gross,
+          pfEmployee, esicEmployee, pt, loan, advance, tds, retention, mlwf,
+          totalDeductions, netPay,
         ];
 
-        values.forEach((val, colIndex) => {
-          const cell = row.getCell(colIndex + 1);
-          cell.value = val;
-          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-          if (colIndex >= 14 && typeof val === 'number') {
-            cell.numFmt = '#,##0';
-          }
-        });
-      });
+        // Accumulate totals for numeric columns (9..37 = index 8..36)
+        totals[8] += totalDays; totals[9] += daysPresent; totals[10] += payableDays;
+        totals[11] += lopDays; totals[12] += daysLeave; totals[13] += 4; totals[15] += otHours;
+        totals[16] += basic; totals[17] += da; totals[18] += hra;
+        totals[19] += conveyance; totals[20] += callAllowance; totals[21] += otherAllowances;
+        totals[22] += paidHoliday; totals[23] += bonus; totals[24] += otRate;
+        totals[25] += incentive; totals[26] += gross;
+        totals[27] += pfEmployee; totals[28] += esicEmployee; totals[29] += pt;
+        totals[30] += loan; totals[31] += advance; totals[32] += tds;
+        totals[33] += retention; totals[34] += mlwf; totals[35] += totalDeductions;
+        totals[36] += netPay;
 
-      const columnWidths = [
-        12, 25, 20, 15, 25, 15,
-        10, 10, 10, 10, 8, 8, 10, 8,
-        12, 10, 10, 15, 12, 14, 14, 10, 8, 10,
-        12, 14, 10, 14, 10, 10, 18, 18, 15, 12, 12, 12,
-      ];
-      columnWidths.forEach((width, index) => {
-        sheet.getColumn(index + 1).width = width;
-      });
+        // Apply styles per cell
+        for (let c = 1; c <= colCount; c++) {
+          const cell = row.getCell(c);
+          cell.border = borderAll;
+          if (c <= 2) {
+            cell.alignment = alignCenterVertMiddle;
+          } else if (c >= 9) {
+            cell.numFmt = numFmt;
+            cell.alignment = alignRightMiddle;
+          } else {
+            cell.alignment = alignMiddle;
+          }
+        }
+      }
+
+      // Totals row
+      const totalsRowNum = 7 + slips.length;
+      const totalsRow = sheet.getRow(totalsRowNum);
+      const totalsValues = ['', '', 'TOTAL'];
+      for (let c = 4; c <= colCount; c++) {
+        totalsValues.push(c >= 9 ? totals[c - 1] : '');
+      }
+      totalsRow.values = totalsValues;
+      totalsRow.getCell(3).font = { bold: true, size: 10 };
+      for (let c = 1; c <= colCount; c++) {
+        const cell = totalsRow.getCell(c);
+        cell.border = borderTotals;
+        if (c >= 9) {
+          cell.numFmt = numFmt;
+          cell.font = boldFont;
+          cell.alignment = alignRightMiddle;
+        }
+      }
+
+      // Column widths
+      [6,12,22,16,14,15,20,15,10,10,10,10,8,8,10,8,12,10,10,16,14,14,14,10,8,10,14,14,10,14,10,10,10,12,10,14,14]
+        .forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
+    const uint8 = new Uint8Array(buffer);
     const filename = `Salary_Sheet_${month.substring(0, 7)}.xlsx`;
 
-    return new NextResponse(buffer, {
+    // Use native Response (not NextResponse) to avoid any App Router body transformations.
+    // Do NOT set Content-Length — next.config compress:true gzips the body and
+    // an explicit Content-Length referring to the raw size would truncate the download.
+    return new Response(uint8, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store',
       },
     });
 

@@ -20,6 +20,7 @@ export async function GET(request) {
     const month = searchParams.get('month');
     const employee_id = searchParams.get('employee_id');
     const payment_status = searchParams.get('payment_status');
+    const salary_type = searchParams.get('salary_type');
     
     db = await dbConnect();
     
@@ -49,6 +50,12 @@ export async function GET(request) {
     if (payment_status) {
       query += ` AND ps.payment_status = ?`;
       params.push(payment_status);
+    }
+
+    if (salary_type === 'payroll') {
+      query += ` AND NOT EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
+    } else if (salary_type === 'contract') {
+      query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
     }
     
     query += ` ORDER BY ps.month DESC, e.first_name ASC`;
