@@ -209,7 +209,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     const map = {
       'Completed': 'bg-green-100 text-green-700 border-green-200',
       'In Progress': 'bg-blue-100 text-blue-700 border-blue-200',
-      'Not Started': 'bg-gray-100 text-gray-600 border-gray-200',
+      'Not Started': 'bg-gray-100 text-[#4A1254] border-gray-200',
       'On Hold': 'bg-yellow-100 text-yellow-700 border-yellow-200'
     };
     return map[status] || map['Not Started'];
@@ -234,7 +234,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-md border-2 border-purple-200 p-6 mb-6">
-        <div className="text-center text-gray-500 text-sm">Loading assignments...</div>
+        <div className="text-center text-[#4A1254] text-sm">Loading assignments...</div>
       </div>
     );
   }
@@ -251,12 +251,12 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
               <ClipboardDocumentListIcon className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-900">My Project Activities</h3>
-              <p className="text-xs text-gray-500">{stats.totalAssignments} assignments across {stats.totalProjects} projects</p>
+              <h3 className="text-sm font-bold text-[#4A1254]">My Project Activities</h3>
+              <p className="text-xs text-[#4A1254]">{stats.totalAssignments} assignments across {stats.totalProjects} projects</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">{stats.notStartedCount} Pending</span>
+            <span className="px-2.5 py-1 bg-gray-100 text-[#4A1254] rounded-full text-xs font-semibold">{stats.notStartedCount} Pending</span>
             <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{stats.inProgressCount} In Progress</span>
             <span className="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">{stats.completedCount} Completed</span>
           </div>
@@ -264,7 +264,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
         <div className="flex items-center gap-2 mt-2">
           {['all', 'pending', 'in-progress', 'completed'].map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${filter === f ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${filter === f ? 'bg-purple-600 text-white shadow-sm' : 'bg-gray-100 text-[#4A1254] hover:bg-gray-200'}`}
             >
               {f === 'all' ? 'All' : f === 'pending' ? 'Pending' : f === 'in-progress' ? 'In Progress' : 'Completed'}
             </button>
@@ -275,28 +275,59 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       {/* Table */}
       <div className="overflow-x-auto">
         {filteredAssignments.length === 0 ? (
-          <div className="text-center py-10 text-gray-400">
+          <div className="text-center py-10 text-[#4A1254]">
             <ClipboardDocumentListIcon className="w-14 h-14 mx-auto mb-3 opacity-50" />
             <p className="text-sm">No activities assigned to you</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-[#64126D]">
-              <tr className="divide-x divide-white/20">
-                <th className="text-center py-2.5 px-4 font-bold text-white uppercase tracking-wider text-xs">Project Number</th>
-                <th className="text-center py-2.5 px-4 font-bold text-white uppercase tracking-wider text-xs">Activity</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Plan Hrs</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Manhours</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Qty Asgn</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Qty Done</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Balance</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Due Date</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Status</th>
-                <th className="text-center py-2.5 px-3 font-bold text-white uppercase tracking-wider text-xs">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredAssignments.map((activity) => {
+          (() => {
+            // Group assignments by project
+            const projectGroups = {};
+            const projectOrder = [];
+            filteredAssignments.forEach(a => {
+              const pid = a.project_id || 'unknown';
+              if (!projectGroups[pid]) {
+                projectGroups[pid] = { project_code: a.project_code, project_name: a.project_name, activities: [] };
+                projectOrder.push(pid);
+              }
+              projectGroups[pid].activities.push(a);
+            });
+            return projectOrder.map(pid => {
+              const group = projectGroups[pid];
+              const groupQtyAssigned = group.activities.reduce((s, a) => s + (parseFloat(a.qty_assigned) || 0), 0);
+              const groupQtyDone = group.activities.reduce((s, a) => s + (parseFloat(a.qty_completed) || 0), 0);
+              const groupPlannedHrs = group.activities.reduce((s, a) => s + (parseFloat(a.planned_hours) || 0), 0);
+              const groupActualHrs = group.activities.reduce((s, a) => s + (parseFloat(a.actual_hours) || 0), 0);
+              return (
+                <div key={pid} className="mb-4 last:mb-0">
+                  {/* Project Header */}
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-[#64126D] to-[#7F2487] text-white">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded">{group.project_code || '–'}</span>
+                      <span className="text-sm font-bold">{group.project_name || 'Unknown Project'}</span>
+                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{group.activities.length} {group.activities.length === 1 ? 'activity' : 'activities'}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs font-semibold">
+                      <span>Qty: {groupQtyDone}/{groupQtyAssigned}</span>
+                      <span>Hrs: {groupActualHrs}/{groupPlannedHrs}</span>
+                    </div>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#64126D]/10">
+                      <tr className="divide-x divide-[#64126D]/10">
+                        <th className="text-center py-2 px-4 font-bold text-[#64126D] uppercase tracking-wider text-xs">Activity</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Plan Hrs</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Manhours</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Qty Asgn</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Qty Done</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Balance</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Due Date</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Status</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+              {group.activities.map((activity) => {
                 const rowKey = `${activity.project_id}-${activity.activity_id}`;
                 const isEditing = editingId === rowKey;
                 const isExpanded = expandedRows[rowKey];
@@ -310,29 +341,23 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                   <Fragment key={rowKey}>
                     {/* Main Activity Row */}
                     <tr className={`hover:bg-purple-50/40 transition-colors divide-x divide-gray-200 ${isDuePast ? 'bg-red-50/40' : ''}`}>
-                      {/* Project */}
-                      <td className="py-3 px-4 align-middle">
-                        <div className="font-mono text-xs text-purple-700 font-bold">{activity.project_code || '–'}</div>
-                        <div className="text-xs text-gray-500 truncate max-w-[140px]" title={activity.project_name}>{activity.project_name}</div>
-                      </td>
-
                       {/* Activity */}
                       <td className="py-3 px-4 align-middle">
-                        <div className="font-semibold text-gray-900 text-sm">{activity.activity_name}</div>
-                        {activity.activity_description && <div className="text-xs text-gray-400 truncate max-w-[220px]" title={activity.activity_description}>{activity.activity_description}</div>}
+                        <div className="font-semibold text-[#4A1254] text-sm">{activity.activity_name}</div>
+                        {activity.activity_description && <div className="text-xs text-[#4A1254]/70 truncate max-w-[220px]" title={activity.activity_description}>{activity.activity_description}</div>}
                       </td>
 
                       {/* Plan Hrs */}
-                      <td className="py-3 px-3 text-center align-middle text-gray-600">{activity.planned_hours || 0}</td>
+                      <td className="py-3 px-3 text-center align-middle text-[#4A1254]">{activity.planned_hours || 0}</td>
 
                       {/* Manhours */}
-                      <td className="py-3 px-3 text-center align-middle font-semibold text-blue-600">{activity.actual_hours || 0}</td>
+                      <td className="py-3 px-3 text-center align-middle font-bold text-black">{activity.actual_hours || 0}</td>
 
                       {/* Qty Asgn */}
-                      <td className="py-3 px-3 text-center align-middle text-gray-600">{qtyAssigned}</td>
+                      <td className="py-3 px-3 text-center align-middle text-[#4A1254]">{qtyAssigned}</td>
 
                       {/* Qty Done */}
-                      <td className="py-3 px-3 text-center align-middle font-semibold text-purple-600">{qtyDone}</td>
+                      <td className="py-3 px-3 text-center align-middle font-bold text-black">{qtyDone}</td>
 
                       {/* Balance */}
                       <td className="py-3 px-3 text-center align-middle">
@@ -341,7 +366,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
                       {/* Due Date */}
                       <td className="py-3 px-3 text-center align-middle">
-                          <span className={`text-xs ${isDuePast ? 'text-red-500 font-bold' : 'text-gray-600'}`}>{formatShortDate(activity.due_date)}</span>
+                          <span className={`text-xs font-bold ${isDuePast ? 'text-red-500' : 'text-[#64126D]'}`}>{formatShortDate(activity.due_date)}</span>
                       </td>
 
                       {/* Status */}
@@ -367,7 +392,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                               <button onClick={saveProgress} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors" title="Save">
                                 <CheckCircleIcon className="w-4 h-4" />
                               </button>
-                              <button onClick={cancelEditing} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded transition-colors" title="Cancel">
+                              <button onClick={cancelEditing} className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors" title="Cancel">
                                 <XMarkIcon className="w-4 h-4" />
                               </button>
                             </>
@@ -383,7 +408,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                               </button>
                               {dailyEntries.length > 0 && (
                                 <button onClick={() => toggleExpand(rowKey)}
-                                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
+                                  className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
                                   {isExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
                                 </button>
                               )}
@@ -396,9 +421,9 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                     {/* Daily Entry Sub-Rows */}
                     {isExpanded && dailyEntries.length > 0 && (
                       <tr>
-                        <td colSpan={10} className="px-4 py-3 bg-purple-50/40">
+                        <td colSpan={9} className="px-4 py-3 bg-purple-50/40">
                           <div className="ml-4 border-l-2 border-purple-300 pl-4">
-                            <div className="text-xs font-bold text-gray-600 uppercase mb-2 tracking-wide">Daily Work Progress</div>
+                            <div className="text-xs font-bold text-[#4A1254] uppercase mb-2 tracking-wide">Daily Work Progress</div>
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="text-[#64126D] uppercase divide-x divide-[#64126D]/20">
@@ -471,16 +496,16 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                     const cumPct = qtyAssigned > 0 ? Math.min(100, Math.round((cumDone / qtyAssigned) * 100)) : 0;
                                     const barColor = cumPct >= 75 ? '#059669' : cumPct >= 40 ? '#d97706' : '#7e22ce';
                                     rows.push(
-                                    <tr key={eIdx} className={`divide-x divide-gray-200 ${isLocked ? 'text-gray-400' : 'text-gray-700'}`}>
+                                    <tr key={eIdx} className={`divide-x divide-gray-200 ${isLocked ? 'text-[#4A1254]/50' : 'text-[#4A1254]'}`}>
                                       <td className="py-1.5 px-3 text-center">
-                                        <span className="text-xs">{formatShortDate(entry.date)}</span>
+                                        <span className="text-xs font-bold text-[#64126D]">{formatShortDate(entry.date)}</span>
                                       </td>
                                       <td className="py-1.5 px-3 text-center">
-                                        <span className="text-xs font-medium text-gray-500">{dayQtyAsgn}</span>
+                                        <span className="text-xs font-medium text-[#4A1254]">{dayQtyAsgn}</span>
                                       </td>
                                       <td className="py-1.5 px-3 text-center">
                                         {isLocked ? (
-                                          <span>{entry.qty_done || 0}</span>
+                                          <span className="font-bold text-black">{entry.qty_done || 0}</span>
                                         ) : (
                                           <input type="number" value={entry.qty_done || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'qty_done', e.target.value)}
                                             min="0"
@@ -494,7 +519,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                       </td>
                                       <td className="py-1.5 px-3 text-center">
                                         {isLocked ? (
-                                          <span>{entry.hours || 0}</span>
+                                          <span className="font-bold text-black">{entry.hours || 0}</span>
                                         ) : (
                                           <input type="number" value={entry.hours || ''} onChange={(e) => updateDailyEntryLocal(rowKey, eIdx, 'hours', e.target.value)}
                                             min="0" step="0.5"
@@ -545,8 +570,12 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                   </Fragment>
                 );
               })}
-            </tbody>
-          </table>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })
+          })()
         )}
       </div>
 
@@ -555,8 +584,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSuccessModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 animate-in" onClick={e => e.stopPropagation()}>
             <CheckCircleIcon className="w-12 h-12 text-green-500" />
-            <p className="text-sm font-semibold text-gray-900">Submitted Successfully!</p>
-            <p className="text-xs text-gray-500">Your entry has been saved.</p>
+            <p className="text-sm font-semibold text-[#4A1254]">Submitted Successfully!</p>
+            <p className="text-xs text-[#4A1254]">Your entry has been saved.</p>
           </div>
         </div>
       )}
@@ -565,8 +594,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       {assignments.length > 0 && (
         <div className="px-6 py-4 bg-purple-50/50 border-t-2 border-purple-100 flex items-center justify-between text-sm">
           <div className="flex items-center gap-5">
-            <span className="text-gray-700"><span className="font-bold text-purple-700">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units</span>
-            <span className="text-gray-700"><span className="font-bold text-blue-700">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hrs</span>
+            <span className="text-[#4A1254]"><span className="font-bold text-purple-700">{stats.totalQtyCompleted}</span> / {stats.totalQtyAssigned} units</span>
+            <span className="text-[#4A1254]"><span className="font-bold text-blue-700">{stats.totalActualHours}</span> / {stats.totalPlannedHours} hrs</span>
           </div>
           <div className="font-semibold text-purple-700">{Math.round((stats.completedCount / stats.totalAssignments) * 100) || 0}% done</div>
         </div>

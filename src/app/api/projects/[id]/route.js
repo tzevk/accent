@@ -1,7 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
-import { getTableColumns, getPrimaryKeyColumn } from '@/utils/schema-cache';
+import { getTableColumns, getPrimaryKeyColumn, invalidateCache } from '@/utils/schema-cache';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -555,7 +555,52 @@ export async function PUT(request, context) {
     }
 
     // Build UPDATE query - use cached column list
-    const existingCols = await getTableColumns(db, 'projects');
+    let existingCols = await getTableColumns(db, 'projects');
+
+    // Auto-create missing LONGTEXT columns for list fields that the edit page sends
+    const requiredListCols = [
+      'project_activities_list', 'planning_activities_list', 'documents_list',
+      'input_documents_list', 'kickoff_meetings_list', 'internal_meetings_list',
+      'documents_received_list', 'documents_issued_list', 'project_handover_list',
+      'project_manhours_list', 'project_query_log_list', 'project_schedule_list'
+    ];
+    const missingCols = requiredListCols.filter(c => !existingCols.has(c));
+    if (missingCols.length > 0) {
+      try {
+        const alterParts = missingCols.map(c => `ADD COLUMN IF NOT EXISTS \`${c}\` LONGTEXT`).join(', ');
+        await db.execute(`ALTER TABLE projects ${alterParts}`);
+        // Invalidate cache so getTableColumns re-fetches
+        invalidateCache('projects');
+        existingCols = await getTableColumns(db, 'projects');
+      } catch (alterErr) {
+        console.warn('Failed to auto-create list columns:', alterErr.message);
+      }
+    }
+
+    // Auto-fix TEXT columns that may have been created as VARCHAR(255)
+    const textCols = ['revision', 'scope_of_work', 'deliverables', 'exclusion', 'billing_and_payment_terms', 'other_terms_and_conditions', 'site_visit', 'quotation_validity', 'duration', 'mode_of_delivery'];
+    for (const col of textCols) {
+      if (!existingCols.has(col)) {
+        try {
+          await db.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS \`${col}\` TEXT`);
+          invalidateCache('projects');
+          existingCols = await getTableColumns(db, 'projects');
+        } catch (e) { /* ignore */ }
+      } else {
+        // Column exists - ensure it's TEXT not VARCHAR
+        try {
+          const [colInfo] = await db.execute(
+            `SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'projects' AND COLUMN_NAME = ? AND TABLE_SCHEMA = DATABASE()`,
+            [col]
+          );
+          if (colInfo.length > 0 && colInfo[0].DATA_TYPE === 'varchar') {
+            await db.execute(`ALTER TABLE projects MODIFY COLUMN \`${col}\` TEXT`);
+            invalidateCache('projects');
+            existingCols = await getTableColumns(db, 'projects');
+          }
+        } catch (e) { console.warn(`Failed to upgrade ${col} to TEXT:`, e.message); }
+      }
+    }
 
     const fieldValues = [
       ['name', name],
@@ -728,53 +773,102 @@ export async function PUT(request, context) {
           : data.project_activities_list;
 
         if (Array.isArray(activities)) {
-          // First, delete existing assignments for this project
-          await db.execute(
-            'DELETE FROM user_activity_assignments WHERE project_id = ?',
-            [projectId]
-          );
-
-          // Helper to build a row tuple for batch insert
-          const buildRow = (userId, activity, userSpecificData = {}) => {
-            const activityName = activity.activity_name || activity.name || '';
-            const subActivityName = activity.sub_activity_name || '';
-            const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
-            
-            const priorityMap = { 'LOW': 'Low', 'MEDIUM': 'Medium', 'HIGH': 'High', 'URGENT': 'Critical' };
-            const statusMap = { 'NOT_STARTED': 'Not Started', 'IN_PROGRESS': 'In Progress', 'ON_HOLD': 'On Hold', 'COMPLETED': 'Completed', 'CANCELLED': 'Cancelled' };
-            
-            const priority = priorityMap[activity.priority] || 'Medium';
-            const status = statusMap[userSpecificData.status || activity.status_completed] || userSpecificData.status || 'Not Started';
-            const activityId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${userId}`;
-            
-            return [
-              activityId,
-              userId,
-              projectId,
-              fullActivityName,
-              activity.function_name || activity.discipline || '',
-              userSpecificData.due_date || activity.due_date || null,
-              priority,
-              parseFloat(userSpecificData.planned_hours || activity.planned_hours) || 0,
-              status,
-              userSpecificData.remarks || activity.deliverables || activity.remarks || ''
+          // Auto-create missing columns in user_activity_assignments
+          try {
+            const uaaCols = await getTableColumns(db, 'user_activity_assignments');
+            const requiredUaaCols = [
+              ['discipline_name', 'VARCHAR(255)'],
+              ['notes', 'TEXT'],
+              ['assigned_date', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'],
+              ['qty_assigned', 'DECIMAL(10,2) DEFAULT 0'],
+              ['qty_completed', 'DECIMAL(10,2) DEFAULT 0'],
+              ['start_date', 'DATE'],
+              ['daily_entries', 'LONGTEXT'],
+              ['activity_id', 'VARCHAR(100)']
             ];
-          };
+            const missingUaaCols = requiredUaaCols.filter(([col]) => !uaaCols.has(col));
+            if (missingUaaCols.length > 0) {
+              const addParts = missingUaaCols.map(([col, def]) => `ADD COLUMN IF NOT EXISTS \`${col}\` ${def}`).join(', ');
+              await db.execute(`ALTER TABLE user_activity_assignments ${addParts}`);
+              invalidateCache('user_activity_assignments');
+            }
+          } catch (colErr) {
+            console.warn('Failed to ensure user_activity_assignments columns:', colErr.message);
+          }
 
-          // Collect all valid user IDs to batch-verify
+          // Build a map of incoming assignments: key = `${userId}-${activityId}` 
+          const incomingMap = new Map();
           const allUserIds = new Set();
+          
           for (const activity of activities) {
-            // New multi-user format: assigned_users array
+            const actId = String(activity.id || '');
+            
+            // Multi-user format
             if (Array.isArray(activity.assigned_users)) {
               for (const u of activity.assigned_users) {
                 const uid = parseInt(typeof u === 'object' ? u.user_id : u);
-                if (!isNaN(uid) && uid > 0) allUserIds.add(uid);
+                if (!isNaN(uid) && uid > 0) {
+                  allUserIds.add(uid);
+                  const userData = typeof u === 'object' ? u : {};
+                  const activityName = activity.activity_name || activity.name || '';
+                  const subActivityName = activity.sub_activity_name || '';
+                  const fullActivityName = subActivityName ? `${activityName} - ${subActivityName}` : activityName;
+                  
+                  const priorityMap = { 'LOW': 'Low', 'MEDIUM': 'Medium', 'HIGH': 'High', 'URGENT': 'Critical' };
+                  const statusMap = { 'NOT_STARTED': 'Not Started', 'IN_PROGRESS': 'In Progress', 'ON_HOLD': 'On Hold', 'COMPLETED': 'Completed', 'CANCELLED': 'Cancelled' };
+                  const priority = priorityMap[activity.priority] || activity.priority || 'Medium';
+                  const status = statusMap[userData.status || activity.status_completed] || userData.status || 'Not Started';
+
+                  incomingMap.set(`${uid}-${actId}`, {
+                    user_id: uid,
+                    project_id: projectId,
+                    activity_id: actId,
+                    activity_name: fullActivityName,
+                    discipline_name: activity.function_name || activity.discipline || '',
+                    description: userData.description || '',
+                    due_date: userData.due_date || activity.due_date || null,
+                    start_date: userData.start_date || null,
+                    priority,
+                    estimated_hours: parseFloat(userData.planned_hours || activity.planned_hours) || 0,
+                    actual_hours: parseFloat(userData.actual_hours) || 0,
+                    qty_assigned: parseFloat(userData.qty_assigned) || 0,
+                    qty_completed: parseFloat(userData.qty_completed) || 0,
+                    status,
+                    notes: userData.remarks || activity.deliverables || activity.remarks || '',
+                    daily_entries: userData.daily_entries ? JSON.stringify(userData.daily_entries) : null
+                  });
+                }
               }
             }
-            // Old single-user format: assigned_user
+
+            // Old single-user format
             if (activity.assigned_user && activity.assigned_user !== '') {
               const uid = parseInt(activity.assigned_user);
-              if (!isNaN(uid) && uid > 0) allUserIds.add(uid);
+              if (!isNaN(uid) && uid > 0 && !incomingMap.has(`${uid}-${actId}`)) {
+                allUserIds.add(uid);
+                const activityName = activity.activity_name || activity.name || '';
+                const priorityMap = { 'LOW': 'Low', 'MEDIUM': 'Medium', 'HIGH': 'High', 'URGENT': 'Critical' };
+                const priority = priorityMap[activity.priority] || 'Medium';
+                
+                incomingMap.set(`${uid}-${actId}`, {
+                  user_id: uid,
+                  project_id: projectId,
+                  activity_id: actId,
+                  activity_name: activityName,
+                  discipline_name: activity.function_name || activity.discipline || '',
+                  description: '',
+                  due_date: activity.due_date || null,
+                  start_date: null,
+                  priority,
+                  estimated_hours: parseFloat(activity.planned_hours) || 0,
+                  actual_hours: 0,
+                  qty_assigned: 0,
+                  qty_completed: 0,
+                  status: 'Not Started',
+                  notes: activity.deliverables || activity.remarks || '',
+                  daily_entries: null
+                });
+              }
             }
           }
 
@@ -789,42 +883,44 @@ export async function PUT(request, context) {
             for (const row of existingUsers) validUserIds.add(row.id);
           }
 
-          // Collect all rows for batch insert
+          // Delete old rows for this project, then insert fresh (preserving daily_entries from JSON blob)
+          await db.execute(
+            'DELETE FROM user_activity_assignments WHERE project_id = ?',
+            [projectId]
+          );
+
+          // Insert all valid assignments
           const batchRows = [];
-          for (const activity of activities) {
-            const insertedForActivity = new Set(); // avoid duplicates per activity
-
-            // Handle new multi-user format: assigned_users array
-            if (Array.isArray(activity.assigned_users) && activity.assigned_users.length > 0) {
-              for (const u of activity.assigned_users) {
-                const uid = parseInt(typeof u === 'object' ? u.user_id : u);
-                if (!isNaN(uid) && uid > 0 && validUserIds.has(uid) && !insertedForActivity.has(uid)) {
-                  const userData = typeof u === 'object' ? u : {};
-                  batchRows.push(buildRow(uid, activity, userData));
-                  insertedForActivity.add(uid);
-                }
-              }
-            }
-
-            // Handle old single-user format: assigned_user (only if not already inserted)
-            if (activity.assigned_user && activity.assigned_user !== '') {
-              const uid = parseInt(activity.assigned_user);
-              if (!isNaN(uid) && uid > 0 && validUserIds.has(uid) && !insertedForActivity.has(uid)) {
-                batchRows.push(buildRow(uid, activity, {}));
-                insertedForActivity.add(uid);
-              }
-            }
+          for (const [, row] of incomingMap) {
+            if (!validUserIds.has(row.user_id)) continue;
+            batchRows.push([
+              row.user_id,
+              row.project_id,
+              row.activity_id,
+              row.activity_name,
+              row.discipline_name,
+              row.description,
+              row.due_date,
+              row.start_date,
+              row.priority,
+              row.estimated_hours,
+              row.actual_hours,
+              row.qty_assigned,
+              row.qty_completed,
+              row.status,
+              row.notes,
+              row.daily_entries
+            ]);
           }
 
-          // Batch INSERT all rows at once (max ~500 per batch to avoid packet limits)
           const BATCH_SIZE = 500;
           for (let i = 0; i < batchRows.length; i += BATCH_SIZE) {
             const batch = batchRows.slice(i, i + BATCH_SIZE);
-            const valuePlaceholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())').join(',');
+            const valuePlaceholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())').join(',');
             const flatValues = batch.flat();
             await db.execute(
               `INSERT INTO user_activity_assignments 
-               (id, user_id, project_id, activity_name, discipline_name, due_date, priority, estimated_hours, status, notes, assigned_date, created_at, updated_at)
+               (user_id, project_id, activity_id, activity_name, discipline_name, description, due_date, start_date, priority, estimated_hours, actual_hours, qty_assigned, qty_completed, status, notes, daily_entries, assigned_date, created_at, updated_at)
                VALUES ${valuePlaceholders}`,
               flatValues
             );

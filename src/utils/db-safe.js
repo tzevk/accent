@@ -1,11 +1,3 @@
-/**
- * Database connection safety utilities
- * Ensures connections are always released even if errors occur.
- *
- * IMPORTANT: All API routes should use withDB() or withTransaction() instead
- * of calling dbConnect() directly — this guarantees the connection is returned
- * to the pool in every code-path (success, early return, or error).
- */
 
 import { dbConnect } from './database.js';
 

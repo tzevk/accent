@@ -2790,8 +2790,7 @@ function EditProjectForm() {
         project_query_log_list: JSON.stringify(queryLog),
         project_assumption_list: JSON.stringify(assumptions),
         project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
-        project_schedule_list: JSON.stringify(projectSchedule),
-        project_activity_list: JSON.stringify(projectActivities)
+        project_schedule_list: JSON.stringify(projectSchedule)
       };
 
       console.log('[SUBMIT] Sending update for project:', id);

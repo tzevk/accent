@@ -61,14 +61,14 @@ export default function Sidebar() {
   // When on user dashboard, don't show admin-level items regardless of context state
   const adminRouteOverride = isOnAdminRoute && !isOnUserDashboard;
   const canViewDashboard = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ)));
-  const canViewEmployees = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ)));
-  const canViewUsers = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ)));
-  const canViewActivities = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ)));
-  const canViewCompanies = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ)));
-  const canViewVendors = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ)));
-  const canViewLeads = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ)));
-  const canViewProjects = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ)));
-  const canViewProposals = adminRouteOverride || (!rbacLoading && !isOnUserDashboard && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ)));
+  const canViewEmployees = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ)));
+  const canViewUsers = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.USERS, PERMISSIONS.READ)));
+  const canViewActivities = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.ACTIVITIES, PERMISSIONS.READ)));
+  const canViewCompanies = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.COMPANIES, PERMISSIONS.READ)));
+  const canViewVendors = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ)));
+  const canViewLeads = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.LEADS, PERMISSIONS.READ)));
+  const canViewProjects = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.PROJECTS, PERMISSIONS.READ)));
+  const canViewProposals = adminRouteOverride || (!rbacLoading && (user?.is_super_admin || can(RESOURCES.PROPOSALS, PERMISSIONS.READ)));
 
   useEffect(() => { setMounted(true); }, []);
 

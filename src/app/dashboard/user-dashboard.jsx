@@ -374,7 +374,7 @@ export default function UserDashboard({ verifiedUser }) {
         </div>
       )}
       
-      <div className="flex pt-4 sm:pl-11">
+      <div className="flex pt-4 sm:pl-0">
         {/* Todo List Panel - toggled from sidebar */}
         {todoPanelOpen && (
           <div className="todo-panel">
@@ -384,26 +384,28 @@ export default function UserDashboard({ verifiedUser }) {
         
         {/* Main Content */}
         <div className={`flex-1 transition-[margin] duration-200 ${todoPanelOpen ? 'ml-72' : 'ml-0'}`}>
-          <div className="px-2 sm:px-3 lg:px-4 py-4 max-w-[1920px] mx-auto">
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-3 sm:p-4 space-y-6">
+          <div className="px-2 sm:px-3 lg:px-4 py-2 max-w-[1920px] mx-auto">
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-2 sm:p-3 space-y-3">
             {/* Hero Header — Aesthetic-Usability + Peak-End Rule */}
-            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#64126D] via-[#7a1785] to-[#9333ea] px-5 py-3 shadow-lg">
-              {/* Decorative bg shapes */}
-              <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/5" />
-              <div className="absolute -bottom-14 -left-6 w-32 h-32 rounded-full bg-white/5" />
-              <div className="relative flex items-center justify-between gap-4">
+            <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-[#64126D] via-[#7a1785] to-[#9333ea] px-4 py-2 shadow-md" style={{perspective: '800px', transformStyle: 'preserve-3d'}}>
+              {/* Decorative bg shapes — 3D floating blobs */}
+              <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-white/[0.07] blur-sm animate-[blobFloat1_8s_ease-in-out_infinite]" style={{transform: 'translateZ(20px)'}} />
+              <div className="absolute -bottom-12 -left-8 w-28 h-28 rounded-full bg-white/[0.06] blur-sm animate-[blobFloat2_10s_ease-in-out_infinite]" style={{transform: 'translateZ(15px)'}} />
+              <div className="absolute top-1/2 right-1/4 w-16 h-16 rounded-full bg-purple-300/10 blur-[2px] animate-[blobFloat3_12s_ease-in-out_infinite]" style={{transform: 'translateZ(30px)'}} />
+              <div className="absolute -top-4 left-1/3 w-20 h-20 rounded-full bg-pink-300/[0.07] blur-sm animate-[blobFloat4_9s_ease-in-out_infinite]" style={{transform: 'translateZ(25px)'}} />
+              <div className="relative flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <nav className="text-[11px] text-white/60 mb-1" aria-label="Breadcrumb">
-                    <ol className="inline-flex items-center gap-1.5">
+                  <nav className="text-[10px] text-white/60 mb-0.5" aria-label="Breadcrumb">
+                    <ol className="inline-flex items-center gap-1">
                       <li>Home</li>
                       <li className="text-white/30">/</li>
                       <li className="text-white/90 font-medium">Dashboard</li>
                     </ol>
                   </nav>
-                  <h1 className="text-xl sm:text-2xl font-bold text-white leading-tight tracking-tight">Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.full_name?.split(' ')[0] || 'User'}</h1>
-                  <p className="text-xs text-white/70 mt-0.5">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <h1 className="text-base sm:text-lg font-bold text-white leading-tight tracking-tight">Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.full_name?.split(' ')[0] || 'User'}</h1>
+                  <p className="text-[10px] text-white/70">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   {/* Analog Clock */}
                   {(() => {
                     const h = currentTime.getHours() % 12;
@@ -413,8 +415,8 @@ export default function UserDashboard({ verifiedUser }) {
                     const mDeg = m * 6 + s * 0.1;
                     const sDeg = s * 6;
                     return (
-                      <div className="relative flex items-center gap-2" title={currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}>
-                        <svg width="52" height="52" viewBox="0 0 52 52" className="drop-shadow-md">
+                      <div className="relative flex items-center gap-1" title={currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}>
+                        <svg width="40" height="40" viewBox="0 0 52 52" className="drop-shadow-sm">
                           {/* Face */}
                           <circle cx="26" cy="26" r="25" fill="white" stroke="#7e22ce" strokeWidth="1.5" />
                           {/* Hour markers */}
@@ -464,7 +466,7 @@ export default function UserDashboard({ verifiedUser }) {
                     );
                   })()}
                   {/* Live idle indicator */}
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm transition-colors duration-200 ${
+                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold backdrop-blur-sm transition-colors duration-200 ${
                     idleSeconds > 60
                       ? 'bg-red-500/20 text-red-100 ring-1 ring-red-400/30'
                       : idleSeconds > 30
@@ -481,21 +483,21 @@ export default function UserDashboard({ verifiedUser }) {
             </div>
 
             {/* Attendance — Law of Common Region + Proximity */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
-                <h2 className="text-xs font-semibold text-gray-800 tracking-wide">Today&apos;s Attendance</h2>
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-2">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <div className="w-0.5 h-3 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
+                <h2 className="text-[10px] font-semibold text-gray-800 tracking-wide uppercase">Today&apos;s Attendance</h2>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
                 {/* In Time */}
-                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-green-50/40 p-2.5 hover:shadow-md hover:border-green-300 transition-all duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.inTime ? 'bg-green-100 text-green-600 group-hover:bg-green-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
+                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-green-50/40 p-1.5 hover:shadow-sm hover:border-green-300 transition-all duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.inTime ? 'bg-green-100 text-green-600 group-hover:bg-green-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <ArrowRightStartOnRectangleIcon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">In Time</p>
-                      <p className={`text-sm font-bold mt-0.5 leading-tight ${attendance.inTime ? 'text-gray-900' : 'text-gray-300'}`}>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">In Time</p>
+                      <p className={`text-xs font-bold leading-tight ${attendance.inTime ? 'text-gray-900' : 'text-gray-300'}`}>
                         {formatTime(attendance.inTime)}
                       </p>
                       {attendance.loginTime && (
@@ -506,14 +508,14 @@ export default function UserDashboard({ verifiedUser }) {
                 </div>
 
                 {/* Out Time */}
-                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-red-50/40 p-2.5 hover:shadow-md hover:border-red-300 transition-all duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.outTime ? 'bg-red-100 text-red-600 group-hover:bg-red-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
+                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-red-50/40 p-1.5 hover:shadow-sm hover:border-red-300 transition-all duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.outTime ? 'bg-red-100 text-red-600 group-hover:bg-red-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <ArrowLeftStartOnRectangleIcon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Out Time</p>
-                      <p className={`text-sm font-bold mt-0.5 leading-tight ${attendance.outTime ? 'text-gray-900' : 'text-gray-300'}`}>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Out Time</p>
+                      <p className={`text-xs font-bold leading-tight ${attendance.outTime ? 'text-gray-900' : 'text-gray-300'}`}>
                         {formatTime(attendance.outTime)}
                       </p>
                       {attendance.logoutTime && (
@@ -524,76 +526,76 @@ export default function UserDashboard({ verifiedUser }) {
                 </div>
 
                 {/* Present Days */}
-                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-blue-50/40 p-2.5 hover:shadow-md hover:border-blue-300 transition-all duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.daysPresent > 0 ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <CalendarDaysIcon className="h-4 w-4" />
+                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-blue-50/40 p-1.5 hover:shadow-sm hover:border-blue-300 transition-all duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.daysPresent > 0 ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <CalendarDaysIcon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Present</p>
-                      <p className={`text-base font-bold mt-0.5 leading-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                        {attendance.daysPresent}<span className="text-sm font-normal text-gray-400">/{attendance.daysInMonth}</span>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Present</p>
+                      <p className={`text-sm font-bold leading-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {attendance.daysPresent}<span className="text-xs font-normal text-gray-400">/{attendance.daysInMonth}</span>
                       </p>
                     </div>
                   </div>
                   {/* Mini progress bar (Aesthetic-Usability) */}
                   {attendance.daysInMonth > 0 && (
-                    <div className="mt-1.5 h-1 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="mt-1 h-0.5 rounded-full bg-gray-100 overflow-hidden">
                       <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${Math.round((attendance.daysPresent / attendance.daysInMonth) * 100)}%` }} />
                     </div>
                   )}
                 </div>
 
                 {/* Leave Days */}
-                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-amber-50/40 p-2.5 hover:shadow-md hover:border-amber-300 transition-all duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.leaves.used > 0 ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <CalendarIcon className="h-4 w-4" />
+                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-amber-50/40 p-1.5 hover:shadow-sm hover:border-amber-300 transition-all duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.leaves.used > 0 ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <CalendarIcon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Leaves</p>
-                      <p className={`text-base font-bold mt-0.5 leading-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                        {attendance.leaves.used}<span className="text-sm font-normal text-gray-400">/{attendance.leaves.total}</span>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Leaves</p>
+                      <p className={`text-sm font-bold leading-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {attendance.leaves.used}<span className="text-xs font-normal text-gray-400">/{attendance.leaves.total}</span>
                       </p>
                     </div>
                   </div>
-                  <p className="text-[10px] text-amber-600 font-medium mt-1.5">{attendance.leaves.balance} remaining</p>
+                  <p className="text-[9px] text-amber-600 font-medium mt-0.5">{attendance.leaves.balance} remaining</p>
                 </div>
 
                 {/* Overtime */}
-                <div className="group relative rounded-xl border border-gray-100 bg-gradient-to-br from-white to-orange-50/40 p-2.5 hover:shadow-md hover:border-orange-300 transition-all duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.overtimeHours > 0 ? 'bg-orange-100 text-orange-600 group-hover:bg-orange-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <FireIcon className="h-4 w-4" />
+                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-orange-50/40 p-1.5 hover:shadow-sm hover:border-orange-300 transition-all duration-200">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.overtimeHours > 0 ? 'bg-orange-100 text-orange-600 group-hover:bg-orange-200' : 'bg-gray-100 text-gray-400'}`}>
+                      <FireIcon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Overtime</p>
-                      <p className={`text-base font-bold mt-0.5 leading-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                        {attendance.overtimeHours}<span className="text-sm font-normal text-gray-400">h</span>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Overtime</p>
+                      <p className={`text-sm font-bold leading-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                        {attendance.overtimeHours}<span className="text-xs font-normal text-gray-400">h</span>
                       </p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">this month</p>
+                      <p className="text-[9px] text-gray-400">this month</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Idle Time (Live) — Von Restorff: stands out when high */}
-                <div className={`group relative rounded-xl border p-2.5 hover:shadow-md transition-all duration-200 ${
+                <div className={`group relative rounded-lg border p-1.5 hover:shadow-sm transition-all duration-200 ${
                   idleSeconds > 1800 ? 'border-red-200 bg-gradient-to-br from-red-50/80 to-red-100/50 ring-1 ring-red-100' : idleSeconds > 300 ? 'border-amber-200 bg-gradient-to-br from-white to-amber-50/40' : 'border-gray-100 bg-gradient-to-br from-white to-emerald-50/40'
                 }`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-200 ${
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${
                       idleSeconds > 1800 ? 'bg-red-100 text-red-600' : idleSeconds > 300 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
                     }`}>
-                      <ComputerDesktopIcon className="h-4 w-4" />
+                      <ComputerDesktopIcon className="h-3 w-3" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider leading-none">Idle</p>
-                      <p className={`text-sm font-bold mt-0.5 leading-tight ${
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Idle</p>
+                      <p className={`text-xs font-bold leading-tight ${
                         idleSeconds > 1800 ? 'text-red-700' : idleSeconds > 300 ? 'text-amber-700' : 'text-emerald-700'
                       }`}>
                         {formatIdleDuration(idleSeconds)}
                       </p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{idleSeconds > 1800 ? 'action needed' : idleSeconds > 300 ? 'getting idle' : 'all good'}</p>
+                      <p className="text-[9px] text-gray-400">{idleSeconds > 1800 ? 'action needed' : idleSeconds > 300 ? 'getting idle' : 'all good'}</p>
                     </div>
                   </div>
                 </div>
@@ -601,60 +603,60 @@ export default function UserDashboard({ verifiedUser }) {
             </div>
 
             {/* Activity Overview — Miller's Law: chunked into 4 digestible KPIs */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-200/60 shadow-sm p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
-                <h2 className="text-xs font-semibold text-gray-800 tracking-wide">Activity Overview</h2>
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-2">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <div className="w-0.5 h-3 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
+                <h2 className="text-[10px] font-semibold text-gray-800 tracking-wide uppercase">Activity Overview</h2>
               </div>
               {(() => {
                 const stats = moduleAssignments.activityAssignments.stats;
                 const completionPct = stats.totalAssignments > 0 ? Math.round((stats.completedCount / stats.totalAssignments) * 100) : 0;
                 return (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                     {/* Total Tasks */}
-                    <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-purple-50/60 to-white p-2.5 hover:shadow-md hover:border-purple-300 transition-all duration-200">
+                    <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-purple-50/60 to-white p-1.5 hover:shadow-sm hover:border-purple-300 transition-all duration-200">
                       <div className="flex items-center justify-between">
-                        <div className="w-8 h-8 rounded-lg bg-purple-100 text-[#64126D] flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                          <ClipboardDocumentListIcon className="h-4 w-4" />
+                        <div className="w-6 h-6 rounded bg-purple-100 text-[#64126D] flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                          <ClipboardDocumentListIcon className="h-3 w-3" />
                         </div>
-                        <p className="text-xl font-bold text-gray-900">{stats.totalAssignments}</p>
+                        <p className="text-base font-bold text-gray-900">{stats.totalAssignments}</p>
                       </div>
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">Total Tasks</p>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">Total Tasks</p>
                     </div>
                     {/* In Progress */}
-                    <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-blue-50/60 to-white p-2.5 hover:shadow-md hover:border-blue-300 transition-all duration-200">
+                    <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-blue-50/60 to-white p-1.5 hover:shadow-sm hover:border-blue-300 transition-all duration-200">
                       <div className="flex items-center justify-between">
-                        <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                          <ClockIcon className="h-4 w-4" />
+                        <div className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                          <ClockIcon className="h-3 w-3" />
                         </div>
-                        <p className="text-xl font-bold text-gray-900">{stats.inProgressCount}</p>
+                        <p className="text-base font-bold text-gray-900">{stats.inProgressCount}</p>
                       </div>
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">In Progress</p>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">In Progress</p>
                     </div>
                     {/* Completed — with progress ring (Aesthetic-Usability) */}
-                    <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-emerald-50/60 to-white p-2.5 hover:shadow-md hover:border-emerald-300 transition-all duration-200">
+                    <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-emerald-50/60 to-white p-1.5 hover:shadow-sm hover:border-emerald-300 transition-all duration-200">
                       <div className="flex items-center justify-between">
-                        <div className="relative w-8 h-8">
-                          <svg viewBox="0 0 36 36" className="w-8 h-8 -rotate-90">
+                        <div className="relative w-6 h-6">
+                          <svg viewBox="0 0 36 36" className="w-6 h-6 -rotate-90">
                             <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" strokeWidth="3" />
                             <circle cx="18" cy="18" r="15" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${completionPct * 0.942} 100`} className="transition-all duration-700" />
                           </svg>
-                          <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-emerald-700">{completionPct}%</span>
+                          <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold text-emerald-700">{completionPct}%</span>
                         </div>
-                        <p className="text-xl font-bold text-gray-900">{stats.completedCount}</p>
+                        <p className="text-base font-bold text-gray-900">{stats.completedCount}</p>
                       </div>
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">Completed</p>
+                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">Completed</p>
                     </div>
                     {/* Today's Logged */}
                     {moduleAccess.workLogs && (
-                      <div className="group rounded-xl border border-gray-100 bg-gradient-to-br from-violet-50/60 to-white p-2.5 hover:shadow-md hover:border-violet-300 transition-all duration-200">
+                      <div className="group rounded-lg border border-gray-100 bg-gradient-to-br from-violet-50/60 to-white p-1.5 hover:shadow-sm hover:border-violet-300 transition-all duration-200">
                         <div className="flex items-center justify-between">
-                          <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-600 flex items-center justify-center group-hover:bg-violet-200 transition-colors">
-                            <DocumentTextIcon className="h-4 w-4" />
+                          <div className="w-6 h-6 rounded bg-violet-100 text-violet-600 flex items-center justify-center group-hover:bg-violet-200 transition-colors">
+                            <DocumentTextIcon className="h-3 w-3" />
                           </div>
-                          <p className="text-xl font-bold text-gray-900">{moduleAssignments.todayWorkHours}<span className="text-sm font-semibold text-gray-400">h</span></p>
+                          <p className="text-base font-bold text-gray-900">{moduleAssignments.todayWorkHours}<span className="text-xs font-semibold text-gray-400">h</span></p>
                         </div>
-                        <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-1.5">Today&apos;s Logged</p>
+                        <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider mt-1">Today&apos;s Logged</p>
                       </div>
                     )}
                   </div>
@@ -664,20 +666,20 @@ export default function UserDashboard({ verifiedUser }) {
 
             {/* Upcoming Deadlines — Von Restorff: visually distinct warning section */}
             {moduleAccess.dashboard && moduleAssignments.upcomingDeadlines.length > 0 && (
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl shadow-sm border border-amber-200/80 p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <BellIcon className="w-5 h-5 text-amber-600" />
-                  <h3 className="font-semibold text-amber-800">Upcoming Deadlines (Next 7 Days)</h3>
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-200/80 p-2.5">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <BellIcon className="w-3.5 h-3.5 text-amber-600" />
+                  <h3 className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide">Upcoming Deadlines (Next 7 Days)</h3>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5">
                   {moduleAssignments.upcomingDeadlines.slice(0, 6).map((deadline, idx) => (
-                    <div key={idx} className="bg-white rounded-lg p-3 border border-amber-100">
+                    <div key={idx} className="bg-white rounded-md p-2 border border-amber-100">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{deadline.activity_name || deadline.title || 'Activity'}</p>
-                          <p className="text-xs text-gray-500 truncate">{deadline.project_title || deadline.project_code || ''}</p>
+                          <p className="text-xs font-medium text-gray-900 truncate">{deadline.activity_name || deadline.title || 'Activity'}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{deadline.project_title || deadline.project_code || ''}</p>
                         </div>
-                        <span className={`ml-2 px-2 py-0.5 text-xs font-medium rounded ${
+                        <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-medium rounded ${
                           deadline.days_remaining <= 1 ? 'bg-red-100 text-red-700' : 
                           deadline.days_remaining <= 3 ? 'bg-orange-100 text-orange-700' : 
                           'bg-green-100 text-green-700'
@@ -697,71 +699,71 @@ export default function UserDashboard({ verifiedUser }) {
             {user?.id && <ProjectActivityAssignments userId={user.id} preloadedData={statsReady ? moduleAssignments.activityAssignments : null} />}
 
             {/* Support Tickets Section — Jakob's Law: familiar card-list pattern */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-200/60">
-              <div className="p-5 border-b border-gray-100">
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-gray-200/60">
+              <div className="px-3 py-2 border-b border-gray-100">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
-                      <TicketIcon className="h-5 w-5 text-[#64126D]" />
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
+                      <TicketIcon className="h-3.5 w-3.5 text-[#64126D]" />
                     </div>
-                    <h2 className="text-base font-semibold text-gray-900">Support Tickets</h2>
+                    <h2 className="text-xs font-semibold text-gray-900">Support Tickets</h2>
                     {moduleAssignments.ticketStats.waitingForYou > 0 && (
                       <span className="px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full animate-pulse">
                         {moduleAssignments.ticketStats.waitingForYou} waiting for you
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <Link
                       href="/tickets/new"
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#64126D] text-white text-sm font-medium rounded-lg hover:bg-[#7a1785] transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 bg-[#64126D] text-white text-[10px] font-medium rounded hover:bg-[#7a1785] transition-colors"
                     >
-                      <PlusIcon className="h-4 w-4" />
+                      <PlusIcon className="h-3 w-3" />
                       Raise Ticket
                     </Link>
                     <Link
                       href="/tickets"
-                      className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 border border-gray-300 text-gray-700 text-[10px] font-medium rounded hover:bg-gray-50 transition-colors"
                     >
                       View All
-                      <ArrowRightIcon className="h-4 w-4" />
+                      <ArrowRightIcon className="h-3 w-3" />
                     </Link>
                   </div>
                 </div>
                 
                 {/* Quick Stats — Law of Similarity: consistent pill badges */}
-                <div className="flex items-center gap-3 mt-4">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-xs font-medium text-blue-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-[10px] font-medium text-blue-700">
+                    <span className="w-1 h-1 rounded-full bg-blue-500"></span>
                     Open {moduleAssignments.ticketStats.open}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-50 text-xs font-medium text-green-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 text-[10px] font-medium text-green-700">
+                    <span className="w-1 h-1 rounded-full bg-green-500"></span>
                     Resolved {moduleAssignments.ticketStats.resolved}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 text-xs font-medium text-gray-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-medium text-gray-600">
+                    <span className="w-1 h-1 rounded-full bg-gray-400"></span>
                     Total {moduleAssignments.ticketStats.total}
                   </span>
                 </div>
               </div>
               
               {/* Recent/Active Tickets List */}
-              <div className="p-5">
+              <div className="px-3 py-2">
                 {moduleAssignments.tickets.length === 0 ? (
-                  <div className="text-center py-8">
-                    <TicketIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500 mb-3">No tickets yet</p>
+                  <div className="text-center py-4">
+                    <TicketIcon className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-xs text-gray-500 mb-2">No tickets yet</p>
                     <Link
                       href="/tickets/new"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#64126D] text-white text-sm font-medium rounded-lg hover:bg-[#7a1785] transition-colors"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#64126D] text-white text-[10px] font-medium rounded hover:bg-[#7a1785] transition-colors"
                     >
-                      <PlusIcon className="h-4 w-4" />
+                      <PlusIcon className="h-3 w-3" />
                       Create Your First Ticket
                     </Link>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-1.5">
                     {moduleAssignments.tickets
                       .filter(t => !['closed'].includes(t.status))
                       .slice(0, 5)
@@ -769,12 +771,12 @@ export default function UserDashboard({ verifiedUser }) {
                         <Link
                           key={ticket.id}
                           href={`/tickets/${ticket.id}`}
-                          className="block p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:shadow-sm transition-all"
+                          className="block p-2 border border-gray-200 rounded-md hover:border-purple-300 hover:shadow-sm transition-all"
                         >
-                          <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-mono text-gray-500">{ticket.ticket_number}</span>
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[10px] font-mono text-gray-500">{ticket.ticket_number}</span>
                                 <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
                                   ticket.status === 'new' ? 'bg-blue-100 text-blue-700' :
                                   ticket.status === 'under_review' ? 'bg-purple-100 text-purple-700' :
@@ -799,8 +801,8 @@ export default function UserDashboard({ verifiedUser }) {
                                   {ticket.priority}
                                 </span>
                               </div>
-                              <p className="text-sm font-medium text-gray-900 truncate">{ticket.subject}</p>
-                              <p className="text-xs text-gray-500 mt-1 truncate">{ticket.description}</p>
+                              <p className="text-xs font-medium text-gray-900 truncate">{ticket.subject}</p>
+                              <p className="text-[10px] text-gray-500 truncate">{ticket.description}</p>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-xs text-gray-400">

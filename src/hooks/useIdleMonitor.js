@@ -53,11 +53,9 @@ export function useIdleMonitor() {
     }
   }, [isIdle, user?.id]);
 
-  // Dismiss the notification (but keep tracking)
+  // Dismiss the notification (but keep tracking — do NOT reset idle timer)
   const dismiss = useCallback(() => {
     setDismissed(true);
-    // Dismissing also counts as interaction
-    lastInteractionRef.current = Date.now();
   }, []);
 
   useEffect(() => {

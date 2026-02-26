@@ -30,6 +30,8 @@ export async function GET(request, { params }) {
     db = await dbConnect();
     
     // Get projects where this user might be assigned (filter by JSON content for speed)
+    // Use word-boundary-like patterns to avoid false positives (e.g., user 1 matching user 10)
+    const userIdStr = String(requestedUserId);
     const [projects] = await db.execute(`
       SELECT 
         p.project_id,
@@ -43,9 +45,9 @@ export async function GET(request, { params }) {
       WHERE p.project_activities_list IS NOT NULL 
         AND p.project_activities_list != '' 
         AND p.project_activities_list != '[]'
-        AND p.project_activities_list LIKE ?
+        AND (p.project_activities_list LIKE ? OR p.project_activities_list LIKE ?)
       ORDER BY p.start_date DESC
-    `, [`%${requestedUserId}%`]);
+    `, [`%"user_id":"${userIdStr}"%`, `%"user_id":${userIdStr},%`]);
 
     const assignments = [];
 
