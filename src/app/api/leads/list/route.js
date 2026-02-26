@@ -91,6 +91,7 @@ export async function GET(request) {
             contact_email,
             phone,
             city,
+            project_description,
             enquiry_status,
             enquiry_type,
             enquiry_date,
