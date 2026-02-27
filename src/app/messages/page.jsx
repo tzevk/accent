@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { fetchJSON } from '@/utils/http';
 import Navbar from '@/components/Navbar';
@@ -46,17 +46,40 @@ export default function MessagesPage() {
   // Client-side archived conversations
   const [archivedConvIds, setArchivedConvIds] = useState(new Set());
   
+  // Track sidebar width in real-time (hover, pin, unpin) via ResizeObserver
+  const [sidebarWidth, setSidebarWidth] = useState(64);
+  useEffect(() => {
+    const sidebar = document.querySelector('aside[data-pinned]');
+    if (!sidebar) {
+      // Sidebar not yet mounted, retry shortly
+      const timer = setTimeout(() => {
+        const el = document.querySelector('aside[data-pinned]');
+        if (el) setSidebarWidth(el.getBoundingClientRect().width);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+    setSidebarWidth(sidebar.getBoundingClientRect().width);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setSidebarWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(sidebar);
+    return () => ro.disconnect();
+  }, []);
+
   const messagesEndRef = useRef(null);
   const composeFileRef = useRef(null);
   const replyFileRef = useRef(null);
+  const justSentRef = useRef(false);
 
   // Fetch conversations
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (signal) => {
     if (!user?.id) return;
     setLoading(true);
     try {
       const type = activeFolder === 'sent' ? 'sent' : 'inbox';
-      const res = await fetchJSON(`/api/messages?type=${type}&limit=100`);
+      const res = await fetchJSON(`/api/messages?type=${type}&limit=100`, { signal });
       if (res.data?.messages) {
         const convMap = new Map();
         res.data.messages.forEach(msg => {
@@ -95,22 +118,26 @@ export default function MessagesPage() {
         setConversations(convList);
       }
     } catch (error) {
-      console.error('Failed to fetch conversations:', error);
+      if (error.name !== 'AbortError') {
+        console.error('Failed to fetch conversations:', error);
+      }
     } finally {
       setLoading(false);
     }
   }, [user?.id, activeFolder]);
 
   // Fetch users for compose — uses messages/users endpoint (no users:read permission required)
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (signal) => {
     try {
-      const res = await fetch('/api/messages/users?limit=500');
+      const res = await fetch('/api/messages/users?limit=500', { signal });
       const data = await res.json();
       if (data.data) {
         setUsers(data.data);
       }
     } catch (error) {
-      console.error('Failed to fetch users:', error);
+      if (error.name !== 'AbortError') {
+        console.error('Failed to fetch users:', error);
+      }
     }
   }, [user?.id]);
 
@@ -146,19 +173,21 @@ export default function MessagesPage() {
   }, [user?.id]);
 
   useEffect(() => {
-    if (user?.id) {
-      fetchConversations();
-      fetchUsers();
-    }
+    if (!user?.id) return;
+    const controller = new AbortController();
+    fetchConversations(controller.signal);
+    fetchUsers(controller.signal);
+    return () => controller.abort();
   }, [user?.id, fetchConversations, fetchUsers]);
 
   // Re-fetch and clear selection when folder changes
   useEffect(() => {
     setSelectedConversation(null);
     setMessages([]);
-    if (user?.id) {
-      fetchConversations();
-    }
+    if (!user?.id) return;
+    const controller = new AbortController();
+    fetchConversations(controller.signal);
+    return () => controller.abort();
   }, [activeFolder, fetchConversations]);
 
   useEffect(() => {
@@ -168,7 +197,10 @@ export default function MessagesPage() {
   }, [selectedConversation, fetchConversationMessages]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (justSentRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      justSentRef.current = false;
+    }
   }, [messages]);
 
   // Send message
@@ -220,6 +252,7 @@ export default function MessagesPage() {
       setReplyMode(null);
       setReplyAttachments([]);
       setShowEmojiPicker(false);
+      justSentRef.current = true;
       fetchConversationMessages(selectedConversation);
       fetchConversations();
     } catch (error) {
@@ -262,20 +295,20 @@ export default function MessagesPage() {
   };
 
   const getAvatarColor = (name) => {
-    const colors = ['#0078d4', '#107c10', '#5c2d91', '#d83b01', '#008272', '#004e8c', '#8764b8', '#ca5010'];
+    const colors = ['#64126D', '#107c10', '#5c2d91', '#d83b01', '#008272', '#004e8c', '#8764b8', '#ca5010'];
     if (!name) return colors[0];
     const index = name.charCodeAt(0) % colors.length;
     return colors[index];
   };
 
-  const filteredUsers = users.filter(u => 
+  const filteredUsers = useMemo(() => users.filter(u => 
     (u.name?.toLowerCase().includes(recipientSearch.toLowerCase()) ||
     u.full_name?.toLowerCase().includes(recipientSearch.toLowerCase()) ||
     u.email?.toLowerCase().includes(recipientSearch.toLowerCase())) &&
     !composeTo.find(r => r.id === u.id)
-  );
+  ), [users, recipientSearch, composeTo]);
 
-  const filteredConversations = conversations.filter(conv => {
+  const filteredConversations = useMemo(() => conversations.filter(conv => {
     // Archive folder shows only archived conversations
     if (activeFolder === 'archive') return archivedConvIds.has(conv.id);
     // Other folders: hide archived conversations
@@ -285,7 +318,7 @@ export default function MessagesPage() {
     return conv.displayName?.toLowerCase().includes(search) ||
            conv.lastMessage?.subject?.toLowerCase().includes(search) ||
            conv.lastMessage?.body?.toLowerCase().includes(search);
-  });
+  }), [conversations, activeFolder, archivedConvIds, searchQuery]);
 
   // Delete conversation
   const deleteConversation = async () => {
@@ -375,14 +408,14 @@ export default function MessagesPage() {
   // Emoji constants
   const emojis = ['😊', '👍', '❤️', '😂', '🎉', '👏', '🙏', '💯', '✅', '🔥', '⭐', '💡', '😀', '🤝', '📎', '💼'];
 
-  const unreadCount = conversations.reduce((acc, c) => acc + c.unreadCount, 0);
+  const unreadCount = useMemo(() => conversations.reduce((acc, c) => acc + c.unreadCount, 0), [conversations]);
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-white" role="status" aria-label="Loading messages">
         <Navbar />
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0078d4]" aria-hidden="true"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]" aria-hidden="true"></div>
           <span className="sr-only">Loading messages...</span>
         </div>
       </div>
@@ -390,24 +423,25 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white" style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', sans-serif" }}>
+    <div className="fixed inset-0 top-16 bg-gray-100 pr-2 pb-2 pt-2 pl-0 overflow-hidden" style={{ left: typeof window !== 'undefined' && window.innerWidth >= 640 ? `${sidebarWidth}px` : '0px', fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', sans-serif" }}>
       <Navbar />
+      <div className="h-full flex flex-col bg-white rounded-r-xl border border-l-0 border-gray-200 shadow-sm overflow-hidden">
       
       {/* Screen reader announcement region for dynamic updates */}
       <div aria-live="polite" aria-atomic="true" className="sr-only" id="messages-announcer" role="status">
         {sending ? 'Sending message...' : ''}
       </div>
       
-      <div className="flex-1 flex pt-16 overflow-hidden gap-0" role="main" aria-label="Messages">
+      <div className="flex-1 flex overflow-hidden gap-0" role="main" aria-label="Messages">
         
         {/* Left Navigation Pane - Outlook Style */}
-        <nav className="w-40 lg:w-48 xl:w-56 2xl:w-60 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0" aria-label="Mail folders">
+        <nav className="w-40 lg:w-48 xl:w-56 2xl:w-60 bg-[#f3f2f1] flex flex-col border-r border-[#edebe9] flex-shrink-0 overflow-hidden" aria-label="Mail folders">
           
           {/* New Mail Button */}
-          <div className="p-2">
+          <div className="p-1.5">
             <button
               onClick={() => setShowCompose(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-[#0078d4] text-white rounded-sm hover:bg-[#106ebe] transition-colors text-[13px] font-semibold"
+              className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#64126D] text-white rounded-sm hover:bg-[#7a1785] transition-colors text-[13px] font-semibold"
               aria-label="Compose new message"
             >
               <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -418,10 +452,10 @@ export default function MessagesPage() {
           </div>
           
           {/* Favorites Section */}
-          <div className="mt-1">
+          <div className="mt-0.5">
             <button 
               onClick={() => setExpandedFolders({...expandedFolders, favorites: !expandedFolders.favorites})}
-              className="w-full flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#605e5c] hover:bg-[#e1dfdd]"
+              className="w-full flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-[#605e5c] hover:bg-[#e1dfdd]"
               aria-expanded={expandedFolders.favorites}
               aria-controls="favorites-list"
             >
@@ -448,7 +482,7 @@ export default function MessagesPage() {
                         : 'hover:bg-[#e9e8e7]'
                     }`}
                   >
-                    <svg className="w-4 h-4 text-[#0078d4]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <svg className="w-4 h-4 text-[#64126D]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                       {folder.id === 'inbox' ? (
                         <path d="M14.5 2h-13C.67 2 0 2.67 0 3.5v9c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-9c0-.83-.67-1.5-1.5-1.5zM1 3.5c0-.28.22-.5.5-.5h13c.28 0 .5.22.5.5v.22L8 7.65 1 3.72V3.5zM14.5 13h-13c-.28 0-.5-.22-.5-.5V5.04l7 3.93 7-3.93v7.46c0 .28-.22.5-.5.5z"/>
                       ) : (
@@ -457,7 +491,7 @@ export default function MessagesPage() {
                     </svg>
                     <span className="flex-1 text-left text-[#323130]">{folder.label}</span>
                     {folder.count > 0 && (
-                      <span className="text-[11px] font-semibold text-[#0078d4]" aria-hidden="true">{folder.count}</span>
+                      <span className="text-[11px] font-semibold text-[#64126D]" aria-hidden="true">{folder.count}</span>
                     )}
                   </button>
                 ))}
@@ -466,10 +500,10 @@ export default function MessagesPage() {
           </div>
           
           {/* Folders Section */}
-          <div className="mt-1">
+          <div className="mt-0.5">
             <button 
               onClick={() => setExpandedFolders({...expandedFolders, folders: !expandedFolders.folders})}
-              className="w-full flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#605e5c] hover:bg-[#e1dfdd]"
+              className="w-full flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-[#605e5c] hover:bg-[#e1dfdd]"
               aria-expanded={expandedFolders.folders}
               aria-controls="folders-list"
             >
@@ -500,12 +534,12 @@ export default function MessagesPage() {
                         : 'hover:bg-[#e9e8e7]'
                     }`}
                   >
-                    <svg className="w-4 h-4 text-[#ffb900]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <svg className="w-4 h-4 text-[#64126D]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                       <path d="M14 4H7.5l-1-2H2c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zm0 9H2V5h12v8z"/>
                     </svg>
                     <span className="flex-1 text-left text-[#323130]">{folder.label}</span>
                     {folder.count > 0 && (
-                      <span className="text-[11px] font-semibold text-[#0078d4]" aria-hidden="true">{folder.count}</span>
+                      <span className="text-[11px] font-semibold text-[#64126D]" aria-hidden="true">{folder.count}</span>
                     )}
                   </button>
                 ))}
@@ -530,7 +564,7 @@ export default function MessagesPage() {
                 placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-[6px] text-[13px] border border-[#8a8886] rounded-sm focus:outline-none focus:border-[#0078d4] bg-white placeholder-[#605e5c]"
+                className="w-full pl-8 pr-3 py-[6px] text-[13px] border border-[#8a8886] rounded-sm focus:outline-none focus:border-[#64126D] bg-white placeholder-[#605e5c]"
                 aria-label="Search messages"
               />
             </div>
@@ -546,7 +580,7 @@ export default function MessagesPage() {
               aria-controls="tabpanel-messages"
               className={`flex-1 py-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
                 inboxTab === 'focused' 
-                  ? 'text-[#0078d4] border-[#0078d4]' 
+                  ? 'text-[#64126D] border-[#64126D]' 
                   : 'text-[#605e5c] border-transparent hover:text-[#323130]'
               }`}
             >
@@ -560,7 +594,7 @@ export default function MessagesPage() {
               aria-controls="tabpanel-messages"
               className={`flex-1 py-2.5 text-[13px] font-semibold border-b-2 transition-colors ${
                 inboxTab === 'other' 
-                  ? 'text-[#0078d4] border-[#0078d4]' 
+                  ? 'text-[#64126D] border-[#64126D]' 
                   : 'text-[#605e5c] border-transparent hover:text-[#323130]'
               }`}
             >
@@ -569,10 +603,10 @@ export default function MessagesPage() {
           </div>
           
           {/* Message List */}
-          <div className="flex-1 overflow-y-auto" id="tabpanel-messages" role="tabpanel" aria-labelledby={`tab-${inboxTab}`}>
+          <div className="flex-1 overflow-hidden" id="tabpanel-messages" role="tabpanel" aria-labelledby={`tab-${inboxTab}`}>
             {loading ? (
               <div className="flex items-center justify-center h-32" role="status">
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#0078d4] border-t-transparent" aria-hidden="true"></div>
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#64126D] border-t-transparent" aria-hidden="true"></div>
                 <span className="sr-only">Loading conversations...</span>
               </div>
             ) : filteredConversations.length === 0 ? (
@@ -610,13 +644,13 @@ export default function MessagesPage() {
                   aria-label={`${conv.unreadCount > 0 ? 'Unread: ' : ''}${conv.displayName || 'Unknown'}, ${conv.lastMessage?.subject || 'No Subject'}, ${formatDate(conv.lastMessage?.created_at)}`}
                   className={`relative cursor-pointer border-b border-[#edebe9] ${
                     selectedConversation?.id === conv.id 
-                      ? 'bg-[#e6f2fb]' 
+                      ? 'bg-[#f3e8f4]' 
                       : 'hover:bg-[#f3f2f1]'
-                  } focus:outline-none focus:ring-2 focus:ring-[#0078d4] focus:ring-inset`}
+                  } focus:outline-none focus:ring-2 focus:ring-[#64126D] focus:ring-inset`}
                 >
                   {/* Unread Indicator Bar */}
                   {conv.unreadCount > 0 && (
-                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#0078d4]" aria-hidden="true" />
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#64126D]" aria-hidden="true" />
                   )}
                   
                   <div className="flex gap-3 px-4 py-3">
@@ -661,17 +695,17 @@ export default function MessagesPage() {
         </div>
         
         {/* Reading Pane */}
-        <div className="flex-1 bg-white flex flex-col min-w-0">
+        <div className="flex-1 bg-white flex flex-col min-w-0 overflow-hidden">
           {showCompose ? (
             /* Compose New Message */
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col overflow-hidden">
               
               {/* Compose Toolbar */}
               <div className="flex items-center gap-1 px-3 py-2 border-b border-[#edebe9] bg-[#faf9f8]">
                 <button
                   onClick={sendMessage}
                   disabled={sending || composeTo.length === 0 || !composeBody.trim()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078d4] text-white rounded-sm hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#64126D] text-white rounded-sm hover:bg-[#7a1785] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold"
                   aria-label="Send message"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -699,13 +733,13 @@ export default function MessagesPage() {
                 <div className="px-6 py-3 border-b border-[#edebe9]">
                   <label htmlFor="compose-to" className="block text-[13px] font-semibold text-[#323130] mb-2">To</label>
                   <div className="relative">
-                    <div className="flex flex-wrap items-center gap-2 min-h-[40px] p-2 border border-[#c8c6c4] rounded bg-white focus-within:border-[#0078d4] focus-within:ring-1 focus-within:ring-[#0078d4]" role="group" aria-label="Selected recipients">
+                    <div className="flex flex-wrap items-center gap-2 min-h-[40px] p-2 border border-[#c8c6c4] rounded bg-white focus-within:border-[#64126D] focus-within:ring-1 focus-within:ring-[#64126D]" role="group" aria-label="Selected recipients">
                       {composeTo.map(r => (
-                        <span key={r.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#deecf9] text-[#0078d4] rounded text-[13px]" role="listitem">
+                        <span key={r.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#ede4f0] text-[#64126D] rounded text-[13px]" role="listitem">
                           {r.name || r.full_name || r.username}
                           <button 
                             onClick={() => setComposeTo(composeTo.filter(x => x.id !== r.id))} 
-                            className="hover:text-[#106ebe]" 
+                            className="hover:text-[#7a1785]" 
                             aria-label={`Remove ${r.name || r.full_name || r.username}`}
                           >
                             <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -771,7 +805,7 @@ export default function MessagesPage() {
                     <input
                       id="compose-cc"
                       type="text"
-                      className="w-full text-[13px] focus:outline-none p-2.5 bg-white border border-[#c8c6c4] rounded focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] placeholder-[#a19f9d]"
+                      className="w-full text-[13px] focus:outline-none p-2.5 bg-white border border-[#c8c6c4] rounded focus:border-[#64126D] focus:ring-1 focus:ring-[#64126D] placeholder-[#a19f9d]"
                       placeholder="Add Cc recipients..."
                       aria-label="Carbon copy recipients"
                     />
@@ -783,7 +817,7 @@ export default function MessagesPage() {
                   <div className="flex items-center justify-between mb-2">
                     <label htmlFor="compose-subject" className="block text-[13px] font-semibold text-[#323130]">Subject</label>
                     {!showCc && (
-                      <button onClick={() => setShowCc(true)} className="text-[12px] text-[#0078d4] hover:underline">+ Add Cc</button>
+                      <button onClick={() => setShowCc(true)} className="text-[12px] text-[#64126D] hover:underline">+ Add Cc</button>
                     )}
                   </div>
                   <input
@@ -792,7 +826,7 @@ export default function MessagesPage() {
                     value={composeSubject}
                     onChange={(e) => setComposeSubject(e.target.value)}
                     placeholder="Enter subject..."
-                    className="w-full text-[13px] focus:outline-none p-2.5 bg-white border border-[#c8c6c4] rounded focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] placeholder-[#a19f9d]"
+                    className="w-full text-[13px] focus:outline-none p-2.5 bg-white border border-[#c8c6c4] rounded focus:border-[#64126D] focus:ring-1 focus:ring-[#64126D] placeholder-[#a19f9d]"
                   />
                 </div>
                 
@@ -804,7 +838,7 @@ export default function MessagesPage() {
                     value={composeBody}
                     onChange={(e) => setComposeBody(e.target.value)}
                     placeholder="Write your message here..."
-                    className="flex-1 w-full resize-none text-[14px] focus:outline-none text-[#323130] leading-relaxed p-3 border border-[#c8c6c4] rounded focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] placeholder-[#a19f9d]"
+                    className="flex-1 w-full resize-none text-[14px] focus:outline-none text-[#323130] leading-relaxed p-3 border border-[#c8c6c4] rounded focus:border-[#64126D] focus:ring-1 focus:ring-[#64126D] placeholder-[#a19f9d]"
                     style={{ minHeight: '200px' }}
                     aria-label="Message body"
                   />
@@ -917,7 +951,7 @@ export default function MessagesPage() {
               <div className="flex-1 overflow-y-auto bg-white" role="region" aria-label="Message content">
                 {messagesLoading ? (
                   <div className="flex items-center justify-center h-32" role="status">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#0078d4] border-t-transparent" aria-hidden="true"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#64126D] border-t-transparent" aria-hidden="true"></div>
                     <span className="sr-only">Loading messages...</span>
                   </div>
                 ) : (
@@ -975,91 +1009,99 @@ export default function MessagesPage() {
                       ))}
                     </div>
                     <div ref={messagesEndRef} />
-                  </>
-                )}
-              </div>
-              
-              {/* Reply Box - Outlook Style */}
-              <div className="border-t border-[#edebe9] p-4 bg-white" role="region" aria-label="Reply">
-                <div className="border border-[#c8c6c4] rounded focus-within:border-[#0078d4] focus-within:ring-1 focus-within:ring-[#0078d4]">
-                  <label htmlFor="reply-textarea" className="sr-only">Reply to message</label>
-                  <textarea
-                    id="reply-textarea"
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Type your reply here..."
-                    className="w-full resize-none text-[14px] focus:outline-none p-4 min-h-[100px] placeholder-[#a19f9d]"
-                    style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" }}
-                    aria-label="Reply message body. Press Ctrl+Enter or Cmd+Enter to send."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        sendReply();
-                      }
-                    }}
-                  />
-                  {/* Attachment previews */}
-                  {replyAttachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-[#edebe9]">
-                      {replyAttachments.map((att, idx) => (
-                        <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#f3f2f1] rounded text-[12px] text-[#323130]">
-                          <svg className="w-3.5 h-3.5 text-[#605e5c]" viewBox="0 0 16 16" fill="currentColor"><path d="M14.5 3a3.5 3.5 0 0 1 0 7H6v1h8.5a4.5 4.5 0 0 0 0-9A4.5 4.5 0 0 0 10 6.5V15a3 3 0 0 0 6 0V6h1v9a4 4 0 0 1-8 0V6.5A5.5 5.5 0 0 1 14.5 1v2z"/></svg>
-                          {att.original_name}
-                          <button onClick={() => setReplyAttachments(prev => prev.filter((_, i) => i !== idx))} className="text-[#a19f9d] hover:text-[#323130]" aria-label={`Remove ${att.original_name}`}>
-                            <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8.7 8l3.65-3.65-.7-.7L8 7.29 4.35 3.65l-.7.7L7.29 8l-3.64 3.65.7.7L8 8.71l3.65 3.64.7-.7L8.71 8z"/></svg>
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between px-3 py-2 border-t border-[#edebe9] bg-[#faf9f8]">
-                    <div className="flex items-center gap-1 relative">
-                      <input type="file" ref={replyFileRef} className="hidden" onChange={(e) => handleFileUpload(e, 'reply')} aria-hidden="true" />
-                      <button onClick={() => replyFileRef.current?.click()} disabled={uploading} className="p-2 text-[#605e5c] hover:bg-[#e1dfdd] rounded disabled:opacity-50" title="Attach file" aria-label="Attach file">
-                        <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                          <path d="M14.5 3a3.5 3.5 0 0 1 .15 6.995L14.5 10H6v1h8.5a4.5 4.5 0 0 0 .22-8.996L14.5 2A4.5 4.5 0 0 0 10 6.5V15a3 3 0 0 0 5.995.176L16 15V6h1v9a4 4 0 0 1-7.995.2L9 15V6.5a5.5 5.5 0 0 1 5.5-5.5V3z"/>
-                        </svg>
-                      </button>
-                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-2 text-[#605e5c] hover:bg-[#e1dfdd] rounded" title="Insert emoji" aria-label="Insert emoji">
-                        <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                          <path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm0 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM7.5 8a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm5 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM6.5 11.5h7c-.2 1.95-1.67 3.5-3.5 3.5s-3.3-1.55-3.5-3.5z"/>
-                        </svg>
-                      </button>
-                      {uploading && <span className="text-[11px] text-[#605e5c] ml-1">Uploading...</span>}
-                      {/* Emoji Picker */}
-                      {showEmojiPicker && (
-                        <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#c8c6c4] rounded-lg shadow-lg p-2 z-30" role="dialog" aria-label="Emoji picker">
-                          <div className="grid grid-cols-8 gap-1">
-                            {emojis.map(emoji => (
+                    
+                    {/* Reply - inline as part of thread */}
+                    <div className="px-6 lg:px-8 xl:px-10 py-3" role="region" aria-label="Reply">
+                      <div className="flex items-start gap-4">
+                        <div 
+                          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-[14px] font-semibold flex-shrink-0"
+                          style={{ backgroundColor: getAvatarColor(user?.name || 'You') }}
+                        >
+                          {getInitials(user?.name || 'You')}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="border border-[#c8c6c4] rounded-lg focus-within:border-[#64126D] focus-within:ring-1 focus-within:ring-[#64126D] bg-white">
+                            <label htmlFor="reply-textarea" className="sr-only">Reply to message</label>
+                            <textarea
+                              id="reply-textarea"
+                              value={replyText}
+                              onChange={(e) => setReplyText(e.target.value)}
+                              placeholder="Type your reply here..."
+                              className="w-full resize-none text-[14px] focus:outline-none p-3 min-h-[160px] rounded-t-lg placeholder-[#a19f9d]"
+                              style={{ fontFamily: "'Segoe UI', 'Segoe UI Web (West European)', -apple-system, BlinkMacSystemFont, Roboto, sans-serif" }}
+                              aria-label="Reply message body. Press Ctrl+Enter or Cmd+Enter to send."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                  e.preventDefault();
+                                  sendReply();
+                                }
+                              }}
+                            />
+                            {replyAttachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 px-3 py-1.5 border-t border-[#edebe9]">
+                                {replyAttachments.map((att, idx) => (
+                                  <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#f3f2f1] rounded text-[12px] text-[#323130]">
+                                    <svg className="w-3.5 h-3.5 text-[#605e5c]" viewBox="0 0 16 16" fill="currentColor"><path d="M14.5 3a3.5 3.5 0 0 1 0 7H6v1h8.5a4.5 4.5 0 0 0 0-9A4.5 4.5 0 0 0 10 6.5V15a3 3 0 0 0 6 0V6h1v9a4 4 0 0 1-8 0V6.5A5.5 5.5 0 0 1 14.5 1v2z"/></svg>
+                                    {att.original_name}
+                                    <button onClick={() => setReplyAttachments(prev => prev.filter((_, i) => i !== idx))} className="text-[#a19f9d] hover:text-[#323130]" aria-label={`Remove ${att.original_name}`}>
+                                      <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8.7 8l3.65-3.65-.7-.7L8 7.29 4.35 3.65l-.7.7L7.29 8l-3.64 3.65.7.7L8 8.71l3.65 3.64.7-.7L8.71 8z"/></svg>
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between px-2 py-1 border-t border-[#edebe9] rounded-b-lg bg-[#faf9f8]">
+                              <div className="flex items-center gap-1 relative">
+                                <input type="file" ref={replyFileRef} className="hidden" onChange={(e) => handleFileUpload(e, 'reply')} aria-hidden="true" />
+                                <button onClick={() => replyFileRef.current?.click()} disabled={uploading} className="p-1.5 text-[#605e5c] hover:bg-[#e1dfdd] rounded disabled:opacity-50" title="Attach file" aria-label="Attach file">
+                                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path d="M14.5 3a3.5 3.5 0 0 1 .15 6.995L14.5 10H6v1h8.5a4.5 4.5 0 0 0 .22-8.996L14.5 2A4.5 4.5 0 0 0 10 6.5V15a3 3 0 0 0 5.995.176L16 15V6h1v9a4 4 0 0 1-7.995.2L9 15V6.5a5.5 5.5 0 0 1 5.5-5.5V3z"/>
+                                  </svg>
+                                </button>
+                                <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-1.5 text-[#605e5c] hover:bg-[#e1dfdd] rounded" title="Insert emoji" aria-label="Insert emoji">
+                                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm0 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM7.5 8a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm5 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM6.5 11.5h7c-.2 1.95-1.67 3.5-3.5 3.5s-3.3-1.55-3.5-3.5z"/>
+                                  </svg>
+                                </button>
+                                {uploading && <span className="text-[11px] text-[#605e5c] ml-1">Uploading...</span>}
+                                {showEmojiPicker && (
+                                  <div className="absolute bottom-full left-0 mb-2 bg-white border border-[#c8c6c4] rounded-lg shadow-lg p-2 z-30" role="dialog" aria-label="Emoji picker">
+                                    <div className="grid grid-cols-8 gap-1">
+                                      {emojis.map(emoji => (
+                                        <button
+                                          key={emoji}
+                                          onClick={() => {
+                                            setReplyText(prev => prev + emoji);
+                                            setShowEmojiPicker(false);
+                                          }}
+                                          className="w-8 h-8 flex items-center justify-center hover:bg-[#f3f2f1] rounded text-[18px]"
+                                          aria-label={`Insert ${emoji}`}
+                                        >
+                                          {emoji}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                               <button
-                                key={emoji}
-                                onClick={() => {
-                                  setReplyText(prev => prev + emoji);
-                                  setShowEmojiPicker(false);
-                                }}
-                                className="w-8 h-8 flex items-center justify-center hover:bg-[#f3f2f1] rounded text-[18px]"
-                                aria-label={`Insert ${emoji}`}
+                                onClick={sendReply}
+                                disabled={sending || !replyText.trim()}
+                                className="flex items-center gap-1.5 px-3 py-1 bg-[#64126D] text-white rounded hover:bg-[#7a1785] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold transition-colors"
+                                aria-label="Send reply"
                               >
-                                {emoji}
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                  <path d="M2.72 2.05l15.74 7.12c.38.18.51.64.25.97a.67.67 0 0 1-.25.21l-15.74 7.12a.75.75 0 0 1-1.01-.35.75.75 0 0 1-.04-.52l1.62-5.96L13 10 3.29 9.36l-1.62-5.96a.75.75 0 0 1 .48-.94c.18-.06.38-.04.57.09z"/>
+                                </svg>
+                                Send
                               </button>
-                            ))}
+                            </div>
                           </div>
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <button
-                      onClick={sendReply}
-                      disabled={sending || !replyText.trim()}
-                      className="flex items-center gap-2 px-4 py-1.5 bg-[#0078d4] text-white rounded hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed text-[13px] font-semibold transition-colors"
-                      aria-label="Send reply"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <path d="M2.72 2.05l15.74 7.12c.38.18.51.64.25.97a.67.67 0 0 1-.25.21l-15.74 7.12a.75.75 0 0 1-1.01-.35.75.75 0 0 1-.04-.52l1.62-5.96L13 10 3.29 9.36l-1.62-5.96a.75.75 0 0 1 .48-.94c.18-.06.38-.04.57.09z"/>
-                      </svg>
-                      Send
-                    </button>
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
             </div>
           ) : (
@@ -1073,6 +1115,7 @@ export default function MessagesPage() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

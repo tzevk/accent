@@ -1,49 +1,31 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
   TicketIcon,
   PlusIcon,
-  ClockIcon,
-  ChatBubbleLeftRightIcon,
   PaperClipIcon,
   XMarkIcon,
   MagnifyingGlassIcon, 
   ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
-// Categories with HR/Admin routing
-const CATEGORIES = [
-  // HR Categories
-  { value: 'payroll', label: 'Payroll', routedTo: 'HR', icon: '💰', description: 'Salary, deductions, tax issues' },
-  { value: 'leave', label: 'Leave', routedTo: 'HR', icon: '🏖️', description: 'Leave applications, balance queries' },
-  { value: 'policy', label: 'Policy', routedTo: 'HR', icon: '📋', description: 'Company policies, guidelines' },
-  { value: 'confidential', label: 'Confidential Matters', routedTo: 'HR (Restricted)', icon: '🔒', description: 'Private HR matters' },
-  
-  // Admin Categories
-  { value: 'access_cards', label: 'Access Cards', routedTo: 'Admin', icon: '🪪', description: 'ID cards, access permissions' },
-  { value: 'seating', label: 'Seating', routedTo: 'Admin', icon: '💺', description: 'Desk allocation, workspace requests' },
-  { value: 'maintenance', label: 'Maintenance', routedTo: 'Admin', icon: '🔧', description: 'Facility issues, repairs' },
-  { value: 'general_request', label: 'General Request', routedTo: 'Admin', icon: '📝', description: 'Other administrative requests' }
-];
-
 const PRIORITIES = [
-  { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700 border-gray-300', description: 'Can wait, not blocking work' },
-  { value: 'medium', label: 'Medium', color: 'bg-blue-100 text-blue-700 border-blue-300', description: 'Normal priority' },
-  { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-700 border-orange-300', description: 'Needs attention soon' },
-  { value: 'urgent', label: 'Urgent', color: 'bg-red-100 text-red-700 border-red-300', description: 'Critical, blocking work' }
+  { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700 border-gray-300' },
+  { value: 'medium', label: 'Medium', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+  { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-700 border-orange-300' },
+  { value: 'urgent', label: 'Urgent', color: 'bg-red-100 text-red-700 border-red-300' }
 ];
 
 const STATUSES = [
-  { value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800', icon: '🆕' },
-  { value: 'under_review', label: 'Under Review', color: 'bg-purple-100 text-purple-800', icon: '👀' },
-  { value: 'in_progress', label: 'In Progress', color: 'bg-yellow-100 text-yellow-800', icon: '⚡' },
-  { value: 'waiting_for_employee', label: 'Waiting for You', color: 'bg-orange-100 text-orange-800', icon: '⏳' },
-  { value: 'resolved', label: 'Resolved', color: 'bg-green-100 text-green-800', icon: '✅' },
-  { value: 'closed', label: 'Closed', color: 'bg-gray-100 text-gray-800', icon: '🔒' }
+  { value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800' },
+  { value: 'under_review', label: 'Under Review', color: 'bg-purple-100 text-purple-800' },
+  { value: 'in_progress', label: 'In Progress', color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'waiting_for_employee', label: 'Waiting for You', color: 'bg-orange-100 text-orange-800' },
+  { value: 'resolved', label: 'Resolved', color: 'bg-green-100 text-green-800' },
+  { value: 'closed', label: 'Closed', color: 'bg-gray-100 text-gray-800' }
 ];
 
 export default function TicketsPage() {
@@ -52,300 +34,189 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-  const [filterRoutedTo, setFilterRoutedTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchTickets = useCallback(async () => {
+  const fetchTickets = useCallback(async (signal) => {
     try {
+      setLoading(true);
       const params = new URLSearchParams();
       if (filterStatus) params.append('status', filterStatus);
       if (filterPriority) params.append('priority', filterPriority);
-      if (filterRoutedTo) params.append('routed_to', filterRoutedTo);
       
-      const res = await fetch(`/api/tickets?${params}`);
+      const res = await fetch(`/api/tickets?${params}`, { signal });
       const data = await res.json();
       if (data.success) {
         setTickets(data.data);
       }
     } catch (error) {
-      console.error('Error fetching tickets:', error);
+      if (error.name !== 'AbortError') {
+        console.error('Error fetching tickets:', error);
+      }
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, filterPriority, filterRoutedTo]);
+  }, [filterStatus, filterPriority]);
 
   useEffect(() => {
-    fetchTickets();
+    const controller = new AbortController();
+    fetchTickets(controller.signal);
+    return () => controller.abort();
   }, [fetchTickets]);
 
-  const handleViewTicket = (ticket) => {
-    router.push(`/tickets/${ticket.id}`);
-  };
+  const searchLower = useMemo(() => searchQuery.toLowerCase(), [searchQuery]);
 
-  const filteredTickets = tickets.filter(ticket => 
+  const filteredTickets = useMemo(() => tickets.filter(ticket => 
     searchQuery === '' || 
-    ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.ticket_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ticket.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    ticket.subject?.toLowerCase().includes(searchLower) ||
+    ticket.ticket_number?.toLowerCase().includes(searchLower) ||
+    ticket.description?.toLowerCase().includes(searchLower)
+  ), [tickets, searchQuery, searchLower]);
 
-  const getStatusBadge = (status) => {
-    const statusConfig = STATUSES.find(s => s.value === status);
-    return statusConfig ? (
-      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusConfig.color} inline-flex items-center gap-1`}>
-        <span>{statusConfig.icon}</span>
-        {statusConfig.label}
-      </span>
-    ) : status;
-  };
+  const getStatusBadge = useCallback((status) => {
+    const s = STATUSES.find(s => s.value === status);
+    if (!s) return status;
+    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${s.color}`}>{s.label}</span>;
+  }, []);
 
-  const getPriorityBadge = (priority) => {
-    const priorityConfig = PRIORITIES.find(p => p.value === priority);
-    return priorityConfig ? (
-      <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${priorityConfig.color}`}>
-        {priorityConfig.label}
-      </span>
-    ) : priority;
-  };
+  const getPriorityBadge = useCallback((priority) => {
+    const p = PRIORITIES.find(p => p.value === priority);
+    if (!p) return priority;
+    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${p.color}`}>{p.label}</span>;
+  }, []);
 
-  const getCategoryInfo = (category) => {
-    return CATEGORIES.find(c => c.value === category) || { label: category, icon: '📝', routedTo: 'Admin' };
-  };
-
-  const getTicketStats = () => {
-    const stats = {
-      new: tickets.filter(t => t.status === 'new').length,
-      in_progress: tickets.filter(t => t.status === 'in_progress' || t.status === 'under_review').length,
-      waiting: tickets.filter(t => t.status === 'waiting_for_employee').length,
-      resolved: tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length
-    };
-    return stats;
-  };
-
-  const stats = getTicketStats();
+  const { activeCount, waitingCount } = useMemo(() => ({
+    activeCount: tickets.filter(t => !['resolved', 'closed'].includes(t.status)).length,
+    waitingCount: tickets.filter(t => t.status === 'waiting_for_employee').length
+  }), [tickets]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
-
       
-      <div className="flex pt-16 sm:pl-16">
+      <div className="flex pt-2 sm:pl-16">
         <div className="flex-1">
-          <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
-            {/* Breadcrumb */}
-            <nav className="text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
-              <ol className="inline-flex items-center gap-2">
-                <li>Home</li>
-                <li className="text-gray-300">/</li>
-                <li className="text-gray-700">Support Tickets</li>
-              </ol>
-            </nav>
-            
+          <div className="pl-0 pr-1 sm:pl-0.5 sm:pr-1.5 lg:pl-1 lg:pr-2 py-2">
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-6">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                  <TicketIcon className="h-8 w-8 text-indigo-600" />
-                  Support Tickets
-                </h1>
-                <p className="text-gray-600 mt-2">Submit and track your support requests</p>
+                <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  {activeCount} active{waitingCount > 0 && ` · ${waitingCount} waiting for you`}
+                </p>
               </div>
               <button
                 onClick={() => router.push('/tickets/new')}
-                className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                className="flex items-center gap-2 px-4 py-2 bg-[#64126D] text-white text-sm font-medium rounded-lg hover:bg-[#7a1785] transition-colors"
               >
-                <PlusIcon className="h-5 w-5" />
-                Create Ticket
+                <PlusIcon className="h-4 w-4" />
+                New Ticket
               </button>
             </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">New</p>
-                <p className="text-2xl font-bold text-blue-600 mt-1">{stats.new}</p>
+            {/* Search & Filters */}
+            <div className="flex flex-wrap gap-3 items-center mb-5">
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search tickets..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
+                  />
+                </div>
               </div>
-              <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center text-2xl">
-                🆕
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">In Progress</p>
-                <p className="text-2xl font-bold text-yellow-600 mt-1">{stats.in_progress}</p>
-              </div>
-              <div className="h-12 w-12 bg-yellow-100 rounded-lg flex items-center justify-center text-2xl">
-                ⚡
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">Waiting for You</p>
-                <p className="text-2xl font-bold text-orange-600 mt-1">{stats.waiting}</p>
-              </div>
-              <div className="h-12 w-12 bg-orange-100 rounded-lg flex items-center justify-center text-2xl">
-                ⏳
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">Resolved</p>
-                <p className="text-2xl font-bold text-green-600 mt-1">{stats.resolved}</p>
-              </div>
-              <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center text-2xl">
-                ✅
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex-1 min-w-[250px]">
-              <div className="relative">
-                <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search tickets..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-            
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            >
-              <option value="">All Statuses</option>
-              {STATUSES.map(status => (
-                <option key={status.value} value={status.value}>{status.label}</option>
-              ))}
-            </select>
-            
-            <select
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            >
-              <option value="">All Priorities</option>
-              {PRIORITIES.map(priority => (
-                <option key={priority.value} value={priority.value}>{priority.label}</option>
-              ))}
-            </select>
-            
-            <select
-              value={filterRoutedTo}
-              onChange={(e) => setFilterRoutedTo(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            >
-              <option value="">All Departments</option>
-              <option value="hr">HR</option>
-              <option value="admin">Admin</option>
-            </select>
-            
-            {(filterStatus || filterPriority || filterRoutedTo || searchQuery) && (
-              <button
-                onClick={() => {
-                  setFilterStatus('');
-                  setFilterPriority('');
-                  setFilterRoutedTo('');
-                  setSearchQuery('');
-                }}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+              
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
               >
-                <XMarkIcon className="h-4 w-4" />
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Tickets List */}
-        {loading ? (
-          <div className="text-center py-12">
-            <ArrowPathIcon className="h-8 w-8 text-gray-400 animate-spin mx-auto mb-4" />
-            <p className="text-gray-500">Loading tickets...</p>
-          </div>
-        ) : filteredTickets.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <TicketIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No tickets found</h3>
-            <p className="text-gray-500 mb-6">
-              {searchQuery || filterStatus || filterPriority || filterRoutedTo
-                ? "Try adjusting your filters"
-                : "Create your first ticket to get started"}
-            </p>
-            {!searchQuery && !filterStatus && !filterPriority && !filterRoutedTo && (
-              <button
-                onClick={() => router.push('/tickets/new')}
-                className="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                <option value="">All Statuses</option>
+                {STATUSES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              
+              <select
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent"
               >
-                <PlusIcon className="h-5 w-5" />
-                Create Ticket
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredTickets.map((ticket) => {
-              const categoryInfo = getCategoryInfo(ticket.category);
-              return (
-                <div
-                  key={ticket.id}
-                  onClick={() => handleViewTicket(ticket)}
-                  className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-all cursor-pointer hover:border-indigo-300"
+                <option value="">All Priorities</option>
+                {PRIORITIES.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              
+              {(filterStatus || filterPriority || searchQuery) && (
+                <button
+                  onClick={() => { setFilterStatus(''); setFilterPriority(''); setSearchQuery(''); }}
+                  className="px-3 py-2 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-sm font-mono text-gray-500">#{ticket.ticket_number}</span>
-                        {getStatusBadge(ticket.status)}
-                        {getPriorityBadge(ticket.priority)}
-                        <span className="text-sm text-gray-500 flex items-center gap-1">
-                          <span className="text-lg">{categoryInfo.icon}</span>
-                          {categoryInfo.label}
-                        </span>
-                        <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
-                          → {categoryInfo.routedTo}
-                        </span>
+                  <XMarkIcon className="h-3.5 w-3.5" />
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Tickets List */}
+            {loading ? (
+              <div className="text-center py-16">
+                <ArrowPathIcon className="h-6 w-6 text-gray-400 animate-spin mx-auto mb-3" />
+                <p className="text-sm text-gray-500">Loading...</p>
+              </div>
+            ) : filteredTickets.length === 0 ? (
+              <div className="text-center py-16">
+                <TicketIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-900 mb-1">No tickets found</p>
+                <p className="text-xs text-gray-500 mb-4">
+                  {searchQuery || filterStatus || filterPriority
+                    ? 'Try adjusting your filters'
+                    : 'Create your first ticket to get started'}
+                </p>
+                {!searchQuery && !filterStatus && !filterPriority && (
+                  <button
+                    onClick={() => router.push('/tickets/new')}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#64126D] text-white text-sm rounded-lg hover:bg-[#7a1785]"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    New Ticket
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredTickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    onClick={() => router.push(`/tickets/${ticket.id}`)}
+                    className="bg-white rounded-lg border border-gray-200 px-4 py-3 hover:border-[#64126D]/30 hover:shadow-sm transition-all cursor-pointer"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs font-mono text-gray-400">{ticket.ticket_number}</span>
+                          {getStatusBadge(ticket.status)}
+                          {getPriorityBadge(ticket.priority)}
+                        </div>
+                        <h3 className="text-sm font-semibold text-gray-900 truncate">{ticket.subject}</h3>
+                        <p className="text-xs text-gray-500 truncate mt-0.5">{ticket.description}</p>
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.subject}</h3>
-                      <p className="text-gray-600 text-sm line-clamp-2">{ticket.description}</p>
-                      <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <ClockIcon className="h-4 w-4" />
-                          {new Date(ticket.created_at).toLocaleString()}
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                        <span className="text-xs text-gray-400">
+                          {new Date(ticket.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                         </span>
                         {ticket.attachment_url && (
-                          <span className="flex items-center gap-1 text-indigo-600">
-                            <PaperClipIcon className="h-4 w-4" />
-                            Attachment
-                          </span>
+                          <PaperClipIcon className="h-3.5 w-3.5 text-gray-400" />
                         )}
                       </div>
                     </div>
-                    <ChatBubbleLeftRightIcon className="h-6 w-6 text-gray-400" />
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

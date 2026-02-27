@@ -17,6 +17,17 @@ import {
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 
+const CATEGORIES = [
+  { value: 'payroll', label: 'Payroll', routedTo: 'HR', icon: '💰' },
+  { value: 'leave', label: 'Leave', routedTo: 'HR', icon: '🏖️' },
+  { value: 'policy', label: 'Policy', routedTo: 'HR', icon: '📋' },
+  { value: 'confidential', label: 'Confidential Matters', routedTo: 'HR (Restricted)', icon: '🔒' },
+  { value: 'access_cards', label: 'Access Cards', routedTo: 'Admin', icon: '🪪' },
+  { value: 'seating', label: 'Seating', routedTo: 'Admin', icon: '💺' },
+  { value: 'maintenance', label: 'Maintenance', routedTo: 'Admin', icon: '🔧' },
+  { value: 'general_request', label: 'General Request', routedTo: 'Admin', icon: '📝' }
+];
+
 const PRIORITIES = [
   { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700 border-gray-300' },
   { value: 'medium', label: 'Medium', color: 'bg-blue-100 text-blue-700 border-blue-300' },
@@ -42,7 +53,7 @@ export default function TicketManagementPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [filterRoutedTo, setFilterRoutedTo] = useState('');
-
+  const [filterCategory, setFilterCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -51,7 +62,7 @@ export default function TicketManagementPage() {
   useEffect(() => {
     fetchTickets();
     fetchUsers();
-  }, [filterStatus, filterPriority, filterRoutedTo]);
+  }, [filterStatus, filterPriority, filterRoutedTo, filterCategory]);
 
   const fetchTickets = async () => {
     try {
@@ -59,7 +70,7 @@ export default function TicketManagementPage() {
       if (filterStatus) params.append('status', filterStatus);
       if (filterPriority) params.append('priority', filterPriority);
       if (filterRoutedTo) params.append('routed_to', filterRoutedTo);
-
+      if (filterCategory) params.append('category', filterCategory);
       
       const res = await fetch(`/api/tickets?${params}`);
       const data = await res.json();
@@ -207,6 +218,10 @@ export default function TicketManagementPage() {
     ) : priority;
   };
 
+  const getCategoryInfo = (category) => {
+    return CATEGORIES.find(c => c.value === category) || { label: category, icon: '📝', routedTo: 'Admin' };
+  };
+
   const getTicketStats = () => {
     return {
       new: tickets.filter(t => t.status === 'new').length,
@@ -321,12 +336,24 @@ export default function TicketManagementPage() {
               <option value="admin">Admin</option>
             </select>
             
-            {(filterStatus || filterPriority || filterRoutedTo || searchQuery) && (
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+            >
+              <option value="">All Categories</option>
+              {CATEGORIES.map(cat => (
+                <option key={cat.value} value={cat.value}>{cat.label}</option>
+              ))}
+            </select>
+            
+            {(filterStatus || filterPriority || filterRoutedTo || filterCategory || searchQuery) && (
               <button
                 onClick={() => {
                   setFilterStatus('');
                   setFilterPriority('');
                   setFilterRoutedTo('');
+                  setFilterCategory('');
                   setSearchQuery('');
                 }}
                 className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -353,6 +380,8 @@ export default function TicketManagementPage() {
         ) : (
           <div className="space-y-3">
             {filteredTickets.map((ticket) => {
+              const categoryInfo = getCategoryInfo(ticket.category);
+              const statusInfo = STATUSES.find(s => s.value === ticket.status);
               return (
                 <div
                   key={ticket.id}
@@ -365,6 +394,13 @@ export default function TicketManagementPage() {
                         <span className="text-sm font-mono text-gray-500">#{ticket.ticket_number}</span>
                         {getStatusBadge(ticket.status)}
                         {getPriorityBadge(ticket.priority)}
+                        <span className="text-sm text-gray-500 flex items-center gap-1">
+                          <span className="text-lg">{categoryInfo.icon}</span>
+                          {categoryInfo.label}
+                        </span>
+                        <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
+                          → {categoryInfo.routedTo}
+                        </span>
                       </div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">{ticket.subject}</h3>
                       <p className="text-gray-600 text-sm line-clamp-2 mb-2">{ticket.description}</p>
@@ -470,6 +506,13 @@ export default function TicketManagementPage() {
               <div className="flex items-center gap-3 flex-wrap">
                 {getStatusBadge(selectedTicket.status)}
                 {getPriorityBadge(selectedTicket.priority)}
+                <span className="text-sm text-gray-500 flex items-center gap-1">
+                  <span className="text-lg">{getCategoryInfo(selectedTicket.category).icon}</span>
+                  {getCategoryInfo(selectedTicket.category).label}
+                </span>
+                <span className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
+                  → {getCategoryInfo(selectedTicket.category).routedTo}
+                </span>
               </div>
 
               {/* Subject & Description */}
