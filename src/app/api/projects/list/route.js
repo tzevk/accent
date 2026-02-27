@@ -54,7 +54,8 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Invalid user session' }, { status: 401 });
     }
     
-    const canReadProjects = user.is_super_admin || hasPermission(user, 'projects', 'read');
+    const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+    const canReadProjects = user.is_super_admin || isProjectAdmin || hasPermission(user, 'projects', 'read');
     if (!canReadProjects) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
@@ -108,7 +109,6 @@ export async function GET(request) {
       }
 
       // Filter by team membership if not super admin or Rajesh Panchal
-      const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
       const canSeeAllProjects = user.is_super_admin || isProjectAdmin;
       if (!canSeeAllProjects) {
         projects = projects.filter(project => 
