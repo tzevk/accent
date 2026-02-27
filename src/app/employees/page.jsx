@@ -170,6 +170,14 @@ export default function EmployeesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [profileLocked, setProfileLocked] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  // Attendance summary for employee master
+  const [attendanceSummary, setAttendanceSummary] = useState([]);
+  const [attendanceDayDetails, setAttendanceDayDetails] = useState([]);
+  const [attendanceSummaryLoading, setAttendanceSummaryLoading] = useState(false);
+  const [attendanceSummaryMonth, setAttendanceSummaryMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [formData, setFormData] = useState(defaultFormData);
   const [formErrors, setFormErrors] = useState({});
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -949,6 +957,36 @@ export default function EmployeesPage() {
       return 8.5;
     }
   };
+
+  // Fetch attendance summary for selected employee
+  const fetchAttendanceSummary = useCallback(async (employeeId, month) => {
+    if (!employeeId) return;
+    setAttendanceSummaryLoading(true);
+    try {
+      const res = await fetch(`/api/attendance/summary?employee_id=${employeeId}&month=${month}`);
+      const data = await res.json();
+      if (data.success) {
+        setAttendanceSummary(data.data || []);
+        setAttendanceDayDetails(data.dayDetails || []);
+      } else {
+        setAttendanceSummary([]);
+        setAttendanceDayDetails([]);
+      }
+    } catch (err) {
+      console.error('Error fetching attendance summary:', err);
+      setAttendanceSummary([]);
+      setAttendanceDayDetails([]);
+    } finally {
+      setAttendanceSummaryLoading(false);
+    }
+  }, []);
+
+  // Load attendance summary when employee is selected or month changes
+  useEffect(() => {
+    if (selectedEmployee?.id && (activeTab === 'edit' || activeTab === 'view')) {
+      fetchAttendanceSummary(selectedEmployee.id, attendanceSummaryMonth);
+    }
+  }, [selectedEmployee?.id, attendanceSummaryMonth, activeTab, fetchAttendanceSummary]);
 
   // Check if employee is exempt from PT
   // Male: up to 7500 = exempt
@@ -2956,6 +2994,13 @@ export default function EmployeesPage() {
                     {addSubTab === 'attendance' && (
                     <div>
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Attendance & Exit</h4>
+                      <div className="text-center py-6 bg-gray-50 rounded-xl border border-gray-200 mb-4">
+                        <CalendarDaysIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">Attendance data will be available after saving the employee</p>
+                        <Link href="/employees/attendance" className="mt-2 inline-block text-sm text-purple-600 hover:text-purple-700 font-medium">
+                          Go to Attendance Page →
+                        </Link>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Exit Date</label>
@@ -5408,14 +5453,152 @@ export default function EmployeesPage() {
                     {editSubTab === 'attendance' && (
                       <div>
                         <h4 className="text-lg font-semibold text-gray-900 mb-3">Attendance & Exit</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Exit Date</label>
-                            <input type="date" value={formData.exit_date || ''} onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+
+                        {/* Month Selector */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <label className="text-sm font-medium text-gray-700">Month:</label>
+                          <input
+                            type="month"
+                            value={attendanceSummaryMonth}
+                            onChange={(e) => setAttendanceSummaryMonth(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                          <Link
+                            href="/employees/attendance"
+                            className="ml-auto px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#64126D] to-[#86288F] rounded-lg hover:from-[#86288F] hover:to-[#64126D] transition-all"
+                          >
+                            Go to Attendance Page
+                          </Link>
+                        </div>
+
+                        {/* Summary Cards */}
+                        {attendanceSummaryLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="w-6 h-6 border-2 border-gray-200 border-t-purple-600 rounded-full animate-spin"></div>
+                            <span className="ml-3 text-sm text-gray-500">Loading attendance...</span>
                           </div>
-                          <div className="md:col-span-3">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Exit Reason</label>
-                            <textarea rows={2} value={formData.exit_reason || ''} onChange={(e) => setFormData({ ...formData, exit_reason: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                        ) : attendanceSummary.length > 0 ? (
+                          <div className="space-y-4">
+                            {/* Summary Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                              {[
+                                { label: 'Present', value: attendanceSummary[0]?.total_present || 0, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+                                { label: 'Absent', value: attendanceSummary[0]?.total_absent || 0, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
+                                { label: 'Weekly Off', value: attendanceSummary[0]?.total_weekly_off || 0, color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' },
+                                { label: 'Holiday', value: attendanceSummary[0]?.total_holiday || 0, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
+                                { label: 'Overtime (hrs)', value: parseFloat(attendanceSummary[0]?.total_overtime_hours || 0).toFixed(1), color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
+                              ].map(item => (
+                                <div key={item.label} className={`${item.bg} border ${item.border} rounded-xl p-3 text-center`}>
+                                  <div className={`text-xl font-bold ${item.color}`}>{item.value}</div>
+                                  <div className="text-xs text-gray-500 mt-0.5">{item.label}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Leave Breakdown */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                              {[
+                                { label: 'Privilege Leave', value: attendanceSummary[0]?.total_privilege_leave || 0, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+                                { label: 'Casual Leave', value: attendanceSummary[0]?.total_casual_leave || 0, color: 'text-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-200' },
+                                { label: 'Sick Leave', value: attendanceSummary[0]?.total_sick_leave || 0, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-200' },
+                                { label: 'Half Day', value: attendanceSummary[0]?.total_half_day || 0, color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' },
+                                { label: 'LWP', value: attendanceSummary[0]?.total_lwp || 0, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' },
+                              ].map(item => (
+                                <div key={item.label} className={`${item.bg} border ${item.border} rounded-xl p-3 text-center`}>
+                                  <div className={`text-xl font-bold ${item.color}`}>{item.value}</div>
+                                  <div className="text-xs text-gray-500 mt-0.5">{item.label}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Working Hours & Time */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center">
+                                <div className="text-xl font-bold text-indigo-600">{parseFloat(attendanceSummary[0]?.total_working_hours || 0).toFixed(0)} hrs</div>
+                                <div className="text-xs text-gray-500 mt-0.5">Total Working Hours</div>
+                              </div>
+                              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                                <div className="text-xl font-bold text-gray-700">{attendanceSummary[0]?.std_in_time ? String(attendanceSummary[0].std_in_time).substring(0, 5) : '09:00'}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">Standard In Time</div>
+                              </div>
+                              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                                <div className="text-xl font-bold text-gray-700">{attendanceSummary[0]?.std_out_time ? String(attendanceSummary[0].std_out_time).substring(0, 5) : '17:30'}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">Standard Out Time</div>
+                              </div>
+                            </div>
+
+                            {/* Day-level Details Table */}
+                            {attendanceDayDetails.length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-semibold text-gray-700 mb-2">Day-wise Details</h5>
+                                <div className="border border-gray-200 rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 sticky top-0">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Date</th>
+                                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Status</th>
+                                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">In Time</th>
+                                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Out Time</th>
+                                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">OT (hrs)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {attendanceDayDetails.map(day => {
+                                        const statusColors = {
+                                          'P': 'bg-emerald-100 text-emerald-700',
+                                          'A': 'bg-red-100 text-red-700',
+                                          'WO': 'bg-gray-100 text-gray-500',
+                                          'H': 'bg-amber-100 text-amber-700',
+                                          'PL': 'bg-blue-100 text-blue-700',
+                                          'CL': 'bg-cyan-100 text-cyan-700',
+                                          'SL': 'bg-pink-100 text-pink-700',
+                                          'HD': 'bg-yellow-100 text-yellow-700',
+                                          'OT': 'bg-violet-100 text-violet-700',
+                                          'LWP': 'bg-rose-100 text-rose-700',
+                                        };
+                                        const dateObj = new Date(day.attendance_date + 'T00:00:00');
+                                        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                                        const dateDisplay = dateObj.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+                                        return (
+                                          <tr key={day.attendance_date} className="hover:bg-gray-50">
+                                            <td className="px-3 py-1.5 text-gray-700">{dayName}, {dateDisplay}</td>
+                                            <td className="px-3 py-1.5 text-center">
+                                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${statusColors[day.status] || 'bg-gray-100 text-gray-500'}`}>
+                                                {day.status}
+                                              </span>
+                                            </td>
+                                            <td className="px-3 py-1.5 text-center text-gray-600">{day.in_time || '-'}</td>
+                                            <td className="px-3 py-1.5 text-center text-gray-600">{day.out_time || '-'}</td>
+                                            <td className="px-3 py-1.5 text-center text-gray-600">{parseFloat(day.overtime_hours || 0) > 0 ? parseFloat(day.overtime_hours).toFixed(1) : '-'}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 bg-gray-50 rounded-xl border border-gray-200">
+                            <CalendarDaysIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-sm text-gray-500 mb-1">No attendance data for this month</p>
+                            <p className="text-xs text-gray-400">Save attendance from the Attendance page to see it here</p>
+                          </div>
+                        )}
+
+                        {/* Exit Section */}
+                        <div className="mt-6 pt-4 border-t border-gray-200">
+                          <h5 className="text-md font-semibold text-gray-900 mb-3">Exit Details</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Exit Date</label>
+                              <input type="date" value={formData.exit_date || ''} onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                            </div>
+                            <div className="md:col-span-3">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Exit Reason</label>
+                              <textarea rows={2} value={formData.exit_reason || ''} onChange={(e) => setFormData({ ...formData, exit_reason: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                            </div>
                           </div>
                         </div>
                       </div>

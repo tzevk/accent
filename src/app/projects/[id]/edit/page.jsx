@@ -11,6 +11,15 @@ import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
 
+// Helper: normalize any date value to YYYY-MM-DD format for <input type="date" />
+const normalizeDate = (val) => {
+  if (!val) return '';
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val; // already YYYY-MM-DD
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
+};
+
 const INITIAL_FORM = {
   // Scope & Annexure fields
   scope_of_work: '',
@@ -817,7 +826,11 @@ function EditProjectForm() {
                 ? JSON.parse(project.input_documents_list)
                 : project.input_documents_list;
               console.log('[fetchProject] input_documents_list loaded:', parsed?.length, 'items');
-              setInputDocumentsList(Array.isArray(parsed) ? parsed : []);
+              const normalized = (Array.isArray(parsed) ? parsed : []).map(d => ({
+                ...d,
+                date_received: normalizeDate(d.date_received)
+              }));
+              setInputDocumentsList(normalized);
             } catch (err) {
               console.error('[fetchProject] Error parsing input_documents_list:', err);
               setInputDocumentsList([]);
@@ -860,7 +873,10 @@ function EditProjectForm() {
                 addedAt: new Date().toISOString()
               })).filter(doc => doc.text);
             }
-            setInputDocumentsList(parsedDocs);
+            setInputDocumentsList(parsedDocs.map(d => ({
+              ...d,
+              date_received: normalizeDate(d.date_received)
+            })));
           }
 
             // Load documents received list (new structured array)
@@ -870,7 +886,11 @@ function EditProjectForm() {
                   ? JSON.parse(project.documents_received_list)
                   : project.documents_received_list;
                 console.log('[fetchProject] documents_received_list loaded:', parsed?.length, 'items');
-                setDocumentsReceived(Array.isArray(parsed) ? parsed : []);
+                const normalized = (Array.isArray(parsed) ? parsed : []).map(d => ({
+                  ...d,
+                  date_received: normalizeDate(d.date_received)
+                }));
+                setDocumentsReceived(normalized);
               } catch (err) {
                 console.error('[fetchProject] Error parsing documents_received_list:', err);
                 setDocumentsReceived([]);
@@ -1647,7 +1667,7 @@ function EditProjectForm() {
       const newDoc = {
         id: Date.now(),
         sr_no: newInputDocument.sr_no || String(inputDocumentsList.length + 1),
-        date_received: newInputDocument.date_received || new Date().toISOString().split('T')[0],
+        date_received: normalizeDate(newInputDocument.date_received) || new Date().toISOString().split('T')[0],
         description: newInputDocument.description.trim(),
         drawing_number: newInputDocument.drawing_number || '',
         sheet_number: newInputDocument.sheet_number || '',
@@ -1887,7 +1907,7 @@ function EditProjectForm() {
     const doc = { 
       ...newReceivedDoc, 
       id: Date.now(),
-      date_received: newReceivedDoc.date_received || today
+      date_received: normalizeDate(newReceivedDoc.date_received) || today
     };
     console.log('[addReceivedDocument] Adding document:', doc);
     setDocumentsReceived(prev => {
@@ -3272,8 +3292,8 @@ function EditProjectForm() {
                           <td className="py-2 px-2">
                             <input
                               type="date"
-                              value={newInputDocument.date_received}
-                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: e.target.value }))}
+                              value={normalizeDate(newInputDocument.date_received)}
+                              onChange={(e) => setNewInputDocument(prev => ({ ...prev, date_received: normalizeDate(e.target.value) }))}
                               className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                             />
                           </td>
@@ -3396,10 +3416,10 @@ function EditProjectForm() {
                             <td className="py-2 px-2">
                               <input
                                 type="date"
-                                value={doc.date_received || ''}
+                                value={normalizeDate(doc.date_received)}
                                 onChange={(e) => {
                                   const updated = inputDocumentsList.map(d =>
-                                    d.id === doc.id ? { ...d, date_received: e.target.value } : d
+                                    d.id === doc.id ? { ...d, date_received: normalizeDate(e.target.value) } : d
                                   );
                                   setInputDocumentsList(updated);
                                   setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
@@ -4760,7 +4780,7 @@ function EditProjectForm() {
                       <tbody>
                         <tr className="bg-purple-25/30 border-b-2 border-purple-100">
                           <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input type="date" value={newReceivedDoc.date_received} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,date_received:e.target.value}))} placeholder="Date" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2"><input type="date" value={normalizeDate(newReceivedDoc.date_received)} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,date_received:normalizeDate(e.target.value)}))} placeholder="Date" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
                           <td className="py-2 px-2"><input ref={newReceivedDescRef} type="text" value={newReceivedDoc.description} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,description:e.target.value}))} placeholder="Document Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
                           <td className="py-2 px-2"><input type="text" value={newReceivedDoc.drawing_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,drawing_number:e.target.value}))} placeholder="Drawing No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
                           <td className="py-2 px-2"><input type="text" value={newReceivedDoc.revision_number} onChange={(e)=>setNewReceivedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Rev. No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
@@ -4782,7 +4802,7 @@ function EditProjectForm() {
                         {documentsReceived.map((d, index) => (
                           <tr key={d.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
-                            <td className="py-2 px-2"><input type="date" value={d.date_received || ''} onChange={(e) => updateReceivedDocument(d.id, 'date_received', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                            <td className="py-2 px-2"><input type="date" value={normalizeDate(d.date_received)} onChange={(e) => updateReceivedDocument(d.id, 'date_received', normalizeDate(e.target.value))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
                             <td className="py-2 px-2"><input type="text" value={d.description || ''} onChange={(e) => updateReceivedDocument(d.id, 'description', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
                             <td className="py-2 px-2"><input type="text" value={d.drawing_number || ''} onChange={(e) => updateReceivedDocument(d.id, 'drawing_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
                             <td className="py-2 px-2"><input type="text" value={d.revision_number || ''} onChange={(e) => updateReceivedDocument(d.id, 'revision_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>

@@ -137,22 +137,29 @@ export default function EmployeeAttendancePage() {
           stdOutTime: '17:30'
         };
         
+        // Build weekly off dates: Sundays first, then 2nd & 4th Saturdays, capped at 6 total
+        const sundays = daysInMonth.filter(d => d.isSunday && !holidayDates.has(d.fullDate));
+        const saturdaysForWO = daysInMonth
+          .filter(d => d.isSaturday && !holidayDates.has(d.fullDate))
+          .filter(d => {
+            const satOfMonth = Math.ceil(d.date / 7);
+            return satOfMonth === 2 || satOfMonth === 4;
+          });
+        const woDates = new Set();
+        for (const day of sundays) {
+          if (woDates.size < 6) woDates.add(day.fullDate);
+        }
+        for (const day of saturdaysForWO) {
+          if (woDates.size < 6) woDates.add(day.fullDate);
+        }
+
         daysInMonth.forEach(day => {
           if (holidayDates.has(day.fullDate)) {
             initialAttendance[emp.id].days[day.fullDate] = 'H';
             initialAttendance[emp.id].holiday++;
-          } else if (day.isSunday) {
+          } else if (woDates.has(day.fullDate)) {
             initialAttendance[emp.id].days[day.fullDate] = 'WO';
             initialAttendance[emp.id].weeklyOff++;
-          } else if (day.isSaturday) {
-            const saturdayOfMonth = Math.ceil(day.date / 7);
-            if (saturdayOfMonth === 2 || saturdayOfMonth === 4) {
-              initialAttendance[emp.id].days[day.fullDate] = 'WO';
-              initialAttendance[emp.id].weeklyOff++;
-            } else {
-              initialAttendance[emp.id].days[day.fullDate] = 'P';
-              initialAttendance[emp.id].present++;
-            }
           } else {
             initialAttendance[emp.id].days[day.fullDate] = 'P';
             initialAttendance[emp.id].present++;

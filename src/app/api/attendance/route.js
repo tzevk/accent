@@ -195,6 +195,115 @@ export async function POST(request) {
       await connection.query(batchQuery, values);
       totalProcessed += batch.length;
     }
+
+    // --- Update monthly summary for each employee ---
+    // Create summary table if not exists
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS employee_attendance_summary (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        employee_id INT NOT NULL,
+        month VARCHAR(7) NOT NULL,
+        total_present INT DEFAULT 0,
+        total_absent INT DEFAULT 0,
+        total_weekly_off INT DEFAULT 0,
+        total_holiday INT DEFAULT 0,
+        total_privilege_leave INT DEFAULT 0,
+        total_casual_leave INT DEFAULT 0,
+        total_sick_leave INT DEFAULT 0,
+        total_lwp INT DEFAULT 0,
+        total_half_day INT DEFAULT 0,
+        total_overtime_hours DECIMAL(8,2) DEFAULT 0,
+        total_working_hours DECIMAL(8,2) DEFAULT 0,
+        std_in_time TIME,
+        std_out_time TIME,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_emp_month (employee_id, month),
+        INDEX idx_month (month)
+      )
+    `);
+
+    // Compute per-employee summary from the saved records for this month
+    const monthKey = body.month;
+    if (monthKey) {
+      const [savedRecords] = await connection.execute(
+        `SELECT employee_id, status, overtime_hours, is_weekly_off, in_time, out_time
+         FROM employee_attendance
+         WHERE DATE_FORMAT(attendance_date, "%Y-%m") = ?`,
+        [monthKey]
+      );
+
+      const empSummaries = {};
+      savedRecords.forEach(r => {
+        if (!empSummaries[r.employee_id]) {
+          empSummaries[r.employee_id] = {
+            present: 0, absent: 0, weekly_off: 0, holiday: 0,
+            privilege_leave: 0, casual_leave: 0, sick_leave: 0,
+            lwp: 0, half_day: 0, overtime_hours: 0, working_hours: 0,
+            std_in_time: r.in_time || null, std_out_time: r.out_time || null
+          };
+        }
+        const s = empSummaries[r.employee_id];
+        if (r.status === 'P') s.present++;
+        if (r.status === 'A') s.absent++;
+        if (r.status === 'WO') s.weekly_off++;
+        if (r.status === 'H') s.holiday++;
+        if (r.status === 'PL') s.privilege_leave++;
+        if (r.status === 'CL') s.casual_leave++;
+        if (r.status === 'SL') s.sick_leave++;
+        if (r.status === 'LWP') s.lwp++;
+        if (r.status === 'HD') s.half_day++;
+        s.overtime_hours += parseFloat(r.overtime_hours || 0);
+
+        // Calculate working hours for present/HD/OT days
+        if (r.status === 'P' || r.status === 'HD' || r.status === 'OT') {
+          const inTime = r.in_time ? r.in_time.toString().substring(0, 5) : '09:00';
+          const outTime = r.out_time ? r.out_time.toString().substring(0, 5) : '17:30';
+          const [inH, inM] = inTime.split(':').map(Number);
+          const [outH, outM] = outTime.split(':').map(Number);
+          const inDec = inH + inM / 60;
+          const outDec = outH + outM / 60;
+          if (outDec > inDec) {
+            let hrs = outDec - inDec;
+            if (r.status === 'HD') hrs = hrs / 2;
+            s.working_hours += hrs;
+          }
+        }
+
+        if (r.in_time) s.std_in_time = r.in_time;
+        if (r.out_time) s.std_out_time = r.out_time;
+      });
+
+      // Upsert summaries
+      for (const [empId, s] of Object.entries(empSummaries)) {
+        await connection.execute(
+          `INSERT INTO employee_attendance_summary 
+            (employee_id, month, total_present, total_absent, total_weekly_off, total_holiday,
+             total_privilege_leave, total_casual_leave, total_sick_leave, total_lwp, total_half_day,
+             total_overtime_hours, total_working_hours, std_in_time, std_out_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             total_present = VALUES(total_present),
+             total_absent = VALUES(total_absent),
+             total_weekly_off = VALUES(total_weekly_off),
+             total_holiday = VALUES(total_holiday),
+             total_privilege_leave = VALUES(total_privilege_leave),
+             total_casual_leave = VALUES(total_casual_leave),
+             total_sick_leave = VALUES(total_sick_leave),
+             total_lwp = VALUES(total_lwp),
+             total_half_day = VALUES(total_half_day),
+             total_overtime_hours = VALUES(total_overtime_hours),
+             total_working_hours = VALUES(total_working_hours),
+             std_in_time = VALUES(std_in_time),
+             std_out_time = VALUES(std_out_time),
+             updated_at = CURRENT_TIMESTAMP`,
+          [empId, monthKey, s.present, s.absent, s.weekly_off, s.holiday,
+           s.privilege_leave, s.casual_leave, s.sick_leave, s.lwp, s.half_day,
+           parseFloat(s.overtime_hours.toFixed(2)), parseFloat(s.working_hours.toFixed(2)),
+           s.std_in_time, s.std_out_time]
+        );
+      }
+    }
     
     // Release connection before returning
     connection.release();
