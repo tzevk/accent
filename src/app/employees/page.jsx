@@ -2958,15 +2958,6 @@ export default function EmployeesPage() {
                       <h4 className="text-lg font-semibold text-gray-900 mb-3">Attendance & Exit</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Biometric Code (SmartOffice)</label>
-                          <input type="text" value={formData.biometric_code || ''} onChange={(e) => setFormData({ ...formData, biometric_code: e.target.value })} placeholder="e.g., 9130" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                          <p className="text-xs text-gray-500 mt-1">Enter the UserId from SmartOffice biometric device</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Device Code</label>
-                          <input type="text" value={formData.device_code || ''} onChange={(e) => setFormData({ ...formData, device_code: e.target.value })} placeholder="e.g., 9130" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                        </div>
-                        <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Exit Date</label>
                           <input type="date" value={formData.exit_date || ''} onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
                         </div>
@@ -5418,15 +5409,6 @@ export default function EmployeesPage() {
                       <div>
                         <h4 className="text-lg font-semibold text-gray-900 mb-3">Attendance & Exit</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Biometric Code (SmartOffice)</label>
-                            <input type="text" value={formData.biometric_code || ''} onChange={(e) => setFormData({ ...formData, biometric_code: e.target.value })} placeholder="e.g., 9130" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                            <p className="text-xs text-gray-500 mt-1">Enter the UserId from SmartOffice biometric device</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Device Code</label>
-                            <input type="text" value={formData.device_code || ''} onChange={(e) => setFormData({ ...formData, device_code: e.target.value })} placeholder="e.g., 9130" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                          </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Exit Date</label>
                             <input type="date" value={formData.exit_date || ''} onChange={(e) => setFormData({ ...formData, exit_date: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500" />

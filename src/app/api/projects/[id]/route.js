@@ -27,8 +27,9 @@ export async function GET(request, { params }) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  // Only super admins can see all projects; everyone else must be in project team
-  const canSeeAllProjects = user.is_super_admin;
+  // Only Rajesh Panchal and super admins can see all projects; everyone else must be in project team
+  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+  const canSeeAllProjects = user.is_super_admin || isProjectAdmin;
   
   const { id } = await params;
   // Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
@@ -348,8 +349,9 @@ export async function PUT(request, context) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  // Check if user has full projects:update permission
-  const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  // Check if user has full projects:update permission (only Rajesh Panchal and super admins)
+  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+  const hasFullAccess = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   
   let db = null;
   let retries = 0;
@@ -1006,8 +1008,9 @@ export async function DELETE(request, { params }) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Check if user has full projects:delete permission
-    const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
+    // Check if user has full projects:delete permission (only Rajesh Panchal and super admins)
+    const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+    const hasFullAccess = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
     
     const { id } = await params;
     const projectId = parseInt(id);

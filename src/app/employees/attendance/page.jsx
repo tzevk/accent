@@ -13,26 +13,14 @@ import {
   XMarkIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
-  MagnifyingGlassIcon,
-  FingerPrintIcon
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
-
-// Helper function to convert minutes to hours format (e.g., 90 -> "1h 30m", 45 -> "45m")
-const formatMinutesToHours = (minutes) => {
-  if (!minutes || minutes <= 0) return '';
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
-  if (hours > 0) return `${hours}h`;
-  return `${mins}m`;
-};
 
 export default function EmployeeAttendancePage() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -362,152 +350,7 @@ export default function EmployeeAttendancePage() {
     }
   };
 
-  // Sync from SmartOffice - fetches raw punches, computes attendance, stores in local DB
-  const syncFromSmartOffice = async () => {
-    setSyncing(true);
-    setError('');
-    setSuccess('');
-    
-    try {
-      // Calculate date range for current month
-      const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-      const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
-      const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${lastDay}`;
-      
-      // Step 1: Call compute-attendance API to sync from SmartOffice and store locally
-      const syncRes = await fetch('/api/smartoffice/compute-attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate, endDate, overwrite: true })
-      });
-      
-      const syncData = await syncRes.json();
-      
-      if (!syncRes.ok) throw new Error(syncData.error || syncData.details || 'Failed to sync from SmartOffice');
-      
-      // Step 2: Load the computed attendance from local database
-      await loadComputedAttendance();
-      
-      const rawPunches = syncData.stats?.rawPunchesFound || 0;
-      const recordsComputed = syncData.stats?.recordsComputed || 0;
-      setSuccess(`Biometric sync complete! ${rawPunches} punches → ${recordsComputed} attendance records computed.`);
-      setTimeout(() => setSuccess(''), 5000);
-      
-    } catch (err) {
-      console.error('SmartOffice sync error:', err);
-      setError(`Sync failed: ${err.message}`);
-    } finally {
-      setSyncing(false);
-    }
-  };
 
-  // Load computed attendance from local database
-  const loadComputedAttendance = useCallback(async () => {
-    if (employees.length === 0) return;
-    
-    try {
-      const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-      const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
-      const endDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${lastDay}`;
-      
-      const res = await fetch(`/api/smartoffice/compute-attendance?startDate=${startDate}&endDate=${endDate}&includeDetails=true`);
-      const data = await res.json();
-      
-      if (!res.ok || !data.data || data.data.length === 0) {
-        return; // No computed attendance, keep default
-      }
-      
-      // Create a map of employee_id to computed records
-      const computedMap = {};
-      data.data.forEach(record => {
-        if (!computedMap[record.employee_id]) {
-          computedMap[record.employee_id] = [];
-        }
-        computedMap[record.employee_id].push(record);
-      });
-      
-      setAttendanceData(prev => {
-        const updated = { ...prev };
-        
-        Object.entries(computedMap).forEach(([empId, records]) => {
-          const employeeId = parseInt(empId);
-          if (!updated[employeeId]) return;
-          
-          records.forEach(record => {
-            const dateKey = record.attendance_date;
-            
-            // Map computed status to our status codes
-            let status = 'P';
-            if (record.status === 'Present') status = 'P';
-            else if (record.status === 'Late') status = 'P'; // Late is still present
-            else if (record.status === 'Half Day') status = 'HD';
-            else if (record.status === 'Early Out') status = 'P';
-            else if (record.status === 'Late & Early Out') status = 'P';
-            else if (record.status === 'Absent') status = 'A';
-            
-            // Check if overtime (worked more than 9 hours)
-            if (record.work_duration_minutes > 540) {
-              status = 'OT';
-            }
-            
-            updated[employeeId].days[dateKey] = status;
-            
-            if (!updated[employeeId].dayDetails) updated[employeeId].dayDetails = {};
-            updated[employeeId].dayDetails[dateKey] = {
-              status: status,
-              computedStatus: record.status,
-              inTime: record.first_in?.substring(0, 5),
-              outTime: record.last_out?.substring(0, 5),
-              overtimeHours: Math.round(record.overtime_minutes / 60 * 100) / 100,
-              lateBy: record.late_by_minutes,
-              earlyBy: record.early_out_minutes,
-              workDuration: record.work_duration,
-              totalPunches: record.total_punches,
-              punchDetails: record.punch_details
-            };
-          });
-          
-          // Recalculate totals
-          let present = 0, absent = 0, pl = 0, cl = 0, sl = 0, lwp = 0, hd = 0, ot = 0, wo = 0, holiday = 0;
-          Object.entries(updated[employeeId].days).forEach(([dateKey, status]) => {
-            const dayDetail = updated[employeeId].dayDetails?.[dateKey] || {};
-            if (status === 'P') present++;
-            if (status === 'A') absent++;
-            if (status === 'PL') pl++;
-            if (status === 'CL') cl++;
-            if (status === 'SL') sl++;
-            if (status === 'LWP') lwp++;
-            if (status === 'HD') hd++;
-            if (status === 'OT') { present++; ot += (dayDetail.overtimeHours || 0); }
-            if (status === 'WO') wo++;
-            if (status === 'H') holiday++;
-          });
-          updated[employeeId].present = present;
-          updated[employeeId].absent = absent;
-          updated[employeeId].privilegedLeave = pl;
-          updated[employeeId].casualLeave = cl;
-          updated[employeeId].sickLeave = sl;
-          updated[employeeId].lwp = lwp;
-          updated[employeeId].halfDay = hd;
-          updated[employeeId].overtime = parseFloat(ot.toFixed(2));
-          updated[employeeId].weeklyOff = wo;
-          updated[employeeId].holiday = holiday;
-        });
-        
-        return updated;
-      });
-      
-    } catch (err) {
-      console.error('Error loading computed attendance:', err);
-    }
-  }, [employees, currentYear, currentMonth]);
-
-  // Load computed attendance after employees are loaded
-  useEffect(() => {
-    if (employees.length > 0 && Object.keys(attendanceData).length > 0) {
-      loadComputedAttendance();
-    }
-  }, [employees.length, currentMonth, currentYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -584,16 +427,14 @@ export default function EmployeeAttendancePage() {
     const q = searchQuery.toLowerCase();
     return Object.values(attendanceData).filter(emp => 
       `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(q) ||
-      (emp.employee_id || '').toLowerCase().includes(q) ||
-      (emp.biometric_code || '').toLowerCase().includes(q)
+      (emp.employee_id || '').toLowerCase().includes(q)
     );
   }, [attendanceData, searchQuery]);
 
   // Calculate summary stats
   const summaryStats = useMemo(() => {
-    const stats = { totalEmployees: employees.length, withBiometric: 0, totalPresent: 0, totalAbsent: 0 };
+    const stats = { totalEmployees: employees.length, totalPresent: 0, totalAbsent: 0 };
     Object.values(attendanceData).forEach(emp => {
-      if (emp.biometric_code) stats.withBiometric++;
       stats.totalPresent += emp.present || 0;
       stats.totalAbsent += emp.absent || 0;
     });
@@ -618,10 +459,10 @@ export default function EmployeeAttendancePage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       
-      <div className="pt-16">
+      <div>
         {/* Hero Header */}
         <div className="bg-white border-b border-gray-200">
-          <div className="max-w-[1800px] mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-6">
+          <div className="max-w-[1800px] mx-auto px-6 lg:px-8 py-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Link 
@@ -646,10 +487,6 @@ export default function EmployeeAttendancePage() {
                 <div className="text-center px-5 py-2 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="text-xl font-semibold text-gray-900">{summaryStats.totalEmployees}</div>
                   <div className="text-xs text-gray-500">Employees</div>
-                </div>
-                <div className="text-center px-5 py-2 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="text-xl font-semibold text-gray-900">{summaryStats.withBiometric}</div>
-                  <div className="text-xs text-gray-500">Biometric</div>
                 </div>
                 <div className="text-center px-5 py-2 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="text-xl font-semibold text-gray-900">{daysInMonth.length}</div>
@@ -708,14 +545,6 @@ export default function EmployeeAttendancePage() {
               {/* Actions */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={syncFromSmartOffice}
-                  disabled={syncing}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-all disabled:opacity-50"
-                >
-                  <FingerPrintIcon className={`h-4 w-4 ${syncing ? 'animate-pulse' : ''}`} />
-                  {syncing ? 'Syncing...' : 'Sync Biometric'}
-                </button>
-                <button
                   onClick={saveAttendance}
                   disabled={saving}
                   className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-all disabled:opacity-50"
@@ -765,10 +594,6 @@ export default function EmployeeAttendancePage() {
                 <span className="text-xs text-gray-500">{item.label}</span>
               </div>
             ))}
-            <div className="flex items-center gap-1 px-2 py-1 flex-shrink-0 ml-2">
-              <FingerPrintIcon className="w-4 h-4 text-gray-400" />
-              <span className="text-xs text-gray-500">Biometric</span>
-            </div>
           </div>
         </div>
 
@@ -842,12 +667,6 @@ export default function EmployeeAttendancePage() {
                               <div className="text-sm text-gray-900">
                                 {`${empData.first_name || ''} ${empData.last_name || ''}`.trim() || 'N/A'}
                               </div>
-                              {empData.biometric_code && (
-                                <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                  <FingerPrintIcon className="w-2.5 h-2.5" />
-                                  <span>{empData.biometric_code}</span>
-                                </div>
-                              )}
                             </div>
                           </div>
                         </td>
@@ -855,8 +674,6 @@ export default function EmployeeAttendancePage() {
                           const status = empData.days[day.fullDate] || '-';
                           const style = getStatusStyle(status);
                           const employeeName = `${empData.first_name || ''} ${empData.last_name || ''}`.trim().toUpperCase() || 'EMPLOYEE';
-                          const dayDetail = empData.dayDetails?.[day.fullDate] || {};
-                          const hasBiometric = dayDetail.inTime || dayDetail.outTime;
                           
                           return (
                             <td
@@ -870,41 +687,11 @@ export default function EmployeeAttendancePage() {
                               <div className="relative group/cell">
                                 <button
                                   onClick={() => openAttendanceModal(empData.id, day.fullDate, status, employeeName)}
-                                  className={`w-7 h-7 rounded text-[10px] font-semibold border ${style.bg} ${style.text} ${style.border} hover:opacity-80 transition-all ${
-                                    hasBiometric ? 'ring-1 ring-offset-1 ring-gray-300' : ''
-                                  } ${day.isToday ? 'ring-1 ring-gray-400' : ''}`}
+                                  className={`w-7 h-7 rounded text-[10px] font-semibold border ${style.bg} ${style.text} ${style.border} hover:opacity-80 transition-all ${day.isToday ? 'ring-1 ring-gray-400' : ''}`}
                                 >
                                   {style.label}
                                 </button>
-                                {/* Tooltip */}
-                                {hasBiometric && (
-                                  <div className="hidden group-hover/cell:block absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 p-2 bg-white border border-gray-200 text-xs rounded-lg shadow-lg min-w-[120px]">
-                                    <div className="font-medium text-gray-700 mb-1.5 pb-1.5 border-b border-gray-100">{style.fullLabel}</div>
-                                    <div className="space-y-0.5 text-[10px]">
-                                      <div className="flex justify-between">
-                                        <span className="text-gray-400">In:</span>
-                                        <span className="text-gray-700 font-medium">{dayDetail.inTime || '-'}</span>
-                                      </div>
-                                      <div className="flex justify-between">
-                                        <span className="text-gray-400">Out:</span>
-                                        <span className="text-gray-700 font-medium">{dayDetail.outTime || '-'}</span>
-                                      </div>
-                                      {dayDetail.lateBy > 0 && (
-                                        <div className="flex justify-between">
-                                          <span className="text-gray-400">Late:</span>
-                                          <span className="text-amber-600 font-medium">{formatMinutesToHours(dayDetail.lateBy)}</span>
-                                        </div>
-                                      )}
-                                      {dayDetail.overtimeHours > 0 && (
-                                        <div className="flex justify-between">
-                                          <span className="text-gray-400">OT:</span>
-                                          <span className="text-gray-700 font-medium">{dayDetail.overtimeHours}h</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-white"></div>
-                                  </div>
-                                )}
+
                               </div>
                             </td>
                           );

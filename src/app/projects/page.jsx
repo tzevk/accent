@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchJSON } from '@/utils/http';
+import { useSession } from '@/context/SessionContext';
 import { 
   PlusIcon, 
   FolderIcon,
@@ -52,9 +53,14 @@ export default function Projects() {
   );
 }
 
+// Special permission: only Rajesh Panchal (and super admins) can edit, delete, and view all projects
+const PROJECTS_ADMIN_NAME = 'Rajesh Panchal';
+
 function ProjectsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: sessionUser } = useSession();
+  const isProjectAdmin = sessionUser?.full_name?.toLowerCase() === PROJECTS_ADMIN_NAME.toLowerCase() || sessionUser?.is_super_admin;
   const viewParam = searchParams.get('view');
   const focusParam = searchParams.get('focus');
 
@@ -671,27 +677,33 @@ function ProjectsInner() {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
-                                      className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                                      title="View Details"
-                                    >
-                                      <EyeIcon className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
-                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                      title="Edit Project"
-                                    >
-                                      <PencilIcon className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(project.project_id ?? project.id ?? project.project_code)}
-                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      title="Delete Project"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                    </button>
+                                    {isProjectAdmin && (
+                                      <button
+                                        onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
+                                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                        title="View Details"
+                                      >
+                                        <EyeIcon className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                    {isProjectAdmin && (
+                                      <button
+                                        onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
+                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                        title="Edit Project"
+                                      >
+                                        <PencilIcon className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                    {isProjectAdmin && (
+                                      <button
+                                        onClick={() => handleDelete(project.project_id ?? project.id ?? project.project_code)}
+                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Delete Project"
+                                      >
+                                        <TrashIcon className="h-4 w-4" />
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
