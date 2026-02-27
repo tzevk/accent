@@ -238,8 +238,8 @@ export function getUserResources(user) {
 export function getDefaultPermissionsForLevel(hierarchyLevel) {
   const permissions = [];
   
-  // Employee Management requires management level (40+) — not available to base-level employee accounts
-  const managementOnlyResources = [RESOURCES.EMPLOYEES];
+  // Employee & Vendor Management require management level (40+) — not available to base-level employee accounts
+  const managementOnlyResources = [RESOURCES.EMPLOYEES, RESOURCES.VENDORS];
   
   // Basic read access for all levels (excluding management-only resources)
   Object.values(RESOURCES).forEach(resource => {
