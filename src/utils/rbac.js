@@ -238,9 +238,14 @@ export function getUserResources(user) {
 export function getDefaultPermissionsForLevel(hierarchyLevel) {
   const permissions = [];
   
-  // Basic read access for all levels
+  // Employee Management requires management level (40+) — not available to base-level employee accounts
+  const managementOnlyResources = [RESOURCES.EMPLOYEES];
+  
+  // Basic read access for all levels (excluding management-only resources)
   Object.values(RESOURCES).forEach(resource => {
-    permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
+    if (!managementOnlyResources.includes(resource)) {
+      permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
+    }
   });
   
   // Create/Update permissions for mid-level and above
@@ -252,6 +257,10 @@ export function getDefaultPermissionsForLevel(hierarchyLevel) {
     // Allow mid-level roles to help with user onboarding (create/update)
     permissions.push(generatePermissionKey(RESOURCES.USERS, PERMISSIONS.CREATE));
     permissions.push(generatePermissionKey(RESOURCES.USERS, PERMISSIONS.UPDATE));
+    // Mid-level and above can read Employee Management
+    managementOnlyResources.forEach(resource => {
+      permissions.push(generatePermissionKey(resource, PERMISSIONS.READ));
+    });
   }
   
   // Management permissions for senior level

@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon, ArrowTopRightOnSquareIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon, ArrowTopRightOnSquareIcon, PencilIcon, ArrowUpTrayIcon, PaperClipIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
@@ -2657,6 +2657,56 @@ function EditProjectForm() {
     setInternalMeetings(prev => prev.filter(m => m.id !== id));
   };
 
+  // MOM Document Upload handler for meetings
+  const handleMomUpload = async (event, meetingId, meetingType) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/projects/mom-upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        const momDoc = {
+          file_name: result.data.file_name,
+          original_name: result.data.original_name,
+          file_url: result.data.file_url,
+          file_type: result.data.file_type,
+          file_size: result.data.file_size,
+          uploaded_at: new Date().toISOString()
+        };
+
+        if (meetingType === 'kickoff') {
+          setKickoffMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, mom_document: momDoc } : m));
+        } else {
+          setInternalMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, mom_document: momDoc } : m));
+        }
+      } else {
+        alert(result.error || 'Upload failed');
+      }
+    } catch (err) {
+      console.error('MOM upload failed:', err);
+      alert('MOM upload failed');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const removeMomDocument = (meetingId, meetingType) => {
+    if (meetingType === 'kickoff') {
+      setKickoffMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, mom_document: null } : m));
+    } else {
+      setInternalMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, mom_document: null } : m));
+    }
+  };
+
   // Team Member Management (for activities/manhours tracking)
   const addActivityTeamMember = () => {
     setTeamMembers([...teamMembers, {
@@ -3938,12 +3988,13 @@ function EditProjectForm() {
                             <th className="text-left py-2 px-2 font-semibold text-gray-700">Location</th>
                             <th className="text-left py-2 px-2 font-semibold text-gray-700">Points</th>
                             <th className="text-left py-2 px-2 font-semibold text-gray-700">Participants</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700">MOM</th>
                             <th className="text-center py-2 px-2 font-semibold text-gray-700">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {kickoffMeetings.length === 0 ? (
-                            <tr><td colSpan={9} className="text-center py-4 text-gray-500 text-sm">No kickoff meetings added</td></tr>
+                            <tr><td colSpan={10} className="text-center py-4 text-gray-500 text-sm">No kickoff meetings added</td></tr>
                           ) : (
                             kickoffMeetings.map((m, index) => (
                               <tr key={m.id} className="hover:bg-gray-50 transition-colors align-top">
@@ -4016,6 +4067,41 @@ function EditProjectForm() {
                                   />
                                 </td>
                                 <td className="py-2 px-2 text-center">
+                                  {m.mom_document ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <a
+                                        href={m.mom_document.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#7F2487] hover:text-[#6a1e73] flex items-center gap-1 text-xs font-medium"
+                                        title={m.mom_document.original_name}
+                                      >
+                                        <PaperClipIcon className="h-3.5 w-3.5" />
+                                        <span className="max-w-[80px] truncate">{m.mom_document.original_name}</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeMomDocument(m.id, 'kickoff')}
+                                        className="text-red-400 hover:text-red-600 text-[10px]"
+                                        title="Remove MOM"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#7F2487] border border-purple-200 rounded hover:bg-purple-50 transition-colors">
+                                      <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+                                      Upload
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.txt"
+                                        onChange={(e) => handleMomUpload(e, m.id, 'kickoff')}
+                                      />
+                                    </label>
+                                  )}
+                                </td>
+                                <td className="py-2 px-2 text-center">
                                   <button 
                                     type="button" 
                                     onClick={() => removeKickoffMeeting(m.id)} 
@@ -4071,12 +4157,13 @@ function EditProjectForm() {
                             <th className="text-left py-2 px-2 font-semibold text-gray-700">Location</th>
                             <th className="text-left py-2 px-2 font-semibold text-gray-700">Points</th>
                             <th className="text-left py-2 px-2 font-semibold text-gray-700">Participants</th>
+                            <th className="text-center py-2 px-2 font-semibold text-gray-700">MOM</th>
                             <th className="text-center py-2 px-2 font-semibold text-gray-700">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {internalMeetings.length === 0 ? (
-                            <tr><td colSpan={9} className="text-center py-4 text-gray-500 text-sm">No internal meetings added</td></tr>
+                            <tr><td colSpan={10} className="text-center py-4 text-gray-500 text-sm">No internal meetings added</td></tr>
                           ) : (
                             internalMeetings.map((m) => (
                               <tr key={m.id} className="hover:bg-gray-50 transition-colors align-top">
@@ -4147,6 +4234,41 @@ function EditProjectForm() {
                                     placeholder="Enter participants (press Enter for new bullet)&#10;John Doe&#10;Jane Smith&#10;Bob Johnson"
                                     className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] resize-y min-h-[60px] font-mono" 
                                   />
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  {m.mom_document ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <a
+                                        href={m.mom_document.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#7F2487] hover:text-[#6a1e73] flex items-center gap-1 text-xs font-medium"
+                                        title={m.mom_document.original_name}
+                                      >
+                                        <PaperClipIcon className="h-3.5 w-3.5" />
+                                        <span className="max-w-[80px] truncate">{m.mom_document.original_name}</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeMomDocument(m.id, 'internal')}
+                                        className="text-red-400 hover:text-red-600 text-[10px]"
+                                        title="Remove MOM"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#7F2487] border border-purple-200 rounded hover:bg-purple-50 transition-colors">
+                                      <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+                                      Upload
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.txt"
+                                        onChange={(e) => handleMomUpload(e, m.id, 'internal')}
+                                      />
+                                    </label>
+                                  )}
                                 </td>
                                 <td className="py-2 px-2 text-center">
                                   <button 
