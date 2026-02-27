@@ -107,8 +107,10 @@ export async function GET(request) {
         console.warn('Stats query failed:', statsErr?.message);
       }
 
-      // Filter by team membership if not super admin
-      if (!user.is_super_admin) {
+      // Filter by team membership if not super admin or Rajesh Panchal
+      const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+      const canSeeAllProjects = user.is_super_admin || isProjectAdmin;
+      if (!canSeeAllProjects) {
         projects = projects.filter(project => 
           isUserInProjectTeam(project.project_team, user.id, user.email)
         );

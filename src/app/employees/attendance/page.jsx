@@ -13,7 +13,8 @@ import {
   XMarkIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 
@@ -37,6 +38,13 @@ export default function EmployeeAttendancePage() {
     reason: ''
   });
   
+  // Bulk time modal state
+  const [showBulkTimeModal, setShowBulkTimeModal] = useState(false);
+  const [bulkTimeData, setBulkTimeData] = useState({
+    inTime: '09:00',
+    outTime: '17:30'
+  });
+
   // Current month/year for calendar
   const [currentDate, setCurrentDate] = useState(new Date());
   const [attendanceData, setAttendanceData] = useState({});
@@ -282,6 +290,53 @@ export default function EmployeeAttendancePage() {
   const goToPreviousMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
   const goToNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
   const goToCurrentMonth = () => setCurrentDate(new Date());
+
+  // Apply bulk in/out time to all employees
+  const applyBulkTime = () => {
+    const { inTime, outTime } = bulkTimeData;
+    setAttendanceData(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(empId => {
+        const empData = { ...updated[empId] };
+        empData.stdInTime = inTime;
+        empData.stdOutTime = outTime;
+        empData.dayDetails = { ...empData.dayDetails };
+
+        Object.entries(empData.days).forEach(([dateKey, status]) => {
+          if (status === 'P' || status === 'HD' || status === 'OT') {
+            const STANDARD_OUT_TIME = 17.5;
+            let newOvertimeHours = 0;
+            if (outTime) {
+              const [hours, minutes] = outTime.split(':').map(Number);
+              const outTimeDecimal = hours + (minutes / 60);
+              if (outTimeDecimal > STANDARD_OUT_TIME) {
+                newOvertimeHours = parseFloat((outTimeDecimal - STANDARD_OUT_TIME).toFixed(2));
+              }
+            }
+            empData.dayDetails[dateKey] = {
+              ...(empData.dayDetails[dateKey] || {}),
+              inTime,
+              outTime,
+              overtimeHours: newOvertimeHours
+            };
+          }
+        });
+
+        // Recalculate overtime total
+        let totalOvertime = 0;
+        Object.entries(empData.dayDetails).forEach(([, detail]) => {
+          totalOvertime += detail.overtimeHours || 0;
+        });
+        empData.overtime = parseFloat(totalOvertime.toFixed(2));
+
+        updated[empId] = empData;
+      });
+      return updated;
+    });
+    setShowBulkTimeModal(false);
+    setSuccess(`In time (${inTime}) and Out time (${outTime}) applied to all employees`);
+    setTimeout(() => setSuccess(''), 3000);
+  };
 
   // Save attendance
   const saveAttendance = async () => {
@@ -545,6 +600,13 @@ export default function EmployeeAttendancePage() {
               {/* Actions */}
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setShowBulkTimeModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-all"
+                >
+                  <ClockIcon className="h-4 w-4" />
+                  Set All In/Out Time
+                </button>
+                <button
                   onClick={saveAttendance}
                   disabled={saving}
                   className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-all disabled:opacity-50"
@@ -792,6 +854,79 @@ export default function EmployeeAttendancePage() {
           )}
         </div>
       </div>
+
+      {/* Bulk Time Modal */}
+      {showBulkTimeModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/40" onClick={() => setShowBulkTimeModal(false)}></div>
+            
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-sm">
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <ClockIcon className="h-5 w-5 text-gray-600" />
+                      Set In/Out Time for All
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-0.5">Apply to all employees&apos; present days</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowBulkTimeModal(false)}
+                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <XMarkIcon className="h-5 w-5 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Body */}
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">In Time</label>
+                    <input
+                      type="time"
+                      value={bulkTimeData.inTime}
+                      onChange={(e) => setBulkTimeData({ ...bulkTimeData, inTime: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Out Time</label>
+                    <input
+                      type="time"
+                      value={bulkTimeData.outTime}
+                      onChange={(e) => setBulkTimeData({ ...bulkTimeData, outTime: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">
+                  This will update the in/out time for all {employees.length} employees on their present, half-day, and overtime days.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+                <button
+                  onClick={() => setShowBulkTimeModal(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyBulkTime}
+                  className="px-4 py-2 text-sm bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-all"
+                >
+                  Apply to All
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mark Attendance Modal */}
       {showModal && selectedCell && (

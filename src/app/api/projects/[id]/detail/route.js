@@ -59,6 +59,8 @@ export async function GET(request, { params }) {
     }
 
     const isSuperAdmin = user.is_super_admin;
+    const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+    const canSeeAllProjects = isSuperAdmin || isProjectAdmin;
 
     const db = await dbConnect();
     
@@ -79,7 +81,7 @@ export async function GET(request, { params }) {
       }
 
       // Team access check
-      if (!isSuperAdmin) {
+      if (!canSeeAllProjects) {
         const isTeamMember = isUserInProjectTeam(project.project_team, user.id, user.email);
         if (!isTeamMember) {
           return NextResponse.json({ 
