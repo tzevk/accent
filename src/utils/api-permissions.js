@@ -51,7 +51,7 @@ export function getSessionPermissions(request) {
  * Falls back to DB lookup if session is missing
  */
 export async function checkPermissionFast(request, resource, permission) {
-  // Try session first (no DB query)
+  // Try session first (no DB query) — only trust for GRANTING access
   const session = getSessionPermissions(request);
   if (session) {
     if (session.is_super_admin) return { authorized: true, source: 'session' };
@@ -60,7 +60,7 @@ export async function checkPermissionFast(request, resource, permission) {
     if (session.permissions.includes(permissionKey)) {
       return { authorized: true, source: 'session' };
     }
-    return { authorized: false, source: 'session' };
+    // Session doesn't have permission — could be stale, fall through to DB
   }
   
   // Fall back to DB lookup
@@ -211,9 +211,9 @@ export async function ensurePermission(request, resource, permission) {
       return { authorized: true, user };
     }
     
-    // Permission denied based on session - no need for DB query
-    console.log(`[RBAC] DENIED (session): does not have ${resource}:${permission}`);
-    return NextResponse.json({ success: false, error: 'Forbidden: missing permission' }, { status: 403 });
+    // Session cookie doesn't have this permission, but it might be stale.
+    // Fall through to DB lookup instead of immediately denying.
+    console.log(`[RBAC] Session cookie missing ${resource}:${permission} — falling through to DB check`);
   }
   
   // Fall back to DB lookup
