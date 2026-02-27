@@ -24,8 +24,11 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Permission check
-    const canReadEmployees = user.is_super_admin || hasPermission(user, 'employees', 'read');
+    // Permission check — also allow users who can create/update users (they need employee list for linking)
+    const canReadEmployees = user.is_super_admin
+      || hasPermission(user, 'employees', 'read')
+      || hasPermission(user, 'users', 'create')
+      || hasPermission(user, 'users', 'update');
     if (!canReadEmployees) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
