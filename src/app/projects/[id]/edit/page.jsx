@@ -104,7 +104,7 @@ const TABS = [
   { id: 'software', label: 'Software' },
   { id: 'minutes_internal_meet', label: 'Meetings' },
   { id: 'project_schedule', label: 'Project Schedule' },
-  { id: 'project_activity', label: 'Project Activity', adminOnly: true },
+  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true },
   { id: 'my_activities', label: 'My Activities', userOnly: true },
   { id: 'documents_issued', label: 'Documents Issued' },
   { id: 'project_handover', label: 'Project Handover' },
@@ -2931,7 +2931,9 @@ function EditProjectForm() {
                   {TABS.filter(tab => {
                     // Filter tabs based on user role
                     const isAdmin = sessionUser?.is_super_admin || sessionUser?.role_info?.hierarchy <= 2;
+                    const hasActivitiesPermission = can('activities', PERMISSIONS.READ) || can('activities', PERMISSIONS.ASSIGN);
                     if (tab.adminOnly && !isAdmin) return false;
+                    if (tab.adminOrActivities && !isAdmin && !hasActivitiesPermission) return false;
                     if (tab.userOnly && isAdmin) return false;
                     
                     // Filter tabs based on permissions
