@@ -886,11 +886,7 @@ function EditProjectForm() {
                   ? JSON.parse(project.documents_received_list)
                   : project.documents_received_list;
                 console.log('[fetchProject] documents_received_list loaded:', parsed?.length, 'items');
-                const normalized = (Array.isArray(parsed) ? parsed : []).map(d => ({
-                  ...d,
-                  date_received: normalizeDate(d.date_received)
-                }));
-                setDocumentsReceived(normalized);
+                setDocumentsReceived(Array.isArray(parsed) ? parsed : []);
               } catch (err) {
                 console.error('[fetchProject] Error parsing documents_received_list:', err);
                 setDocumentsReceived([]);
