@@ -1046,6 +1046,7 @@ export async function PUT(request, context) {
 
 // DELETE project
 export async function DELETE(request, { params }) {
+  let db;
   try {
     // Get current user first
     const user = await getCurrentUser(request);
@@ -1060,7 +1061,7 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const projectId = parseInt(id);
     
-    const db = await dbConnect();
+    db = await dbConnect();
     
     // If user doesn't have full access, check if they're in the project team
     if (!hasFullAccess) {
@@ -1072,7 +1073,6 @@ export async function DELETE(request, { params }) {
         const isTeamMember = isUserInProjectTeam(projectRows[0].project_team, user.id, user.email);
         if (!isTeamMember) {
           console.log(`[Projects API DELETE] User ${user.email} denied delete access to project ${id} - not a team member`);
-          await db.release();
           return Response.json({
             success: false,
             error: 'You do not have permission to delete this project'
@@ -1080,7 +1080,6 @@ export async function DELETE(request, { params }) {
         }
         console.log(`[Projects API DELETE] User ${user.email} granted delete access to project ${id} as team member`);
       } else {
-        await db.release();
         return Response.json({ success: false, error: 'Project not found' }, { status: 404 });
       }
     }
@@ -1089,8 +1088,6 @@ export async function DELETE(request, { params }) {
       'DELETE FROM projects WHERE id = ?',
       [projectId]
     );
-    
-    await db.release();
     
     if (result.affectedRows === 0) {
       return Response.json({ 
@@ -1109,5 +1106,9 @@ export async function DELETE(request, { params }) {
       success: false, 
       error: 'Failed to delete project' 
     }, { status: 500 });
+  } finally {
+    if (db && typeof db.release === 'function') {
+      try { db.release(); } catch (e) { /* ignore */ }
+    }
   }
 }
