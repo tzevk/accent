@@ -246,6 +246,7 @@ export async function GET(request) {
 
 // POST - Create new employee
 export async function POST(request) {
+  let connection;
   try {
     // RBAC: create employees
     const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.CREATE);
@@ -288,7 +289,7 @@ export async function POST(request) {
       );
     }
 
-  const connection = await dbConnect();
+  connection = await dbConnect();
   if (!_employeesSchemaReady) {
     try { await ensureBaseEmployeesTable(connection); } catch {}
     try { await ensureEmployeesTable(connection); } catch {}
@@ -321,7 +322,6 @@ export async function POST(request) {
     );
 
     if (existing.length > 0) {
-      await connection.end();
       return NextResponse.json(
         { error: 'Employee ID or email already exists' },
         { status: 409 }
@@ -359,7 +359,6 @@ export async function POST(request) {
     if (cols.length !== vals.length) {
       // helpful diagnostic for developers when payload/DB diverge
       console.error('[employees.POST] column/value mismatch', { cols, vals });
-      await connection.end();
       return NextResponse.json({ error: 'Server misconfiguration: column/value mismatch when saving employee' }, { status: 500 });
     }
     // Required fields safety
@@ -378,7 +377,6 @@ export async function POST(request) {
     } catch (e) {
       // Handle duplicate key errors gracefully
       if (e && (e.code === 'ER_DUP_ENTRY' || e.errno === 1062)) {
-        await connection.end();
         return NextResponse.json(
           { error: 'Employee ID or email already exists' },
           { status: 409 }
@@ -386,8 +384,6 @@ export async function POST(request) {
       }
       throw e;
     }
-
-    await connection.end();
 
     return NextResponse.json(
       { 
@@ -403,11 +399,14 @@ export async function POST(request) {
       { error: error?.message || 'Failed to create employee' },
       { status: 500 }
     );
+  } finally {
+    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
   }
 }
 
 // PUT - Update employee
 export async function PUT(request) {
+  let connection;
   try {
     // RBAC: update employees
     const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.UPDATE);
@@ -441,7 +440,7 @@ export async function PUT(request) {
       );
     }
 
-    const connection = await dbConnect();
+    connection = await dbConnect();
     if (!_employeesSchemaReady) {
       try { await ensureBaseEmployeesTable(connection); } catch {}
       try { await ensureEmployeesTable(connection); } catch {}
@@ -454,7 +453,6 @@ export async function PUT(request) {
       `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
       [employeeId]
     );    if (existing.length === 0) {
-      await connection.end();
       return NextResponse.json(
         { success: false, error: 'Employee not found' },
         { status: 404 }
@@ -469,7 +467,6 @@ export async function PUT(request) {
       );
 
       if (duplicates.length > 0) {
-        await connection.end();
         return NextResponse.json(
           { success: false, error: 'Employee ID or email already exists' },
           { status: 409 }
@@ -505,7 +502,6 @@ export async function PUT(request) {
     });
 
     if (updateFields.length === 0) {
-      await connection.end();
       return NextResponse.json(
         { success: false, error: 'No valid fields to update' },
         { status: 400 }
@@ -549,8 +545,6 @@ export async function PUT(request) {
       console.warn('Employee->User sync warning:', syncErr?.message || syncErr);
     }
 
-    await connection.end();
-
     return NextResponse.json({
       success: true,
       message: 'Employee updated successfully'
@@ -562,11 +556,14 @@ export async function PUT(request) {
       { success: false, error: error?.message || 'Failed to update employee' },
       { status: 500 }
     );
+  } finally {
+    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
   }
 }
 
 // DELETE - Delete employee
 export async function DELETE(request) {
+  let connection;
   try {
     // RBAC: delete employees
     const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.DELETE);
@@ -581,7 +578,7 @@ export async function DELETE(request) {
       );
     }
 
-    const connection = await dbConnect();
+    connection = await dbConnect();
     if (!_employeesSchemaReady) {
       try { await ensureBaseEmployeesTable(connection); } catch {}
       _employeesSchemaReady = true;
@@ -593,7 +590,6 @@ export async function DELETE(request) {
       `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
       [id]
     );    if (existing.length === 0) {
-      await connection.end();
       return NextResponse.json(
         { error: 'Employee not found' },
         { status: 404 }
@@ -607,7 +603,6 @@ export async function DELETE(request) {
     );
 
     if (managedEmployees[0].count > 0) {
-      await connection.end();
       return NextResponse.json(
         { error: 'Cannot delete employee who is managing other employees. Please reassign their reports first.' },
         { status: 400 }
@@ -627,8 +622,6 @@ export async function DELETE(request) {
       );
     } catch {}
 
-    await connection.end();
-
     return NextResponse.json({
       message: 'Employee deleted successfully'
     });
@@ -639,5 +632,7 @@ export async function DELETE(request) {
       { error: 'Failed to delete employee' },
       { status: 500 }
     );
+  } finally {
+    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
   }
 }

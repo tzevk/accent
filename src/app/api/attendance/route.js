@@ -15,6 +15,7 @@ export async function GET(request) {
     const month = searchParams.get('month'); // Format: YYYY-MM
     const year = searchParams.get('year');
     const startDate = searchParams.get('start_date');
+  
     const endDate = searchParams.get('end_date');
 
     connection = await dbConnect();
@@ -319,10 +320,6 @@ export async function POST(request) {
       }
     }
     
-    // Release connection before returning
-    connection.release();
-    connection = null;
-
     return NextResponse.json({
       success: true,
       message: `Attendance saved: ${totalProcessed} records processed`,
@@ -332,9 +329,8 @@ export async function POST(request) {
 
   } catch (error) {
     console.error('Error saving attendance:', error);
-    if (connection) {
-      try { connection.release(); } catch {}
-    }
     return NextResponse.json({ error: error.message || 'Failed to save attendance' }, { status: 500 });
+  } finally {
+    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
   }
 }

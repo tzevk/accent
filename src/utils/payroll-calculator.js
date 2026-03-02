@@ -34,12 +34,12 @@ export async function getCurrentDA(forDate = new Date()) {
       [forDate]
     );
     
-    await db.end();
     return rows.length > 0 ? parseFloat(rows[0].da_amount) : PAYROLL_CONFIG.DA_FIXED_AMOUNT;
   } catch (error) {
-    await db.end();
     console.error('Error getting current DA:', error);
     return PAYROLL_CONFIG.DA_FIXED_AMOUNT; // Fallback to config default
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 
@@ -67,8 +67,6 @@ export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime =
          AND status IN ('P', 'HD', 'OT')`,
       [employeeId, month.substring(0, 7)]
     );
-    
-    db.release();
     
     let totalHours = 0;
     
@@ -101,10 +99,11 @@ export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime =
     
     return totalHours;
   } catch (error) {
-    db.release();
     console.error('Error getting employee monthly hours:', error);
     // Return default hours (160 for a month)
     return 160;
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 
@@ -132,8 +131,6 @@ export async function getEmployeeAttendance(employeeId, month) {
          AND DATE_FORMAT(attendance_date, '%Y-%m') = ?`,
       [employeeId, month.substring(0, 7)] // Extract YYYY-MM from month
     );
-    
-    db.release();
     
     // Calculate attendance summary
     let daysPresent = 0;
@@ -200,7 +197,6 @@ export async function getEmployeeAttendance(employeeId, month) {
       lopDays: lossOfPayDays
     };
   } catch (error) {
-    db.release();
     console.error('Error getting employee attendance:', error);
     // Return default (full month) if error
     return {
@@ -216,6 +212,8 @@ export async function getEmployeeAttendance(employeeId, month) {
       payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
       lopDays: 0
     };
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 
@@ -252,7 +250,6 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
     );
     
     if (rows.length > 0) {
-      db.release();
       return rows[0];
     }
     
@@ -267,12 +264,12 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
       [employeeId]
     );
     
-    db.release();
     return legacyRows.length > 0 ? legacyRows[0] : null;
   } catch (error) {
-    db.release();
     console.error('Error getting employee salary profile:', error);
     return null;
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 
@@ -640,21 +637,19 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
     
     const [result] = await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
     
-    db.release();
-    
     return {
       ...payroll,
       id: result.insertId,
       created_at: new Date()
     };
   } catch (error) {
-    db.release();
-    
     if (error.code === 'ER_DUP_ENTRY') {
       throw new Error(`Payroll slip already exists for employee ${employeeId} for month ${month}`);
     }
     
     throw error;
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 
@@ -938,7 +933,6 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
 
     const employees = [...ssEmployees, ...espEmployees];
     if (employees.length === 0) {
-      db.release();
       return { month, total: 0, success: 0, failed: 0, skipped: 0, errors: [] };
     }
 
@@ -964,7 +958,6 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
     };
 
     if (newIds.length === 0) {
-      db.release();
       return results;
     }
 
@@ -1065,8 +1058,9 @@ export async function generateMonthlyPayroll(month, salaryType = null, includeBo
     db.release();
     return results;
   } catch (error) {
-    db.release();
     throw error;
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 
@@ -1094,7 +1088,7 @@ export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus
     const newIds = employeeIds.filter(id => !existingSet.has(id));
 
     const results = { success: 0, failed: 0, skipped: existingSet.size, errors: [] };
-    if (newIds.length === 0) { db.release(); return results; }
+    if (newIds.length === 0) { return results; }
 
     // Batch-fetch
     const [daRows] = await db.execute(
@@ -1138,8 +1132,9 @@ export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus
     db.release();
     return results;
   } catch (error) {
-    db.release();
     throw error;
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
   }
 }
 

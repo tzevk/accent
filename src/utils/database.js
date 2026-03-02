@@ -167,3 +167,26 @@ export function getPoolStats() {
     queueLength: pool.pool?._connectionQueue?.length || 0
   };
 }
+
+/**
+ * Execute a callback with a DB connection that is ALWAYS released afterwards.
+ * Eliminates connection leaks by design — use this instead of raw dbConnect()
+ * for any code that doesn't need to hold a connection across multiple steps.
+ *
+ * Usage:
+ *   const rows = await withDb(async (db) => {
+ *     const [rows] = await db.execute('SELECT ...');
+ *     return rows;
+ *   });
+ *
+ * @param {(db: import('mysql2/promise').PoolConnection) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+export async function withDb(fn) {
+  const db = await dbConnect();
+  try {
+    return await fn(db);
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
+  }
+}
