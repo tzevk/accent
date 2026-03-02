@@ -13,7 +13,9 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   PencilSquareIcon,
-  TrashIcon
+  TrashIcon,
+  PlusIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 export default function PurchaseOrderPage() {
@@ -23,6 +25,21 @@ export default function PurchaseOrderPage() {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
+  
+  // Incoming PO form state
+  const [showAddPOForm, setShowAddPOForm] = useState(false);
+  const [addingPO, setAddingPO] = useState(false);
+  const [incomingPOData, setIncomingPOData] = useState({
+    sr_no: '',
+    company_name: '',
+    city: '',
+    po_number: '',
+    po_date: '',
+    po_amount: '',
+    project_number: '',
+    remarks: ''
+  });
+  const [incomingPOs, setIncomingPOs] = useState([]);
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -72,11 +89,99 @@ export default function PurchaseOrderPage() {
     }
   }, [statusFilter, pagination.limit]);
 
+  // Fetch incoming POs from localStorage
+  const fetchIncomingPOs = useCallback(() => {
+    try {
+      const stored = localStorage.getItem('incomingPOs');
+      if (stored) {
+        setIncomingPOs(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error fetching incoming POs:', error);
+    }
+  }, []);
+
   useEffect(() => {
     if (!authLoading && user) {
       fetchPurchaseOrders(1);
+      fetchIncomingPOs();
     }
-  }, [authLoading, user, statusFilter, fetchPurchaseOrders]);
+  }, [authLoading, user, statusFilter, fetchPurchaseOrders, fetchIncomingPOs]);
+
+  // Handle incoming PO input change
+  const handleIncomingPOChange = (e) => {
+    const { name, value } = e.target;
+    setIncomingPOData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Add incoming PO
+  const handleAddIncomingPO = async () => {
+    if (!incomingPOData.company_name || !incomingPOData.po_number || !incomingPOData.po_date || !incomingPOData.po_amount) {
+      alert('Please fill in all required fields (Company Name, PO Number, PO Date, PO Amount)');
+      return;
+    }
+
+    setAddingPO(true);
+    try {
+      const newPO = {
+        id: Date.now(),
+        sr_no: incomingPOs.length + 1,
+        ...incomingPOData,
+        po_amount: parseFloat(incomingPOData.po_amount),
+        created_at: new Date().toISOString()
+      };
+
+      const updated = [...incomingPOs, newPO];
+      localStorage.setItem('incomingPOs', JSON.stringify(updated));
+      setIncomingPOs(updated);
+      
+      // Reset form
+      setIncomingPOData({
+        sr_no: '',
+        company_name: '',
+        city: '',
+        po_number: '',
+        po_date: '',
+        po_amount: '',
+        project_number: '',
+        remarks: ''
+      });
+      
+      alert('Incoming Purchase Order added successfully!');
+    } catch (error) {
+      console.error('Error adding incoming PO:', error);
+      alert('Failed to add incoming purchase order');
+    } finally {
+      setAddingPO(false);
+    }
+  };
+
+  // Delete incoming PO
+  const handleDeleteIncomingPO = (poId) => {
+    if (!confirm('Are you sure you want to delete this incoming purchase order?')) return;
+    
+    try {
+      const updated = incomingPOs.filter(po => po.id !== poId);
+      localStorage.setItem('incomingPOs', JSON.stringify(updated));
+      setIncomingPOs(updated);
+    } catch (error) {
+      console.error('Error deleting incoming PO:', error);
+      alert('Failed to delete incoming purchase order');
+    }
+  };
+
+  // Download incoming PO as PDF
+  const handleDownloadIncomingPO = (po) => {
+    try {
+      window.open(`/api/admin/purchase-orders/download?id=${po.id}&incoming=true`, '_blank');
+    } catch (error) {
+      console.error('Error downloading PO:', error);
+      alert('Failed to download purchase order');
+    }
+  };
 
   // Filter purchase orders by search term
   const filteredPurchaseOrders = purchaseOrders.filter(po => {
@@ -198,7 +303,184 @@ export default function PurchaseOrderPage() {
             </h1>
             <p className="text-sm text-gray-500 mt-1">View and download purchase orders</p>
           </div>
+          <button
+            onClick={() => setShowAddPOForm(!showAddPOForm)}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+          >
+            <PlusIcon className="h-5 w-5" />
+            Add Purchase Order
+          </button>
         </div>
+
+        {/* Incoming PO Form */}
+        {showAddPOForm && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Add Incoming Purchase Order</h2>
+              <button
+                onClick={() => setShowAddPOForm(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Company Name *</label>
+                <input
+                  type="text"
+                  name="company_name"
+                  value={incomingPOData.company_name}
+                  onChange={handleIncomingPOChange}
+                  placeholder="Company Name"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+                <input
+                  type="text"
+                  name="city"
+                  value={incomingPOData.city}
+                  onChange={handleIncomingPOChange}
+                  placeholder="City"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">PO Number *</label>
+                <input
+                  type="text"
+                  name="po_number"
+                  value={incomingPOData.po_number}
+                  onChange={handleIncomingPOChange}
+                  placeholder="PO-00001"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">PO Date *</label>
+                <input
+                  type="date"
+                  name="po_date"
+                  value={incomingPOData.po_date}
+                  onChange={handleIncomingPOChange}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">PO Amount (₹) *</label>
+                <input
+                  type="number"
+                  name="po_amount"
+                  value={incomingPOData.po_amount}
+                  onChange={handleIncomingPOChange}
+                  placeholder="0.00"
+                  step="0.01"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Project No</label>
+                <input
+                  type="text"
+                  name="project_number"
+                  value={incomingPOData.project_number}
+                  onChange={handleIncomingPOChange}
+                  placeholder="PRJ-00001"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Remarks</label>
+                <input
+                  type="text"
+                  name="remarks"
+                  value={incomingPOData.remarks}
+                  onChange={handleIncomingPOChange}
+                  placeholder="Additional remarks..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddIncomingPO}
+                disabled={addingPO}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+              >
+                {addingPO ? 'Adding...' : 'ADD'}
+              </button>
+              <button
+                onClick={() => setShowAddPOForm(false)}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Incoming POs Table */}
+        {incomingPOs.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 overflow-x-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Incoming Purchase Orders</h3>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Sr. No.</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Company Name</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">City</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">PO No.</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">PO Date</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-600">PO Amount</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Project No</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Remarks</th>
+                  <th className="px-4 py-3 text-center font-semibold text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {incomingPOs.map((po, idx) => (
+                  <tr key={po.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-gray-700">{po.sr_no || idx + 1}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{po.company_name}</td>
+                    <td className="px-4 py-3 text-gray-700">{po.city || '-'}</td>
+                    <td className="px-4 py-3 font-medium text-purple-600">{po.po_number}</td>
+                    <td className="px-4 py-3 text-gray-700">{new Date(po.po_date).toLocaleDateString('en-IN')}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                      ₹{parseFloat(po.po_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{po.project_number || '-'}</td>
+                    <td className="px-4 py-3 text-gray-700 text-xs">{po.remarks || '-'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleDownloadIncomingPO(po)}
+                          className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          title="Download PDF"
+                        >
+                          <ArrowDownTrayIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteIncomingPO(po.id)}
+                          className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">

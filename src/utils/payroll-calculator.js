@@ -281,9 +281,12 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
  * Links salary structure with attendance for monthly calculations
  * @param {number} employeeId - Employee ID
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
+ * @param {object} options - Optional settings
+ * @param {boolean} options.include_bonus - Whether to include bonus (default: false)
  * @returns {Promise<object>} Complete payroll breakdown
  */
-export async function calculateEmployeePayroll(employeeId, month) {
+export async function calculateEmployeePayroll(employeeId, month, options = {}) {
+  const includeBonus = options.include_bonus === true;
   // Get employee's salary profile
   const profile = await getEmployeeSalaryProfile(employeeId, month);
   
@@ -310,6 +313,7 @@ export async function calculateEmployeePayroll(employeeId, month) {
   const mlwfApplicable = profile.mlwf_applicable === 1;
   const retentionApplicable = profile.retention_applicable === 1;
   const bonusApplicable = profile.bonus_applicable === 1;
+  const monthlyBonus = profile.monthly_bonus === 1;
   const incentiveApplicable = profile.incentive_applicable === 1;
   const insuranceApplicable = profile.insurance_applicable === 1;
   
@@ -338,7 +342,7 @@ export async function calculateEmployeePayroll(employeeId, month) {
     hra = Math.round((parseFloat(profile.hra) || 0) * attendanceFactor);
     conveyance = Math.round((parseFloat(profile.conveyance) || 0) * attendanceFactor);
     callAllowance = Math.round((parseFloat(profile.call_allowance) || 0) * attendanceFactor);
-    bonus = bonusApplicable ? Math.round((parseFloat(profile.bonus) || 0) * attendanceFactor) : 0;
+    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round((parseFloat(profile.bonus) || 0) * attendanceFactor) : 0;
     incentive = incentiveApplicable ? Math.round((parseFloat(profile.incentive) || 0) * attendanceFactor) : 0;
   } else {
     // Calculate from gross using PAYROLL_CONFIG percentages
@@ -360,7 +364,7 @@ export async function calculateEmployeePayroll(employeeId, month) {
     incentive = 0;
   }
   
-  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + incentive;
+  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive;
   
   // ═══════════════════════════════════════════════════════════════════
   // EMPLOYEE DEDUCTIONS (calculated on actual payable gross)
@@ -377,8 +381,10 @@ export async function calculateEmployeePayroll(employeeId, month) {
   // Professional Tax (Maharashtra slab) - fixed amount, not pro-rata
   const pt = ptApplicable ? calculateProfessionalTax(fullGross) : 0;
   
-  // MLWF - use saved value or 0
-  const mlwf = mlwfApplicable ? (parseFloat(profile.mlwf) || 0) : 0;
+  // MLWF - only applicable in June and December
+  const mlwfMonth = new Date(month).getMonth() + 1; // 1-based month
+  const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
+  const mlwf = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf) || 0) : 0;
   
   // Retention
   const retention = retentionApplicable ? (parseFloat(profile.retention) || 0) : 0;
@@ -406,8 +412,8 @@ export async function calculateEmployeePayroll(employeeId, month) {
   // Employer ESIC: 3.25% of Gross
   const esicEmployer = esicBreakdown.employerContribution;
   
-  // Employer MLWF
-  const mlwfEmployer = mlwfApplicable ? (parseFloat(profile.mlwf_employer) || 0) : 0;
+  // Employer MLWF - only applicable in June and December
+  const mlwfEmployer = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf_employer) || 0) : 0;
   
   // Insurance (PA/Mediclaim)
   const insurance = insuranceApplicable ? (parseFloat(profile.insurance) || 0) : 0;
@@ -498,6 +504,11 @@ export async function calculateEmployeePayroll(employeeId, month) {
     // LOP Deduction
     lop_deduction: lopDeduction,
     
+    // Privilege Leave (PL) data from salary profile
+    pl_total: parseInt(profile.pl_total) || 21,
+    pl_used: parseInt(profile.pl_used) || 0,
+    pl_balance: parseInt(profile.pl_balance) || (21 - (parseInt(profile.pl_used) || 0)),
+    
     // Metadata
     payment_status: 'pending',
     remarks: null
@@ -526,6 +537,9 @@ const PAYROLL_COLUMNS_TO_ADD = [
   { name: 'lop_deduction', definition: 'DECIMAL(12, 2)' },
   { name: 'overtime_hours', definition: 'DECIMAL(5,2)' },
   { name: 'full_month_gross', definition: 'DECIMAL(12, 2)' },
+  { name: 'pl_total', definition: 'INT DEFAULT 21' },
+  { name: 'pl_used', definition: 'INT DEFAULT 0' },
+  { name: 'pl_balance', definition: 'INT DEFAULT 21' },
 ];
 
 async function ensurePayrollColumns(db) {
@@ -550,8 +564,9 @@ const INSERT_SLIP_SQL = `INSERT INTO payroll_slips (
   gratuity, pf_admin, edli, total_employer_contributions, employer_cost,
   standard_working_days, days_present, days_absent, days_leave, payable_days, lop_days,
   lop_deduction, overtime_hours, full_month_gross,
+  pl_total, pl_used, pl_balance,
   payment_status, remarks
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 function payrollToParams(payroll) {
   return [
@@ -596,6 +611,9 @@ function payrollToParams(payroll) {
     n(payroll.lop_deduction) || 0,
     n(payroll.attendance?.overtime_hours) || 0,
     n(payroll.full_month?.gross) || 0,
+    n(payroll.pl_total) || 21,
+    n(payroll.pl_used) || 0,
+    n(payroll.pl_balance) || 21,
     payroll.payment_status || 'pending',
     payroll.remarks || null
   ];
@@ -608,8 +626,8 @@ function payrollToParams(payroll) {
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
  * @returns {Promise<object>} Generated payroll slip
  */
-export async function generatePayrollSlip(employeeId, month) {
-  const payroll = await calculateEmployeePayroll(employeeId, month);
+export async function generatePayrollSlip(employeeId, month, options = {}) {
+  const payroll = await calculateEmployeePayroll(employeeId, month, options);
   
   if (!payroll) {
     throw new Error(`No active salary profile found for employee ${employeeId}. Please set up salary structure first.`);
@@ -777,8 +795,9 @@ async function batchGetAttendance(db, employeeIds, month) {
 /**
  * Compute payroll breakdown in-memory (no DB calls).
  * Same logic as calculateEmployeePayroll but accepts pre-fetched data.
+ * @param {boolean} includeBonus - Whether to include bonus (default: false)
  */
-function computePayroll(employeeId, month, profile, daAmount, attendance) {
+function computePayroll(employeeId, month, profile, daAmount, attendance, includeBonus = false) {
   const attendanceFactor = attendance.payableDays / attendance.standardWorkingDays;
   const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
   const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
@@ -788,6 +807,7 @@ function computePayroll(employeeId, month, profile, daAmount, attendance) {
   const mlwfApplicable = profile.mlwf_applicable === 1;
   const retentionApplicable = profile.retention_applicable === 1;
   const bonusApplicable = profile.bonus_applicable === 1;
+  const monthlyBonus = profile.monthly_bonus === 1;
   const incentiveApplicable = profile.incentive_applicable === 1;
   const insuranceApplicable = profile.insurance_applicable === 1;
 
@@ -803,7 +823,7 @@ function computePayroll(employeeId, month, profile, daAmount, attendance) {
     hra = Math.round((parseFloat(profile.hra) || 0) * attendanceFactor);
     conveyance = Math.round((parseFloat(profile.conveyance) || 0) * attendanceFactor);
     callAllowance = Math.round((parseFloat(profile.call_allowance) || 0) * attendanceFactor);
-    bonus = bonusApplicable ? Math.round((parseFloat(profile.bonus) || 0) * attendanceFactor) : 0;
+    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round((parseFloat(profile.bonus) || 0) * attendanceFactor) : 0;
     incentive = incentiveApplicable ? Math.round((parseFloat(profile.incentive) || 0) * attendanceFactor) : 0;
   } else {
     const basicDaTotal = Math.round(gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
@@ -816,19 +836,21 @@ function computePayroll(employeeId, month, profile, daAmount, attendance) {
     incentive = 0;
   }
 
-  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + incentive;
+  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive;
   const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
   const pfEmployee = pfBreakdown.employeeContribution;
   const esicBreakdown = calculateESIC(gross, esicApplicable);
   const esicEmployee = esicBreakdown.employeeContribution;
   const pt = ptApplicable ? calculateProfessionalTax(fullGross) : 0;
-  const mlwf = mlwfApplicable ? (parseFloat(profile.mlwf) || 0) : 0;
+  const mlwfMonth = new Date(month).getMonth() + 1;
+  const isMLWFMonth = mlwfMonth === 6 || mlwfMonth === 12;
+  const mlwf = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf) || 0) : 0;
   const retention = retentionApplicable ? (parseFloat(profile.retention) || 0) : 0;
   const totalDeductions = pfEmployee + esicEmployee + pt + mlwf + retention;
   const netPay = totalEarnings - totalDeductions;
   const pfEmployer = pfBreakdown.employerTotal;
   const esicEmployer = esicBreakdown.employerContribution;
-  const mlwfEmployer = mlwfApplicable ? (parseFloat(profile.mlwf_employer) || 0) : 0;
+  const mlwfEmployer = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf_employer) || 0) : 0;
   const insurance = insuranceApplicable ? (parseFloat(profile.insurance) || 0) : 0;
   const fullBasic = parseFloat(profile.basic_plus_da) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
   const gratuity = Math.round(fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100));
@@ -864,6 +886,9 @@ function computePayroll(employeeId, month, profile, daAmount, attendance) {
     },
     full_month: { gross: fullGross, other_allowances: fullOtherAllowances },
     lop_deduction: lopDeduction,
+    pl_total: parseInt(profile.pl_total) || 21,
+    pl_used: parseInt(profile.pl_used) || 0,
+    pl_balance: parseInt(profile.pl_balance) || (21 - (parseInt(profile.pl_used) || 0)),
     payment_status: 'pending', remarks: null
   };
 }
@@ -875,7 +900,7 @@ function computePayroll(employeeId, month, profile, daAmount, attendance) {
  * @param {string|null} salaryType - Optional salary type filter
  * @returns {Promise<object>} Summary of generation results
  */
-export async function generateMonthlyPayroll(month, salaryType = null) {
+export async function generateMonthlyPayroll(month, salaryType = null, includeBonus = false, bonusEmployeeIds = null) {
   const db = await dbConnect();
 
   try {
@@ -983,7 +1008,9 @@ export async function generateMonthlyPayroll(month, salaryType = null) {
       const attendance = attendanceMap.get(empId) || defaultAtt;
 
       try {
-        const payroll = computePayroll(empId, month, profile, daAmount, attendance);
+        // If bonusEmployeeIds is provided, only include bonus for those specific employees
+        const empIncludeBonus = includeBonus && (bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
+        const payroll = computePayroll(empId, month, profile, daAmount, attendance, empIncludeBonus);
         toInsert.push(payroll);
       } catch (err) {
         results.failed++;
@@ -1050,7 +1077,7 @@ export async function generateMonthlyPayroll(month, salaryType = null) {
  * @param {string} month - Payroll month (YYYY-MM-01 format)
  * @returns {Promise<object>} Summary { success, failed, skipped, errors }
  */
-export async function generatePayrollSlipsBatch(employeeIds, month) {
+export async function generatePayrollSlipsBatch(employeeIds, month, includeBonus = false, bonusEmployeeIds = null) {
   if (!employeeIds || employeeIds.length === 0) {
     return { success: 0, failed: 0, skipped: 0, errors: [] };
   }
@@ -1097,7 +1124,9 @@ export async function generatePayrollSlipsBatch(employeeIds, month) {
       };
       const attendance = attendanceMap.get(empId) || defaultAtt;
       try {
-        const payroll = computePayroll(empId, month, profile, daAmount, attendance);
+        // If bonusEmployeeIds is provided, only include bonus for those specific employees
+        const empIncludeBonus = includeBonus && (bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
+        const payroll = computePayroll(empId, month, profile, daAmount, attendance, empIncludeBonus);
         await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
         results.success++;
       } catch (err) {

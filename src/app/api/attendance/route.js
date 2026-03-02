@@ -82,7 +82,8 @@ export async function GET(request) {
         is_weekly_off: record.is_weekly_off,
         remarks: record.remarks,
         in_time: record.in_time,
-        out_time: record.out_time
+        out_time: record.out_time,
+        idle_time: record.idle_time || 0
       };
 
       // Update totals
@@ -145,6 +146,7 @@ export async function POST(request) {
         remarks TEXT,
         in_time TIME,
         out_time TIME,
+        idle_time INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_emp_date (employee_id, attendance_date),
@@ -152,6 +154,13 @@ export async function POST(request) {
         INDEX idx_employee_id (employee_id)
       )
     `);
+
+    // Add idle_time column if it doesn't exist (for existing tables)
+    try {
+      await connection.query(`ALTER TABLE employee_attendance ADD COLUMN idle_time INT DEFAULT 0 AFTER out_time`);
+    } catch (e) {
+      // Column already exists – ignore
+    }
 
     // Process in smaller batches of 50 records to avoid query size limits
     const BATCH_SIZE = 50;
@@ -172,15 +181,16 @@ export async function POST(request) {
           record.is_weekly_off ? 1 : 0,
           record.remarks || null,
           record.in_time || null,
-          record.out_time || null
+          record.out_time || null,
+          record.idle_time || 0
         );
-        placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?)');
+        placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?)');
       }
       
       // Use query instead of execute for better performance with dynamic queries
       const batchQuery = `
         INSERT INTO employee_attendance 
-          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks, in_time, out_time)
+          (employee_id, attendance_date, status, overtime_hours, is_weekly_off, remarks, in_time, out_time, idle_time)
         VALUES ${placeholders.join(', ')}
         ON DUPLICATE KEY UPDATE
           status = VALUES(status),
@@ -189,6 +199,7 @@ export async function POST(request) {
           remarks = VALUES(remarks),
           in_time = VALUES(in_time),
           out_time = VALUES(out_time),
+          idle_time = VALUES(idle_time),
           updated_at = CURRENT_TIMESTAMP
       `;
       
@@ -227,7 +238,7 @@ export async function POST(request) {
     const monthKey = body.month;
     if (monthKey) {
       const [savedRecords] = await connection.execute(
-        `SELECT employee_id, status, overtime_hours, is_weekly_off, in_time, out_time
+        `SELECT employee_id, status, overtime_hours, is_weekly_off, in_time, out_time, idle_time
          FROM employee_attendance
          WHERE DATE_FORMAT(attendance_date, "%Y-%m") = ?`,
         [monthKey]
@@ -265,6 +276,9 @@ export async function POST(request) {
           const outDec = outH + outM / 60;
           if (outDec > inDec) {
             let hrs = outDec - inDec;
+            // Subtract idle time (stored in minutes)
+            const idleHrs = (r.idle_time || 0) / 60;
+            hrs = Math.max(0, hrs - idleHrs);
             if (r.status === 'HD') hrs = hrs / 2;
             s.working_hours += hrs;
           }

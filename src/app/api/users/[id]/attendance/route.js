@@ -38,6 +38,7 @@ export async function GET(request, { params }) {
     let attendanceData = {
       inTime: null,
       outTime: null,
+      idleTime: 0,
       loginTime: null,
       logoutTime: null,
       currentMonth: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
@@ -47,9 +48,9 @@ export async function GET(request, { params }) {
       holidays: 0,
       overtimeHours: 0,
       leaves: {
-        total: 18, // Default annual leave
+        total: 21, // Default annual leave
         used: 0,
-        balance: 18
+        balance: 21
       }
     };
 
@@ -65,6 +66,19 @@ export async function GET(request, { params }) {
       if (todayAttendance.length > 0) {
         attendanceData.inTime = todayAttendance[0].in_time;
         attendanceData.outTime = todayAttendance[0].out_time;
+      }
+
+      // Get today's idle time from user_screen_time
+      try {
+        const [screenTime] = await db.execute(
+          `SELECT idle_time_minutes FROM user_screen_time WHERE user_id = ? AND date = CURDATE() LIMIT 1`,
+          [requestedUserId]
+        );
+        if (screenTime.length > 0) {
+          attendanceData.idleTime = screenTime[0].idle_time_minutes || 0;
+        }
+      } catch (stErr) {
+        console.log('Screen time fetch skipped:', stErr.message);
       }
 
       // Get monthly attendance summary
@@ -136,11 +150,18 @@ export async function GET(request, { params }) {
         console.log('Activity logs table also not found:', logError.message);
       }
 
-      // Calculate weekly offs (Sundays in the month)
+      // Calculate weekly offs (Sundays + 2nd & 4th Saturdays in the month)
       let weeklyOff = 0;
       for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(currentYear, currentMonth - 1, d);
-        if (date.getDay() === 0) weeklyOff++; // Sunday
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek === 0) {
+          weeklyOff++; // Sunday
+        } else if (dayOfWeek === 6) {
+          // 2nd and 4th Saturday
+          const saturdayOfMonth = Math.ceil(d / 7);
+          if (saturdayOfMonth === 2 || saturdayOfMonth === 4) weeklyOff++;
+        }
       }
       attendanceData.weeklyOff = weeklyOff;
     }
@@ -181,7 +202,7 @@ export async function GET(request, { params }) {
       if (leaveTable.length > 0) {
         const [leaveData] = await db.execute(`
           SELECT 
-            COALESCE(SUM(total_leaves), 18) as total_leaves,
+            COALESCE(SUM(total_leaves), 24) as total_leaves,
             COALESCE(SUM(used_leaves), 0) as used_leaves
           FROM employee_leaves 
           WHERE employee_id = (SELECT employee_id FROM users WHERE id = ?)

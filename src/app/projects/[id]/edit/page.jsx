@@ -219,7 +219,6 @@ function EditProjectForm() {
   const canEditInvoices = isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
 
   const [activeTab, setActiveTab] = useState('general');
-  const [companies, setCompanies] = useState([]);
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
   const [activities, setActivities] = useState([]); // Standalone activities list
   const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
@@ -474,6 +473,17 @@ function EditProjectForm() {
     payment_terms: '',
     remarks: ''
   });
+  const [incomingPOs, setIncomingPOs] = useState([]);
+  const [incomingPOData, setIncomingPOData] = useState({
+    company_name: '',
+    city: '',
+    po_number: '',
+    po_date: '',
+    po_amount: '',
+    project_number: '',
+    expenses_head: '',
+    remarks: ''
+  });
   const [purchaseOrderSaving, setPurchaseOrderSaving] = useState(false);
   
   // Vendors state for PO dropdown
@@ -481,22 +491,28 @@ function EditProjectForm() {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [loadingVendors, setLoadingVendors] = useState(false);
 
+  // Account Heads state for expense head dropdown
+  const [accountHeads, setAccountHeads] = useState([]);
+  const [loadingAccountHeads, setLoadingAccountHeads] = useState(false);
+
   // Invoice tab state
   const [invoiceData, setInvoiceData] = useState({
     invoice_number: '',
     invoice_date: '',
-    client_name: '',
-    po_number: '',
-    po_date: '',
-    po_amount: '',
-    total_invoiced: 0,
-    balance_amount: '',
-    scope_of_work: '',
-    payment_due_date: ''
+    company_name: '',
+    city: '',
+    invoice_amount: '',
+    purchase_description: '',
+    project_number: '',
+    expenses_head: '',
+    payment: '',
+    payment_overdue_days: '',
+    remarks: ''
   });
   const [invoices, setInvoices] = useState([]);
   const [invoiceSaving, setInvoiceSaving] = useState(false);
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState('');
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
 
   // Fetch all required reference/master data + project data in parallel (single DB connection for ref data)
   useEffect(() => {
@@ -507,7 +523,7 @@ function EditProjectForm() {
         const initData = await fetchJSON(`/api/projects/${id}/init-data`);
         if (initData.success && initData.data) {
           const d = initData.data;
-          setCompanies(d.companies || []);
+          // Note: companies data is no longer needed - company name is fetched from project details
           setVendors(d.vendors || []);
           setFunctions(d.functions || []);
           setActivities(d.activities || []);
@@ -564,6 +580,34 @@ function EditProjectForm() {
       fetchAllInitData();
     }
   }, [id]);
+
+  // Fetch account heads for expense head dropdown
+  useEffect(() => {
+    const fetchAccountHeads = async () => {
+      setLoadingAccountHeads(true);
+      try {
+        const res = await fetch('/api/account-masters?limit=500');
+        if (!res.ok) {
+          console.warn('Account heads API not available');
+          setAccountHeads([]);
+          return;
+        }
+        const json = await res.json();
+        if (json?.success && Array.isArray(json.data)) {
+          setAccountHeads(json.data);
+        } else {
+          setAccountHeads([]);
+        }
+      } catch (error) {
+        console.warn('Error fetching account heads:', error);
+        setAccountHeads([]);
+      } finally {
+        setLoadingAccountHeads(false);
+      }
+    };
+
+    fetchAccountHeads();
+  }, []);
 
   // Fetch existing project data
   useEffect(() => {
@@ -1355,17 +1399,20 @@ function EditProjectForm() {
     }
   };
 
-  // Fetch quotation data generated from proposal
-  const syncQuotationFromProposal = useCallback(async () => {
-    const proposalId = form.proposal_id;
-    if (!proposalId) {
-      // No linked proposal - show empty state
+  // Fetch latest quotation number from admin quotation page (by project or proposal linkage)
+  const syncQuotationFromAdmin = useCallback(async () => {
+    // Try to fetch by proposal_id if available, else by project id
+    let url = '';
+    if (form.proposal_id) {
+      url = `/api/admin/quotations/${form.proposal_id}?source=proposal`;
+    } else if (id) {
+      url = `/api/admin/quotations/${id}`;
+    } else {
       setQuotationData(prev => ({ ...prev }));
       return;
     }
-
     try {
-      const res = await fetch(`/api/admin/quotations/${proposalId}?source=proposal`);
+      const res = await fetch(url);
       const json = await res.json();
       if (json?.success && json.data) {
         const q = json.data;
@@ -1391,16 +1438,16 @@ function EditProjectForm() {
         });
       }
     } catch (err) {
-      console.warn('Failed to fetch proposal quotation data:', err);
+      console.warn('Failed to fetch admin quotation data:', err);
     }
-  }, [form.proposal_id]);
+  }, [form.proposal_id, id]);
 
   // Auto-sync when switching to quotation tab (after project data is loaded)
   useEffect(() => {
     if (activeTab === 'quotation' && !loading && id) {
-      syncQuotationFromProposal();
+      syncQuotationFromAdmin();
     }
-  }, [activeTab, loading, id, syncQuotationFromProposal]);
+  }, [activeTab, loading, id, syncQuotationFromAdmin]);
 
   // Purchase Order Form Handlers
   const handlePurchaseOrderChange = (e) => {
@@ -1551,14 +1598,251 @@ function EditProjectForm() {
     }
   }, [activeTab, loading, id, syncPurchaseOrderFromProject]);
 
+  // Sync incoming PO data with project details
+  useEffect(() => {
+    if (activeTab === 'purchase_order' && form.client_name) {
+      setIncomingPOData(prev => ({
+        ...prev,
+        company_name: form.client_name,
+        city: form.project_location_city || ''
+      }));
+    }
+  }, [activeTab, form.client_name, form.project_location_city]);
+
+  // Sync invoice data with project details (company name and city) for both invoice and purchase_order tabs
+  useEffect(() => {
+    if ((activeTab === 'invoice' || activeTab === 'purchase_order') && form.client_name) {
+      setInvoiceData(prev => ({
+        ...prev,
+        company_name: form.client_name,
+        city: form.project_location_city || '',
+        project_number: form.project_id || ''
+      }));
+    }
+  }, [activeTab, form.client_name, form.project_location_city, form.project_id]);
+
+  // Incoming Purchase Order Handlers
+  const handleIncomingPOChange = (e) => {
+    if (!canEditPurchaseOrders) return;
+    const { name, value } = e.target;
+    setIncomingPOData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddIncomingPO = async () => {
+    if (!incomingPOData.company_name) {
+      alert('Please ensure company name from project details is set');
+      return;
+    }
+    if (!incomingPOData.po_number) {
+      alert('Please enter PO number');
+      return;
+    }
+
+    setPurchaseOrderSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/incoming-po`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...incomingPOData,
+          project_id: id
+        })
+      });
+      
+      // Handle 404 or other errors gracefully - API endpoint not yet implemented
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.warn('Incoming PO API endpoint not yet implemented. Feature will be available once backend is updated.');
+          alert('Incoming PO feature is not yet available. Please try again later.');
+        } else {
+          alert('Failed to add incoming PO: Server error');
+        }
+        return;
+      }
+      
+      const json = await res.json();
+      if (json?.success) {
+        // Refresh incoming POs list
+        await fetchIncomingPOs();
+        // Reset form but keep company_name and city from project
+        setIncomingPOData({
+          company_name: form.client_name,
+          city: form.project_location_city || '',
+          po_number: '',
+          po_date: new Date().toISOString().split('T')[0],
+          po_amount: '',
+          project_number: form.project_id || '',
+          expenses_head: '',
+          remarks: ''
+        });
+        alert('Incoming PO added successfully!');
+      } else {
+        alert('Failed to add incoming PO: ' + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error adding incoming PO:', error);
+      alert('Error adding incoming PO');
+    } finally {
+      setPurchaseOrderSaving(false);
+    }
+  };
+
+  const handleDeleteIncomingPO = async (poId) => {
+    if (!confirm('Are you sure you want to delete this incoming PO?')) return;
+    
+    try {
+      const res = await fetch(`/api/projects/${id}/incoming-po/${poId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      // Handle 404 or other errors gracefully
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.warn('Incoming PO API endpoint not yet implemented');
+          alert('Incoming PO feature is not yet available');
+        } else {
+          alert('Failed to delete incoming PO: Server error');
+        }
+        return;
+      }
+      
+      const json = await res.json();
+      if (json?.success) {
+        await fetchIncomingPOs();
+      } else {
+        alert('Failed to delete incoming PO: ' + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.warn('Error deleting incoming PO:', error);
+      // Silently fail as API might not be implemented yet
+    }
+  };
+
+  const fetchIncomingPOs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${id}/incoming-po`);
+      
+      // If endpoint doesn't exist (404 or other error), silently fail
+      if (!res.ok) {
+        console.warn(`Incoming POs API returned ${res.status}, using empty list`);
+        setIncomingPOs([]);
+        return;
+      }
+      
+      const json = await res.json();
+      if (json?.success && Array.isArray(json.data)) {
+        setIncomingPOs(json.data);
+      } else {
+        setIncomingPOs([]);
+      }
+    } catch (error) {
+      console.warn('Incoming POs API not yet available, using empty list:', error);
+      setIncomingPOs([]);
+    }
+  }, [id]);
+
+  // Auto-fetch incoming POs when switching to purchase_order tab
+  useEffect(() => {
+    if (activeTab === 'purchase_order' && !loading && id) {
+      fetchIncomingPOs();
+    }
+  }, [activeTab, loading, id, fetchIncomingPOs]);
+
   // Invoice Handlers
   const handleInvoiceChange = (e) => {
-    if (!canEditInvoices) return; // Prevent changes if no edit permission
+    if (!canEditInvoices && !canEditPurchaseOrders) return; // Prevent changes if no edit permission
     const { name, value } = e.target;
     setInvoiceData(prev => {
       const updated = { ...prev, [name]: value };
       return updated;
     });
+  };
+
+  const handleAddInvoice = async () => {
+    if (!invoiceData.invoice_number) {
+      alert('Please enter an invoice number');
+      return;
+    }
+    
+    setInvoiceSaving(true);
+    try {
+      const isEditing = !!editingInvoiceId;
+      const payload = { ...invoiceData, tab_type: activeTab };
+      const res = await fetch(`/api/projects/${id}/invoice`, {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isEditing ? { ...payload, invoiceId: editingInvoiceId } : payload)
+      });
+      const json = await res.json();
+      if (json?.success) {
+        // Refresh invoices list
+        await fetchInvoices();
+        // Reset form
+        setEditingInvoiceId(null);
+        setInvoiceData(prev => ({
+          ...prev,
+          invoice_number: '',
+          invoice_date: new Date().toISOString().split('T')[0],
+          company_name: form.client_name || '',
+          city: form.project_location_city || '',
+          project_number: form.project_id || '',
+          invoice_amount: '',
+          purchase_description: '',
+          expenses_head: '',
+
+          payment: '',
+          payment_overdue_days: '',
+          remarks: ''
+        }));
+      } else {
+        alert((isEditing ? 'Failed to update invoice: ' : 'Failed to add invoice: ') + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+      alert('Error saving invoice');
+    } finally {
+      setInvoiceSaving(false);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId) => {
+    if (!confirm('Are you sure you want to delete this invoice?')) return;
+    
+    try {
+      const res = await fetch(`/api/projects/${id}/invoice?invoiceId=${invoiceId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const json = await res.json();
+      if (json?.success) {
+        await fetchInvoices();
+      } else {
+        alert('Failed to delete invoice: ' + (json?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      alert('Error deleting invoice');
+    }
+  };
+
+  const handleEditInvoice = (inv) => {
+    setEditingInvoiceId(inv.id);
+    setInvoiceData({
+      invoice_number: inv.invoice_number || '',
+      invoice_date: inv.invoice_date ? String(inv.invoice_date).split('T')[0] : '',
+      company_name: inv.company_name || '',
+      city: inv.city || '',
+      invoice_amount: inv.invoice_amount || '',
+      purchase_description: inv.purchase_description || '',
+      project_number: inv.project_number || '',
+      expenses_head: inv.expenses_head || '',
+      payment: inv.payment || '',
+      payment_overdue_days: inv.payment_overdue_days || '',
+      remarks: inv.remarks || ''
+    });
+    // Scroll to the form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const saveInvoice = async () => {
@@ -1574,14 +1858,18 @@ function EditProjectForm() {
         alert('Invoice saved successfully!');
         // Refresh invoices list - this will also update nextInvoiceNumber
         await fetchInvoices();
-        // Reset form for new invoice - invoice_number will be set via syncInvoiceFromProject after fetchInvoices
+        // Reset form for new invoice
         setInvoiceData(prev => ({
           ...prev,
           invoice_number: '',
           invoice_date: new Date().toISOString().split('T')[0],
+          company_name: form.client_name || '',
+          city: form.project_location_city || '',
           invoice_amount: '',
-          scope_of_work: '',
-          payment_due_date: '',
+          purchase_description: '',
+          project_number: form.project_id || '',
+          expenses_head: '',
+          payment_overdue_days: '',
           remarks: ''
         }));
       } else {
@@ -1610,30 +1898,21 @@ function EditProjectForm() {
     }
   }, [id]);
 
-  // Sync invoice data from project and purchase order
+  // Sync invoice data from project details only (company_name, city, project_number)
   const syncInvoiceFromProject = useCallback(() => {
-    const totalInvoiced = invoices.reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0);
-    const poAmount = parseFloat(purchaseOrderData.net_amount) || 0;
-    const balanceAmount = poAmount - totalInvoiced;
-
     setInvoiceData(prev => ({
       ...prev,
-      invoice_number: prev.invoice_number || nextInvoiceNumber || `INV-${String(id).padStart(5, '0')}-${(invoices.length + 1).toString().padStart(2, '0')}`,
-      invoice_date: prev.invoice_date || new Date().toISOString().split('T')[0],
-      client_name: form.client_name || '',
-      po_number: purchaseOrderData.po_number || '',
-      po_date: purchaseOrderData.po_date || '',
-      po_amount: purchaseOrderData.net_amount || '',
-      total_invoiced: totalInvoiced,
-      balance_amount: balanceAmount > 0 ? balanceAmount.toFixed(2) : '0.00',
-      scope_of_work: prev.scope_of_work || form.scope_of_work || form.description || ''
+      // Only sync the project-level data; other fields come from user input
+      company_name: prev.company_name || form.client_name || '',
+      city: prev.city || form.project_location_city || '',
+      project_number: prev.project_number || form.project_id || ''
     }));
-  }, [form.client_name, form.scope_of_work, form.description, purchaseOrderData, invoices, id, nextInvoiceNumber]);
+  }, [form.client_name, form.project_location_city, form.project_id]);
 
-  // Auto-sync when switching to invoice tab
+  // Auto-sync when switching to invoice or purchase_order tab
   useEffect(() => {
-    if (activeTab === 'invoice' && !loading && id) {
-      // Ensure invoice list and nextInvoiceNumber are loaded before syncing
+    if ((activeTab === 'invoice' || activeTab === 'purchase_order') && !loading && id) {
+      // Ensure invoice/PO list and nextInvoiceNumber are loaded before syncing
       fetchInvoices().then(() => {
         syncInvoiceFromProject();
       });
@@ -5559,552 +5838,618 @@ function EditProjectForm() {
               </section>
             )}
 
-            {/* Purchase Order Tab */}
-            {activeTab === 'purchase_order' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-black">Purchase Order</h2>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {canEditPurchaseOrders ? 'Enter purchase order details' : 'View-only mode - You have read permission only'}
-                    </p>
-                  </div>
-                  {canEditPurchaseOrders && (
-                    <button
-                      type="button"
-                      onClick={savePurchaseOrder}
-                      disabled={purchaseOrderSaving}
-                      className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                    {purchaseOrderSaving ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <CheckIcon className="h-4 w-4" />
-                        Save PO
-                      </>
-                    )}
-                    </button>
-                  )}
-                </div>
-                
-                <div className="px-6 py-5 space-y-6">
-                  {/* Row 1: PO Number, Date & Client Name */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        PO Number <span className="text-gray-400 text-[10px]">(auto-generated)</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="po_number"
-                        value={purchaseOrderData.po_number}
-                        onChange={handlePurchaseOrderChange}
-                        placeholder="PO-00001"
-                        disabled={!canEditPurchaseOrders}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">PO Date</label>
-                      <input
-                        type="date"
-                        name="po_date"
-                        value={purchaseOrderData.po_date}
-                        onChange={handlePurchaseOrderChange}
-                        disabled={!canEditPurchaseOrders}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Client Name <span className="text-gray-400 text-[10px]">(from Project)</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="client_name"
-                        value={purchaseOrderData.client_name}
-                        onChange={handlePurchaseOrderChange}
-                        placeholder="Client Name"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-gray-50"
-                        disabled
-                      />
-                    </div>
-                  </div>
+{/* Purchase Order Tab */}
+{activeTab === 'purchase_order' && (  
+  <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+    <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <DocumentTextIcon className="h-4 w-4 text-[#7F2487]" />
+            <h2 className="text-sm font-bold text-gray-900">Purchase Orders</h2>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {canEditPurchaseOrders ? 'Create and manage purchase orders' : 'View-only mode - You have read permission only'}
+          </p>
+        </div>
+        {canEditPurchaseOrders && (
+          <button
+            type="button"
+            onClick={handleAddInvoice}
+            disabled={invoiceSaving || !invoiceData.invoice_number}
+            className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {invoiceSaving ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                {editingInvoiceId ? 'Updating...' : 'Adding...'}
+              </>
+            ) : (
+              <>
+                <PlusIcon className="h-4 w-4" />
+                {editingInvoiceId ? 'Update PO' : 'Add PO'}
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+    
+    <div className="px-6 py-5 space-y-6">
+      {/* PO Input Form */}
+      <div className="bg-purple-25/30 rounded-lg p-3 border border-purple-100">
+        <h3 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+          <DocumentTextIcon className="h-3.5 w-3.5 text-[#7F2487]" />
+          {editingInvoiceId ? 'Edit Purchase Order' : (canEditPurchaseOrders ? 'New Purchase Order' : 'Purchase Order Details')}
+        </h3>
 
-                  {/* Row 2: Vendor Name & Delivery Date */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Vendor Name <span className="text-gray-400 text-[10px]">(from Vendor Master)</span>
-                      </label>
-                      <select
-                        value={selectedVendor?.id || purchaseOrderData.vendor_id || ''}
-                        onChange={handleVendorSelect}
-                        disabled={!canEditPurchaseOrders || loadingVendors}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      >
-                        <option value="">
-                          {loadingVendors ? 'Loading vendors...' : '-- Select a Vendor --'}
-                        </option>
-                        {vendors.map((vendor) => (
-                          <option key={vendor.id} value={vendor.id}>
-                            {vendor.vendor_name} {vendor.vendor_id ? `(${vendor.vendor_id})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Delivery Date</label>
-                      <input
-                        type="date"
-                        name="delivery_date"
-                        value={purchaseOrderData.delivery_date}
-                        onChange={handlePurchaseOrderChange}
-                        disabled={!canEditPurchaseOrders}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                  </div>
+        {/* Row 1: Company Name, City, PO No., PO Date */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+              Company Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="company_name"
+              value={invoiceData.company_name}
+              onChange={handleInvoiceChange}
+              placeholder="Auto-filled from project"
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">City</label>
+            <input
+              type="text"
+              name="city"
+              value={invoiceData.city}
+              onChange={handleInvoiceChange}
+              placeholder="Auto-filled from project"
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+              Purchase Order No. <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="invoice_number"
+              value={invoiceData.invoice_number}
+              onChange={handleInvoiceChange}
+              placeholder="PO-00001"
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Purchase Order Date</label>
+            <input
+              type="date"
+              name="invoice_date"
+              value={invoiceData.invoice_date}
+              onChange={handleInvoiceChange}
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+        </div>
 
-                  {/* Selected Vendor Details */}
-                  {selectedVendor && (
-                    <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                      <h3 className="text-xs font-semibold text-purple-900 mb-3">Selected Vendor Details</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                        <div>
-                          <span className="text-purple-600">Vendor Name:</span>
-                          <p className="font-medium text-gray-900">{selectedVendor.vendor_name || '-'}</p>
-                        </div>
-                        <div>
-                          <span className="text-purple-600">Email:</span>
-                          <p className="font-medium text-gray-900">{selectedVendor.email || '-'}</p>
-                        </div>
-                        <div>
-                          <span className="text-purple-600">Phone:</span>
-                          <p className="font-medium text-gray-900">{selectedVendor.phone || '-'}</p>
-                        </div>
-                        <div>
-                          <span className="text-purple-600">GST/VAT ID:</span>
-                          <p className="font-medium text-gray-900">{selectedVendor.gst_vat_tax_id || '-'}</p>
-                        </div>
-                        <div className="col-span-2">
-                          <span className="text-purple-600">Address:</span>
-                          <p className="font-medium text-gray-900">
-                            {[selectedVendor.address_street, selectedVendor.address_city, selectedVendor.address_state, selectedVendor.address_country].filter(Boolean).join(', ') || '-'}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-purple-600">Contact Person:</span>
-                          <p className="font-medium text-gray-900">{selectedVendor.contact_person || '-'}</p>
-                        </div>
-                        <div>
-                          <span className="text-purple-600">Vendor Type:</span>
-                          <p className="font-medium text-gray-900">{selectedVendor.vendor_type || '-'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+        {/* Row 2: PO Amount, Project No., Remarks */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+              Purchase Order Amount (₹) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              name="invoice_amount"
+              value={invoiceData.invoice_amount}
+              onChange={handleInvoiceChange}
+              placeholder="0.00"
+              step="0.01"
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Project No.</label>
+            <input
+              type="text"
+              name="project_number"
+              value={invoiceData.project_number}
+              onChange={handleInvoiceChange}
+              placeholder="Auto-filled"
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Remarks</label>
+            <input
+              type="text"
+              name="remarks"
+              value={invoiceData.remarks}
+              onChange={handleInvoiceChange}
+              placeholder="Notes..."
+              disabled={!canEditPurchaseOrders}
+              className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+            />
+          </div>
+        </div>
 
-                  {/* Row 3: Scope of Work */}
-                  <div>
-                    <label className="block text-xs font-medium text-black mb-1">Scope of Work</label>
-                    <textarea
-                      name="scope_of_work"
-                      value={purchaseOrderData.scope_of_work}
-                      onChange={handlePurchaseOrderChange}
-                      rows={4}
-                      placeholder="Enter scope of work for this purchase order..."
-                      disabled={!canEditPurchaseOrders}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent resize-y ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                    />
-                  </div>
+        {/* ADD / UPDATE Button */}
+        {canEditPurchaseOrders && (
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-purple-100">
+            <span className="text-[10px] text-gray-400 italic">
+              {editingInvoiceId ? `Editing PO ID: ${editingInvoiceId}` : 'Fill fields above and click Add PO'}
+            </span>
+            <div className="flex items-center gap-2">
+              {editingInvoiceId && (
+                <button
+                  type="button"
+                  onClick={() => { setEditingInvoiceId(null); setInvoiceData(prev => ({ ...prev, invoice_number: '', invoice_date: new Date().toISOString().split('T')[0], invoice_amount: '', remarks: '', company_name: form.client_name || '', city: form.project_location_city || '', project_number: form.project_id || '' })); }}
+                  className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded hover:bg-gray-200 flex items-center gap-1"
+                >
+                  <XMarkIcon className="h-3 w-3" /> Cancel
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleAddInvoice}
+                disabled={invoiceSaving || !invoiceData.invoice_number}
+                className="px-3 py-1 bg-[#7F2487] text-white text-xs font-medium rounded hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {invoiceSaving ? (
+                  <><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg> {editingInvoiceId ? 'Updating...' : 'Adding...'}</>
+                ) : (
+                  <><PlusIcon className="h-3 w-3" /> {editingInvoiceId ? 'Update PO' : 'Add PO'}</>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
-                  {/* Row 4: Amount Section */}
-                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-4">Amount Details</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Gross Amount (₹)</label>
-                        <input
-                          type="number"
-                          name="gross_amount"
-                          value={purchaseOrderData.gross_amount}
-                          onChange={handlePurchaseOrderChange}
-                          placeholder="0.00"
-                          step="0.01"
-                          min="0"
-                          disabled={!canEditPurchaseOrders}
-                          className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">GST @ {purchaseOrderData.gst_percentage}% (₹)</label>
-                        <input
-                          type="number"
-                          name="gst_amount"
-                          value={purchaseOrderData.gst_amount}
-                          disabled
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-black mb-1">Net Amount (₹)</label>
-                        <input
-                          type="number"
-                          name="net_amount"
-                          value={purchaseOrderData.net_amount}
-                          disabled
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-100 text-gray-700 font-semibold cursor-not-allowed"
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">GST Percentage</label>
-                      <select
-                        name="gst_percentage"
-                        value={purchaseOrderData.gst_percentage}
-                        onChange={handlePurchaseOrderChange}
-                        disabled={!canEditPurchaseOrders}
-                        className={`w-32 px-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      >
-                        <option value="0">0%</option>
-                        <option value="5">5%</option>
-                        <option value="12">12%</option>
-                        <option value="18">18%</option>
-                        <option value="28">28%</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Row 5: Payment Terms & Remarks */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Payment Terms</label>
-                      <input
-                        type="text"
-                        name="payment_terms"
-                        value={purchaseOrderData.payment_terms}
-                        onChange={handlePurchaseOrderChange}
-                        placeholder="e.g., Net 30, Advance, etc."
-                        disabled={!canEditPurchaseOrders}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Remarks</label>
-                      <input
-                        type="text"
-                        name="remarks"
-                        value={purchaseOrderData.remarks}
-                        onChange={handlePurchaseOrderChange}
-                        placeholder="Any additional remarks..."
-                        disabled={!canEditPurchaseOrders}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditPurchaseOrders ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Summary Card */}
-                  {purchaseOrderData.net_amount && parseFloat(purchaseOrderData.net_amount) > 0 && (
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wide">Total PO Value</p>
-                          <p className="text-2xl font-bold text-blue-700">₹{parseFloat(purchaseOrderData.net_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-gray-500">Gross: ₹{parseFloat(purchaseOrderData.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                          <p className="text-xs text-gray-500">GST ({purchaseOrderData.gst_percentage}%): ₹{parseFloat(purchaseOrderData.gst_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Save Purchase Order Button */}
-                  {canEditPurchaseOrders && (
-                    <div className="flex justify-end pt-4 border-t border-gray-200">
+      {/* Purchase Orders List */}
+      {invoices.filter(inv => inv.tab_type === 'purchase_order').length > 0 && (
+        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <table className="w-full text-xs border-collapse">
+            <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No.</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Company Name</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">City</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">PO No.</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">PO Date</th>
+                <th className="px-3 py-2 text-right font-semibold text-gray-700">PO Amount (₹)</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Project No.</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {invoices.filter(inv => inv.tab_type === 'purchase_order').map((inv, idx) => (
+                <tr key={inv.id || idx} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 text-center text-gray-600 font-semibold">{idx + 1}</td>
+                  <td className="px-3 py-2 text-gray-700">{inv.company_name || '-'}</td>
+                  <td className="px-3 py-2 text-gray-700">{inv.city || '-'}</td>
+                  <td className="px-3 py-2 text-gray-700 font-medium">{inv.invoice_number || '-'}</td>
+                  <td className="px-3 py-2 text-gray-700">{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-IN') : '-'}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                    ₹{parseFloat(inv.invoice_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">{inv.project_number || '-'}</td>
+                  <td className="px-3 py-2 text-gray-700">{inv.remarks || '-'}</td>
+                  <td className="px-3 py-2 text-center">
+                    <div className="flex items-center justify-center gap-1">
                       <button
                         type="button"
-                        onClick={savePurchaseOrder}
-                        disabled={purchaseOrderSaving}
-                        className="px-6 py-3 bg-gradient-to-r from-[#7F2487] to-[#9a2fa3] text-white text-sm font-medium rounded-lg hover:from-[#6a1f72] hover:to-[#7F2487] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg transition-all"
+                        onClick={() => handleEditInvoice(inv)}
+                        disabled={!canEditPurchaseOrders}
+                        className="text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50"
+                        title="Edit PO"
                       >
-                        {purchaseOrderSaving ? (
-                          <>
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Saving Purchase Order...
-                          </>
-                        ) : (
-                          <>
-                            <CheckIcon className="h-5 w-5" />
-                            Save Purchase Order
-                          </>
-                        )}
+                        <PencilIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteInvoice(inv.id || idx)}
+                        disabled={!canEditPurchaseOrders}
+                        className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-red-50"
+                        title="Delete PO"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  )}
-                </div>
-              </section>
-            )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
+      {/* Empty State */}
+      {invoices.filter(inv => inv.tab_type === 'purchase_order').length === 0 && (
+        <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+          <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 text-sm mb-2">No purchase orders added yet</p>
+          <p className="text-gray-400 text-xs">Fill in the form above and click &ldquo;Add PO&rdquo; to create your first purchase order</p>
+        </div>
+      )}
+
+      {/* Summary Card */}
+      {invoices.filter(inv => inv.tab_type === 'purchase_order').length > 0 && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Purchase Orders</p>
+              <p className="text-lg font-bold text-blue-700">{invoices.filter(inv => inv.tab_type === 'purchase_order').length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total PO Amount</p>
+              <p className="text-lg font-bold text-purple-700">₹{parseFloat(invoices.filter(inv => inv.tab_type === 'purchase_order').reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  </section>
+)}
             {/* Invoice Tab */}
             {activeTab === 'invoice' && (
               <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-black">Invoice</h2>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {canEditInvoices ? 'Create and manage project invoices' : 'View-only mode - You have read permission only'}
-                    </p>
-                  </div>
-                  {canEditInvoices && (
-                    <button
-                      type="button"
-                      onClick={saveInvoice}
-                      disabled={invoiceSaving}
-                      className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                    {invoiceSaving ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <CheckIcon className="h-4 w-4" />
-                        Save Invoice
-                      </>
+                <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <DocumentTextIcon className="h-4 w-4 text-[#7F2487]" />
+                        <h2 className="text-sm font-bold text-gray-900">Purchase Invoices</h2>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {canEditInvoices ? 'Create and manage project invoices' : 'View-only mode - You have read permission only'}
+                      </p>
+                    </div>
+                    {canEditInvoices && (
+                      <button
+                        type="button"
+                        onClick={handleAddInvoice}
+                        disabled={invoiceSaving || !invoiceData.invoice_number}
+                        className="px-4 py-2 bg-[#7F2487] text-white text-xs font-medium rounded-md hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {invoiceSaving ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            {editingInvoiceId ? 'Updating...' : 'Adding...'}
+                          </>
+                        ) : (
+                          <>
+                            <PlusIcon className="h-4 w-4" />
+                            {editingInvoiceId ? 'Update Invoice' : 'Add Invoice'}
+                          </>
+                        )}
+                      </button>
                     )}
-                    </button>
-                  )}
+                  </div>
                 </div>
                 
                 <div className="px-6 py-5 space-y-6">
-                  {/* PO Information Summary (Read-only from PO) */}
-                  <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                    <h3 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
-                      <DocumentTextIcon className="h-4 w-4" />
-                      Purchase Order Information
+                  {/* Invoice Input Form - Compact Grid Layout */}
+                  <div className="bg-purple-25/30 rounded-lg p-3 border border-purple-100">
+                    <h3 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                      <DocumentTextIcon className="h-3.5 w-3.5 text-[#7F2487]" />
+                      {editingInvoiceId ? 'Edit Invoice' : (canEditInvoices ? 'New Invoice' : 'Invoice Details')}
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    
+                    {/* Row 1: Company Name, City, Invoice No, Invoice Date */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
                       <div>
-                        <label className="block text-xs font-medium text-blue-700 mb-1">PO Number</label>
-                        <p className="text-sm font-semibold text-gray-800 bg-white px-3 py-2 rounded border border-blue-200">
-                          {invoiceData.po_number || '-'}
-                        </p>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                          Company Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="company_name"
+                          value={invoiceData.company_name}
+                          onChange={handleInvoiceChange}
+                          placeholder="Auto-filled"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-blue-700 mb-1">PO Date</label>
-                        <p className="text-sm text-gray-800 bg-white px-3 py-2 rounded border border-blue-200">
-                          {invoiceData.po_date ? new Date(invoiceData.po_date).toLocaleDateString('en-IN') : '-'}
-                        </p>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">City</label>
+                        <input
+                          type="text"
+                          name="city"
+                          value={invoiceData.city}
+                          onChange={handleInvoiceChange}
+                          placeholder="Auto-filled"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                          Invoice No. <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="invoice_number"
+                          value={invoiceData.invoice_number}
+                          onChange={handleInvoiceChange}
+                          placeholder="INV-00001"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-blue-700 mb-1">PO Amount (₹)</label>
-                        <p className="text-sm font-semibold text-gray-800 bg-white px-3 py-2 rounded border border-blue-200">
-                          {invoiceData.po_amount ? parseFloat(invoiceData.po_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}
-                        </p>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Invoice Date</label>
+                        <input
+                          type="date"
+                          name="invoice_date"
+                          value={invoiceData.invoice_date}
+                          onChange={handleInvoiceChange}
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Invoice Amount, Project No, Expenses Head, Payment */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                          Invoice Amount (₹) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          name="invoice_amount"
+                          value={invoiceData.invoice_amount}
+                          onChange={handleInvoiceChange}
+                          placeholder="0.00"
+                          step="0.01"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-blue-700 mb-1">Balance Amount (₹)</label>
-                        <p className={`text-sm font-bold bg-white px-3 py-2 rounded border ${parseFloat(invoiceData.balance_amount) > 0 ? 'text-green-600 border-green-200' : 'text-gray-600 border-blue-200'}`}>
-                          {invoiceData.balance_amount ? parseFloat(invoiceData.balance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
-                        </p>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Project No.</label>
+                        <input
+                          type="text"
+                          name="project_number"
+                          value={invoiceData.project_number}
+                          onChange={handleInvoiceChange}
+                          placeholder="Auto-filled"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                          Expenses Head <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          name="expenses_head"
+                          value={invoiceData.expenses_head}
+                          onChange={handleInvoiceChange}
+                          disabled={!canEditInvoices || loadingAccountHeads}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        >
+                          <option value="">Select Expense Head</option>
+                          {accountHeads.length > 0 ? (
+                            accountHeads.map((head) => (
+                              <option key={head.id} value={head.name || head.head_name || ''}>
+                                {head.name || head.head_name || head.description || ''}
+                              </option>
+                            ))
+                          ) : (
+                            <option disabled>No expense heads available</option>
+                          )}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Payment (₹)</label>
+                        <input
+                          type="number"
+                          name="payment"
+                          value={invoiceData.payment}
+                          onChange={handleInvoiceChange}
+                          placeholder="0.00"
+                          step="0.01"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
                       </div>
                     </div>
+
+                    {/* Row 3: Overdue Days, Purchase Description, Remarks */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Overdue Days</label>
+                        <input
+                          type="number"
+                          name="payment_overdue_days"
+                          value={invoiceData.payment_overdue_days}
+                          onChange={handleInvoiceChange}
+                          placeholder="0"
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Purchase Description</label>
+                        <input
+                          type="text"
+                          name="purchase_description"
+                          value={invoiceData.purchase_description}
+                          onChange={handleInvoiceChange}
+                          placeholder="Description..."
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Remarks</label>
+                        <input
+                          type="text"
+                          name="remarks"
+                          value={invoiceData.remarks}
+                          onChange={handleInvoiceChange}
+                          placeholder="Notes..."
+                          disabled={!canEditInvoices}
+                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
+                        />
+                      </div>
+                    </div>
+                    {/* ADD / UPDATE Button */}
+                    {canEditInvoices && (
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-purple-100">
+                        <span className="text-[10px] text-gray-400 italic">
+                          {editingInvoiceId ? `Editing invoice ID: ${editingInvoiceId}` : 'Fill fields above and click Add Invoice'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {editingInvoiceId && (
+                            <button
+                              type="button"
+                              onClick={() => { setEditingInvoiceId(null); setInvoiceData(prev => ({ ...prev, invoice_number: '', invoice_date: new Date().toISOString().split('T')[0], invoice_amount: '', purchase_description: '', expenses_head: '', payment: '', payment_overdue_days: '', remarks: '', company_name: form.client_name || '', city: form.project_location_city || '', project_number: form.project_id || '' })); }}
+                              className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded hover:bg-gray-200 flex items-center gap-1"
+                            >
+                              <XMarkIcon className="h-3 w-3" /> Cancel
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={handleAddInvoice}
+                            disabled={invoiceSaving || !invoiceData.invoice_number}
+                            className="px-3 py-1 bg-[#7F2487] text-white text-xs font-medium rounded hover:bg-[#6a1f72] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                          >
+                            {invoiceSaving ? (
+                              <><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg> {editingInvoiceId ? 'Updating...' : 'Adding...'}</>
+                            ) : (
+                              <><PlusIcon className="h-3 w-3" /> {editingInvoiceId ? 'Update Invoice' : 'Add Invoice'}</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Row 1: Invoice Number, Date & Client Name */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Invoice Number <span className="text-gray-400 text-[10px]">(auto-generated)</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="invoice_number"
-                        value={invoiceData.invoice_number}
-                        onChange={handleInvoiceChange}
-                        placeholder="INV-00001-01"
-                        disabled={!canEditInvoices}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Invoice Date</label>
-                      <input
-                        type="date"
-                        name="invoice_date"
-                        value={invoiceData.invoice_date}
-                        onChange={handleInvoiceChange}
-                        disabled={!canEditInvoices}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">
-                        Client Name <span className="text-gray-400 text-[10px]">(from Project)</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="client_name"
-                        value={invoiceData.client_name}
-                        onChange={handleInvoiceChange}
-                        placeholder="Client Name"
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent bg-gray-50"
-                        disabled
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 2: Invoice Amount & Payment Due Date */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Invoice Amount (₹)</label>
-                      <input
-                        type="number"
-                        name="invoice_amount"
-                        value={invoiceData.invoice_amount || ''}
-                        onChange={handleInvoiceChange}
-                        placeholder="0.00"
-                        step="0.01"
-                        min="0"
-                        max={parseFloat(invoiceData.balance_amount) || undefined}
-                        disabled={!canEditInvoices}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                      {parseFloat(invoiceData.balance_amount) > 0 && (
-                        <p className="text-xs text-gray-500 mt-1">Max: ₹{parseFloat(invoiceData.balance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-black mb-1">Payment Due Date</label>
-                      <input
-                        type="date"
-                        name="payment_due_date"
-                        value={invoiceData.payment_due_date}
-                        onChange={handleInvoiceChange}
-                        disabled={!canEditInvoices}
-                        className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 3: Scope of Work */}
-                  <div>
-                    <label className="block text-xs font-medium text-black mb-1">Scope of Work</label>
-                    <textarea
-                      name="scope_of_work"
-                      value={invoiceData.scope_of_work}
-                      onChange={handleInvoiceChange}
-                      rows={3}
-                      placeholder="Description of work covered in this invoice..."
-                      disabled={!canEditInvoices}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent resize-y ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                    />
-                  </div>
-
-                  {/* Row 4: Remarks */}
-                  <div>
-                    <label className="block text-xs font-medium text-black mb-1">Remarks</label>
-                    <input
-                      type="text"
-                      name="remarks"
-                      value={invoiceData.remarks || ''}
-                      onChange={handleInvoiceChange}
-                      placeholder="Any additional remarks..."
-                      disabled={!canEditInvoices}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
-                    />
-                  </div>
-
-                  {/* Previous Invoices List */}
-                  {invoices.length > 0 && (
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <DocumentTextIcon className="h-4 w-4" />
-                        Previous Invoices ({invoices.length})
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-gray-300">
-                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Invoice #</th>
-                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Date</th>
-                              <th className="text-right py-2 px-2 text-xs font-semibold text-gray-600">Amount (₹)</th>
-                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Due Date</th>
-                              <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {invoices.map((inv, idx) => (
-                              <tr key={inv.id || idx} className="border-b border-gray-200 hover:bg-white">
-                                <td className="py-2 px-2 font-medium text-gray-800">{inv.invoice_number}</td>
-                                <td className="py-2 px-2 text-gray-600">{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-IN') : '-'}</td>
-                                <td className="py-2 px-2 text-right font-semibold text-gray-800">
-                                  {parseFloat(inv.invoice_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                </td>
-                                <td className="py-2 px-2 text-gray-600">{inv.payment_due_date ? new Date(inv.payment_due_date).toLocaleDateString('en-IN') : '-'}</td>
-                                <td className="py-2 px-2">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                    inv.status === 'paid' ? 'bg-green-100 text-green-800' :
-                                    inv.status === 'overdue' ? 'bg-red-100 text-red-800' :
-                                    'bg-yellow-100 text-yellow-800'
-                                  }`}>
-                                    {inv.status || 'pending'}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          <tfoot>
-                            <tr className="bg-gray-100">
-                              <td colSpan="2" className="py-2 px-2 font-semibold text-gray-700">Total Invoiced</td>
-                              <td className="py-2 px-2 text-right font-bold text-gray-800">
-                                ₹{invoices.reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  {/* Invoices List */}
+                  {invoices.filter(inv => inv.tab_type !== 'purchase_order').length > 0 && (
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No.</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Company Name</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">City</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Invoice No.</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Invoice Date</th>
+                            <th className="px-3 py-2 text-right font-semibold text-gray-700">Invoice Amount</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Project No</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Expenses Head</th>
+                            <th className="px-3 py-2 text-right font-semibold text-gray-700">Payment</th>
+                            <th className="px-3 py-2 text-center font-semibold text-gray-700">Overdue Days</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
+                            <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {invoices.filter(inv => inv.tab_type !== 'purchase_order').map((inv, idx) => (
+                            <tr key={inv.id || idx} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-center text-gray-600 font-semibold">{idx + 1}</td>
+                              <td className="px-3 py-2 text-gray-700">{inv.company_name || '-'}</td>
+                              <td className="px-3 py-2 text-gray-700">{inv.city || '-'}</td>
+                              <td className="px-3 py-2 text-gray-700 font-medium">{inv.invoice_number || '-'}</td>
+                              <td className="px-3 py-2 text-gray-700">{inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString('en-IN') : '-'}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                ₹{parseFloat(inv.invoice_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                               </td>
-                              <td colSpan="2"></td>
+                              <td className="px-3 py-2 text-gray-700">{inv.project_number || '-'}</td>
+                              <td className="px-3 py-2 text-gray-700">{inv.expenses_head || '-'}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                {inv.payment ? `₹${parseFloat(inv.payment || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
+                              </td>
+                              <td className="px-3 py-2 text-center text-gray-700">{inv.payment_overdue_days || '0'}</td>
+                              <td className="px-3 py-2 text-gray-700">{inv.remarks || '-'}</td>
+                              <td className="px-3 py-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditInvoice(inv)}
+                                    disabled={!canEditInvoices}
+                                    className="text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50"
+                                    title="Edit invoice"
+                                  >
+                                    <PencilIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteInvoice(inv.id || idx)}
+                                    disabled={!canEditInvoices}
+                                    className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-red-50"
+                                    title="Delete invoice"
+                                  >
+                                    <TrashIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
-                          </tfoot>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {invoices.filter(inv => inv.tab_type !== 'purchase_order').length === 0 && (
+                    <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                      <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500 text-sm mb-2">No invoices added yet</p>
+                      <p className="text-gray-400 text-xs">Fill in the form above and click &ldquo;Add Invoice&rdquo; to create your first invoice</p>
                     </div>
                   )}
 
                   {/* Summary Card */}
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide">PO Amount</p>
-                        <p className="text-lg font-bold text-blue-700">₹{parseFloat(invoiceData.po_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                  {(() => {
+                    const invoiceOnly = invoices.filter(inv => inv.tab_type !== 'purchase_order');
+                    return invoiceOnly.length > 0 && (
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Invoices</p>
+                            <p className="text-lg font-bold text-blue-700">{invoiceOnly.length}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Amount</p>
+                            <p className="text-lg font-bold text-purple-700">₹{parseFloat(invoiceOnly.reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Avg. Overdue Days</p>
+                            <p className="text-lg font-bold text-orange-700">
+                              {invoiceOnly.length > 0
+                                ? (invoiceOnly.reduce((sum, inv) => sum + (parseFloat(inv.payment_overdue_days) || 0), 0) / invoiceOnly.length).toFixed(0)
+                                : '0'
+                              }
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide">Total Invoiced</p>
-                        <p className="text-lg font-bold text-purple-700">₹{parseFloat(invoiceData.total_invoiced || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wide">Balance</p>
-                        <p className={`text-lg font-bold ${parseFloat(invoiceData.balance_amount) > 0 ? 'text-green-700' : 'text-gray-500'}`}>
-                          ₹{parseFloat(invoiceData.balance_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               </section>
             )}

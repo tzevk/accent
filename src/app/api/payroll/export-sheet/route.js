@@ -38,11 +38,10 @@ export async function GET(request) {
         ps.*,
         CONCAT(e.first_name, ' ', e.last_name) as full_name,
         e.employee_id as employee_code,
-        e.grade as designation,
+        e.position,
         e.uan,
         e.pf_no,
-        e.esi_no,
-        e.department
+        e.esi_no
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
       WHERE ps.month = ?`;
@@ -70,6 +69,84 @@ export async function GET(request) {
       );
     }
 
+    // ── Fetch attendance data for all employees in the given month ──
+    const [yr, mn] = month.split('-');
+    const monthNum = parseInt(mn, 10);
+    const yearNum = parseInt(yr, 10);
+    const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+    // Get days_present per employee from attendance table
+    const employeeIds = slips.map(s => s.employee_id);
+    const attendanceMap = {};
+    const lwpMap = {};
+    if (employeeIds.length > 0) {
+      try {
+        const placeholders = employeeIds.map(() => '?').join(',');
+        const [attendanceRows] = await db.execute(
+          `SELECT 
+            user_id,
+            COUNT(DISTINCT DATE(date)) as days_present
+          FROM attendance 
+          WHERE user_id IN (${placeholders})
+          AND MONTH(date) = ? 
+          AND YEAR(date) = ?
+          GROUP BY user_id`,
+          [...employeeIds, monthNum, yearNum]
+        );
+        for (const row of attendanceRows) {
+          attendanceMap[row.user_id] = row.days_present || 0;
+        }
+      } catch (attErr) {
+        console.log('Attendance fetch for export skipped:', attErr.message);
+      }
+
+      // Get LWP days per employee from employee_attendance_summary
+      const monthKey = `${yr}-${mn}`;
+      try {
+        const placeholders2 = employeeIds.map(() => '?').join(',');
+        const [lwpRows] = await db.execute(
+          `SELECT employee_id, total_lwp
+           FROM employee_attendance_summary
+           WHERE employee_id IN (${placeholders2})
+           AND month = ?`,
+          [...employeeIds, monthKey]
+        );
+        for (const row of lwpRows) {
+          lwpMap[row.employee_id] = parseInt(row.total_lwp) || 0;
+        }
+      } catch (lwpErr) {
+        console.log('LWP fetch for export skipped:', lwpErr.message);
+      }
+    }
+
+    // Fetch loan and advance data from salary profiles
+    const loanAdvanceMap = {};
+    if (employeeIds.length > 0) {
+      try {
+        const placeholders3 = employeeIds.map(() => '?').join(',');
+        const [salaryRows] = await db.execute(
+          `SELECT employee_id, loan_amount_per_month, loan_active, advance_amount, advance_active
+           FROM employee_salary_profile
+           WHERE employee_id IN (${placeholders3})
+           AND (is_active = 1 OR id IN (
+             SELECT MAX(id) FROM employee_salary_profile WHERE employee_id IN (${placeholders3}) GROUP BY employee_id
+           ))
+           ORDER BY id DESC`,
+          [...employeeIds, ...employeeIds]
+        );
+        for (const row of salaryRows) {
+          if (!loanAdvanceMap[row.employee_id]) {
+            loanAdvanceMap[row.employee_id] = {
+              loan: row.loan_active ? (parseFloat(row.loan_amount_per_month) || 0) : 0,
+              advance: row.advance_active ? (parseFloat(row.advance_amount) || 0) : 0
+            };
+          }
+        }
+      } catch (laErr) {
+        console.log('Loan/Advance fetch for export skipped:', laErr.message);
+      }
+    }
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Accent CRM';
     workbook.created = new Date();
@@ -78,7 +155,7 @@ export async function GET(request) {
     const isContractExport = salaryType === 'contract';
 
     // Total columns: contract is simple, payroll has full breakdown
-    const totalCols = isContractExport ? 5 : 37;
+    const totalCols = isContractExport ? 5 : 36;
     // For columns > 26, use AA, AB, etc.
     const getColLetter = (n) => {
       let s = '';
@@ -156,8 +233,7 @@ export async function GET(request) {
     sheet.mergeCells(`${getColLetter(mvStartCol)}4:${lastCol}4`);
     const mvCell = sheet.getCell(`${getColLetter(mvStartCol)}4`);
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const [yr, mn] = month.split('-');
-    mvCell.value = `${monthNames[parseInt(mn, 10) - 1]}-${yr.slice(2)}`;
+    mvCell.value = `${monthNames[monthNum - 1]}-${yr.slice(2)}`;
     mvCell.font = { bold: true, size: 11 };
     mvCell.alignment = { horizontal: 'center', vertical: 'middle' };
     mvCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
@@ -180,7 +256,7 @@ export async function GET(request) {
 
     if (isContractExport) {
       // ── Contract sheet: simple layout ──
-      const contractHeaders = ['Full Name', 'Designation', 'Contract Amount', 'TDS Deduction (10%)', 'In-Hand CTC'];
+      const contractHeaders = ['Full Name', 'Position', 'Contract Amount', 'TDS Deduction (10%)', 'In-Hand CTC'];
 
       const contractHeaderRow = sheet.getRow(6);
       contractHeaderRow.height = 24;
@@ -205,7 +281,7 @@ export async function GET(request) {
         sumInHand += inHandCTC;
 
         const row = sheet.getRow(7 + index);
-        row.values = [safeStr(slip.full_name), safeStr(slip.designation), contractAmount, tds, inHandCTC];
+        row.values = [safeStr(slip.full_name), safeStr(slip.position), contractAmount, tds, inHandCTC];
         for (let c = 1; c <= 5; c++) {
           const cell = row.getCell(c);
           cell.border = borderAll;
@@ -233,14 +309,13 @@ export async function GET(request) {
     } else {
       // ── Payroll - Extensive salary breakdown ──
       const headers = [
-        // Employee Info (1-6)
+        // Employee Info (1-5)
         'SR NO.',
         'Emp Code',
         'Full Name',
-        'Designation',
-        'Department',
+        'Position',
         'UAN',
-        // Attendance (7-14)
+        // Attendance (6-14)
         'PF No.',
         'ESIC No.',
         'Total Days',
@@ -261,11 +336,11 @@ export async function GET(request) {
         'PAID HOLIDAY AMOUNT',
         'BONUS',
         'OT RATE',
-        // More Earnings (26)
+        // More Earnings (25)
         'INCENTIVE',
-        // Gross (27)
+        // Gross (26)
         'GROSS EARNING',
-        // Deductions (28-36)
+        // Deductions (27-35)
         'PROVIDENT FUND',
         'ESIC',
         'PROFESSIONAL TAX',
@@ -275,7 +350,7 @@ export async function GET(request) {
         'RETENTION',
         'MLWF',
         'TOTAL DEDUCTION',
-        // Net (37)
+        // Net (36)
         'NET SALARY',
       ];
 
@@ -292,14 +367,14 @@ export async function GET(request) {
         cell.border = borderAll;
       });
       // Highlight header cells for key columns
-      headerRow.getCell(27).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // GROSS
-      headerRow.getCell(36).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // DEDUCTIONS
-      headerRow.getCell(37).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } }; // NET
+      headerRow.getCell(26).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // GROSS
+      headerRow.getCell(35).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // DEDUCTIONS
+      headerRow.getCell(36).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } }; // NET
 
       const alignCenterVertMiddle = { horizontal: 'center', vertical: 'middle' };
       const colCount = headers.length;
 
-      // Pre-compute totals accumulators (columns 9..37, index 8..36)
+      // Pre-compute totals accumulators (columns 8..36, index 7..35)
       const totals = new Float64Array(colCount); // zero-initialized
 
       // Data rows - batch write
@@ -319,18 +394,22 @@ export async function GET(request) {
         const pfEmployee = safeNum(slip.pf_employee);
         const esicEmployee = safeNum(slip.esic_employee);
         const pt = safeNum(slip.pt);
-        const loan = safeNum(slip.loan);
-        const advance = safeNum(slip.advance);
+        const empLoanAdvance = loanAdvanceMap[slip.employee_id] || { loan: 0, advance: 0 };
+        const loan = empLoanAdvance.loan || safeNum(slip.loan);
+        const advance = empLoanAdvance.advance || safeNum(slip.advance);
         const retention = safeNum(slip.retention);
-        const mlwf = safeNum(slip.mlwf);
-        const totalDeductions = safeNum(slip.total_deductions);
-        const netPay = safeNum(slip.net_pay || slip.net_salary);
+        // MLWF: compulsory ₹25 deduction in June and December
+        const mlwf = (monthNum === 6 || monthNum === 12) ? 25 : safeNum(slip.mlwf);
+        // Recalculate total deductions to include loan/advance from salary profile
+        const baseDeductions = pfEmployee + esicEmployee + pt + tds + retention + mlwf;
+        const totalDeductions = baseDeductions + loan + advance;
+        const netPay = gross - totalDeductions;
         const paidHoliday = safeNum(slip.paid_holiday);
         const otRate = safeNum(slip.ot_rate);
-        const totalDays = safeNum(slip.standard_working_days) || 26;
-        const daysPresent = safeNum(slip.days_present);
+        const totalDays = daysInMonth;
+        const daysPresent = attendanceMap[slip.employee_id] != null ? safeNum(attendanceMap[slip.employee_id]) : safeNum(slip.days_present);
         const payableDays = safeNum(slip.payable_days);
-        const lopDays = safeNum(slip.lop_days);
+        const lopDays = lwpMap[slip.employee_id] != null ? safeNum(lwpMap[slip.employee_id]) : safeNum(slip.lop_days);
         const daysLeave = safeNum(slip.days_leave);
         const otHours = safeNum(slip.overtime_hours);
 
@@ -338,26 +417,26 @@ export async function GET(request) {
         // ExcelJS contiguous array: index 0 → column 1, index 1 → column 2, etc.
         row.values = [
           idx + 1, safeStr(slip.employee_code), safeStr(slip.full_name),
-          safeStr(slip.designation), safeStr(slip.department), safeStr(slip.uan),
+          safeStr(slip.position), safeStr(slip.uan),
           safeStr(slip.pf_no), safeStr(slip.esi_no) || '--',
-          totalDays, daysPresent, payableDays, lopDays, daysLeave, 4, 0, otHours,
+          totalDays, daysPresent, payableDays, lopDays, daysLeave, 6, 0, otHours,
           basic, da, hra, conveyance, callAllowance, otherAllowances,
           paidHoliday, bonus, otRate, incentive, gross,
           pfEmployee, esicEmployee, pt, loan, advance, tds, retention, mlwf,
           totalDeductions, netPay,
         ];
 
-        // Accumulate totals for numeric columns (9..37 = index 8..36)
-        totals[8] += totalDays; totals[9] += daysPresent; totals[10] += payableDays;
-        totals[11] += lopDays; totals[12] += daysLeave; totals[13] += 4; totals[15] += otHours;
-        totals[16] += basic; totals[17] += da; totals[18] += hra;
-        totals[19] += conveyance; totals[20] += callAllowance; totals[21] += otherAllowances;
-        totals[22] += paidHoliday; totals[23] += bonus; totals[24] += otRate;
-        totals[25] += incentive; totals[26] += gross;
-        totals[27] += pfEmployee; totals[28] += esicEmployee; totals[29] += pt;
-        totals[30] += loan; totals[31] += advance; totals[32] += tds;
-        totals[33] += retention; totals[34] += mlwf; totals[35] += totalDeductions;
-        totals[36] += netPay;
+        // Accumulate totals for numeric columns (8..36 = index 7..35)
+        totals[7] += totalDays; totals[8] += daysPresent; totals[9] += payableDays;
+        totals[10] += lopDays; totals[11] += daysLeave; totals[12] += 4; totals[14] += otHours;
+        totals[15] += basic; totals[16] += da; totals[17] += hra;
+        totals[18] += conveyance; totals[19] += callAllowance; totals[20] += otherAllowances;
+        totals[21] += paidHoliday; totals[22] += bonus; totals[23] += otRate;
+        totals[24] += incentive; totals[25] += gross;
+        totals[26] += pfEmployee; totals[27] += esicEmployee; totals[28] += pt;
+        totals[29] += loan; totals[30] += advance; totals[31] += tds;
+        totals[32] += retention; totals[33] += mlwf; totals[34] += totalDeductions;
+        totals[35] += netPay;
 
         // Apply styles per cell
         for (let c = 1; c <= colCount; c++) {
@@ -365,7 +444,7 @@ export async function GET(request) {
           cell.border = borderAll;
           if (c <= 2) {
             cell.alignment = alignCenterVertMiddle;
-          } else if (c >= 9) {
+          } else if (c >= 8) {
             cell.numFmt = numFmt;
             cell.alignment = alignRightMiddle;
           } else {
@@ -379,14 +458,14 @@ export async function GET(request) {
       const totalsRow = sheet.getRow(totalsRowNum);
       const totalsValues = ['', '', 'TOTAL'];
       for (let c = 4; c <= colCount; c++) {
-        totalsValues.push(c >= 9 ? totals[c - 1] : '');
+        totalsValues.push(c >= 8 ? totals[c - 1] : '');
       }
       totalsRow.values = totalsValues;
       totalsRow.getCell(3).font = { bold: true, size: 10 };
       for (let c = 1; c <= colCount; c++) {
         const cell = totalsRow.getCell(c);
         cell.border = borderTotals;
-        if (c >= 9) {
+        if (c >= 8) {
           cell.numFmt = numFmt;
           cell.font = boldFont;
           cell.alignment = alignRightMiddle;
@@ -394,7 +473,7 @@ export async function GET(request) {
       }
 
       // Column widths
-      [6,12,22,16,14,15,20,15,10,10,10,10,8,8,10,8,12,10,10,16,14,14,14,10,8,10,14,14,10,14,10,10,10,12,10,14,14]
+      [6,12,22,16,15,20,15,10,10,10,10,8,8,10,8,12,10,10,16,14,14,14,10,8,10,14,14,10,14,10,10,10,12,10,14,14]
         .forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
     }
 

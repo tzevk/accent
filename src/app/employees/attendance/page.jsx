@@ -26,6 +26,9 @@ export default function EmployeeAttendancePage() {
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   
+  // PL (Privilege Leave) data per employee from salary profiles
+  const [plData, setPlData] = useState({});
+  
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
@@ -35,6 +38,7 @@ export default function EmployeeAttendancePage() {
     endDate: '',
     inTime: '09:00',
     outTime: '17:30',
+    idleTime: 0,
     reason: ''
   });
   
@@ -137,7 +141,7 @@ export default function EmployeeAttendancePage() {
           stdOutTime: '17:30'
         };
         
-        // Build weekly off dates: Sundays first, then 2nd & 4th Saturdays, capped at 6 total
+        // Build weekly off dates: All Sundays + 2nd & 4th Saturdays
         const sundays = daysInMonth.filter(d => d.isSunday && !holidayDates.has(d.fullDate));
         const saturdaysForWO = daysInMonth
           .filter(d => d.isSaturday && !holidayDates.has(d.fullDate))
@@ -147,10 +151,10 @@ export default function EmployeeAttendancePage() {
           });
         const woDates = new Set();
         for (const day of sundays) {
-          if (woDates.size < 6) woDates.add(day.fullDate);
+          woDates.add(day.fullDate);
         }
         for (const day of saturdaysForWO) {
-          if (woDates.size < 6) woDates.add(day.fullDate);
+          woDates.add(day.fullDate);
         }
 
         daysInMonth.forEach(day => {
@@ -168,10 +172,67 @@ export default function EmployeeAttendancePage() {
       });
       
       setAttendanceData(initialAttendance);
+      
+      // Stop loading immediately - attendance grid is ready to display
+      setLoading(false);
+      
+      // Fetch PL data in background (non-blocking) and in parallel
+      try {
+        const plMap = {};
+        
+        // 1. Fetch pl_total from salary profiles - in parallel
+        const plResults = await Promise.allSettled(
+          employeeList.map(async (emp) => {
+            const plRes = await fetch(`/api/payroll/salary-profile?employee_id=${emp.id}`);
+            const plResult = await plRes.json();
+            if (plRes.ok && plResult.data && plResult.data.length > 0) {
+              const activeProfile = plResult.data[0];
+              return {
+                empId: emp.id,
+                total: parseInt(activeProfile.pl_total) || 0,
+              };
+            }
+            return null;
+          })
+        );
+        
+        plResults.forEach(result => {
+          if (result.status === 'fulfilled' && result.value) {
+            plMap[result.value.empId] = {
+              total: result.value.total,
+              used: 0,
+              balance: result.value.total
+            };
+          }
+        });
+        
+        // 2. Fetch pl_used from attendance summary API (sum PL days across all months of the year)
+        try {
+          const summaryRes = await fetch(`/api/attendance/summary?year=${currentYear}`);
+          const summaryResult = await summaryRes.json();
+          if (summaryRes.ok && summaryResult.data && summaryResult.data.length > 0) {
+            summaryResult.data.forEach(row => {
+              const empId = row.employee_id;
+              const plUsed = parseInt(row.total_privilege_leave) || 0;
+              if (plMap[empId]) {
+                plMap[empId].used += plUsed;
+                plMap[empId].balance = Math.max(0, plMap[empId].total - plMap[empId].used);
+              } else {
+                plMap[empId] = { total: 0, used: plUsed, balance: 0 };
+              }
+            });
+          }
+        } catch (summaryErr) {
+          console.error('Error fetching attendance summary for PL:', summaryErr);
+        }
+        
+        setPlData(plMap);
+      } catch (plFetchErr) {
+        console.error('Error fetching PL data:', plFetchErr);
+      }
     } catch (err) {
       console.error('Error fetching employees:', err);
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   }, [daysInMonth, fetchHolidays, currentMonth, currentYear]);
@@ -183,14 +244,16 @@ export default function EmployeeAttendancePage() {
   // Open modal for attendance
   const openAttendanceModal = (employeeId, fullDate, currentStatus, employeeName) => {
     const empData = attendanceData[employeeId] || {};
+    const dayDetail = empData.dayDetails?.[fullDate] || {};
     setSelectedCell({ employeeId, fullDate, currentStatus, employeeName });
     setModalData({
       attendanceType: currentStatus || 'P',
       startDate: fullDate,
       endDate: fullDate,
-      inTime: empData.stdInTime || '09:00',
-      outTime: empData.stdOutTime || '17:30',
-      reason: ''
+      inTime: dayDetail.inTime || empData.stdInTime || '09:00',
+      outTime: dayDetail.outTime || empData.stdOutTime || '17:30',
+      idleTime: dayDetail.idleTime || 0,
+      reason: dayDetail.reason || ''
     });
     setShowModal(true);
   };
@@ -204,15 +267,69 @@ export default function EmployeeAttendancePage() {
     if (!selectedCell) return;
     
     const { employeeId } = selectedCell;
-    const { attendanceType, startDate, endDate, inTime, outTime, reason } = modalData;
+    const { attendanceType, startDate, endDate, inTime, outTime, idleTime, reason } = modalData;
     
     const start = new Date(startDate);
     const end = new Date(endDate);
     
+    // If marking PL, check PL balance and auto-convert to LWP when exhausted
+    if (attendanceType === 'PL') {
+      const empPl = plData[employeeId] || { total: 0, used: 0, balance: 0 };
+      // Count how many PL days the employee currently has marked in this month
+      const empData = attendanceData[employeeId] || {};
+      const currentMonthPLCount = Object.values(empData.days || {}).filter(s => s === 'PL').length;
+      // Available PL balance = total - used from previous months - current month PL already marked
+      let availablePL = Math.max(0, empPl.total - empPl.used);
+      // Subtract PL already marked this month (since they haven't been saved/synced to summary yet)
+      // But empPl.used already includes saved months
+      // For current unsaved month, count PL days already in the grid
+      let remainingPL = Math.max(0, availablePL - currentMonthPLCount);
+      
+      // Collect target dates
+      const targetDates = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateKey = d.toISOString().split('T')[0];
+        if (daysInMonth.some(day => day.fullDate === dateKey)) {
+          // Don't re-count days that are already PL
+          const existingStatus = empData.days?.[dateKey];
+          if (existingStatus === 'PL') {
+            // Already PL, no change needed for balance
+            targetDates.push({ dateKey, status: 'PL' });
+          } else {
+            targetDates.push({ dateKey, status: null });
+          }
+        }
+      }
+      
+      let lwpCount = 0;
+      for (const target of targetDates) {
+        if (target.status === 'PL') {
+          // Already PL, just update details
+          updateAttendanceStatus(employeeId, target.dateKey, 'PL', { inTime, outTime, idleTime, reason });
+        } else if (remainingPL > 0) {
+          updateAttendanceStatus(employeeId, target.dateKey, 'PL', { inTime, outTime, idleTime, reason });
+          remainingPL--;
+        } else {
+          // No PL balance left, mark as LWP
+          updateAttendanceStatus(employeeId, target.dateKey, 'LWP', { inTime, outTime, idleTime, reason: reason || 'Auto: PL balance exhausted' });
+          lwpCount++;
+        }
+      }
+      
+      closeModal();
+      if (lwpCount > 0) {
+        setSuccess(`Attendance updated for ${selectedCell.employeeName} — ${lwpCount} day(s) marked as LWP (PL balance exhausted)`);
+      } else {
+        setSuccess(`Attendance updated for ${selectedCell.employeeName}`);
+      }
+      setTimeout(() => setSuccess(''), 4000);
+      return;
+    }
+    
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateKey = d.toISOString().split('T')[0];
       if (daysInMonth.some(day => day.fullDate === dateKey)) {
-        updateAttendanceStatus(employeeId, dateKey, attendanceType, { inTime, outTime, reason });
+        updateAttendanceStatus(employeeId, dateKey, attendanceType, { inTime, outTime, idleTime, reason });
       }
     }
     
@@ -382,7 +499,8 @@ export default function EmployeeAttendancePage() {
             overtime_hours: overtimeHours,
             is_weekly_off: status === 'WO',
             in_time: dayDetail.inTime || null,
-            out_time: dayDetail.outTime || null
+            out_time: dayDetail.outTime || null,
+            idle_time: dayDetail.idleTime || 0
           });
         });
       });
@@ -441,7 +559,8 @@ export default function EmployeeAttendancePage() {
                   overtimeHours: parseFloat(dayData.overtime_hours || 0),
                   status: dayData.status,
                   inTime: formatTime(dayData.in_time),
-                  outTime: formatTime(dayData.out_time)
+                  outTime: formatTime(dayData.out_time),
+                  idleTime: dayData.idle_time || 0
                 };
               });
               
@@ -713,7 +832,11 @@ export default function EmployeeAttendancePage() {
                       <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">WO</th>
                       <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">H</th>
                       <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">OT</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">Hrs</th>
+                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-rose-600 bg-rose-50">LWP</th>
+                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50 border-l border-gray-200">PL Total</th>
+                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50">PL Used</th>
+                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50">PL Bal</th>
+                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50 border-l border-gray-200">Hrs</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -791,7 +914,31 @@ export default function EmployeeAttendancePage() {
                             {empData.overtime || 0}
                           </span>
                         </td>
+                        {/* LWP column */}
                         <td className="px-2 py-2 text-center">
+                          <span className={`text-xs font-medium ${(empData.lwp || 0) > 0 ? 'text-rose-600 font-semibold' : 'text-gray-400'}`}>
+                            {empData.lwp || 0}
+                          </span>
+                        </td>
+                        {/* PL columns */}
+                        <td className="px-2 py-2 text-center border-l border-gray-100 bg-blue-50/30">
+                          <span className="text-xs font-medium text-blue-700">
+                            {plData[empData.id]?.total || 0}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-center bg-blue-50/30">
+                          <span className="text-xs font-medium text-blue-600">
+                            {(plData[empData.id]?.used || 0) + (empData.privilegedLeave || 0)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-center bg-blue-50/30">
+                          <span className={`text-xs font-semibold ${
+                            ((plData[empData.id]?.total || 0) - (plData[empData.id]?.used || 0) - (empData.privilegedLeave || 0)) > 0 ? 'text-green-600' : 'text-red-500'
+                          }`}>
+                            {Math.max(0, (plData[empData.id]?.total || 0) - (plData[empData.id]?.used || 0) - (empData.privilegedLeave || 0))}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-center border-l border-gray-100">
                           <span className="text-xs font-medium text-gray-700">
                             {(() => {
                               let totalHours = 0;
@@ -803,6 +950,7 @@ export default function EmployeeAttendancePage() {
                                   const dayDetail = empData.dayDetails?.[dateKey] || {};
                                   const inTime = dayDetail.inTime || defaultInTime;
                                   const outTime = dayDetail.outTime || defaultOutTime;
+                                  const idleMinutes = dayDetail.idleTime || 0;
                                   
                                   const [inH, inM] = inTime.split(':').map(Number);
                                   const [outH, outM] = outTime.split(':').map(Number);
@@ -811,6 +959,8 @@ export default function EmployeeAttendancePage() {
                                   
                                   if (outDecimal > inDecimal) {
                                     let hours = outDecimal - inDecimal;
+                                    // Subtract idle time (in minutes converted to hours)
+                                    hours = Math.max(0, hours - (idleMinutes / 60));
                                     if (status === 'HD') hours = hours / 2;
                                     totalHours += hours;
                                   }
@@ -1006,7 +1156,7 @@ export default function EmployeeAttendancePage() {
                 </div>
 
                 {/* Time Range */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">In Time</label>
                     <input
@@ -1022,6 +1172,17 @@ export default function EmployeeAttendancePage() {
                       type="time"
                       value={modalData.outTime}
                       onChange={(e) => setModalData({ ...modalData, outTime: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Idle (mins)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={modalData.idleTime}
+                      onChange={(e) => setModalData({ ...modalData, idleTime: parseInt(e.target.value) || 0 })}
+                      placeholder="0"
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
                     />
                   </div>

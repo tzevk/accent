@@ -24,6 +24,40 @@ import { useIdleMonitor } from '@/hooks/useIdleMonitor';
 const TodoList = lazy(() => import('@/components/TodoList'));
 const ProjectActivityAssignments = lazy(() => import('@/components/ProjectActivityAssignments'));
 
+// ── Fixed shift times ──
+const FIXED_IN_TIME = '09:00';  // 9:00 AM
+const FIXED_OUT_TIME = '17:30'; // 5:30 PM
+const LUNCH_BREAK_MINS = 60;    // 1 PM to 2 PM
+// Expected work = (out - in) - lunch = (17:30 - 09:00) - 1h = 7h 30m = 450 min
+const EXPECTED_WORK_MINS = (() => {
+  const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
+  const [outH, outM] = FIXED_OUT_TIME.split(':').map(Number);
+  return (outH * 60 + outM) - (inH * 60 + inM) - LUNCH_BREAK_MINS;
+})();
+
+// Check if a time string (HH:MM) is outside the fixed shift window
+function isOvertime(timeStr) {
+  if (!timeStr) return false;
+  const t = typeof timeStr === 'string' ? timeStr : timeStr.toString();
+  if (!t.includes(':')) return false;
+  const [h, m] = t.split(':').map(Number);
+  const mins = h * 60 + (m || 0);
+  const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
+  const [outH, outM] = FIXED_OUT_TIME.split(':').map(Number);
+  return mins < inH * 60 + inM || mins > outH * 60 + outM;
+}
+
+// Check if login/in time is after the fixed in time (late arrival)
+function isLateLogin(timeStr) {
+  if (!timeStr) return false;
+  const t = typeof timeStr === 'string' ? timeStr : timeStr.toString();
+  if (!t.includes(':')) return false;
+  const [h, m] = t.split(':').map(Number);
+  const mins = h * 60 + (m || 0);
+  const [inH, inM] = FIXED_IN_TIME.split(':').map(Number);
+  return mins > inH * 60 + inM;
+}
+
 // ── Shared idle-time formatter ──
 function fmtIdle(seconds) {
   if (seconds < 60) return `${seconds}s`;
@@ -102,7 +136,7 @@ export default function UserDashboard({ verifiedUser }) {
   }, []);
 
   // Idle monitoring
-  const { idleSeconds, isIdle, dismiss, dismissed, handleActivity } = useIdleMonitor();
+  const { idleSeconds, cumulativeIdleSeconds, isIdle, dismiss, dismissed, handleActivity } = useIdleMonitor();
 
   // Static greeting & date — computed once on mount, not every second
   const [greeting] = useState(() => {
@@ -119,8 +153,44 @@ export default function UserDashboard({ verifiedUser }) {
     inTime: null, outTime: null, loginTime: null, logoutTime: null,
     currentMonth: '', daysInMonth: 0, daysPresent: 0,
     weeklyOff: 0, holidays: 0, overtimeHours: 0,
-    leaves: { total: 18, used: 0, balance: 18 }
+    leaves: { total: 24, used: 0, balance: 24 }
   });
+
+  // Live total time: (now - loginTime) - cumulative idle
+  const [liveTotalTime, setLiveTotalTime] = useState({ hrs: 0, mins: 0, elapsedHrs: 0, elapsedMins: 0, idleHrs: 0, idleMins: 0 });
+  useEffect(() => {
+    const calcTotal = () => {
+      const lt = attendance.loginTime;
+      if (!lt) { setLiveTotalTime({ hrs: 0, mins: 0, elapsedHrs: 0, elapsedMins: 0, idleHrs: 0, idleMins: 0 }); return; }
+      const now = new Date();
+      const [lh, lm] = (typeof lt === 'string' ? lt : lt.toString()).split(':').map(Number);
+      const loginDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), lh, lm || 0);
+
+      let endDate = now;
+      // If logged out, cap elapsed time at logout
+      if (attendance.logoutTime) {
+        const [oh, om] = (typeof attendance.logoutTime === 'string' ? attendance.logoutTime : attendance.logoutTime.toString()).split(':').map(Number);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), oh, om || 0);
+      }
+
+      const elapsedMin = Math.max(0, Math.floor((endDate - loginDate) / 60000));
+      // After logout, only use DB idle time — don't add live cumulative idle
+      const idleMin = attendance.logoutTime
+        ? (attendance.idleTime || 0)
+        : Math.floor(cumulativeIdleSeconds / 60) + (attendance.idleTime || 0);
+      const netMin = Math.max(0, elapsedMin - idleMin);
+      setLiveTotalTime({
+        hrs: Math.floor(netMin / 60), mins: netMin % 60,
+        elapsedHrs: Math.floor(elapsedMin / 60), elapsedMins: elapsedMin % 60,
+        idleHrs: Math.floor(idleMin / 60), idleMins: idleMin % 60
+      });
+    };
+    calcTotal();
+    // Don't keep interval running after logout
+    if (attendance.logoutTime) return;
+    const iv = setInterval(calcTotal, 50000);
+    return () => clearInterval(iv);
+  }, [attendance.loginTime, attendance.logoutTime, attendance.idleTime, cumulativeIdleSeconds]);
 
   // Module data
   const [moduleAssignments, setModuleAssignments] = useState({
@@ -421,106 +491,177 @@ export default function UserDashboard({ verifiedUser }) {
             </div>
 
             {/* ── Attendance ── */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-3 xl:p-4">
-              <div className="flex items-center gap-2 mb-2 xl:mb-3">
-                <div className="w-0.5 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 xl:p-4">
+              <div className="flex items-center gap-2 mb-3 xl:mb-4">
+                <div className="w-1 h-4 rounded-full bg-gradient-to-b from-[#64126D] to-[#9333ea]"></div>
                 <h2 className="text-xs xl:text-sm font-semibold text-gray-800 tracking-wide uppercase">Today&apos;s Attendance</h2>
               </div>
-              <div className="grid grid-cols-2 gap-2 xl:gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {/* In Time */}
-                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-green-50/40 p-1.5 hover:shadow-sm hover:border-green-300 transition-all duration-200">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.inTime ? 'bg-green-100 text-green-600 group-hover:bg-green-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <ArrowRightStartOnRectangleIcon className="h-3 w-3" />
+              <div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-7">
+                {/* Punch In */}
+                <div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-green-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.loginTime ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+                        <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
+                      </div>
+                      {attendance.loginTime && <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">In Time</p>
-                      <p className={`text-xs font-bold leading-tight ${attendance.inTime ? 'text-gray-900' : 'text-gray-300'}`}>{formatTime(attendance.inTime)}</p>
-                      {attendance.loginTime && <p className="text-[10px] text-green-600 mt-0.5 font-medium">Login {formatTime(attendance.loginTime)}</p>}
-                    </div>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Punch In</p>
+                    <p className={`text-base font-extrabold leading-tight tracking-tight ${attendance.loginTime ? (isLateLogin(attendance.loginTime) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}>
+                      {attendance.loginTime ? formatTime(attendance.loginTime) : '--:--'}
+                    </p>
                   </div>
                 </div>
-                {/* Out Time */}
-                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-red-50/40 p-1.5 hover:shadow-sm hover:border-red-300 transition-all duration-200">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.outTime ? 'bg-red-100 text-red-600 group-hover:bg-red-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <ArrowLeftStartOnRectangleIcon className="h-3 w-3" />
+                {/* Punch Out */}
+                <div className="group relative rounded-xl border border-red-200 bg-gradient-to-br from-red-50 via-white to-rose-50 p-3 hover:shadow-lg hover:border-red-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-red-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.outTime ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+                        <ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Out Time</p>
-                      <p className={`text-xs font-bold leading-tight ${attendance.outTime ? 'text-gray-900' : 'text-gray-300'}`}>{formatTime(attendance.outTime)}</p>
-                      {attendance.logoutTime && <p className="text-[10px] text-red-600 mt-0.5 font-medium">Logout {formatTime(attendance.logoutTime)}</p>}
-                    </div>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Punch Out</p>
+                    <p className={`text-base font-extrabold leading-tight tracking-tight ${attendance.logoutTime ? (isOvertime(attendance.logoutTime) ? 'text-red-600' : 'text-gray-900') : 'text-gray-400'}`}>
+                      {attendance.logoutTime ? formatTime(attendance.logoutTime) : '--:--'}
+                      {attendance.logoutTime && isOvertime(attendance.logoutTime) && <span className="ml-1 text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">OT</span>}
+                    </p>
                   </div>
                 </div>
-                {/* Present Days */}
-                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-blue-50/40 p-1.5 hover:shadow-sm hover:border-blue-300 transition-all duration-200">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.daysPresent > 0 ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <CalendarDaysIcon className="h-3 w-3" />
+                {/* Total Time */}
+                {(() => {
+                  const totalMins = liveTotalTime.hrs * 60 + liveTotalTime.mins;
+                  const isComplete = totalMins >= EXPECTED_WORK_MINS;
+                  const hasLogin = !!attendance.loginTime;
+                  return (
+                <div className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${
+                  !hasLogin ? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50' :
+                  isComplete ? 'border-green-300 bg-gradient-to-br from-green-50 via-white to-emerald-50' :
+                  'border-red-300 bg-gradient-to-br from-red-50 via-white to-rose-50'
+                }`}>
+                  <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500 ${
+                    !hasLogin ? 'bg-indigo-200/30' : isComplete ? 'bg-green-200/30' : 'bg-red-200/30'
+                  }`} />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${
+                        !hasLogin ? 'bg-gray-200 text-gray-500' :
+                        isComplete ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' :
+                        'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md'
+                      }`}>
+                        <ClockIcon className="h-4 w-4" />
+                      </div>
+                      {hasLogin && <div className={`w-2 h-2 rounded-full animate-pulse shadow-sm ${isComplete ? 'bg-green-500 shadow-green-300' : 'bg-red-500 shadow-red-300'}`} />}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Present</p>
-                      <p className={`text-sm font-bold leading-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                        {attendance.daysPresent}<span className="text-xs font-normal text-gray-400">/{attendance.daysInMonth}</span>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Total Time</p>
+                    <p className={`text-base font-extrabold leading-tight tracking-tight ${!hasLogin ? 'text-gray-400' : isComplete ? 'text-green-700' : 'text-red-600'}`}>
+                      {hasLogin ? `${liveTotalTime.hrs}h ${liveTotalTime.mins}m` : '--:--'}
+                      {hasLogin && isComplete && <span className="ml-1 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">✓</span>}
+                    </p>
+                    {hasLogin && (
+                      <p className={`text-[10px] mt-1 font-medium leading-snug ${isComplete ? 'text-green-600' : 'text-red-500'}`}>
+                        {liveTotalTime.elapsedHrs}h {liveTotalTime.elapsedMins}m
+                        <span className="text-red-500 font-bold"> − {liveTotalTime.idleHrs > 0 ? `${liveTotalTime.idleHrs}h ` : ''}{liveTotalTime.idleMins}m</span>
+                        <span className="text-gray-400"> idle</span>
                       </p>
-                    </div>
+                    )}
+                    {hasLogin && !isComplete && (
+                      <p className="text-[9px] text-red-500 mt-0.5 font-semibold">
+                        {Math.floor((EXPECTED_WORK_MINS - totalMins) / 60) > 0 ? `${Math.floor((EXPECTED_WORK_MINS - totalMins) / 60)}h ` : ''}{(EXPECTED_WORK_MINS - totalMins) % 60}m remaining
+                      </p>
+                    )}
                   </div>
-                  {attendance.daysInMonth > 0 && (
-                    <div className="mt-1 h-0.5 rounded-full bg-gray-100 overflow-hidden">
-                      <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${Math.round((attendance.daysPresent / attendance.daysInMonth) * 100)}%` }} />
+                </div>
+                  );
+                })()}
+                {/* Present Days */}
+                <div className="group relative rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-3 hover:shadow-lg hover:border-blue-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-blue-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.daysPresent > 0 ? 'bg-gradient-to-br from-blue-500 to-sky-600 text-white shadow-blue-200 group-hover:shadow-blue-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+                        <CalendarDaysIcon className="h-4 w-4" />
+                      </div>
                     </div>
-                  )}
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Present</p>
+                    <p className={`text-base font-extrabold leading-tight tracking-tight ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {attendance.daysPresent}<span className="text-sm font-semibold text-gray-400 ml-0.5">/ {attendance.daysInMonth}</span>
+                    </p>
+                    {attendance.daysInMonth > 0 && (
+                      <div className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-500 transition-all duration-700 ease-out" style={{ width: `${Math.round((attendance.daysPresent / attendance.daysInMonth) * 100)}%` }} />
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {/* Leave Days */}
-                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-amber-50/40 p-1.5 hover:shadow-sm hover:border-amber-300 transition-all duration-200">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.leaves.used > 0 ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <CalendarIcon className="h-3 w-3" />
+                <div className="group relative rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-yellow-50 p-3 hover:shadow-lg hover:border-amber-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.leaves.used > 0 ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+                        <CalendarIcon className="h-4 w-4" />
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Leaves</p>
-                      <p className={`text-sm font-bold leading-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                        {attendance.leaves.used}<span className="text-xs font-normal text-gray-400">/{attendance.leaves.total}</span>
-                      </p>
-                    </div>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Leaves</p>
+                    <p className={`text-base font-extrabold leading-tight tracking-tight ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {attendance.leaves.used}<span className="text-sm font-semibold text-gray-400 ml-0.5">/ {attendance.leaves.total}</span>
+                    </p>
+                    <p className="text-[11px] text-amber-700 font-semibold mt-1.5 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" /> {attendance.leaves.balance} remaining</p>
                   </div>
-                  <p className="text-[9px] text-amber-600 font-medium mt-0.5">{attendance.leaves.balance} remaining</p>
                 </div>
                 {/* Overtime */}
-                <div className="group relative rounded-lg border border-gray-100 bg-gradient-to-br from-white to-orange-50/40 p-1.5 hover:shadow-sm hover:border-orange-300 transition-all duration-200">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${attendance.overtimeHours > 0 ? 'bg-orange-100 text-orange-600 group-hover:bg-orange-200' : 'bg-gray-100 text-gray-400'}`}>
-                      <FireIcon className="h-3 w-3" />
+                <div className="group relative rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-3 hover:shadow-lg hover:border-orange-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-orange-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
+                  <div className="relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.overtimeHours > 0 ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-orange-200 group-hover:shadow-orange-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}>
+                        <FireIcon className="h-4 w-4" />
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Overtime</p>
-                      <p className={`text-sm font-bold leading-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
-                        {attendance.overtimeHours}<span className="text-xs font-normal text-gray-400">h</span>
-                      </p>
-                      <p className="text-[9px] text-gray-400">this month</p>
-                    </div>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Overtime</p>
+                    <p className={`text-base font-extrabold leading-tight tracking-tight ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {attendance.overtimeHours}<span className="text-sm font-semibold text-gray-400 ml-0.5">h</span>
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-1.5 font-medium">this month</p>
                   </div>
                 </div>
-                {/* Idle Time (Live) */}
-                <div className={`group relative rounded-lg border p-1.5 hover:shadow-sm transition-all duration-200 ${
-                  idleSeconds > 1800 ? 'border-red-200 bg-gradient-to-br from-red-50/80 to-red-100/50 ring-1 ring-red-100' : idleSeconds > 300 ? 'border-amber-200 bg-gradient-to-br from-white to-amber-50/40' : 'border-gray-100 bg-gradient-to-br from-white to-emerald-50/40'
-                }`}>
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-200 ${
-                      idleSeconds > 1800 ? 'bg-red-100 text-red-600' : idleSeconds > 300 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'
+                {/* Idle Time (Live + Total) */}
+                {(() => {
+                  // After logout, only show DB idle — don't add live cumulative
+                  const effectiveIdleSecs = attendance.logoutTime ? 0 : idleSeconds;
+                  const totalIdleMin = attendance.logoutTime
+                    ? (attendance.idleTime || 0)
+                    : Math.floor(cumulativeIdleSeconds / 60) + (attendance.idleTime || 0);
+                  return (
+                    <div className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${
+                      effectiveIdleSecs > 1800 ? 'border-red-300 bg-gradient-to-br from-red-50 via-white to-rose-50 ring-1 ring-red-200' : effectiveIdleSecs > 300 ? 'border-amber-300 bg-gradient-to-br from-amber-50 via-white to-yellow-50' : 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-green-50'
                     }`}>
-                      <ComputerDesktopIcon className="h-3 w-3" />
+                      <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500 ${
+                        effectiveIdleSecs > 1800 ? 'bg-red-200/40' : effectiveIdleSecs > 300 ? 'bg-amber-200/40' : 'bg-emerald-200/30'
+                      }`} />
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${
+                            effectiveIdleSecs > 1800 ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200' : effectiveIdleSecs > 300 ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200' : 'bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-emerald-200'
+                          }`}>
+                            <ComputerDesktopIcon className="h-4 w-4" />
+                          </div>
+                          <div className={`w-2 h-2 rounded-full shadow-sm ${effectiveIdleSecs > 1800 ? 'bg-red-500 shadow-red-300' : effectiveIdleSecs > 300 ? 'bg-amber-500 shadow-amber-300' : 'bg-emerald-500 shadow-emerald-300'} animate-pulse`} />
+                        </div>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">Idle</p>
+                        <p className={`text-base font-extrabold leading-tight tracking-tight ${
+                          effectiveIdleSecs > 1800 ? 'text-red-800' : effectiveIdleSecs > 300 ? 'text-amber-800' : 'text-emerald-800'
+                        }`}>{attendance.logoutTime ? `${totalIdleMin}m` : fmtIdle(effectiveIdleSecs)}</p>
+                        <p className={`text-[11px] mt-1.5 font-semibold flex items-center gap-1 ${effectiveIdleSecs > 1800 ? 'text-red-600' : effectiveIdleSecs > 300 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full inline-block ${effectiveIdleSecs > 1800 ? 'bg-red-500' : effectiveIdleSecs > 300 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                          {attendance.logoutTime ? 'session ended' : totalIdleMin > 0 ? `Total ${totalIdleMin}m today` : (effectiveIdleSecs > 1800 ? 'action needed' : effectiveIdleSecs > 300 ? 'getting idle' : 'all good')}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-medium text-gray-400 uppercase tracking-wider leading-none">Idle</p>
-                      <p className={`text-xs font-bold leading-tight ${
-                        idleSeconds > 1800 ? 'text-red-700' : idleSeconds > 300 ? 'text-amber-700' : 'text-emerald-700'
-                      }`}>{fmtIdle(idleSeconds)}</p>
-                      <p className="text-[9px] text-gray-400">{idleSeconds > 1800 ? 'action needed' : idleSeconds > 300 ? 'getting idle' : 'all good'}</p>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             </div>
 

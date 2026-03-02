@@ -21,6 +21,8 @@ export function useIdleMonitor() {
   const { user } = useSession();
   const lastInteractionRef = useRef(Date.now());
   const [idleSeconds, setIdleSeconds] = useState(0);
+  const [cumulativeIdleSeconds, setCumulativeIdleSeconds] = useState(0);
+  const prevIdleRef = useRef(0); // track previous idleSeconds to compute delta
   const [isIdle, setIsIdle] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const loggedRef = useRef(false); // prevent duplicate 30-min logs per idle stretch
@@ -30,6 +32,7 @@ export function useIdleMonitor() {
   const handleActivity = useCallback(() => {
     const wasIdle = isIdle;
     lastInteractionRef.current = Date.now();
+    prevIdleRef.current = 0; // reset delta tracking for new streak
     setIdleSeconds(0);
     setIsIdle(false);
     setDismissed(false);
@@ -82,6 +85,12 @@ export function useIdleMonitor() {
       const now = Date.now();
       const elapsed = now - lastInteractionRef.current;
       const secs = Math.floor(elapsed / 1000);
+      // Accumulate idle delta into cumulative total
+      const delta = secs - prevIdleRef.current;
+      if (delta > 0) {
+        setCumulativeIdleSeconds(prev => prev + delta);
+      }
+      prevIdleRef.current = secs;
       setIdleSeconds(secs);
 
       if (elapsed >= IDLE_WARNING_THRESHOLD && !loggedRef.current) {
@@ -117,5 +126,5 @@ export function useIdleMonitor() {
     };
   }, [user?.id, handleActivity]);
 
-  return { idleSeconds, isIdle, dismiss, dismissed, handleActivity };
+  return { idleSeconds, cumulativeIdleSeconds, isIdle, dismiss, dismissed, handleActivity };
 }

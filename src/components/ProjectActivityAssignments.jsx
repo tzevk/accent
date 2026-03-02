@@ -35,9 +35,13 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
       // Check if there's already an unlocked (editable) entry for today
       const hasUnlockedToday = entries.some(e => e.date === today && !e.isLocked);
       if (!hasUnlockedToday) {
-        // Mark all existing unlocked entries as locked and add fresh today entry
-        const updated = entries.map(e => e.isLocked ? e : { ...e, isLocked: true });
-        return { ...a, daily_entries: [...updated, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }] };
+        // Lock all existing unlocked entries — if unfilled, store as null
+        const updated = entries.map(e => {
+          if (e.isLocked) return e;
+          const filled = (e.qty_done !== '' && e.qty_done !== null) || (e.hours !== '' && e.hours !== null);
+          return { ...e, isLocked: true, qty_done: filled ? e.qty_done : null, hours: filled ? e.hours : null, remarks: e.remarks || null };
+        });
+        return { ...a, daily_entries: [...updated, { date: today, qty_done: null, hours: null, remarks: null, isLocked: false }] };
       }
       return { ...a, daily_entries: entries };
     });
@@ -98,10 +102,14 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const addDailyEntry = async (activity) => {
     const dailyEntries = [...(activity.daily_entries || [])];
     const today = new Date().toISOString().split('T')[0];
-    // Lock all currently unlocked entries before adding a new additional entry
-    const lockedEntries = dailyEntries.map(e => ({ ...e, isLocked: true }));
+    // Lock all currently unlocked entries before adding a new additional entry — unfilled as null
+    const lockedEntries = dailyEntries.map(e => {
+      if (e.isLocked) return e;
+      const filled = (e.qty_done !== '' && e.qty_done !== null) || (e.hours !== '' && e.hours !== null);
+      return { ...e, isLocked: true, qty_done: filled ? e.qty_done : null, hours: filled ? e.hours : null, remarks: e.remarks || null };
+    });
     // Add a new entry for today (additional entries per day are counted cumulatively)
-    const updatedEntries = [...lockedEntries, { date: today, qty_done: '', hours: '', remarks: '', isLocked: false }];
+    const updatedEntries = [...lockedEntries, { date: today, qty_done: null, hours: null, remarks: null, isLocked: false }];
     const totalQtyDone = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
     const totalHours = updatedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
 
@@ -152,8 +160,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
   const saveDailyEntries = async (activity) => {
     const entries = activity.daily_entries || [];
-    // Lock all entries on submit — they become read-only
-    const lockedEntries = entries.map(e => ({ ...e, isLocked: true }));
+    // Lock all entries on submit — unfilled entries stored as null
+    const lockedEntries = entries.map(e => {
+      const filled = (e.qty_done !== '' && e.qty_done !== null) || (e.hours !== '' && e.hours !== null);
+      return { ...e, isLocked: true, qty_done: filled ? e.qty_done : null, hours: filled ? e.hours : null, remarks: e.remarks || null };
+    });
     const totalQtyDone = lockedEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
     const totalHours = lockedEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
     setSaving(true);

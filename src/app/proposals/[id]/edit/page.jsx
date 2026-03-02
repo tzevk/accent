@@ -1675,17 +1675,111 @@ function QuotationForm({ proposalData, setProposalData, proposalId }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
   const [termsOpen, setTermsOpen] = useState(false);
   const [scopeTab, setScopeTab] = useState('scope_summary');
+  const [fetchingQuotation, setFetchingQuotation] = useState(false);
+
+  // Fetch updated quotation data from the proposal
+  const fetchUpdatedQuotation = useCallback(async () => {
+    if (!proposalId) return;
+    setFetchingQuotation(true);
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}`);
+      const data = await res.json();
+      if (data?.success && data?.data) {
+        const p = data.data;
+        setProposalData(prev => ({
+          ...prev,
+          quotation_number: p.quotation_number ?? prev.quotation_number,
+          quotation_date: p.quotation_date ?? prev.quotation_date,
+          enquiry_number: p.enquiry_number ?? prev.enquiry_number,
+          enquiry_date: p.enquiry_date ?? prev.enquiry_date,
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching updated quotation:', error);
+    } finally {
+      setFetchingQuotation(false);
+    }
+  }, [proposalId, setProposalData]);
+
+  // Auto-fetch quotation data when component mounts
+  useEffect(() => {
+    // Fetch initial quotation data
+    fetchUpdatedQuotation();
+  }, [fetchUpdatedQuotation]);
 
   const handleGenerateQuotation = () => {
     if (!proposalId) { alert('Proposal not saved yet.'); return; }
-    // Navigate to the editable quotation page (same as admin quotation editor)
-    window.open(`/admin/quotation/${proposalId}/edit?source=proposal`, '_blank');
+    
+    // Open quotation window
+    const quotationWindow = window.open(`/admin/quotation/${proposalId}/edit?source=proposal`, '_blank');
+    
+    if (!quotationWindow) {
+      alert('Unable to open quotation window. Please check your browser popup settings.');
+      return;
+    }
+
+    // Strategy 1: Listen for window focus (when user returns from quotation page)
+    const handleWindowFocus = () => {
+      setTimeout(() => {
+        fetchUpdatedQuotation();
+      }, 800);
+    };
+
+    // Strategy 2: Poll every 3 seconds if the child window is still open
+    const pollInterval = setInterval(() => {
+      if (quotationWindow.closed) {
+        clearInterval(pollInterval);
+        // Window closed - fetch updated data
+        setTimeout(() => {
+          fetchUpdatedQuotation();
+        }, 500);
+      }
+    }, 3000);
+
+    // Add focus listener
+    window.addEventListener('focus', handleWindowFocus);
+    
+    // Cleanup after 10 minutes
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener('focus', handleWindowFocus);
+      clearInterval(pollInterval);
+    }, 10 * 60 * 1000);
+    
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      clearInterval(pollInterval);
+      clearTimeout(timeoutId);
+    };
   };
 
   return (
     <div>
       {/* Generate Quotation Button */}
-      <div className="flex items-center justify-end mb-5">
+      <div className="flex items-center justify-end gap-3 mb-5">
+        <button
+          type="button"
+          onClick={fetchUpdatedQuotation}
+          disabled={fetchingQuotation}
+          className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Refresh quotation data from server"
+        >
+          {fetchingQuotation ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Refreshing...
+            </>
+          ) : (
+            <>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </>
+          )}
+        </button>
         <button
           type="button"
           onClick={handleGenerateQuotation}

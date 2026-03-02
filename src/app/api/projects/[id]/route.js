@@ -896,6 +896,51 @@ export async function PUT(request, context) {
           }
 
           // Delete old rows for this project, then insert fresh (preserving daily_entries from JSON blob)
+          // Ensure table has all required columns and AUTO_INCREMENT on id
+          try {
+            await db.execute(`
+              CREATE TABLE IF NOT EXISTS user_activity_assignments (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                user_id INT NOT NULL,
+                project_id VARCHAR(50),
+                activity_id VARCHAR(100),
+                activity_name VARCHAR(255),
+                discipline_name VARCHAR(255),
+                description TEXT,
+                due_date DATE,
+                start_date DATE,
+                priority VARCHAR(50) DEFAULT 'Medium',
+                estimated_hours DECIMAL(10,2) DEFAULT 0,
+                actual_hours DECIMAL(10,2) DEFAULT 0,
+                qty_assigned DECIMAL(10,2) DEFAULT 0,
+                qty_completed DECIMAL(10,2) DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'Not Started',
+                notes TEXT,
+                daily_entries LONGTEXT,
+                assigned_date TIMESTAMP,
+                assigned_by INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_user_status (user_id, status),
+                INDEX idx_project (project_id)
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            `);
+            // Ensure id is AUTO_INCREMENT (in case existing table was created without it)
+            await db.execute(`ALTER TABLE user_activity_assignments MODIFY COLUMN id INT PRIMARY KEY AUTO_INCREMENT`);
+          } catch (_) { /* ignore if already correct */ }
+          const missingCols = [
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS activity_id VARCHAR(100)",
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS discipline_name VARCHAR(255)",
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS start_date DATE",
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS qty_assigned DECIMAL(10,2) DEFAULT 0",
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS qty_completed DECIMAL(10,2) DEFAULT 0",
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS daily_entries LONGTEXT",
+            "ALTER TABLE user_activity_assignments ADD COLUMN IF NOT EXISTS assigned_date TIMESTAMP NULL",
+          ];
+          for (const sql of missingCols) {
+            try { await db.execute(sql); } catch (_) { /* column already exists */ }
+          }
+
           await db.execute(
             'DELETE FROM user_activity_assignments WHERE project_id = ?',
             [projectId]

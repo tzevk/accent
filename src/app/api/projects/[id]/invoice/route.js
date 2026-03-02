@@ -21,22 +21,36 @@ async function ensureTableExists(connection) {
       project_id INT NOT NULL,
       invoice_number VARCHAR(100),
       invoice_date DATE,
-      client_name VARCHAR(255),
-      po_number VARCHAR(100),
-      po_date DATE,
-      po_amount DECIMAL(15, 2),
+      company_name VARCHAR(255),
+      city VARCHAR(100),
       invoice_amount DECIMAL(15, 2),
-      scope_of_work TEXT,
-      payment_due_date DATE,
-      status ENUM('pending', 'paid', 'overdue', 'cancelled') DEFAULT 'pending',
+      project_number VARCHAR(100),
+      expenses_head VARCHAR(255),
+      payment DECIMAL(15, 2),
+      purchase_description TEXT,
+      payment_overdue_days INT DEFAULT 0,
       remarks TEXT,
+      tab_type VARCHAR(50) DEFAULT 'invoice',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_project_id (project_id),
-      INDEX idx_invoice_number (invoice_number),
-      INDEX idx_status (status)
+      INDEX idx_invoice_number (invoice_number)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  // Safely add new columns to existing tables
+  const migrations = [
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS company_name VARCHAR(255)",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS city VARCHAR(100)",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS expenses_head VARCHAR(255)",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment DECIMAL(15,2)",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS purchase_description TEXT",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment_overdue_days INT DEFAULT 0",
+    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS tab_type VARCHAR(50) DEFAULT 'invoice'",
+  ];
+  for (const sql of migrations) {
+    try { await connection.execute(sql); } catch (_) { /* column may already exist */ }
+  }
 }
 
 // GET - Fetch all invoices for a project
@@ -95,36 +109,38 @@ export async function POST(request, { params }) {
     const {
       invoice_number,
       invoice_date,
-      client_name,
-      po_number,
-      po_date,
-      po_amount,
+      company_name,
+      city,
       invoice_amount,
-      scope_of_work,
-      payment_due_date,
-      status,
-      remarks
+      project_number,
+      expenses_head,
+      payment,
+      purchase_description,
+      payment_overdue_days,
+      remarks,
+      tab_type
     } = data;
 
     // Insert new invoice
     const [result] = await connection.execute(
       `INSERT INTO project_invoices 
-       (project_id, invoice_number, invoice_date, client_name, po_number, po_date, 
-        po_amount, invoice_amount, scope_of_work, payment_due_date, status, remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (project_id, invoice_number, invoice_date, company_name, city, invoice_amount,
+        project_number, expenses_head, payment, purchase_description, payment_overdue_days, remarks, tab_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         invoice_number || null,
         invoice_date || null,
-        client_name || null,
-        po_number || null,
-        po_date || null,
-        po_amount || null,
+        company_name || null,
+        city || null,
         invoice_amount || null,
-        scope_of_work || null,
-        payment_due_date || null,
-        status || 'pending',
-        remarks || null
+        project_number || null,
+        expenses_head || null,
+        payment || null,
+        purchase_description || null,
+        payment_overdue_days || 0,
+        remarks || null,
+        tab_type || 'invoice'
       ]
     );
 
@@ -160,35 +176,37 @@ export async function PUT(request, { params }) {
       invoiceId,
       invoice_number,
       invoice_date,
-      client_name,
-      po_number,
-      po_date,
-      po_amount,
+      company_name,
+      city,
       invoice_amount,
-      scope_of_work,
-      payment_due_date,
-      status,
-      remarks
+      project_number,
+      expenses_head,
+      payment,
+      purchase_description,
+      payment_overdue_days,
+      remarks,
+      tab_type
     } = data;
 
     await connection.execute(
       `UPDATE project_invoices 
-       SET invoice_number = ?, invoice_date = ?, client_name = ?, po_number = ?, po_date = ?,
-           po_amount = ?, invoice_amount = ?, scope_of_work = ?, payment_due_date = ?, 
-           status = ?, remarks = ?
+       SET invoice_number = ?, invoice_date = ?, company_name = ?, city = ?,
+           invoice_amount = ?, project_number = ?, expenses_head = ?, payment = ?,
+           purchase_description = ?, payment_overdue_days = ?, remarks = ?, tab_type = ?
        WHERE id = ? AND project_id = ?`,
       [
         invoice_number || null,
         invoice_date || null,
-        client_name || null,
-        po_number || null,
-        po_date || null,
-        po_amount || null,
+        company_name || null,
+        city || null,
         invoice_amount || null,
-        scope_of_work || null,
-        payment_due_date || null,
-        status || 'pending',
+        project_number || null,
+        expenses_head || null,
+        payment || null,
+        purchase_description || null,
+        payment_overdue_days || 0,
         remarks || null,
+        tab_type || 'invoice',
         invoiceId,
         id
       ]

@@ -195,7 +195,7 @@ export async function GET(request) {
     const total = countResult[0].total;
 
     // Get employees with pagination
-    const limitNum = Math.max(1, Math.min(100, limit));
+    const limitNum = Math.max(1, Math.min(1000, limit));
     const offsetNum = Math.max(0, offset);
     const [employees] = await connection.execute(
       `SELECT 

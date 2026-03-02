@@ -264,6 +264,7 @@ export default function EmployeesPage() {
         mlwf_applicable: false,
         retention_applicable: false,
         bonus_applicable: false,
+        monthly_bonus: false,
         incentive_applicable: false,
         insurance_applicable: false,
         custom_components: [],
@@ -287,7 +288,20 @@ export default function EmployeesPage() {
         custom_esic_employer: '',
         custom_mlwf_employer: '',
         custom_bonus: '',
-        custom_insurance: ''
+        custom_insurance: '',
+        // Privilege Leave (PL) fields
+        pl_total: '21',
+        pl_used: '0',
+        pl_balance: '21',
+        // Loan fields
+        loan_amount: '',
+        loan_amount_per_month: '',
+        loan_no_of_months: '',
+        loan_total_amount: '',
+        loan_active: false,
+        // Advance fields
+        advance_amount: '',
+        advance_active: false
       });
       setSalaryProfileSuccess('');
       setPreviewError('');
@@ -546,11 +560,25 @@ export default function EmployeesPage() {
     mlwf_applicable: false,
     retention_applicable: false,
     bonus_applicable: false,
+    monthly_bonus: false,
     incentive_applicable: false,
     insurance_applicable: false,
     custom_components: [], // For custom salary type: [{name: 'Basic', amount: 10000, type: 'earning'}, ...]
     custom_hourly_rate: '', // For custom salary type hourly rate
-    custom_monthly_hours: '160' // Standard 160 hours/month
+    custom_monthly_hours: '160', // Standard 160 hours/month
+    // Privilege Leave (PL) fields
+    pl_total: '21',
+    pl_used: '0',
+    pl_balance: '21',
+    // Loan fields
+    loan_amount: '',
+    loan_amount_per_month: '',
+    loan_no_of_months: '',
+    loan_total_amount: '',
+    loan_active: false,
+    // Advance fields
+    advance_amount: '',
+    advance_active: false
   });
   const [currentDA, setCurrentDA] = useState(0);
   const [currentPT, setCurrentPT] = useState(0);
@@ -1182,7 +1210,10 @@ export default function EmployeesPage() {
     // Total earnings = Basic + DA (within 60%) + HRA (20%) + Conveyance (10%) + Call Allowance (10%) = Gross
     // Plus any incentive and other allowances on top (bonus is added to CTC only, not earnings)
     const total_earnings = Math.round(basic_plus_da + da + hra + conveyance + call_allowance + other_allowances + incentive);
-    const total_deductions = Math.round(pf_employee + esic_employee + pt + mlwf + retention);
+    // Include loan EMI and advance in deductions if active
+    const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+    const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
+    const total_deductions = Math.round(pf_employee + esic_employee + pt + mlwf + retention + loanEmi + advanceAmt);
     const net_pay = Math.round(total_earnings - total_deductions);
     
     // MLWF Employer - use manual value if explicitly provided, otherwise use fetched value
@@ -1377,7 +1408,10 @@ export default function EmployeesPage() {
       // Basic + DA = 60% of Gross, HRA = 20%, Conv = 10%, Call = 10% => Total = 100% = Gross
       // Bonus is NOT included in earnings - it goes directly to CTC
       const total_earnings = Math.round(basic_plus_da + daAmount + hra + conveyance + call_allowance + otherAllowances + incentive);
-      const total_deductions = Math.round(pf_employee + esic_employee + pt + mlwf + retention);
+      // Include loan EMI and advance in deductions if active
+      const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+      const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
+      const total_deductions = Math.round(pf_employee + esic_employee + pt + mlwf + retention + loanEmi + advanceAmt);
       const net_pay = Math.round(total_earnings - total_deductions);
       // Use fetched mlwfEmployerAmount (from payroll schedules)
       const mlwf_employer = salaryPreview.mlwf_applicable ? Math.round(mlwfEmployerAmount || currentMLWFEmployer) : 0;
@@ -1461,6 +1495,7 @@ export default function EmployeesPage() {
             mlwf_applicable: savedProfile.mlwf_applicable === 1 || savedProfile.mlwf_applicable === true,
             retention_applicable: savedProfile.retention_applicable === 1 || savedProfile.retention_applicable === true,
             bonus_applicable: savedProfile.bonus_applicable === 1 || savedProfile.bonus_applicable === true,
+            monthly_bonus: savedProfile.monthly_bonus === 1 || savedProfile.monthly_bonus === true,
             incentive_applicable: savedProfile.incentive_applicable === 1 || savedProfile.incentive_applicable === true,
             insurance_applicable: savedProfile.insurance_applicable === 1 || savedProfile.insurance_applicable === true,
             // Salary type fields
@@ -1501,8 +1536,39 @@ export default function EmployeesPage() {
             custom_esic_employer: savedProfile.esic_employer || '',
             custom_mlwf_employer: savedProfile.mlwf_employer || '',
             custom_bonus: savedProfile.bonus || '',
-            custom_insurance: savedProfile.insurance || ''
+            custom_insurance: savedProfile.insurance || '',
+            // PL - load total from saved profile, used will be fetched from attendance API
+            pl_total: savedProfile.pl_total?.toString() || '21',
+            pl_used: '0',
+            pl_balance: savedProfile.pl_total?.toString() || '21',
+            // Loan fields
+            loan_amount: savedProfile.loan_amount?.toString() || '',
+            loan_amount_per_month: savedProfile.loan_amount_per_month?.toString() || '',
+            loan_no_of_months: savedProfile.loan_no_of_months?.toString() || '',
+            loan_total_amount: savedProfile.loan_total_amount?.toString() || '',
+            loan_active: !!savedProfile.loan_active,
+            // Advance fields
+            advance_amount: savedProfile.advance_amount?.toString() || '',
+            advance_active: !!savedProfile.advance_active
           });
+
+          // Fetch PL used from attendance summary API
+          try {
+            const currentYear = new Date().getFullYear();
+            const plRes = await fetch(`/api/attendance/summary?year=${currentYear}&employee_id=${employeeId}`);
+            const plData = await plRes.json();
+            if (plData.success && plData.data) {
+              const totalUsed = plData.data.reduce((sum, row) => sum + (parseInt(row.total_privilege_leave) || 0), 0);
+              const plTotal = parseInt(savedProfile.pl_total) || 21;
+              setSalaryPreview(prev => ({
+                ...prev,
+                pl_used: String(totalUsed),
+                pl_balance: String(Math.max(0, plTotal - totalUsed))
+              }));
+            }
+          } catch (plErr) {
+            console.error('Error fetching PL usage:', plErr);
+          }
           
           // Load the saved breakdown values directly (frozen/fixed)
           setPreviewBreakdown({
@@ -1664,8 +1730,42 @@ export default function EmployeesPage() {
       custom_esic_employer: profile.esic_employer || '',
       custom_mlwf_employer: profile.mlwf_employer || '',
       custom_bonus: profile.bonus || '',
-      custom_insurance: profile.insurance || ''
+      custom_insurance: profile.insurance || '',
+      // PL - load total from profile, used will be fetched from attendance API
+      pl_total: profile.pl_total?.toString() || '21',
+      pl_used: '0',
+      pl_balance: profile.pl_total?.toString() || '21',
+      // Loan fields
+      loan_amount: profile.loan_amount?.toString() || '',
+      loan_amount_per_month: profile.loan_amount_per_month?.toString() || '',
+      loan_no_of_months: profile.loan_no_of_months?.toString() || '',
+      loan_total_amount: profile.loan_total_amount?.toString() || '',
+      loan_active: !!profile.loan_active,
+      // Advance fields
+      advance_amount: profile.advance_amount?.toString() || '',
+      advance_active: !!profile.advance_active
     });
+
+    // Fetch PL used from attendance summary API
+    (async () => {
+      try {
+        const currentYear = new Date().getFullYear();
+        const plRes = await fetch(`/api/attendance/summary?year=${currentYear}&employee_id=${profile.employee_id}`);
+        const plData = await plRes.json();
+        if (plData.success && plData.data) {
+          const totalUsed = plData.data.reduce((sum, row) => sum + (parseInt(row.total_privilege_leave) || 0), 0);
+          const plTotal = parseInt(profile.pl_total) || 21;
+          setSalaryPreview(prev => ({
+            ...prev,
+            pl_used: String(totalUsed),
+            pl_balance: String(Math.max(0, plTotal - totalUsed))
+          }));
+        }
+      } catch (plErr) {
+        console.error('Error fetching PL usage:', plErr);
+      }
+    })();
+
     // If monthly, recalculate preview with the loaded gross
     if (profile.salary_type === 'monthly' || !profile.salary_type) {
       calculateSalaryPreview(profile.gross_salary || profile.gross, profile.other_allowances || 0);
@@ -1715,6 +1815,7 @@ export default function EmployeesPage() {
       mlwf_applicable: false,
       retention_applicable: false,
       bonus_applicable: false,
+      monthly_bonus: false,
       incentive_applicable: false,
       insurance_applicable: false,
       custom_components: [],
@@ -1738,7 +1839,20 @@ export default function EmployeesPage() {
       custom_esic_employer: '',
       custom_mlwf_employer: '',
       custom_bonus: '',
-      custom_insurance: ''
+      custom_insurance: '',
+      // PL defaults
+      pl_total: '21',
+      pl_used: '0',
+      pl_balance: '21',
+      // Loan defaults
+      loan_amount: '',
+      loan_amount_per_month: '',
+      loan_no_of_months: '',
+      loan_total_amount: '',
+      loan_active: false,
+      // Advance defaults
+      advance_amount: '',
+      advance_active: false
     });
     setManualValues({
       basic_plus_da: '',
@@ -1813,7 +1927,20 @@ export default function EmployeesPage() {
         da_year: currentYear,
         is_manual_override: false,
         std_in_time: salaryPreview.std_in_time || '09:00',
-        std_out_time: salaryPreview.std_out_time || '17:30'
+        std_out_time: salaryPreview.std_out_time || '17:30',
+        // Privilege Leave (PL) fields
+        pl_total: parseInt(salaryPreview.pl_total) || 0,
+        pl_used: parseInt(salaryPreview.pl_used) || 0,
+        pl_balance: parseInt(salaryPreview.pl_balance) || 0,
+        // Loan fields
+        loan_amount: parseFloat(salaryPreview.loan_amount) || 0,
+        loan_amount_per_month: parseFloat(salaryPreview.loan_amount_per_month) || 0,
+        loan_no_of_months: parseInt(salaryPreview.loan_no_of_months) || 0,
+        loan_total_amount: parseFloat(salaryPreview.loan_total_amount) || 0,
+        loan_active: salaryPreview.loan_active,
+        // Advance fields
+        advance_amount: parseFloat(salaryPreview.advance_amount) || 0,
+        advance_active: salaryPreview.advance_active
       };
       
       if (salaryType === 'monthly') {
@@ -1827,6 +1954,7 @@ export default function EmployeesPage() {
           mlwf_applicable: salaryPreview.mlwf_applicable,
           retention_applicable: salaryPreview.retention_applicable,
           bonus_applicable: salaryPreview.bonus_applicable,
+          monthly_bonus: salaryPreview.monthly_bonus,
           incentive_applicable: salaryPreview.incentive_applicable,
           insurance_applicable: salaryPreview.insurance_applicable,
           // Include breakdown values (manual or calculated)
@@ -3531,6 +3659,12 @@ export default function EmployeesPage() {
                                               <span className="text-sm text-gray-500">Gross/month</span>
                                               <span className="text-sm text-green-600 font-medium">• Net: ₹{formatCurrency(profile.net_pay || 0)}</span>
                                               <span className="text-sm text-blue-600 font-medium">• CTC: ₹{formatCurrency(profile.employer_cost || 0)}</span>
+                                              {!!profile.loan_active && parseFloat(profile.loan_amount_per_month) > 0 && (
+                                                <span className="text-sm text-amber-600 font-medium">• Loan: ₹{formatCurrency(profile.loan_amount_per_month)}/mo</span>
+                                              )}
+                                              {!!profile.advance_active && parseFloat(profile.advance_amount) > 0 && (
+                                                <span className="text-sm text-orange-600 font-medium">• Adv: ₹{formatCurrency(profile.advance_amount)}</span>
+                                              )}
                                             </>
                                           )}
                                           {profile.salary_type === 'hourly' && (
@@ -3571,6 +3705,12 @@ export default function EmployeesPage() {
                                               <span className="text-sm text-gray-500">Earnings</span>
                                               <span className="text-sm text-green-600 font-medium">• Net: ₹{formatCurrency(profile.net_pay || 0)}</span>
                                               <span className="text-sm text-blue-600 font-medium">• CTC: ₹{formatCurrency(profile.employer_cost || 0)}</span>
+                                              {!!profile.loan_active && parseFloat(profile.loan_amount_per_month) > 0 && (
+                                                <span className="text-sm text-amber-600 font-medium">• Loan: ₹{formatCurrency(profile.loan_amount_per_month)}/mo</span>
+                                              )}
+                                              {!!profile.advance_active && parseFloat(profile.advance_amount) > 0 && (
+                                                <span className="text-sm text-orange-600 font-medium">• Adv: ₹{formatCurrency(profile.advance_amount)}</span>
+                                              )}
                                             </>
                                           )}
                                         </div>
@@ -3797,6 +3937,186 @@ export default function EmployeesPage() {
                                   onChange={(e) => setSalaryPreview({ ...salaryPreview, std_out_time: e.target.value })}
                                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" 
                                 />
+                              </div>
+                            </div>
+
+                            {/* Privilege Leave (PL) Section */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                              <h5 className="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                Privilege Leave (PL)
+                              </h5>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">Total Leaves</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    value={salaryPreview.pl_total || ''} 
+                                    onChange={(e) => {
+                                      const total = parseInt(e.target.value) || 0;
+                                      const used = parseInt(salaryPreview.pl_used) || 0;
+                                      setSalaryPreview({ 
+                                        ...salaryPreview, 
+                                        pl_total: e.target.value,
+                                        pl_balance: String(Math.max(0, total - used))
+                                      });
+                                    }}
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                    placeholder="e.g. 21"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">Used Leaves</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.pl_used || '0'} 
+                                    readOnly
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-blue-100 text-blue-800 font-semibold cursor-not-allowed" 
+                                    title="Fetched from attendance records"
+                                  />
+                                  <span className="text-[10px] text-blue-500 mt-0.5 block">Auto-fetched from attendance</span>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-600 mb-1">Balance</label>
+                                  <input 
+                                    type="number" 
+                                    value={salaryPreview.pl_balance || ''} 
+                                    readOnly
+                                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-blue-100 text-blue-800 font-semibold cursor-not-allowed" 
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Loan & Advance Section */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                              {/* Loan Section */}
+                              <div className={`border rounded-lg p-4 transition-all ${salaryPreview.loan_active ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h5 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                    </svg>
+                                    Loan Deduction
+                                  </h5>
+                                  <label className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={salaryPreview.loan_active} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, loan_active: e.target.checked })}
+                                      className="sr-only peer" 
+                                    />
+                                    <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                                  </label>
+                                </div>
+                                {salaryPreview.loan_active && (
+                                  <div className="space-y-3">
+                                    <div>
+                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">Loan Amount (₹)</label>
+                                      <input 
+                                        type="number" 
+                                        min="0"
+                                        value={salaryPreview.loan_amount || ''} 
+                                        onChange={(e) => setSalaryPreview({ ...salaryPreview, loan_amount: e.target.value })}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" 
+                                        placeholder="e.g. 50000"
+                                      />
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">EMI / Month (₹)</label>
+                                      <input 
+                                        type="number" 
+                                        min="0"
+                                        value={salaryPreview.loan_amount_per_month || ''} 
+                                        onChange={(e) => {
+                                          const emi = parseFloat(e.target.value) || 0;
+                                          const months = parseInt(salaryPreview.loan_no_of_months) || 0;
+                                          setSalaryPreview({ 
+                                            ...salaryPreview, 
+                                            loan_amount_per_month: e.target.value,
+                                            loan_total_amount: String(emi * months)
+                                          });
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" 
+                                        placeholder="e.g. 5000"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">No. of Months</label>
+                                      <input 
+                                        type="number" 
+                                        min="1"
+                                        value={salaryPreview.loan_no_of_months || ''} 
+                                        onChange={(e) => {
+                                          const months = parseInt(e.target.value) || 0;
+                                          const emi = parseFloat(salaryPreview.loan_amount_per_month) || 0;
+                                          setSalaryPreview({ 
+                                            ...salaryPreview, 
+                                            loan_no_of_months: e.target.value,
+                                            loan_total_amount: String(emi * months)
+                                          });
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" 
+                                        placeholder="e.g. 12"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">Total Amount (₹)</label>
+                                      <input 
+                                        type="number" 
+                                        value={salaryPreview.loan_total_amount || ''} 
+                                        readOnly
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-amber-100 text-amber-800 font-semibold cursor-not-allowed" 
+                                      />
+                                    </div>
+                                  </div>
+                                  </div>
+                                )}
+                                {!salaryPreview.loan_active && (
+                                  <p className="text-xs text-gray-400 italic">Toggle to enable loan deduction from salary</p>
+                                )}
+                              </div>
+
+                              {/* Advance Section */}
+                              <div className={`border rounded-lg p-4 transition-all ${salaryPreview.advance_active ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h5 className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Monthly Advance
+                                  </h5>
+                                  <label className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={salaryPreview.advance_active} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, advance_active: e.target.checked })}
+                                      className="sr-only peer" 
+                                    />
+                                    <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"></div>
+                                  </label>
+                                </div>
+                                {salaryPreview.advance_active && (
+                                  <div>
+                                    <label className="block text-[11px] font-medium text-gray-600 mb-1">Advance Amount (₹)</label>
+                                    <input 
+                                      type="number" 
+                                      min="0"
+                                      value={salaryPreview.advance_amount || ''} 
+                                      onChange={(e) => setSalaryPreview({ ...salaryPreview, advance_amount: e.target.value })}
+                                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400" 
+                                      placeholder="e.g. 10000"
+                                    />
+                                    <span className="text-[10px] text-green-600 mt-0.5 block">This amount will be subtracted from gross in the payroll export</span>
+                                  </div>
+                                )}
+                                {!salaryPreview.advance_active && (
+                                  <p className="text-xs text-gray-400 italic">Toggle to enable advance deduction for this month</p>
+                                )}
                               </div>
                             </div>
 
@@ -4359,6 +4679,18 @@ export default function EmployeesPage() {
                                           placeholder="0"
                                         />
                                       </div>
+                                      {salaryPreview.loan_active && parseFloat(salaryPreview.loan_amount_per_month) > 0 && (
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-sm text-amber-700 font-medium">Loan EMI</span>
+                                          <span className="text-sm font-medium text-amber-700">₹{formatCurrency(parseFloat(salaryPreview.loan_amount_per_month) || 0)}</span>
+                                        </div>
+                                      )}
+                                      {salaryPreview.advance_active && parseFloat(salaryPreview.advance_amount) > 0 && (
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-sm text-green-700 font-medium">Advance</span>
+                                          <span className="text-sm font-medium text-green-700">₹{formatCurrency(parseFloat(salaryPreview.advance_amount) || 0)}</span>
+                                        </div>
+                                      )}
                                       <div className="border-t border-red-300 pt-2 mt-2">
                                         <div className="flex justify-between font-semibold">
                                           <span className="text-red-900">Total Deductions</span>
@@ -4367,7 +4699,9 @@ export default function EmployeesPage() {
                                             (parseFloat(salaryPreview.custom_esic_employee) || 0) +
                                             (parseFloat(salaryPreview.custom_pt) || 0) +
                                             (parseFloat(salaryPreview.custom_mlwf) || 0) +
-                                            (parseFloat(salaryPreview.custom_retention) || 0)
+                                            (parseFloat(salaryPreview.custom_retention) || 0) +
+                                            (salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0) +
+                                            (salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0)
                                           )}</span>
                                         </div>
                                       </div>
@@ -4386,7 +4720,9 @@ export default function EmployeesPage() {
                                             (parseFloat(salaryPreview.custom_esic_employee) || 0) +
                                             (parseFloat(salaryPreview.custom_pt) || 0) +
                                             (parseFloat(salaryPreview.custom_mlwf) || 0) +
-                                            (parseFloat(salaryPreview.custom_retention) || 0))
+                                            (parseFloat(salaryPreview.custom_retention) || 0) +
+                                            (salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0) +
+                                            (salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0))
                                           )}</span>
                                         </div>
                                       </div>
@@ -4606,8 +4942,10 @@ export default function EmployeesPage() {
                                       }
                                       // Update previewBreakdown with fetched/calculated value
                                       setPreviewBreakdown(prev => {
+                                        const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+                                        const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
                                         const newTotalDeductions = Math.round(
-                                          prev.pf_employee + prev.esic_employee + ptAmount + (prev.mlwf || 0) + (prev.retention || 0)
+                                          prev.pf_employee + prev.esic_employee + ptAmount + (prev.mlwf || 0) + (prev.retention || 0) + loanEmi + advanceAmt
                                         );
                                         const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
                                         return { ...prev, pt: ptAmount, total_deductions: newTotalDeductions, net_pay: newNetPay };
@@ -4615,8 +4953,10 @@ export default function EmployeesPage() {
                                     } else if (!isChecked && previewBreakdown) {
                                       // Unchecking - reset PT to 0
                                       setPreviewBreakdown(prev => {
+                                        const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+                                        const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
                                         const newTotalDeductions = Math.round(
-                                          prev.pf_employee + prev.esic_employee + 0 + (prev.mlwf || 0) + (prev.retention || 0)
+                                          prev.pf_employee + prev.esic_employee + 0 + (prev.mlwf || 0) + (prev.retention || 0) + loanEmi + advanceAmt
                                         );
                                         const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
                                         return { ...prev, pt: 0, total_deductions: newTotalDeductions, net_pay: newNetPay };
@@ -4652,8 +4992,10 @@ export default function EmployeesPage() {
                                       }
                                       // Update previewBreakdown with fetched values
                                       setPreviewBreakdown(prev => {
+                                        const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+                                        const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
                                         const newTotalDeductions = Math.round(
-                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + mlwfEmployee + (prev.retention || 0)
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + mlwfEmployee + (prev.retention || 0) + loanEmi + advanceAmt
                                         );
                                         const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
                                         const newEmployerCost = Math.round(
@@ -4664,8 +5006,10 @@ export default function EmployeesPage() {
                                     } else if (!isChecked && previewBreakdown) {
                                       // Unchecking - reset MLWF values to 0
                                       setPreviewBreakdown(prev => {
+                                        const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+                                        const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
                                         const newTotalDeductions = Math.round(
-                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + 0 + (prev.retention || 0)
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + 0 + (prev.retention || 0) + loanEmi + advanceAmt
                                         );
                                         const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
                                         const newEmployerCost = Math.round(
@@ -4695,8 +5039,10 @@ export default function EmployeesPage() {
                                       }
                                       // Update previewBreakdown with fetched value
                                       setPreviewBreakdown(prev => {
+                                        const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+                                        const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
                                         const newTotalDeductions = Math.round(
-                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + (prev.mlwf || 0) + retentionAmount
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + (prev.mlwf || 0) + retentionAmount + loanEmi + advanceAmt
                                         );
                                         const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
                                         return { ...prev, retention: retentionAmount, total_deductions: newTotalDeductions, net_pay: newNetPay };
@@ -4704,8 +5050,10 @@ export default function EmployeesPage() {
                                     } else if (!isChecked && previewBreakdown) {
                                       // Unchecking - reset retention to 0
                                       setPreviewBreakdown(prev => {
+                                        const loanEmi = salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0;
+                                        const advanceAmt = salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0;
                                         const newTotalDeductions = Math.round(
-                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + (prev.mlwf || 0) + 0
+                                          prev.pf_employee + prev.esic_employee + (prev.pt || 0) + (prev.mlwf || 0) + 0 + loanEmi + advanceAmt
                                         );
                                         const newNetPay = Math.round(prev.total_earnings - newTotalDeductions);
                                         return { ...prev, retention: 0, total_deductions: newTotalDeductions, net_pay: newNetPay };
@@ -4765,6 +5113,17 @@ export default function EmployeesPage() {
                                   className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
                                 />
                                 <span className="ml-2 text-sm text-gray-700">Bonus</span>
+                              </label>
+                              <label className="flex items-center cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!salaryPreview.monthly_bonus} 
+                                  onChange={(e) => {
+                                    setSalaryPreview({ ...salaryPreview, monthly_bonus: e.target.checked });
+                                  }}
+                                  className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
+                                />
+                                <span className="ml-2 text-sm text-gray-700">Monthly Bonus</span>
                               </label>
                               <label className="flex items-center cursor-pointer">
                                 <input 
@@ -5074,16 +5433,45 @@ export default function EmployeesPage() {
                                         />
                                       </div>
                                     )}
+                                    {salaryPreview.loan_active && parseFloat(salaryPreview.loan_amount_per_month) > 0 && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-amber-700 font-medium">Loan EMI</span>
+                                        <span className="text-sm font-medium text-amber-700">₹{formatCurrency(parseFloat(salaryPreview.loan_amount_per_month) || 0)}</span>
+                                      </div>
+                                    )}
+                                    {salaryPreview.advance_active && parseFloat(salaryPreview.advance_amount) > 0 && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm text-green-700 font-medium">Advance</span>
+                                        <span className="text-sm font-medium text-green-700">₹{formatCurrency(parseFloat(salaryPreview.advance_amount) || 0)}</span>
+                                      </div>
+                                    )}
                                     <div className="border-t border-red-300 pt-2 mt-2">
                                       <div className="flex justify-between font-semibold">
                                         <span className="text-red-900">Total Deductions</span>
-                                        <span className="text-red-900">₹{formatCurrency(previewBreakdown.total_deductions)}</span>
+                                        <span className="text-red-900">₹{formatCurrency(
+                                          (previewBreakdown.pf_employee || 0) +
+                                          (previewBreakdown.esic_employee || 0) +
+                                          (previewBreakdown.pt || 0) +
+                                          (previewBreakdown.mlwf || 0) +
+                                          (previewBreakdown.retention || 0) +
+                                          (salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0) +
+                                          (salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0)
+                                        )}</span>
                                       </div>
                                     </div>
                                     <div className="border-t-2 border-green-400 pt-2 mt-2">
                                       <div className="flex justify-between font-bold text-lg">
                                         <span className="text-green-700">Net Pay (In Hand)</span>
-                                        <span className="text-green-700">₹{formatCurrency(previewBreakdown.net_pay)}</span>
+                                        <span className="text-green-700">₹{formatCurrency(
+                                          (previewBreakdown.total_earnings || 0) -
+                                          ((previewBreakdown.pf_employee || 0) +
+                                          (previewBreakdown.esic_employee || 0) +
+                                          (previewBreakdown.pt || 0) +
+                                          (previewBreakdown.mlwf || 0) +
+                                          (previewBreakdown.retention || 0) +
+                                          (salaryPreview.loan_active ? (parseFloat(salaryPreview.loan_amount_per_month) || 0) : 0) +
+                                          (salaryPreview.advance_active ? (parseFloat(salaryPreview.advance_amount) || 0) : 0))
+                                        )}</span>
                                       </div>
                                     </div>
                                   </div>

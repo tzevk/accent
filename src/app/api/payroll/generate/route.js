@@ -22,7 +22,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { employee_id, employee_ids, month, all, preview, salary_type } = body;
+    const { employee_id, employee_ids, month, all, preview, salary_type, include_bonus, bonus_employee_ids } = body;
     
     if (!month) {
       return NextResponse.json(
@@ -42,7 +42,7 @@ export async function POST(request) {
     
     // Preview mode - calculate without saving
     if (preview && employee_id) {
-      const payroll = await calculateEmployeePayroll(employee_id, month);
+      const payroll = await calculateEmployeePayroll(employee_id, month, { include_bonus: !!include_bonus });
       
       return NextResponse.json({
         success: true,
@@ -53,7 +53,8 @@ export async function POST(request) {
     
     // Generate for all employees
     if (all) {
-      const results = await generateMonthlyPayroll(month, salary_type || null);
+      const bonusIds = Array.isArray(bonus_employee_ids) ? bonus_employee_ids : null;
+      const results = await generateMonthlyPayroll(month, salary_type || null, !!include_bonus, bonusIds);
       
       return NextResponse.json({
         success: true,
@@ -64,7 +65,8 @@ export async function POST(request) {
     
     // Generate for multiple employees (batch-optimized)
     if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
-      const results = await generatePayrollSlipsBatch(employee_ids, month);
+      const bonusIds = Array.isArray(bonus_employee_ids) ? bonus_employee_ids : null;
+      const results = await generatePayrollSlipsBatch(employee_ids, month, !!include_bonus, bonusIds);
       
       return NextResponse.json({
         success: true,
@@ -76,7 +78,7 @@ export async function POST(request) {
     // Generate for single employee
     if (employee_id) {
       try {
-        const slip = await generatePayrollSlip(employee_id, month);
+        const slip = await generatePayrollSlip(employee_id, month, { include_bonus: !!include_bonus });
         
         return NextResponse.json({
           success: true,

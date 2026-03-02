@@ -77,6 +77,7 @@ export default function ProposalPage() {
   // Convert confirmation modal state
   const [showConvertConfirm, setShowConvertConfirm] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Quotation form state
   const [showQuotationForm, setShowQuotationForm] = useState(false);
@@ -674,6 +675,26 @@ export default function ProposalPage() {
       return typeof proposal.planned_hours_by_discipline === 'string' ? JSON.parse(proposal.planned_hours_by_discipline) : proposal.planned_hours_by_discipline;
     } catch {
       return {};
+    }
+  }, [proposal]);
+
+  const parsedPlanningActivities = useMemo(() => {
+    const raw = proposal?.planning_activities || proposal?.planned_activities || proposal?.activities;
+    if (!raw) return [];
+    try {
+      return Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+    } catch {
+      return [];
+    }
+  }, [proposal]);
+
+  const parsedDocumentsList = useMemo(() => {
+    const raw = proposal?.documents_list || proposal?.documents || proposal?.attached_documents;
+    if (!raw) return [];
+    try {
+      return Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+    } catch {
+      return [];
     }
   }, [proposal]);
 

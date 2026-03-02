@@ -36,6 +36,7 @@ export async function POST(request) {
       mlwf_applicable = false,
       retention_applicable = false,
       bonus_applicable = false,
+      monthly_bonus = false,
       incentive_applicable = false,
       insurance_applicable = false,
       // Salary type fields
@@ -75,7 +76,20 @@ export async function POST(request) {
       total_deductions,
       net_pay,
       employer_cost,
-      is_manual_override = false
+      is_manual_override = false,
+      // Privilege Leave (PL) fields
+      pl_total = 0,
+      pl_used = 0,
+      pl_balance = 0,
+      // Loan fields
+      loan_amount = 0,
+      loan_amount_per_month = 0,
+      loan_no_of_months = 0,
+      loan_total_amount = 0,
+      loan_active = false,
+      // Advance fields
+      advance_amount = 0,
+      advance_active = false
     } = body;
 
     // Validate required fields
@@ -150,6 +164,7 @@ export async function POST(request) {
       { name: 'mlwf_applicable', definition: 'TINYINT(1) DEFAULT 0' },
       { name: 'retention_applicable', definition: 'TINYINT(1) DEFAULT 0' },
       { name: 'bonus_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+      { name: 'monthly_bonus', definition: 'TINYINT(1) DEFAULT 0' },
       { name: 'incentive_applicable', definition: 'TINYINT(1) DEFAULT 0' },
       { name: 'bonus', definition: 'DECIMAL(12, 2)' },
       { name: 'incentive', definition: 'DECIMAL(12, 2)' },
@@ -174,6 +189,19 @@ export async function POST(request) {
       { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
       { name: 'lumpsum_description', definition: 'TEXT' },
       { name: 'tds_percentage', definition: 'DECIMAL(5, 2) DEFAULT NULL' },
+      // Privilege Leave (PL) fields
+      { name: 'pl_total', definition: 'INT DEFAULT 0' },
+      { name: 'pl_used', definition: 'INT DEFAULT 0' },
+      { name: 'pl_balance', definition: 'INT DEFAULT 0' },
+      // Loan fields
+      { name: 'loan_amount', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+      { name: 'loan_amount_per_month', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+      { name: 'loan_no_of_months', definition: 'INT DEFAULT 0' },
+      { name: 'loan_total_amount', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+      { name: 'loan_active', definition: 'TINYINT(1) DEFAULT 0' },
+      // Advance fields
+      { name: 'advance_amount', definition: 'DECIMAL(12, 2) DEFAULT 0' },
+      { name: 'advance_active', definition: 'TINYINT(1) DEFAULT 0' },
     ];
     
     for (const col of columnsToAdd) {
@@ -236,6 +264,7 @@ export async function POST(request) {
       mlwf_applicable ? 1 : 0,
       retention_applicable ? 1 : 0,
       bonus_applicable ? 1 : 0,
+      monthly_bonus ? 1 : 0,
       incentive_applicable ? 1 : 0,
       insurance_applicable ? 1 : 0,
       parseFloat(basic_plus_da) || null, 
@@ -273,7 +302,17 @@ export async function POST(request) {
       contract_end_date || null,
       parseFloat(lumpsum_amount) || null,
       lumpsum_description || null,
-      parseFloat(tds_percentage) || null
+      parseFloat(tds_percentage) || null,
+      parseInt(pl_total) || 0,
+      parseInt(pl_used) || 0,
+      parseInt(pl_balance) || 0,
+      parseFloat(loan_amount) || 0,
+      parseFloat(loan_amount_per_month) || 0,
+      parseInt(loan_no_of_months) || 0,
+      parseFloat(loan_total_amount) || 0,
+      loan_active ? 1 : 0,
+      parseFloat(advance_amount) || 0,
+      advance_active ? 1 : 0
     ];
 
     if (id) {
@@ -283,13 +322,16 @@ export async function POST(request) {
         `UPDATE employee_salary_profile SET
           gross = ?, gross_salary = ?, other_allowances = ?, effective_from = ?, effective_to = ?, da_year = ?,
           pf_applicable = ?, esic_applicable = ?, pt_applicable = ?, mlwf_applicable = ?,
-          retention_applicable = ?, bonus_applicable = ?, incentive_applicable = ?, insurance_applicable = ?,
+          retention_applicable = ?, bonus_applicable = ?, monthly_bonus = ?, incentive_applicable = ?, insurance_applicable = ?,
           basic_plus_da = ?, da = ?, basic = ?, hra = ?, conveyance = ?, call_allowance = ?, bonus = ?, incentive = ?,
           pf_employee = ?, esic_employee = ?, pf_employer = ?, esic_employer = ?, pt = ?, mlwf = ?, mlwf_employer = ?,
           retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
           is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, std_in_time = ?, std_out_time = ?, ot_multiplier = ?,
           daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
-          lumpsum_amount = ?, lumpsum_description = ?, tds_percentage = ?, updated_at = CURRENT_TIMESTAMP
+          lumpsum_amount = ?, lumpsum_description = ?, tds_percentage = ?,
+          pl_total = ?, pl_used = ?, pl_balance = ?,
+          loan_amount = ?, loan_amount_per_month = ?, loan_no_of_months = ?, loan_total_amount = ?, loan_active = ?,
+          advance_amount = ?, advance_active = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND employee_id = ?`,
         [...values, id, employee_id]
       );
@@ -309,13 +351,16 @@ export async function POST(request) {
           `UPDATE employee_salary_profile SET
             gross = ?, gross_salary = ?, other_allowances = ?, effective_from = ?, effective_to = ?, da_year = ?,
             pf_applicable = ?, esic_applicable = ?, pt_applicable = ?, mlwf_applicable = ?,
-            retention_applicable = ?, bonus_applicable = ?, incentive_applicable = ?, insurance_applicable = ?,
+            retention_applicable = ?, bonus_applicable = ?, monthly_bonus = ?, incentive_applicable = ?, insurance_applicable = ?,
             basic_plus_da = ?, da = ?, basic = ?, hra = ?, conveyance = ?, call_allowance = ?, bonus = ?, incentive = ?,
             pf_employee = ?, esic_employee = ?, pf_employer = ?, esic_employer = ?, pt = ?, mlwf = ?, mlwf_employer = ?,
             retention = ?, insurance = ?, total_earnings = ?, total_deductions = ?, net_pay = ?, employer_cost = ?,
             is_manual_override = ?, salary_type = ?, hourly_rate = ?, std_hours_per_day = ?, std_in_time = ?, std_out_time = ?, ot_multiplier = ?,
             daily_rate = ?, std_working_days = ?, contract_amount = ?, contract_duration = ?, contract_end_date = ?,
-            lumpsum_amount = ?, lumpsum_description = ?, tds_percentage = ?, updated_at = CURRENT_TIMESTAMP
+            lumpsum_amount = ?, lumpsum_description = ?, tds_percentage = ?,
+            pl_total = ?, pl_used = ?, pl_balance = ?,
+          loan_amount = ?, loan_amount_per_month = ?, loan_no_of_months = ?, loan_total_amount = ?, loan_active = ?,
+          advance_amount = ?, advance_active = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
           [...values, existingId]
         );
@@ -327,13 +372,16 @@ export async function POST(request) {
         [result] = await db.query(
           `INSERT INTO employee_salary_profile 
            (employee_id, gross, gross_salary, other_allowances, effective_from, effective_to, da_year, 
-            pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, incentive_applicable, insurance_applicable,
+            pf_applicable, esic_applicable, pt_applicable, mlwf_applicable, retention_applicable, bonus_applicable, monthly_bonus, incentive_applicable, insurance_applicable,
             basic_plus_da, da, basic, hra, conveyance, call_allowance, bonus, incentive,
             pf_employee, esic_employee, pf_employer, esic_employer, pt, mlwf, mlwf_employer, retention, insurance,
             total_earnings, total_deductions, net_pay, employer_cost, is_manual_override,
             salary_type, hourly_rate, std_hours_per_day, std_in_time, std_out_time, ot_multiplier, daily_rate, std_working_days,
-            contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description, tds_percentage) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            contract_amount, contract_duration, contract_end_date, lumpsum_amount, lumpsum_description, tds_percentage,
+            pl_total, pl_used, pl_balance,
+            loan_amount, loan_amount_per_month, loan_no_of_months, loan_total_amount, loan_active,
+            advance_amount, advance_active) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [employee_id, ...values]
         );
       }
@@ -419,6 +467,7 @@ export async function GET(request) {
         { name: 'mlwf_applicable', definition: 'TINYINT(1) DEFAULT 0' },
         { name: 'retention_applicable', definition: 'TINYINT(1) DEFAULT 0' },
         { name: 'bonus_applicable', definition: 'TINYINT(1) DEFAULT 0' },
+        { name: 'monthly_bonus', definition: 'TINYINT(1) DEFAULT 0' },
         { name: 'incentive_applicable', definition: 'TINYINT(1) DEFAULT 0' },
         { name: 'bonus', definition: 'DECIMAL(12, 2)' },
         { name: 'incentive', definition: 'DECIMAL(12, 2)' },

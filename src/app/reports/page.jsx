@@ -24,6 +24,7 @@ export default function ReportsPage() {
   const [payrollSlips, setPayrollSlips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [bulkExporting, setBulkExporting] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
   
   // Filters
@@ -34,6 +35,7 @@ export default function ReportsPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [salaryTypeFilter, setSalaryTypeFilter] = useState('payroll');
+  const [includeBonus, setIncludeBonus] = useState(false);
   
   // Stats
   const [stats, setStats] = useState({
@@ -51,6 +53,13 @@ export default function ReportsPage() {
   const [editingSlip, setEditingSlip] = useState(null);
   const [editForm, setEditForm] = useState({ payment_status: '', remarks: '' });
   const slipRef = useRef(null);
+
+  // Bonus selection modal states
+  const [showBonusModal, setShowBonusModal] = useState(false);
+  const [bonusEmployees, setBonusEmployees] = useState([]);
+  const [selectedBonusEmployees, setSelectedBonusEmployees] = useState(new Set());
+  const [bonusSearch, setBonusSearch] = useState('');
+  const [loadingBonusEmployees, setLoadingBonusEmployees] = useState(false);
 
   // Fetch payroll slips
   const fetchPayrollSlips = useCallback(async (page = 1) => {
@@ -135,20 +144,21 @@ export default function ReportsPage() {
     }
   };
 
-  // Generate all individual slips (used before exporting sheet)
-  const handleGenerateAllSlips = async () => {
-    if (!confirm(`This will generate individual salary slips for ${salaryTypeFilter === 'contract' ? 'contract ' : 'payroll '}employees for the selected month. Continue?`)) {
-      return;
-    }
-    
+  // Execute the actual payroll generation
+  const executeGenerateSlips = async (bonusEmployeeIds) => {
     setGenerating(true);
     try {
       const month = `${selectedMonth}-01`;
       
+      const payload = { month, all: true, salary_type: salaryTypeFilter, include_bonus: includeBonus };
+      if (bonusEmployeeIds) {
+        payload.bonus_employee_ids = bonusEmployeeIds;
+      }
+
       const res = await fetch('/api/payroll/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month, all: true, salary_type: salaryTypeFilter })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
@@ -177,6 +187,76 @@ export default function ReportsPage() {
       alert('Failed to generate salary slips');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // Generate all individual slips (used before exporting sheet)
+  const handleGenerateAllSlips = async () => {
+    // If bonus is checked, show employee selection modal first
+    if (includeBonus) {
+      setLoadingBonusEmployees(true);
+      setShowBonusModal(true);
+      try {
+        const res = await fetch('/api/employees?status=active&limit=1000');
+        const data = await res.json();
+        if (res.ok && data.employees) {
+          // Filter to employees with bonus_applicable in their salary structure
+          const employees = (data.employees || []).map(e => ({
+            id: e.id,
+            name: `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+            employee_id: e.employee_id,
+            department: e.department || '',
+          }));
+          setBonusEmployees(employees);
+          // Pre-select all by default
+          setSelectedBonusEmployees(new Set(employees.map(e => e.id)));
+        }
+      } catch {
+        console.error('Failed to fetch employees for bonus selection');
+      } finally {
+        setLoadingBonusEmployees(false);
+      }
+      return;
+    }
+
+    if (!confirm(`This will generate individual salary slips for ${salaryTypeFilter === 'contract' ? 'contract ' : 'payroll '}employees for the selected month. Continue?`)) {
+      return;
+    }
+    
+    await executeGenerateSlips(null);
+  };
+
+  // Bulk export all salary slips as PDF
+  const handleBulkExportPDF = async () => {
+    setBulkExporting(true);
+    try {
+      const month = `${selectedMonth}-01`;
+      const response = await fetch(`/api/payroll/bulk-pdf?month=${month}&salary_type=${salaryTypeFilter}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 404) {
+          alert(errorData.error || 'No payroll slips found for this month. Please generate slips first.');
+        } else {
+          alert(errorData.error || 'Failed to export bulk PDF');
+        }
+        setBulkExporting(false);
+        return;
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Salary_Slips_${selectedMonth}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to export bulk PDF');
+    } finally {
+      setBulkExporting(false);
     }
   };
 
@@ -327,43 +407,43 @@ export default function ReportsPage() {
         <head>
           <title>Salary Slip - ${selectedSlip?.employee_name} - ${formatMonth(selectedSlip?.month)}</title>
           <style>
+            @page { size: A5 portrait; margin: 4mm; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 10px; font-size: 11px; color: #000; }
-            .slip-container { max-width: 1100px; margin: 0 auto; border: 2px solid #000; }
+            body { font-family: Arial, sans-serif; padding: 0; font-size: 6px; color: #1a1a2e; }
+            .slip-container { width: 100%; max-height: 50vh; border: 0.25px solid #4B0082; border-radius: 3px; overflow: hidden; }
             
             /* Header with Logo */
-            .header { display: flex; align-items: center; padding: 10px 15px; background: #fff; border-bottom: 2px solid #000; }
-            .logo { width: 100px; margin-right: 20px; }
+            .header { display: flex; align-items: center; padding: 4px 8px; background: linear-gradient(135deg, #4B0082 0%, #7B2FBE 50%, #9B59B6 100%); border-bottom: 0.25px solid #4B0082; }
+            .logo { width: 35px; margin-right: 8px; background: #fff; border-radius: 3px; padding: 2px; }
             .logo img { width: 100%; height: auto; }
             .company-info { flex: 1; text-align: center; }
-            .company-info h1 { font-size: 24px; font-weight: bold; color: #4B0082; margin-bottom: 5px; }
-            .company-info p { font-size: 12px; color: #000; font-weight: 600; line-height: 1.4; }
+            .company-info h1 { font-size: 9px; font-weight: 800; color: #fff; margin-bottom: 1px; letter-spacing: 0.4px; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
+            .company-info p { font-size: 5.5px; color: #e8d5f5; font-weight: 500; line-height: 1.3; }
             
             /* Month Title */
-            .slip-title { text-align: center; padding: 8px; background: #e8e8e8; border-bottom: 2px solid #000; font-weight: bold; font-size: 12px; }
+            .slip-title { text-align: center; padding: 2px; background: linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5); border-bottom: 0.25px solid #4B0082; font-weight: 700; font-size: 6px; color: #4B0082; letter-spacing: 0.3px; }
             
-            /* Info Table */
-            .info-table { width: 100%; border-collapse: collapse; }
-            .info-table td { padding: 4px 8px; border: 1px solid #000; font-size: 11px; vertical-align: middle; }
-            .info-table .label { font-weight: bold; background: #fff; }
-            .info-table .value { background: #fff; }
-            .info-table .days-cell { font-weight: bold; background: #fff; }
-            
-            /* Main Table */
-            .main-table { width: 100%; border-collapse: collapse; }
-            .main-table th, .main-table td { border: 1px solid #000; padding: 4px 6px; font-size: 11px; }
-            .main-table th { background: #e8e8e8; font-weight: bold; text-align: center; }
-            .main-table td.amount { text-align: right; font-family: Arial, sans-serif; }
-            .main-table tr.total-row { background: #e8e8e8; font-weight: bold; }
-            .main-table tr.total-row td { border-top: 2px solid #000; }
-            .net-salary-cell { background: #e8e8e8; font-weight: bold; vertical-align: middle; }
+            /* Tables */
+            .main-table { width: 100%; border-collapse: collapse; border-spacing: 0; table-layout: fixed; }
+            .main-table th, .main-table td { padding: 1.5px 3px; font-size: 5.5px; vertical-align: middle; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .main-table tr > * { border-right: 0.1px solid #e8d0f0; border-bottom: 0.1px solid #e8d0f0; }
+            .main-table tr > *:last-child { border-right: 0; }
+            .main-table tr:last-child > * { border-bottom: 0; }
+            .main-table th { background: linear-gradient(135deg, #4B0082, #7B2FBE); font-weight: 700; text-align: center; color: #fff; font-size: 5.5px; letter-spacing: 0.2px; }
+            .label { font-weight: 700; background: #f3e5f5; color: #4B0082; font-size: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .value { background: #fff; color: #1a1a2e; }
+            td.amount { text-align: right; font-family: 'Arial', sans-serif; }
+            .total-row { background: linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec); font-weight: 700; }
+            .total-row td { border-top: 0.25px solid #4B0082; }
+            .net-salary-row { background: linear-gradient(135deg, #4B0082, #7B2FBE) !important; }
+            .net-salary-cell { color: #fff !important; font-weight: 800; vertical-align: middle; font-size: 6px; letter-spacing: 0.2px; }
+            .net-salary-cell.amount { font-size: 7px; }
             
             /* Footer */
-            .footer { padding: 10px; text-align: center; font-size: 10px; border-top: 2px solid #000; background: #fff; }
+            .footer { padding: 3px; text-align: center; font-size: 5px; border-top: 0.25px solid #4B0082; background: #f3e5f5; color: #4B0082; font-weight: 500; }
             
             @media print { 
               body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .slip-container { border: 2px solid #000; }
             }
           </style>
         </head>
@@ -385,226 +465,137 @@ export default function ReportsPage() {
             <!-- Month Title -->
             <div class="slip-title">SALARY SLIP FOR THE MONTH OF ${formatMonth(selectedSlip?.month).toUpperCase()}</div>
             
-            <!-- Employee Info Section -->
+            <!-- Employee Info + Content in Single Table -->
             <table class="main-table">
               <colgroup>
+                <col style="width:10%">
                 <col style="width:15%">
-                <col style="width:18%">
+                <col style="width:11%">
+                <col style="width:13%">
+                <col style="width:12%">
+                <col style="width:12%">
+                <col style="width:13%">
                 <col style="width:14%">
-                <col style="width:14%">
-                <col style="width:14%">
-                <col style="width:25%">
               </colgroup>
               <tr>
                 <td class="label">NAME :</td>
                 <td class="value">${selectedSlip?.employee_name || ''}</td>
                 <td class="label">DESIGNATION :</td>
-                <td class="value">${selectedSlip?.designation || ''}</td>
-                <td class="label" rowspan="2">TOTAL DAYS :</td>
-                <td class="value" rowspan="2">${selectedSlip?.standard_working_days || ''}</td>
-              </tr>
-              <tr>
-                <td class="label">DESIGNATION :</td>
-                <td class="value">${selectedSlip?.designation || ''}</td>
-                <td class="label">DEPARTMENT :</td>
-                <td class="value">${selectedSlip?.department || ''}</td>
+                <td class="value">${selectedSlip?.position || selectedSlip?.designation || ''}</td>
+                <td class="label">TOTAL DAYS :</td>
+                <td class="value">${selectedSlip?.standard_working_days || ''}</td>
+                <td class="label">PAID LEAVES :</td>
+                <td class="value">${selectedSlip?.pl_total || 21}</td>
               </tr>
               <tr>
                 <td class="label">DEPARTMENT :</td>
                 <td class="value">${selectedSlip?.department || ''}</td>
-                <td class="label">DATE OF JOINING :</td>
+                <td class="label">DOJ :</td>
                 <td class="value">${selectedSlip?.joining_date ? new Date(selectedSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
-                <td class="label" rowspan="2">PRESENT DAYS :</td>
-                <td class="value" rowspan="2">${selectedSlip?.payable_days || ''}</td>
-              </tr>
-              <tr>
-                <td class="label">DATE OF JOINING :</td>
-                <td class="value">${selectedSlip?.joining_date ? new Date(selectedSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
-                <td class="label">ESIC NUMBER:</td>
-                <td class="value">${selectedSlip?.esic_number || ''}</td>
+                <td class="label">PRESENT DAYS :</td>
+                <td class="value">${selectedSlip?.payable_days || ''}</td>
+                <td class="label">PL USED :</td>
+                <td class="value">${selectedSlip?.pl_used || 0}</td>
               </tr>
               <tr>
                 <td class="label">PF  NUMBER:</td>
                 <td class="value">${selectedSlip?.pf_number || ''}</td>
-                <td class="label">UAN  NUMBER :</td>
-                <td class="value">${selectedSlip?.uan_number || ''}</td>
-                <td class="label" rowspan="2">ABSENT DAYS :</td>
-                <td class="value" rowspan="2">${selectedSlip?.standard_working_days && selectedSlip?.payable_days ? (parseFloat(selectedSlip.standard_working_days) - parseFloat(selectedSlip.payable_days)).toFixed(1) : (selectedSlip?.lop_days || '0.0')}</td>
+                <td class="label">ESIC NUMBER:</td>
+                <td class="value">${selectedSlip?.esic_number || ''}</td>
+                <td class="label">ABSENT DAYS :</td>
+                <td class="value">${selectedSlip?.standard_working_days && selectedSlip?.payable_days ? (parseFloat(selectedSlip.standard_working_days) - parseFloat(selectedSlip.payable_days)).toFixed(1) : (selectedSlip?.lop_days || '0.0')}</td>
+                <td class="label">BALANCE :</td>
+                <td class="value">${selectedSlip?.pl_balance ?? (21 - (selectedSlip?.pl_used || 0))}</td>
               </tr>
               <tr>
+                <td class="label">UAN  NUMBER :</td>
+                <td class="value">${selectedSlip?.uan_number || ''}</td>
                 <td class="label">PAN NO :</td>
                 <td class="value">${selectedSlip?.pan_number || ''}</td>
                 <td class="label">PAYMENT MODE :</td>
-                <td class="value">${selectedSlip?.payment_mode || ''}</td>
+                <td class="value" colspan="3">${selectedSlip?.payment_mode || 'NEFT'}</td>
               </tr>
-            </table>
-            
-            <!-- Main Content Table -->
-            <table class="main-table">
-              <colgroup>
-                <col style="width:15%">
-                <col style="width:9%">
-                <col style="width:9%">
-                <col style="width:14%">
-                <col style="width:8%">
-                <col style="width:6%">
-                <col style="width:9%">
-                <col style="width:9%">
-                <col style="width:9%">
-                <col style="width:12%">
-              </colgroup>
               <tr>
-                <th>DESCRIPTION</th>
+                <th colspan="2">DESCRIPTION</th>
                 <th>Gross</th>
                 <th>EARNING</th>
-                <th>DESCRIPTION</th>
-                <th>DEDUCTION</th>
-                <th>LEAVE</th>
-                <th>OPG.</th>
-                <th>CR.</th>
-                <th>DR.</th>
-                <th>BALANCE</th>
+                <th colspan="2">DESCRIPTION</th>
+                <th colspan="2">DEDUCTION</th>
               </tr>
-              <tr>
-                <td>BASIC</td>
-                <td class="amount">${selectedSlip?.basic || ''}</td>
-                <td class="amount">${selectedSlip?.basic || ''}</td>
-                <td>PROVIDENT FUND</td>
-                <td class="amount">${selectedSlip?.pf_employee || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">BASIC</td>
+                <td class="amount">${selectedSlip?.basic || '0.00'}</td>
+                <td class="amount">${selectedSlip?.basic || '0.00'}</td>
+                <td colspan="2">PROVIDENT FUND</td>
+                <td class="amount" colspan="2">${selectedSlip?.pf_employee || '0.00'}</td>
               </tr>
-              <tr>
-                <td>DA</td>
-                <td class="amount">${selectedSlip?.da || ''}</td>
-                <td class="amount">${selectedSlip?.da || ''}</td>
-                <td>ESIC</td>
-                <td class="amount">${selectedSlip?.esic_employee || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">DA</td>
+                <td class="amount">${selectedSlip?.da || '0.00'}</td>
+                <td class="amount">${selectedSlip?.da || '0.00'}</td>
+                <td colspan="2">ESIC</td>
+                <td class="amount" colspan="2">${selectedSlip?.esic_employee || '0.00'}</td>
               </tr>
-              <tr>
-                <td>HRA</td>
-                <td class="amount">${selectedSlip?.hra || ''}</td>
-                <td class="amount">${selectedSlip?.hra || ''}</td>
-                <td>PROFESSIONAL TAX</td>
-                <td class="amount">${selectedSlip?.pt || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">HRA</td>
+                <td class="amount">${selectedSlip?.hra || '0.00'}</td>
+                <td class="amount">${selectedSlip?.hra || '0.00'}</td>
+                <td colspan="2">PROFESSIONAL TAX</td>
+                <td class="amount" colspan="2">${selectedSlip?.pt || '0.00'}</td>
               </tr>
-              <tr>
-                <td>CONVEYANCE ALLOWANCE</td>
-                <td class="amount">${selectedSlip?.conveyance || ''}</td>
-                <td class="amount">${selectedSlip?.conveyance || ''}</td>
-                <td>LOAN</td>
-                <td class="amount">${selectedSlip?.loan || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">CONVEYANCE ALLOWANCE</td>
+                <td class="amount">${selectedSlip?.conveyance || '0.00'}</td>
+                <td class="amount">${selectedSlip?.conveyance || '0.00'}</td>
+                <td colspan="2">LOAN</td>
+                <td class="amount" colspan="2">${selectedSlip?.loan || '0.00'}</td>
               </tr>
-              <tr>
-                <td>CALL  ALLOWANCE</td>
-                <td class="amount">${selectedSlip?.call_allowance || ''}</td>
-                <td class="amount">${selectedSlip?.call_allowance || ''}</td>
-                <td>ADVANCE</td>
-                <td class="amount">${selectedSlip?.advance || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">CALL  ALLOWANCE</td>
+                <td class="amount">${selectedSlip?.call_allowance || '0.00'}</td>
+                <td class="amount">${selectedSlip?.call_allowance || '0.00'}</td>
+                <td colspan="2">ADVANCE</td>
+                <td class="amount" colspan="2">${selectedSlip?.advance || '0.00'}</td>
               </tr>
-              <tr>
-                <td>OTHER  ALLOWANCE</td>
-                <td class="amount">${selectedSlip?.other_allowances || ''}</td>
-                <td class="amount">${selectedSlip?.other_allowances || ''}</td>
-                <td>TAX DEDUCTED AT SOURCE</td>
-                <td class="amount">${selectedSlip?.tds || ''}</td>
-                <td>PL</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
+              <tr class="earn-row">
+                <td colspan="2">OTHER  ALLOWANCE</td>
+                <td class="amount">${selectedSlip?.other_allowances || '0.00'}</td>
+                <td class="amount">${selectedSlip?.other_allowances || '0.00'}</td>
+                <td colspan="2">TAX DEDUCTED AT SOURCE</td>
+                <td class="amount" colspan="2">${selectedSlip?.tds || '0.00'}</td>
               </tr>
-              <tr>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td>AMOUNT AFTER TDS</td>
-                <td class="amount">${selectedSlip?.tds ? ((selectedSlip?.total_earnings || selectedSlip?.gross_salary || 0) - (selectedSlip?.tds || 0)).toFixed(2) : ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">BONUS</td>
+                <td class="amount">${selectedSlip?.bonus || '0.00'}</td>
+                <td class="amount">${selectedSlip?.bonus || '0.00'}</td>
+                <td colspan="2">RETENTION AMOUNT</td>
+                <td class="amount" colspan="2">${selectedSlip?.retention || '0.00'}</td>
               </tr>
-              <tr>
-                <td>PAID HOLIDAY AMOUNT</td>
-                <td class="amount">${selectedSlip?.paid_holiday || ''}</td>
-                <td class="amount">${selectedSlip?.paid_holiday || ''}</td>
-                <td>RETENTION AMOUNT</td>
-                <td class="amount">${selectedSlip?.retention || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">OT RATE</td>
+                <td class="amount">${selectedSlip?.ot_rate || '0.00'}</td>
+                <td class="amount">${selectedSlip?.ot_rate || '0.00'}</td>
+                <td colspan="2">MLWF</td>
+                <td class="amount" colspan="2">${selectedSlip?.mlwf || '0.00'}</td>
               </tr>
-              <tr>
-                <td>BONUS</td>
-                <td class="amount">${selectedSlip?.bonus || ''}</td>
-                <td class="amount">${selectedSlip?.bonus || ''}</td>
-                <td>MLWF</td>
-                <td class="amount">${selectedSlip?.mlwf || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-              </tr>
-              <tr>
-                <td>OT RATE</td>
-                <td class="amount">${selectedSlip?.ot_rate || ''}</td>
-                <td class="amount">${selectedSlip?.ot_rate || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-              </tr>
-              <tr>
-                <td>INCENTIVE</td>
-                <td class="amount">${selectedSlip?.incentive || ''}</td>
-                <td class="amount">${selectedSlip?.incentive || ''}</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+              <tr class="earn-row">
+                <td colspan="2">INCENTIVE</td>
+                <td class="amount">${selectedSlip?.incentive || '0.00'}</td>
+                <td class="amount">${selectedSlip?.incentive || '0.00'}</td>
+                <td colspan="2"></td>
+                <td colspan="2"></td>
               </tr>
               <tr class="total-row">
-                <td>GROSS EARNING</td>
+                <td colspan="2">GROSS EARNING</td>
                 <td class="amount"></td>
                 <td class="amount">${selectedSlip?.total_earnings || selectedSlip?.gross_salary || '0.00'}</td>
-                <td>TOTAL DEDUCTION</td>
-                <td class="amount">${selectedSlip?.total_deductions || '0.00'}</td>
-                <td class="net-salary-cell" colspan="4">NET SALARY PAYABLE</td>
-                <td class="net-salary-cell amount">${selectedSlip?.net_salary || selectedSlip?.net_pay || '0.00'}</td>
+                <td colspan="2">TOTAL DEDUCTION</td>
+                <td class="amount" colspan="2">${selectedSlip?.total_deductions || '0.00'}</td>
+              </tr>
+              <tr class="net-salary-row">
+                <td class="net-salary-cell" colspan="4"></td>
+                <td class="net-salary-cell" colspan="2">NET SALARY PAYABLE</td>
+                <td class="net-salary-cell amount" colspan="2">${selectedSlip?.net_salary || selectedSlip?.net_pay || '0.00'}</td>
               </tr>
             </table>
             
@@ -728,6 +719,17 @@ export default function ReportsPage() {
             </select>
 
             <div className="flex items-center gap-2 ml-auto">
+              {/* Include Bonus Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer select-none" title="Include bonus in salary slip calculation">
+                <input
+                  type="checkbox"
+                  checked={includeBonus}
+                  onChange={(e) => setIncludeBonus(e.target.checked)}
+                  className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Include Bonus</span>
+              </label>
+
               {/* Generate All Slips */}
               <button
                 onClick={handleGenerateAllSlips}
@@ -755,6 +757,21 @@ export default function ReportsPage() {
                   <ArrowDownTrayIcon className="h-4 w-4" />
                 )}
                 Export Excel
+              </button>
+
+              {/* Bulk Export PDF */}
+              <button
+                onClick={handleBulkExportPDF}
+                disabled={bulkExporting || generating || payrollSlips.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-medium disabled:opacity-50"
+                title="Download all salary slips as a single PDF"
+              >
+                {bulkExporting ? (
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PrinterIcon className="h-4 w-4" />
+                )}
+                {bulkExporting ? 'Generating PDF...' : 'Bulk Export PDF'}
               </button>
 
               {/* Delete All */}
@@ -910,7 +927,7 @@ export default function ReportsPage() {
       {/* View Slip Modal */}
       {showSlip && selectedSlip && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-auto">
             <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
               <h3 className="text-lg font-semibold text-gray-900">Salary Slip</h3>
               <div className="flex items-center gap-2">
@@ -927,77 +944,75 @@ export default function ReportsPage() {
               </div>
             </div>
 
-            <div ref={slipRef} className="p-4 border-2 border-black">
+            <div ref={slipRef} className="p-4 border-2 border-purple-800 rounded overflow-hidden">
               {/* Header with Logo */}
-              <div className="flex items-center pb-2 border-b-2 border-black">
-                <div className="w-24 mr-5">
+              <div className="flex items-center pb-0 rounded-t" style={{background: 'linear-gradient(135deg, #4B0082 0%, #7B2FBE 50%, #9B59B6 100%)', padding: '14px 20px'}}>
+                <div className="w-[90px] mr-5 bg-white rounded-md p-1.5">
                   <img src="/accent-logo.png" alt="Accent Logo" className="w-full h-auto" />
                 </div>
                 <div className="flex-1 text-center">
-                  <h1 className="text-2xl font-bold text-purple-800">ACCENT TECHNO SOLUTIONS PVT LTD</h1>
-                  <p className="text-xs text-black font-semibold">17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),</p>
-                  <p className="text-xs text-black font-semibold">MUMBAI,MAHARASHTRA - 400055</p>
-                  <p className="text-xs text-black font-semibold">Mobile: 9324670725</p>
+                  <h1 className="text-[22px] font-extrabold text-white tracking-wide">ACCENT TECHNO SOLUTIONS PVT LTD</h1>
+                  <p className="text-[11px] text-purple-200 font-medium leading-relaxed">17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),</p>
+                  <p className="text-[11px] text-purple-200 font-medium leading-relaxed">MUMBAI,MAHARASHTRA - 400055</p>
+                  <p className="text-[11px] text-purple-200 font-medium leading-relaxed">Mobile: 9324670725</p>
                 </div>
               </div>
 
               {/* Month Title */}
-              <div className="bg-gray-200 border-b-2 border-black px-3 py-2 font-bold text-center text-xs">
+              <div className="border-b-2 border-purple-800 px-3 py-2 font-bold text-center text-xs text-purple-800 tracking-wide" style={{background: 'linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5)'}}>
                 SALARY SLIP FOR THE MONTH OF {formatMonth(selectedSlip.month).toUpperCase()}
               </div>
 
               {/* Employee Info Table */}
               <table className="w-full border-collapse text-[11px]">
                 <colgroup>
+                  <col style={{width: '12%'}} />
                   <col style={{width: '15%'}} />
-                  <col style={{width: '18%'}} />
-                  <col style={{width: '14%'}} />
-                  <col style={{width: '14%'}} />
-                  <col style={{width: '14%'}} />
-                  <col style={{width: '25%'}} />
+                  <col style={{width: '12%'}} />
+                  <col style={{width: '13%'}} />
+                  <col style={{width: '13%'}} />
+                  <col style={{width: '13%'}} />
+                  <col style={{width: '11%'}} />
+                  <col style={{width: '11%'}} />
                 </colgroup>
                 <tbody>
                   <tr>
-                    <td className="border border-black px-2 py-1 font-bold">NAME :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.employee_name || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold">DESIGNATION :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.designation || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold" rowSpan={2}>TOTAL DAYS :</td>
-                    <td className="border border-black px-2 py-1" rowSpan={2}>{selectedSlip.standard_working_days || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">NAME :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.employee_name || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">DESIGNATION :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.designation || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">TOTAL DAYS :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.standard_working_days || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">TOTAL PAID LEAVES :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.pl_total || 21}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1 font-bold">DESIGNATION :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.designation || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold">DEPARTMENT :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.department || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">DEPARTMENT :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.department || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">DATE OF JOINING :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.joining_date ? new Date(selectedSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">PRESENT DAYS :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.payable_days || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">PL USED :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.pl_used || 0}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1 font-bold">DEPARTMENT :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.department || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold">DATE OF JOINING :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.joining_date ? new Date(selectedSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold" rowSpan={2}>PRESENT DAYS :</td>
-                    <td className="border border-black px-2 py-1" rowSpan={2}>{selectedSlip.payable_days || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">PF  NUMBER:</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.pf_number || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">ESIC NUMBER:</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.esic_number || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">ABSENT DAYS :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.standard_working_days && selectedSlip.payable_days ? (parseFloat(selectedSlip.standard_working_days) - parseFloat(selectedSlip.payable_days)).toFixed(1) : (selectedSlip.lop_days || '0.0')}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">BALANCE :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.pl_balance ?? (21 - (selectedSlip.pl_used || 0))}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1 font-bold">DATE OF JOINING :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.joining_date ? new Date(selectedSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold">ESIC NUMBER:</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.esic_number || ''}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black px-2 py-1 font-bold">PF  NUMBER:</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.pf_number || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold">UAN  NUMBER :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.uan_number || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold" rowSpan={2}>ABSENT DAYS :</td>
-                    <td className="border border-black px-2 py-1" rowSpan={2}>{selectedSlip.standard_working_days && selectedSlip.payable_days ? (parseFloat(selectedSlip.standard_working_days) - parseFloat(selectedSlip.payable_days)).toFixed(1) : (selectedSlip.lop_days || '0.0')}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black px-2 py-1 font-bold">PAN NO :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.pan_number || ''}</td>
-                    <td className="border border-black px-2 py-1 font-bold">PAYMENT MODE :</td>
-                    <td className="border border-black px-2 py-1">{selectedSlip.payment_mode || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">UAN  NUMBER :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.uan_number || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">PAN NO :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white">{selectedSlip.pan_number || ''}</td>
+                    <td className="border border-purple-300 px-2 py-1.5 font-bold text-purple-800 bg-purple-50 text-[10px]">PAYMENT MODE :</td>
+                    <td className="border border-purple-300 px-2 py-1.5 bg-white" colSpan={3}>{selectedSlip.payment_mode || ''}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1005,180 +1020,109 @@ export default function ReportsPage() {
               {/* Main Content Table */}
               <table className="w-full border-collapse text-[11px]">
                 <colgroup>
-                  <col style={{width: '15%'}} />
-                  <col style={{width: '9%'}} />
-                  <col style={{width: '9%'}} />
-                  <col style={{width: '14%'}} />
-                  <col style={{width: '8%'}} />
-                  <col style={{width: '6%'}} />
-                  <col style={{width: '9%'}} />
-                  <col style={{width: '9%'}} />
-                  <col style={{width: '9%'}} />
-                  <col style={{width: '12%'}} />
+                  <col style={{width: '25%'}} />
+                  <col style={{width: '12.5%'}} />
+                  <col style={{width: '12.5%'}} />
+                  <col style={{width: '25%'}} />
+                  <col style={{width: '25%'}} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-gray-200">
-                    <th className="border border-black px-2 py-1">DESCRIPTION</th>
-                    <th className="border border-black px-2 py-1">Gross</th>
-                    <th className="border border-black px-2 py-1">EARNING</th>
-                    <th className="border border-black px-2 py-1">DESCRIPTION</th>
-                    <th className="border border-black px-2 py-1">DEDUCTION</th>
-                    <th className="border border-black px-2 py-1">LEAVE</th>
-                    <th className="border border-black px-2 py-1">OPG.</th>
-                    <th className="border border-black px-2 py-1">CR.</th>
-                    <th className="border border-black px-2 py-1">DR.</th>
-                    <th className="border border-black px-2 py-1">BALANCE</th>
+                  <tr style={{background: 'linear-gradient(135deg, #4B0082, #7B2FBE)'}}>
+                    <th className="border border-purple-400 px-2 py-1.7 text-white text-[11px] tracking-wide">DESCRIPTION</th>
+                    <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">Gross</th>
+                    <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">EARNING</th>
+                    <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">DESCRIPTION</th>
+                    <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">DEDUCTION</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-black px-2 py-1">BASIC</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.basic || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.basic || ''}</td>
-                    <td className="border border-black px-2 py-1">PROVIDENT FUND</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.pf_employee || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-green-50">BASIC</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.basic || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.basic || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-red-50">PROVIDENT FUND</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-red-50">{selectedSlip.pf_employee || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">DA</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.da || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.da || ''}</td>
-                    <td className="border border-black px-2 py-1">ESIC</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.esic_employee || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-emerald-50">DA</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.da || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.da || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-rose-50">ESIC</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-rose-50">{selectedSlip.esic_employee || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">HRA</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.hra || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.hra || ''}</td>
-                    <td className="border border-black px-2 py-1">PROFESSIONAL TAX</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.pt || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-green-50">HRA</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.hra || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.hra || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-red-50">PROFESSIONAL TAX</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-red-50">{selectedSlip.pt || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">CONVEYANCE ALLOWANCE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.conveyance || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.conveyance || ''}</td>
-                    <td className="border border-black px-2 py-1">LOAN</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.loan || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-emerald-50">CONVEYANCE ALLOWANCE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.conveyance || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.conveyance || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-rose-50">LOAN</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-rose-50">{selectedSlip.loan || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">CALL  ALLOWANCE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.call_allowance || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.call_allowance || ''}</td>
-                    <td className="border border-black px-2 py-1">ADVANCE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.advance || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-green-50">CALL  ALLOWANCE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.call_allowance || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.call_allowance || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-red-50">ADVANCE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-red-50">{selectedSlip.advance || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">OTHER  ALLOWANCE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.other_allowances || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.other_allowances || ''}</td>
-                    <td className="border border-black px-2 py-1">TAX DEDUCTED AT SOURCE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.tds || ''}</td>
-                    <td className="border border-black px-2 py-1">PL</td>
-                    <td className="border border-black px-2 py-1 text-center">-</td>
-                    <td className="border border-black px-2 py-1 text-center">-</td>
-                    <td className="border border-black px-2 py-1 text-center">-</td>
-                    <td className="border border-black px-2 py-1 text-center">-</td>
-                  </tr>
-                  {selectedSlip.tds ? (
-                  <tr>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1 font-semibold">AMOUNT AFTER TDS</td>
-                    <td className="border border-black px-2 py-1 text-right font-semibold">{((selectedSlip.total_earnings || selectedSlip.gross_salary || 0) - (selectedSlip.tds || 0)).toFixed(2)}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                  </tr>
-                  ) : null}
-                  <tr>
-                    <td className="border border-black px-2 py-1">PAID HOLIDAY AMOUNT</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.paid_holiday || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.paid_holiday || ''}</td>
-                    <td className="border border-black px-2 py-1">RETENTION AMOUNT</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.retention || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-emerald-50">OTHER  ALLOWANCE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.other_allowances || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.other_allowances || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-rose-50">TAX DEDUCTED AT SOURCE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-rose-50">{selectedSlip.tds || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">BONUS</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.bonus || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.bonus || ''}</td>
-                    <td className="border border-black px-2 py-1">MLWF</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.mlwf || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-green-50">PAID HOLIDAY AMOUNT</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.paid_holiday || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.paid_holiday || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-red-50">RETENTION AMOUNT</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-red-50">{selectedSlip.retention || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">OT RATE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.ot_rate || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.ot_rate || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-emerald-50">BONUS</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.bonus || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.bonus || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-rose-50">MLWF</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-rose-50">{selectedSlip.mlwf || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-black px-2 py-1">INCENTIVE</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.incentive || ''}</td>
-                    <td className="border border-black px-2 py-1 text-right">{selectedSlip.incentive || ''}</td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
-                    <td className="border border-black px-2 py-1"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-green-50">OT RATE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.ot_rate || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.ot_rate || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-red-50"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-red-50"></td>
                   </tr>
-                  <tr className="bg-gray-200 font-bold">
-                    <td className="border border-black border-t-2 px-2 py-1">GROSS EARNING</td>
-                    <td className="border border-black border-t-2 px-2 py-1 text-right"></td>
-                    <td className="border border-black border-t-2 px-2 py-1 text-right">{selectedSlip.total_earnings || selectedSlip.gross_salary || '0.00'}</td>
-                    <td className="border border-black border-t-2 px-2 py-1">TOTAL DEDUCTION</td>
-                    <td className="border border-black border-t-2 px-2 py-1 text-right">{selectedSlip.total_deductions || '0.00'}</td>
-                    <td className="border border-black border-t-2 px-2 py-1 bg-gray-200 font-bold" colSpan={4}>NET SALARY PAYABLE</td>
-                    <td className="border border-black border-t-2 px-2 py-1 bg-gray-200 font-bold text-right">{selectedSlip.net_salary || selectedSlip.net_pay || '0.00'}</td>
+                  <tr>
+                    <td className="border border-purple-200 px-2 py-1 bg-emerald-50">INCENTIVE</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.incentive || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-emerald-50">{selectedSlip.incentive || ''}</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-rose-50"></td>
+                    <td className="border border-purple-200 px-2 py-1 bg-rose-50"></td>
+                  </tr>
+                  <tr className="font-bold" style={{background: 'linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec)'}}>
+                    <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5">GROSS EARNING</td>
+                    <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5 text-right font-mono"></td>
+                    <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5 text-right font-mono text-green-700">{selectedSlip.total_earnings || selectedSlip.gross_salary || '0.00'}</td>
+                    <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5">TOTAL DEDUCTION</td>
+                    <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5 text-right font-mono text-red-700">{selectedSlip.total_deductions || '0.00'}</td>
+                  </tr>
+                  <tr style={{background: 'linear-gradient(135deg, #4B0082, #7B2FBE)'}}>
+                    <td className="border border-purple-400 px-2 py-2 text-white" colSpan={3}></td>
+                    <td className="border border-purple-400 px-2 py-2 text-white font-extrabold text-[12px] tracking-wide">NET SALARY PAYABLE</td>
+                    <td className="border border-purple-400 px-2 py-2 text-right text-white font-extrabold text-[13px] font-mono">{selectedSlip.net_salary || selectedSlip.net_pay || '0.00'}</td>
                   </tr>
                 </tbody>
               </table>
 
               {/* Footer */}
-              <div className="text-center text-[10px] text-gray-600 border-t-2 border-black pt-2 mt-0">
+              <div className="text-center text-[10px] text-purple-700 border-t-2 border-purple-800 pt-2 mt-0 font-medium" style={{background: '#f3e5f5'}}>
                 <p>NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN&apos;T REQUIRE SIGNATURE</p>
               </div>
             </div>
@@ -1225,6 +1169,109 @@ export default function ReportsPage() {
               </button>
               <button onClick={handleSaveEdit} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bonus Employee Selection Modal */}
+      {showBonusModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Select Employees for Bonus</h3>
+                <button onClick={() => { setShowBonusModal(false); setBonusSearch(''); }} className="p-1 text-gray-400 hover:text-gray-600">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-3">Choose which employees should receive bonus in this payroll generation.</p>
+              <div className="relative">
+                <MagnifyingGlassIcon className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={bonusSearch}
+                  onChange={(e) => setBonusSearch(e.target.value)}
+                  placeholder="Search employees..."
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex items-center justify-between mt-3">
+                <span className="text-xs text-gray-500">{selectedBonusEmployees.size} of {bonusEmployees.length} selected</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedBonusEmployees(new Set(bonusEmployees.map(e => e.id)))}
+                    className="text-xs text-purple-600 hover:text-purple-700 font-medium"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    onClick={() => setSelectedBonusEmployees(new Set())}
+                    className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingBonusEmployees ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                  <span className="ml-2 text-sm text-gray-500">Loading employees...</span>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {bonusEmployees
+                    .filter(e => {
+                      if (!bonusSearch) return true;
+                      const term = bonusSearch.toLowerCase();
+                      return e.name.toLowerCase().includes(term) || 
+                             (e.employee_id && String(e.employee_id).includes(term)) ||
+                             e.department.toLowerCase().includes(term);
+                    })
+                    .map(emp => (
+                      <label key={emp.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedBonusEmployees.has(emp.id)}
+                          onChange={(e) => {
+                            const next = new Set(selectedBonusEmployees);
+                            if (e.target.checked) next.add(emp.id);
+                            else next.delete(emp.id);
+                            setSelectedBonusEmployees(next);
+                          }}
+                          className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">{emp.name}</div>
+                          <div className="text-xs text-gray-500">{emp.employee_id} {emp.department ? `· ${emp.department}` : ''}</div>
+                        </div>
+                      </label>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => { setShowBonusModal(false); setBonusSearch(''); }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowBonusModal(false);
+                  setBonusSearch('');
+                  const bonusIds = Array.from(selectedBonusEmployees);
+                  executeGenerateSlips(bonusIds);
+                }}
+                disabled={selectedBonusEmployees.size === 0}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+              >
+                Generate with Bonus ({selectedBonusEmployees.size})
               </button>
             </div>
           </div>

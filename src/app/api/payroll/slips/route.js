@@ -30,6 +30,7 @@ export async function GET(request) {
              e.employee_id as employee_code,
              e.department,
              e.grade as designation,
+             e.position,
              e.joining_date
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
