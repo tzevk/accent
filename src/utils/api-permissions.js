@@ -76,11 +76,12 @@ export async function checkPermissionFast(request, resource, permission) {
 
 // Load current user from cookie and DB (includes role permissions)
 export async function getCurrentUser(request) {
+  let db;
   try {
     const userId = request?.cookies?.get?.('user_id')?.value;
     if (!userId) return null;
 
-    const db = await dbConnect();
+    db = await dbConnect();
     const [rows] = await db.execute(
       `SELECT 
           u.id,
@@ -123,7 +124,6 @@ export async function getCurrentUser(request) {
        LIMIT 1`,
       [userId]
     );
-    db.release();
 
     if (!rows || rows.length === 0) return null;
 
@@ -191,6 +191,10 @@ export async function getCurrentUser(request) {
   } catch (error) {
     console.error('[getCurrentUser]', error.message);
     return null;
+  } finally {
+    if (db && typeof db.release === 'function') {
+      try { db.release(); } catch (e) { /* ignore release error */ }
+    }
   }
 }
 
