@@ -1,0 +1,8 @@
+# Reduce deployment payload
+scripts/
+*.md
+*.backup
+*.csv
+TICKET_SYSTEM.md
+RESPONSIVE_AUDIT.md
+private/

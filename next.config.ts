@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   },
   
   // Reduce bundle size by excluding large packages from server
-  serverExternalPackages: ['mysql2'],
+  serverExternalPackages: ['mysql2', 'sharp', 'exceljs', 'jspdf', '@react-pdf/renderer', 'html2canvas', 'docxtemplater', 'pizzip'],
   
   // Enable compression
   compress: true,
