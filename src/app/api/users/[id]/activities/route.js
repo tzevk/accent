@@ -205,6 +205,7 @@ export async function GET(request, { params }) {
  * (Typically called from project assignment interface)
  */
 export async function POST(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.ASSIGN);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -234,7 +235,7 @@ export async function POST(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Verify user exists
     const [userCheck] = await db.execute(
@@ -243,7 +244,6 @@ export async function POST(request, { params }) {
     );
 
     if (userCheck.length === 0) {
-      await db.end();
       return NextResponse.json({ 
         success: false, 
         error: 'User not found or inactive' 
@@ -258,7 +258,6 @@ export async function POST(request, { params }) {
       );
 
       if (projectCheck.length === 0) {
-        await db.end();
         return NextResponse.json({ 
           success: false, 
           error: 'Project not found' 
@@ -305,8 +304,6 @@ export async function POST(request, { params }) {
       'Activity assigned'
     ]);
 
-    await db.end();
-
     return NextResponse.json({ 
       success: true, 
       message: 'Activity assigned successfully',
@@ -319,6 +316,10 @@ export async function POST(request, { params }) {
       success: false, 
       error: 'Failed to assign activity' 
     }, { status: 500 });
+  } finally {
+    if (db && typeof db.release === 'function') {
+      try { db.release(); } catch (e) { /* ignore */ }
+    }
   }
 }
 
@@ -327,6 +328,7 @@ export async function POST(request, { params }) {
  * Update an activity assignment (progress, status, hours, etc.)
  */
 export async function PUT(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.UPDATE);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -352,7 +354,7 @@ export async function PUT(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Get current activity state
     const [current] = await db.execute(
@@ -361,7 +363,6 @@ export async function PUT(request, { params }) {
     );
 
     if (current.length === 0) {
-      await db.end();
       return NextResponse.json({ 
         success: false, 
         error: 'Activity not found or does not belong to this user' 
@@ -408,7 +409,6 @@ export async function PUT(request, { params }) {
     }
 
     if (updates.length === 0) {
-      await db.end();
       return NextResponse.json({ 
         success: true, 
         message: 'No changes to update' 
@@ -444,8 +444,6 @@ export async function PUT(request, { params }) {
       ]);
     }
 
-    await db.end();
-
     return NextResponse.json({ 
       success: true, 
       message: 'Activity updated successfully' 
@@ -457,6 +455,10 @@ export async function PUT(request, { params }) {
       success: false, 
       error: 'Failed to update activity' 
     }, { status: 500 });
+  } finally {
+    if (db && typeof db.release === 'function') {
+      try { db.release(); } catch (e) { /* ignore */ }
+    }
   }
 }
 
@@ -465,6 +467,7 @@ export async function PUT(request, { params }) {
  * Remove an activity assignment
  */
 export async function DELETE(request, { params }) {
+  let db;
   try {
     const auth = await ensurePermission(request, RESOURCES.ACTIVITIES, PERMISSIONS.DELETE);
     if (!auth.authorized) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -481,7 +484,7 @@ export async function DELETE(request, { params }) {
       }, { status: 400 });
     }
 
-    const db = await dbConnect();
+    db = await dbConnect();
 
     // Verify activity belongs to user
     const [activity] = await db.execute(
@@ -490,7 +493,6 @@ export async function DELETE(request, { params }) {
     );
 
     if (activity.length === 0) {
-      await db.end();
       return NextResponse.json({ 
         success: false, 
         error: 'Activity not found or does not belong to this user' 
@@ -501,8 +503,6 @@ export async function DELETE(request, { params }) {
       'DELETE FROM user_activity_assignments WHERE id = ? AND user_id = ?',
       [activityId, userId]
     );
-
-    await db.end();
 
     return NextResponse.json({ 
       success: true, 
@@ -515,5 +515,9 @@ export async function DELETE(request, { params }) {
       success: false, 
       error: 'Failed to delete activity' 
     }, { status: 500 });
+  } finally {
+    if (db && typeof db.release === 'function') {
+      try { db.release(); } catch (e) { /* ignore */ }
+    }
   }
 }
