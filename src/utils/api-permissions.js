@@ -17,6 +17,45 @@ function safeParse(json, fallback = []) {
 // Cache expiry time (24 hours in milliseconds)
 const PERMISSIONS_CACHE_TTL = 24 * 60 * 60 * 1000;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// In-memory user cache to reduce DB queries (short TTL for freshness)
+// ═══════════════════════════════════════════════════════════════════════════
+const userCache = new Map();
+const USER_CACHE_TTL = 60 * 1000; // 1 minute cache for user data
+const MAX_CACHE_SIZE = 500;
+
+function getCachedUser(userId) {
+  const entry = userCache.get(userId);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > USER_CACHE_TTL) {
+    userCache.delete(userId);
+    return null;
+  }
+  return entry.user;
+}
+
+function setCachedUser(userId, user) {
+  // Prevent unbounded growth
+  if (userCache.size >= MAX_CACHE_SIZE) {
+    // Remove oldest entries
+    const entries = Array.from(userCache.entries());
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    entries.slice(0, 100).forEach(([key]) => userCache.delete(key));
+  }
+  userCache.set(userId, { user, timestamp: Date.now() });
+}
+
+function invalidateUserCache(userId) {
+  if (userId) {
+    userCache.delete(userId);
+  } else {
+    userCache.clear();
+  }
+}
+
+// Export for use elsewhere (e.g., after permission updates)
+export { invalidateUserCache };
+
 /**
  * Get permissions from session cookie (fast path - no DB query)
  * Returns null if cookie is missing, expired, or invalid
@@ -75,11 +114,20 @@ export async function checkPermissionFast(request, resource, permission) {
 }
 
 // Load current user from cookie and DB (includes role permissions)
-export async function getCurrentUser(request) {
+// Uses in-memory cache to reduce DB queries
+export async function getCurrentUser(request, options = {}) {
   let db;
   try {
     const userId = request?.cookies?.get?.('user_id')?.value;
     if (!userId) return null;
+
+    // Check cache first (skip if force refresh requested)
+    if (!options.skipCache) {
+      const cached = getCachedUser(userId);
+      if (cached) {
+        return cached;
+      }
+    }
 
     db = await dbConnect();
     const [rows] = await db.execute(
@@ -160,7 +208,7 @@ export async function getCurrentUser(request) {
       : null;
 
     const authenticated = !!request?.cookies?.get?.('auth')?.value;
-    return {
+    const user = {
       id: row.id,
       username: row.username,
       full_name: row.full_name,
@@ -188,6 +236,11 @@ export async function getCurrentUser(request) {
       merged_permissions: mergedPermissions,
       employee
     };
+    
+    // Cache the user for subsequent requests
+    setCachedUser(userId, user);
+    
+    return user;
   } catch (error) {
     console.error('[getCurrentUser]', error.message);
     return null;
@@ -204,7 +257,7 @@ export async function ensurePermission(request, resource, permission) {
   const sessionCheck = getSessionPermissions(request);
   if (sessionCheck) {
     if (sessionCheck.is_super_admin) {
-      // Still need user object for some operations, fetch it
+      // Still need user object for some operations, fetch it (cached)
       const user = await getCurrentUser(request);
       return { authorized: true, user };
     }
@@ -217,28 +270,43 @@ export async function ensurePermission(request, resource, permission) {
     
     // Session cookie doesn't have this permission, but it might be stale.
     // Fall through to DB lookup instead of immediately denying.
-    console.log(`[RBAC] Session cookie missing ${resource}:${permission} — falling through to DB check`);
   }
   
-  // Fall back to DB lookup
+  // Fall back to DB lookup (uses cache)
   const user = await getCurrentUser(request);
   if (!user) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-
-  // Debug logging for permission checks
-  console.log(`[RBAC] Checking ${resource}:${permission} for user ${user.email || user.username}`);
-  console.log(`[RBAC] is_super_admin: ${user.is_super_admin}`);
-  console.log(`[RBAC] permissions (${user.permissions?.length || 0}):`, user.permissions?.slice(0, 5));
-  console.log(`[RBAC] merged_permissions (${user.merged_permissions?.length || 0}):`, user.merged_permissions?.slice(0, 5));
 
   // Super admin bypass or exact permission match
   if (user.is_super_admin || checkPermission(user, resource, permission)) {
     return { authorized: true, user };
   }
 
-  console.log(`[RBAC] DENIED: ${user.email || user.username} does not have ${resource}:${permission}`);
+  // Only log denials in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[RBAC] DENIED: ${user.email || user.username} does not have ${resource}:${permission}`);
+  }
   return NextResponse.json({ success: false, error: 'Forbidden: missing permission' }, { status: 403 });
+}
+
+/**
+ * Lightweight permission check that doesn't need the full user object
+ * Returns true/false without fetching user data when possible
+ */
+export async function hasPermission(request, resource, permission) {
+  // Check session cookie first
+  const sessionCheck = getSessionPermissions(request);
+  if (sessionCheck) {
+    if (sessionCheck.is_super_admin) return true;
+    if (sessionCheck.permissions.includes(`${resource}:${permission}`)) return true;
+  }
+  
+  // Fall back to cached user lookup
+  const user = await getCurrentUser(request);
+  if (!user) return false;
+  
+  return user.is_super_admin || checkPermission(user, resource, permission);
 }
 
 /**

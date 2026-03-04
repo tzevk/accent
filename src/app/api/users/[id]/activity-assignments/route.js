@@ -118,19 +118,24 @@ export async function GET(request, { params }) {
       onHoldCount: assignments.filter(a => a.status === 'On Hold').length
     };
 
-    await db.end();
+    db.release();
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true, 
       data: {
         assignments,
         stats
       }
     });
+    
+    // Cache for 30 seconds since this data changes infrequently
+    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+    
+    return response;
   } catch (error) {
     console.error('Error fetching user activity assignments:', error);
     if (db) {
-      try { await db.end(); } catch {}
+      try { db.release(); } catch {}
     }
     return NextResponse.json({ 
       success: false, 
@@ -184,7 +189,7 @@ export async function PUT(request, { params }) {
     );
 
     if (projects.length === 0) {
-      await db.end();
+      db.release();
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
@@ -194,7 +199,7 @@ export async function PUT(request, { params }) {
     }
 
     if (!Array.isArray(activitiesList)) {
-      await db.end();
+      db.release();
       return NextResponse.json({ success: false, error: 'No activities found' }, { status: 404 });
     }
 
@@ -249,7 +254,7 @@ export async function PUT(request, { params }) {
     }
 
     if (!updated) {
-      await db.end();
+      db.release();
       return NextResponse.json({ success: false, error: 'Assignment not found' }, { status: 404 });
     }
 
@@ -259,7 +264,7 @@ export async function PUT(request, { params }) {
       [JSON.stringify(activitiesList), project_id]
     );
 
-    await db.end();
+    db.release();
 
     return NextResponse.json({ 
       success: true, 
@@ -268,7 +273,7 @@ export async function PUT(request, { params }) {
   } catch (error) {
     console.error('Error updating activity assignment:', error);
     if (db) {
-      try { await db.end(); } catch {}
+      try { db.release(); } catch {}
     }
     return NextResponse.json({ 
       success: false, 

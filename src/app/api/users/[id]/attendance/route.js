@@ -220,10 +220,15 @@ export async function GET(request, { params }) {
       console.log('Leave table not found, using defaults:', leaveError.message);
     }
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true, 
       data: attendanceData 
     });
+    
+    // Cache for 30 seconds - attendance data updates infrequently
+    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+    
+    return response;
   } catch (error) {
     console.error('Error fetching attendance:', error);
     return NextResponse.json({ 

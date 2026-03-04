@@ -20,17 +20,144 @@ function isPublicPath(pathname: string) {
   return publicPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// In-memory rate limiter (Edge-compatible)
+// ═══════════════════════════════════════════════════════════════════════════
+interface RateLimitEntry {
+  count: number
+  windowStart: number
+  blockedUntil: number | null
+}
+
+const rateLimitStore = new Map<string, RateLimitEntry>()
+
+// Rate limit configurations
+const RATE_LIMITS = {
+  auth: { windowMs: 15 * 60 * 1000, maxRequests: 10, blockDurationMs: 30 * 60 * 1000 },
+  dashboard: { windowMs: 60 * 1000, maxRequests: 60, blockDurationMs: 60 * 1000 },
+  api: { windowMs: 60 * 1000, maxRequests: 120, blockDurationMs: 60 * 1000 },
+  heavy: { windowMs: 60 * 1000, maxRequests: 10, blockDurationMs: 2 * 60 * 1000 },
+}
+
+function getClientIP(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for')
+  if (forwarded) return forwarded.split(',')[0].trim()
+  const realIP = req.headers.get('x-real-ip')
+  if (realIP) return realIP
+  const vercelIP = req.headers.get('x-vercel-forwarded-for')
+  if (vercelIP) return vercelIP.split(',')[0].trim()
+  return 'unknown'
+}
+
+function getRateLimitCategory(pathname: string): keyof typeof RATE_LIMITS {
+  if (pathname.startsWith('/api/login') || pathname.startsWith('/api/logout') || pathname.startsWith('/api/auth')) {
+    return 'auth'
+  }
+  if (pathname.includes('dashboard-stats') || pathname.includes('manhours-stats') || pathname.startsWith('/api/analytics')) {
+    return 'dashboard'
+  }
+  if (pathname.includes('export') || pathname.includes('report') || pathname.includes('bulk')) {
+    return 'heavy'
+  }
+  return 'api'
+}
+
+function checkRateLimit(req: NextRequest): { limited: boolean; remaining: number; resetIn: number } | null {
+  const pathname = req.nextUrl.pathname
+  
+  // Only rate limit API routes
+  if (!pathname.startsWith('/api')) return null
+  
+  const ip = getClientIP(req)
+  const category = getRateLimitCategory(pathname)
+  const config = RATE_LIMITS[category]
+  
+  const key = `${ip}:${category}`
+  const now = Date.now()
+  
+  let entry = rateLimitStore.get(key)
+  
+  // Check if blocked
+  if (entry?.blockedUntil && entry.blockedUntil > now) {
+    const resetIn = Math.ceil((entry.blockedUntil - now) / 1000)
+    return { limited: true, remaining: 0, resetIn }
+  }
+  
+  // Initialize or reset window
+  if (!entry || entry.windowStart + config.windowMs < now) {
+    entry = { count: 0, windowStart: now, blockedUntil: null }
+    rateLimitStore.set(key, entry)
+  }
+  
+  entry.count++
+  
+  // Check if over limit
+  if (entry.count > config.maxRequests) {
+    entry.blockedUntil = now + config.blockDurationMs
+    console.warn(`[RateLimit] IP ${ip} blocked for ${category} - ${entry.count} requests`)
+    return { limited: true, remaining: 0, resetIn: Math.ceil(config.blockDurationMs / 1000) }
+  }
+  
+  return {
+    limited: false,
+    remaining: config.maxRequests - entry.count,
+    resetIn: Math.ceil((entry.windowStart + config.windowMs - now) / 1000)
+  }
+}
+
+// Periodic cleanup (runs on each request but only cleans if needed)
+let lastCleanup = 0
+function cleanupRateLimitStore() {
+  const now = Date.now()
+  if (now - lastCleanup < 60000) return // Once per minute max
+  lastCleanup = now
+  
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (entry.windowStart + 300000 < now && (!entry.blockedUntil || entry.blockedUntil < now)) {
+      rateLimitStore.delete(key)
+    }
+  }
+  
+  // Prevent unbounded growth
+  if (rateLimitStore.size > 5000) {
+    const entries = Array.from(rateLimitStore.entries())
+    entries.sort((a, b) => a[1].windowStart - b[1].windowStart)
+    entries.slice(0, 1000).forEach(([k]) => rateLimitStore.delete(k))
+  }
+}
+
 /**
  * Middleware - Single source of truth for authentication
  * 
  * This is the ONLY place where auth is enforced:
- * 1. Public routes are allowed through
- * 2. Authenticated users on /signin are redirected to their dashboard
- * 3. Unauthenticated users are redirected to /signin
- * 4. Non-admins trying to access /admin/* are redirected to /user/dashboard
+ * 1. Rate limiting for API routes
+ * 2. Public routes are allowed through
+ * 3. Authenticated users on /signin are redirected to their dashboard
+ * 4. Unauthenticated users are redirected to /signin
+ * 5. Non-admins trying to access /admin/* are redirected to /user/dashboard
  */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+  
+  // Cleanup old rate limit entries periodically
+  cleanupRateLimitStore()
+  
+  // Rate limiting for API routes
+  const rateLimitResult = checkRateLimit(req)
+  if (rateLimitResult?.limited) {
+    return NextResponse.json(
+      { success: false, error: 'Too many requests. Please try again later.' },
+      { 
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimitResult.resetIn),
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(rateLimitResult.resetIn)
+        }
+      }
+    )
+  }
   
   // Get auth cookies
   const auth = req.cookies.get('auth')?.value
@@ -75,6 +202,13 @@ export function middleware(req: NextRequest) {
   const response = NextResponse.next()
   response.headers.set('Cache-Control', 'no-store, must-revalidate')
   response.headers.set('Pragma', 'no-cache')
+  
+  // Add rate limit headers for API routes
+  if (rateLimitResult && pathname.startsWith('/api')) {
+    response.headers.set('X-RateLimit-Remaining', String(rateLimitResult.remaining))
+    response.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetIn))
+  }
+  
   return response
 }
 
