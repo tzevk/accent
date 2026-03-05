@@ -3,14 +3,16 @@
 import { useState, useEffect, Fragment } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
   MagnifyingGlassIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   FolderIcon,
   UserIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  PencilSquareIcon,
+  CheckIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 export default function ProjectActivitiesReport() {
@@ -20,6 +22,9 @@ export default function ProjectActivitiesReport() {
   const [search, setSearch] = useState('');
   const [expandedProjects, setExpandedProjects] = useState({});
   const [expandedMembers, setExpandedMembers] = useState({});
+  const [editingEntry, setEditingEntry] = useState(null); // Format: 'projectId-activityId-userId-entryIndex'
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
   
   // Check if user has access - allow Rajesh Panchal, super admins, and users with reports permission
   const isRajeshPanchal = user?.full_name?.toLowerCase() === 'rajesh panchal';
@@ -64,6 +69,73 @@ export default function ProjectActivitiesReport() {
 
   const toggleProject = (id) => setExpandedProjects(prev => ({ ...prev, [id]: !prev[id] }));
   const toggleMember = (key) => setExpandedMembers(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const startEditingEntry = (projectId, activityId, userId, entryIndex, entry) => {
+    const key = `${projectId}-${activityId}-${userId}-${entryIndex}`;
+    setEditingEntry(key);
+    setEditForm({
+      date: entry.date || '',
+      qty_done: entry.qty_done || '',
+      hours: entry.hours || '',
+      remarks: entry.remarks || ''
+    });
+  };
+
+  const cancelEditingEntry = () => {
+    setEditingEntry(null);
+    setEditForm({});
+  };
+
+  const saveEditedEntry = async (projectId, activityId, userId, member) => {
+    if (!editingEntry) return;
+    
+    setSaving(true);
+    try {
+      const entryIndex = parseInt(editingEntry.split('-')[3]);
+      const dailyEntries = [...(member.daily_entries || [])];
+      
+      // Update the specific entry
+      dailyEntries[entryIndex] = {
+        ...dailyEntries[entryIndex],
+        date: editForm.date,
+        qty_done: parseFloat(editForm.qty_done) || 0,
+        hours: parseFloat(editForm.hours) || 0,
+        remarks: editForm.remarks || ''
+      };
+      
+      // Recalculate totals
+      const totalQtyDone = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
+      const totalHours = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+      
+      // Save to backend
+      const res = await fetch(`/api/users/${userId}/activity-assignments`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectId,
+          activity_id: activityId,
+          daily_entries: dailyEntries,
+          qty_completed: totalQtyDone,
+          actual_hours: totalHours
+        })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        // Reload data to reflect changes
+        await loadData();
+        setEditingEntry(null);
+        setEditForm({});
+      } else {
+        alert('Failed to save changes: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Failed to save entry:', err);
+      alert('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const formatShortDate = (d) => {
     if (!d) return '–';
@@ -317,23 +389,111 @@ export default function ProjectActivitiesReport() {
                                                       <th className="text-center py-1 px-2 font-semibold">Qty Done</th>
                                                       <th className="text-center py-1 px-2 font-semibold">Manhours</th>
                                                       <th className="text-center py-1 px-2 font-semibold">Remarks</th>
+                                                      {isRajeshPanchal && <th className="text-center py-1 px-2 font-semibold">Actions</th>}
                                                     </tr>
                                                   </thead>
                                                   <tbody>
-                                                    {dailyEntries.map((entry, eIdx) => (
-                                                      <tr key={eIdx} className="text-gray-600">
-                                                        <td className="py-1 pr-2 text-center">{formatShortDate(entry.date)}</td>
-                                                        <td className="py-1 px-2 text-center">{entry.qty_done || 0}</td>
-                                                        <td className="py-1 px-2 text-center">{entry.hours || 0}</td>
-                                                        <td className="py-1 px-2 text-center text-gray-500">{entry.remarks || '–'}</td>
-                                                      </tr>
-                                                    ))}
+                                                    {dailyEntries.map((entry, eIdx) => {
+                                                      const entryKey = `${project.project_id}-${activity.id}-${member.user_id}-${eIdx}`;
+                                                      const isEditing = editingEntry === entryKey;
+                                                      
+                                                      return (
+                                                        <tr key={eIdx} className="text-gray-600">
+                                                          <td className="py-1 pr-2 text-center">
+                                                            {isEditing ? (
+                                                              <input 
+                                                                type="date" 
+                                                                value={editForm.date || ''} 
+                                                                onChange={(e) => setEditForm({...editForm, date: e.target.value})}
+                                                                className="w-full px-1 py-0.5 text-[10px] border border-purple-300 rounded focus:border-purple-500 focus:outline-none"
+                                                              />
+                                                            ) : (
+                                                              formatShortDate(entry.date)
+                                                            )}
+                                                          </td>
+                                                          <td className="py-1 px-2 text-center">
+                                                            {isEditing ? (
+                                                              <input 
+                                                                type="number" 
+                                                                value={editForm.qty_done || ''} 
+                                                                onChange={(e) => setEditForm({...editForm, qty_done: e.target.value})}
+                                                                min="0"
+                                                                step="0.01"
+                                                                className="w-16 px-1 py-0.5 text-[10px] border border-purple-300 rounded text-center focus:border-purple-500 focus:outline-none"
+                                                              />
+                                                            ) : (
+                                                              entry.qty_done || 0
+                                                            )}
+                                                          </td>
+                                                          <td className="py-1 px-2 text-center">
+                                                            {isEditing ? (
+                                                              <input 
+                                                                type="number" 
+                                                                value={editForm.hours || ''} 
+                                                                onChange={(e) => setEditForm({...editForm, hours: e.target.value})}
+                                                                min="0"
+                                                                step="0.5"
+                                                                className="w-16 px-1 py-0.5 text-[10px] border border-purple-300 rounded text-center focus:border-purple-500 focus:outline-none"
+                                                              />
+                                                            ) : (
+                                                              entry.hours || 0
+                                                            )}
+                                                          </td>
+                                                          <td className="py-1 px-2 text-center text-gray-500">
+                                                            {isEditing ? (
+                                                              <input 
+                                                                type="text" 
+                                                                value={editForm.remarks || ''} 
+                                                                onChange={(e) => setEditForm({...editForm, remarks: e.target.value})}
+                                                                placeholder="Remarks..."
+                                                                className="w-full px-1 py-0.5 text-[10px] border border-purple-300 rounded focus:border-purple-500 focus:outline-none"
+                                                              />
+                                                            ) : (
+                                                              entry.remarks || '–'
+                                                            )}
+                                                          </td>
+                                                          {isRajeshPanchal && (
+                                                            <td className="py-1 px-2 text-center">
+                                                              {isEditing ? (
+                                                                <div className="flex items-center justify-center gap-1">
+                                                                  <button 
+                                                                    onClick={() => saveEditedEntry(project.project_id, activity.id, member.user_id, member)}
+                                                                    disabled={saving}
+                                                                    className="p-0.5 text-green-600 hover:bg-green-100 rounded transition-colors disabled:opacity-50"
+                                                                    title="Save"
+                                                                  >
+                                                                    <CheckIcon className="w-3.5 h-3.5" />
+                                                                  </button>
+                                                                  <button 
+                                                                    onClick={cancelEditingEntry}
+                                                                    disabled={saving}
+                                                                    className="p-0.5 text-red-600 hover:bg-red-100 rounded transition-colors disabled:opacity-50"
+                                                                    title="Cancel"
+                                                                  >
+                                                                    <XMarkIcon className="w-3.5 h-3.5" />
+                                                                  </button>
+                                                                </div>
+                                                              ) : (
+                                                                <button 
+                                                                  onClick={() => startEditingEntry(project.project_id, activity.id, member.user_id, eIdx, entry)}
+                                                                  className="p-0.5 text-purple-600 hover:bg-purple-100 rounded transition-colors"
+                                                                  title="Edit"
+                                                                >
+                                                                  <PencilSquareIcon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                              )}
+                                                            </td>
+                                                          )}
+                                                        </tr>
+                                                      );
+                                                    })}
                                                     {/* Totals row */}
                                                     <tr className="border-t border-gray-200 font-semibold text-gray-700">
                                                       <td className="py-1 pr-2 text-[10px]">Total</td>
                                                       <td className="py-1 px-2 text-center">{dailyEntries.reduce((s, e) => s + (parseFloat(e.qty_done) || 0), 0)}</td>
                                                       <td className="py-1 px-2 text-center">{dailyEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0)}</td>
                                                       <td className="py-1 px-2"></td>
+                                                      {isRajeshPanchal && <td className="py-1 px-2"></td>}
                                                     </tr>
                                                   </tbody>
                                                 </table>

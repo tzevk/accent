@@ -162,8 +162,11 @@ export async function PUT(request, { params }) {
     }
 
     // Users can update their own assignments
+    // Rajesh Panchal can override/edit any user's assignments
+    // Super admins can edit any user's assignments
     const isOwnData = requestedUserId === currentUser.id;
-    if (!isOwnData && !currentUser.is_super_admin) {
+    const isRajeshPanchal = currentUser.full_name?.toLowerCase() === 'rajesh panchal';
+    if (!isOwnData && !currentUser.is_super_admin && !isRajeshPanchal) {
       return NextResponse.json({ 
         success: false, 
         error: 'Forbidden' 
