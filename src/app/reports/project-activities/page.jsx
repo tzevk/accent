@@ -25,6 +25,7 @@ export default function ProjectActivitiesReport() {
   const [editingEntry, setEditingEntry] = useState(null); // Format: 'projectId-activityId-userId-entryIndex'
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   
   // Check if user has access - allow Rajesh Panchal, super admins, and users with reports permission
   const isRajeshPanchal = user?.full_name?.toLowerCase() === 'rajesh panchal';
@@ -38,6 +39,7 @@ export default function ProjectActivitiesReport() {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/reports/project-activities');
       const data = await res.json();
@@ -65,11 +67,11 @@ export default function ProjectActivitiesReport() {
         setExpandedMembers(memberExp);
       } else {
         console.error('API returned error:', data.error); // Debug log
-        alert('Error loading projects: ' + (data.error || 'Unknown error'));
+        setError(data.error || 'Unknown error');
       }
     } catch (err) {
       console.error('Failed to load project activities report:', err);
-      alert('Failed to load project activities. Check console for details.');
+      setError('Failed to connect to server. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -256,8 +258,19 @@ export default function ProjectActivitiesReport() {
               </div>
             </div>
 
-            {/* Projects List */}
-            {loading ? (
+            {error ? (
+              <div className="bg-red-50 rounded-xl border border-red-200 p-8 text-center">
+                <div className="text-red-500 text-4xl mb-3">⚠️</div>
+                <p className="text-red-800 font-semibold mb-2">Error Loading Projects</p>
+                <p className="text-red-600 text-sm mb-4">{error}</p>
+                <button 
+                  onClick={loadData}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : loading ? (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">Loading project data...</div>
             ) : filteredProjects.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
