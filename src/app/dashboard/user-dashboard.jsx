@@ -328,6 +328,30 @@ export default function UserDashboard({ verifiedUser }) {
     return () => ac.abort();
   }, [verifiedUser?.id, user?.id]);
 
+  // ── Poll attendance data (especially idle time) every 2 minutes ──
+  useEffect(() => {
+    const userId = verifiedUser?.id || user?.id;
+    if (!userId || attendance.logoutTime) return; // Don't poll if logged out
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetchJSON(`/api/users/${userId}/attendance`);
+        if (res?.success) {
+          // Only update idle time to avoid disrupting other fields
+          setAttendance(prev => ({
+            ...prev,
+            idleTime: res.data.idleTime || prev.idleTime
+          }));
+        }
+      } catch (error) {
+        // Silently fail - polling shouldn't disrupt UX
+        console.debug('Attendance poll failed:', error);
+      }
+    }, 120000); // Poll every 2 minutes (matches heartbeat interval)
+
+    return () => clearInterval(pollInterval);
+  }, [verifiedUser?.id, user?.id, attendance.logoutTime]);
+
   // ── Memoized helpers ──
   const formatTime = useCallback((time) => {
     if (!time) return '--:--';

@@ -1,6 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { randomUUID } from 'crypto';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { ensurePermission, getCurrentUser, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { hasPermission } from '@/utils/rbac';
 
 // GET - Fetch all activities for a project
 export async function GET(request, { params }) {
@@ -39,6 +40,22 @@ export async function GET(request, { params }) {
 
 // POST - Add new activity to project
 export async function POST(request, { params }) {
+  // Check permission to edit project activities
+  const user = await getCurrentUser(request);
+  if (!user) {
+    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  
+  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+  const hasUpdatePermission = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  
+  if (!hasUpdatePermission) {
+    return Response.json({ 
+      success: false, 
+      error: 'You do not have permission to add project activities' 
+    }, { status: 403 });
+  }
+  
   let db;
   try {
     const { id } = await params;
@@ -135,6 +152,22 @@ export async function POST(request, { params }) {
 
 // PUT - Update existing project activity
 export async function PUT(request, { params }) {
+  // Check permission to edit project activities
+  const user = await getCurrentUser(request);
+  if (!user) {
+    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  
+  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+  const hasUpdatePermission = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  
+  if (!hasUpdatePermission) {
+    return Response.json({ 
+      success: false, 
+      error: 'You do not have permission to update project activities' 
+    }, { status: 403 });
+  }
+  
   let db;
   try {
     const { id } = await params;
@@ -206,6 +239,22 @@ export async function PUT(request, { params }) {
 
 // DELETE - Remove activity from project
 export async function DELETE(request, { params }) {
+  // Check permission to edit project activities
+  const user = await getCurrentUser(request);
+  if (!user) {
+    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+  
+  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
+  const hasUpdatePermission = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  
+  if (!hasUpdatePermission) {
+    return Response.json({ 
+      success: false, 
+      error: 'You do not have permission to delete project activities' 
+    }, { status: 403 });
+  }
+  
   let db;
   try {
     const { id } = await params;

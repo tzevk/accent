@@ -80,9 +80,7 @@ export async function updateScreenTime(userId, screenData) {
 
     const {
       activeTimeMs = 0,
-      idleTimeMs = 0,
-      sessionDurationMs = 0,
-      currentPage = null
+      idleTimeMs = 0
     } = screenData;
 
     // Convert milliseconds to minutes
@@ -115,16 +113,17 @@ export async function updateScreenTime(userId, screenData) {
     `);
 
     // Update or insert screen time record for today
+    // Heartbeats send cumulative session values, so we REPLACE (not ADD) to avoid double-counting
     await db.execute(
       `INSERT INTO user_screen_time 
        (user_id, date, total_screen_time_minutes, active_time_minutes, idle_time_minutes, updated_at)
        VALUES (?, CURDATE(), ?, ?, ?, CURRENT_TIMESTAMP)
        ON DUPLICATE KEY UPDATE
-         total_screen_time_minutes = ?,
-         active_time_minutes = ?,
-         idle_time_minutes = ?,
+         total_screen_time_minutes = VALUES(total_screen_time_minutes),
+         active_time_minutes = VALUES(active_time_minutes),
+         idle_time_minutes = VALUES(idle_time_minutes),
          updated_at = CURRENT_TIMESTAMP`,
-      [userId, totalMinutes, activeMinutes, idleMinutes, totalMinutes, activeMinutes, idleMinutes]
+      [userId, totalMinutes, activeMinutes, idleMinutes]
     );
 
   } catch (error) {
