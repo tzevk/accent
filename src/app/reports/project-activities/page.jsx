@@ -14,12 +14,18 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function ProjectActivitiesReport() {
-  const { loading: authLoading } = useSessionRBAC();
+  const { loading: authLoading, user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [expandedProjects, setExpandedProjects] = useState({});
   const [expandedMembers, setExpandedMembers] = useState({});
+  
+  // Check if user has access - allow Rajesh Panchal, super admins, and users with reports permission
+  const isRajeshPanchal = user?.full_name?.toLowerCase() === 'rajesh panchal';
+  const isSuperAdmin = user?.is_super_admin === true || user?.is_super_admin === 1;
+  const hasReportsPermission = can && can(RESOURCES.REPORTS, PERMISSIONS.READ);
+  const hasAccess = isRajeshPanchal || isSuperAdmin || hasReportsPermission;
 
   useEffect(() => {
     loadData();
@@ -110,6 +116,23 @@ export default function ProjectActivitiesReport() {
         <Navbar />
         <div className="flex items-center justify-center h-[70vh]">
           <div className="text-gray-500">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Access denied if user doesn't have permission
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <Navbar />
+        <div className="flex items-center justify-center h-[70vh]">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
+            <p className="text-gray-600">You do not have permission to view project activities.</p>
+            <p className="text-sm text-gray-500 mt-2">Contact your administrator if you need access.</p>
+          </div>
         </div>
       </div>
     );
