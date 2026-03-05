@@ -5519,15 +5519,15 @@ function EditProjectForm() {
                           <thead>
                             <tr className="border-b-2 border-gray-300">
                               <th className="text-left py-2.5 px-3 font-semibold text-indigo-600 bg-indigo-50/50 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Activity Name</th>
-                              <th className="text-left py-2.5 px-3 font-semibold text-slate-600 bg-slate-50/50 text-[11px] uppercase tracking-wider" style={{ width: '20%' }}>Activity Description</th>
+                              <th className="text-left py-2.5 px-3 font-semibold text-slate-600 bg-slate-50/50 text-[11px] uppercase tracking-wider" style={{ width: '30%' }}>Activity Description</th>
                               <th className="text-left py-2.5 px-3 font-semibold text-emerald-600 bg-emerald-50/50 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Team Member</th>
                               <th className="text-left py-2.5 px-3 font-semibold text-gray-600 bg-gray-50/50 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Description</th>
                               <th className="text-center py-2.5 px-2 font-semibold text-purple-600 bg-purple-50/40 text-[11px] uppercase tracking-wider" style={{ width: '6%' }}>Unit Qty</th>
                               <th className="text-center py-2.5 px-2 font-semibold text-blue-600 bg-blue-50/40 text-[11px] uppercase tracking-wider" style={{ width: '8%' }}>Start Date</th>
                               <th className="text-center py-2.5 px-2 font-semibold text-orange-600 bg-orange-50/40 text-[11px] uppercase tracking-wider" style={{ width: '8%' }}>Due Date</th>
-                              <th className="text-center py-2.5 px-2 font-semibold text-cyan-600 bg-cyan-50/40 text-[11px] uppercase tracking-wider" style={{ width: '7%' }}>Status</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-cyan-600 bg-cyan-50/40 text-[11px] uppercase tracking-wider" style={{ width: '5%' }}>Status</th>
                               <th className="text-left py-2.5 px-2 font-semibold text-amber-600 bg-amber-50/40 text-[11px] uppercase tracking-wider" style={{ width: '11%' }}>Notes</th>
-                              <th className="text-center py-2.5 px-2 font-semibold text-gray-500 bg-gray-50/30 text-[11px] uppercase tracking-wider" style={{ width: '10%' }}>Actions</th>
+                              <th className="text-center py-2.5 px-2 font-semibold text-gray-500 bg-gray-50/30 text-[11px] uppercase tracking-wider" style={{ width: '8%' }}>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
