@@ -18,9 +18,13 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
+    console.log(`[Project Activities API] User accessing: ${user.full_name || user.username} (ID: ${user.id})`); // Debug log
+    
     const isRajeshPanchal = user.full_name?.toLowerCase() === 'rajesh panchal';
     const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
     const hasReportsPermission = hasPermission(user, RESOURCES.REPORTS, PERMISSIONS.READ);
+    
+    console.log(`[Project Activities API] Permissions - Rajesh: ${isRajeshPanchal}, SuperAdmin: ${isSuperAdmin}, ReportsPermission: ${hasReportsPermission}`); // Debug log
     
     if (!isRajeshPanchal && !isSuperAdmin && !hasReportsPermission) {
       return NextResponse.json({ 
@@ -47,6 +51,8 @@ export async function GET(request) {
         AND p.project_activities_list != '[]'
       ORDER BY p.start_date DESC
     `);
+
+    console.log(`[Project Activities API] Found ${projects.length} projects with activities`); // Debug log
 
     // Fetch users and employees for name resolution
     // user_id in assigned_users comes from the users table
@@ -139,5 +145,14 @@ export async function GET(request) {
   } catch (error) {
     console.error('Project activities report error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } finally {
+    // Always release the database connection to prevent leaks
+    if (db && typeof db.release === 'function') {
+      try {
+        db.release();
+      } catch (err) {
+        console.error('Error releasing DB connection in reports API:', err);
+      }
+    }
   }
 }

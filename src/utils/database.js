@@ -15,7 +15,8 @@ export async function dbConnect() {
   const password = process.env.DB_PASSWORD
   const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000) // ms
   // Optimized for production: allow more connections but manage idle efficiently
-  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 10)
+  // Increased from 10 to 25 to handle concurrent users and polling
+  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 25)
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 3)
 
   // Initialize pool once
@@ -34,13 +35,14 @@ export async function dbConnect() {
           password,
           waitForConnections: true,
           connectionLimit,
-          queueLimit: 50,         // Allow more queued requests
+          queueLimit: 100,        // Allow more queued requests during high load
           connectTimeout,
           dateStrings: true,
-          maxIdle: 5,             // Keep more idle connections for burst handling
-          idleTimeout: 30000,     // 30 seconds - balance between keeping connections and releasing resources
+          maxIdle: 10,            // Keep more idle connections for burst handling
+          idleTimeout: 60000,     // 60 seconds - allow longer idle time for reuse
           enableKeepAlive: true,
-          keepAliveInitialDelay: 30000 // Send keepalive after 30s
+          keepAliveInitialDelay: 30000, // Send keepalive after 30s
+          acquireTimeout: 30000   // Wait up to 30s for a connection from the pool
         });
         // Warm a connection to validate database existence
         const test = await pool.getConnection();

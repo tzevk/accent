@@ -41,7 +41,11 @@ export default function ProjectActivitiesReport() {
     try {
       const res = await fetch('/api/reports/project-activities');
       const data = await res.json();
+      
+      console.log('Project Activities API Response:', data); // Debug log
+      
       if (data.success) {
+        console.log('Projects loaded:', data.data?.length || 0); // Debug log
         setProjects(data.data || []);
         // Auto-expand all projects
         const expanded = {};
@@ -59,9 +63,13 @@ export default function ProjectActivitiesReport() {
           });
         });
         setExpandedMembers(memberExp);
+      } else {
+        console.error('API returned error:', data.error); // Debug log
+        alert('Error loading projects: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Failed to load project activities report:', err);
+      alert('Failed to load project activities. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -252,9 +260,27 @@ export default function ProjectActivitiesReport() {
             {loading ? (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">Loading project data...</div>
             ) : filteredProjects.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-                <FolderIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>No projects with activities found</p>
+              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+                <FolderIcon className="w-12 h-12 mx-auto mb-3 opacity-40 text-gray-400" />
+                <p className="text-gray-600 font-medium mb-2">No projects with activities found</p>
+                <p className="text-sm text-gray-500 mb-4">
+                  {search ? 'Try adjusting your search criteria.' : 'There are no projects with defined activities yet.'}
+                </p>
+                {!search && (
+                  <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-4 py-3 inline-block">
+                    💡 Tip: Create projects and add activities through the <strong>Projects</strong> page
+                  </div>
+                )}
+                {!search && isRajeshPanchal && (
+                  <div className="mt-4">
+                    <button 
+                      onClick={() => console.log('API Response:', projects, 'User:', user)}
+                      className="text-xs text-purple-600 hover:text-purple-700 underline"
+                    >
+                      Show debug info (Check console)
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4">

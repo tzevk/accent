@@ -333,7 +333,15 @@ export default function UserDashboard({ verifiedUser }) {
     const userId = verifiedUser?.id || user?.id;
     if (!userId || attendance.logoutTime) return; // Don't poll if logged out
 
-    const pollInterval = setInterval(async () => {
+    let retryCount = 0;
+    const maxRetries = 3;
+    let isPolling = false;
+
+    const pollAttendance = async () => {
+      // Skip if already polling (prevents concurrent requests)
+      if (isPolling) return;
+      
+      isPolling = true;
       try {
         const res = await fetchJSON(`/api/users/${userId}/attendance`);
         if (res?.success) {
@@ -342,14 +350,28 @@ export default function UserDashboard({ verifiedUser }) {
             ...prev,
             idleTime: res.data.idleTime || prev.idleTime
           }));
+          retryCount = 0; // Reset retry count on success
         }
       } catch (error) {
-        // Silently fail - polling shouldn't disrupt UX
-        console.debug('Attendance poll failed:', error);
+        retryCount++;
+        // Log only if it's a persistent issue (not just network blip)
+        if (retryCount >= maxRetries) {
+          console.warn('Attendance polling failed multiple times:', error);
+        }
+      } finally {
+        isPolling = false;
       }
-    }, 120000); // Poll every 2 minutes (matches heartbeat interval)
+    };
 
-    return () => clearInterval(pollInterval);
+    const pollInterval = setInterval(pollAttendance, 120000); // Poll every 2 minutes (matches heartbeat interval)
+    
+    // Do an initial poll after 10 seconds
+    const initialPoll = setTimeout(pollAttendance, 10000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(initialPoll);
+    };
   }, [verifiedUser?.id, user?.id, attendance.logoutTime]);
 
   // ── Memoized helpers ──
