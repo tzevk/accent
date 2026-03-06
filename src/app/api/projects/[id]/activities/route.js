@@ -46,8 +46,7 @@ export async function POST(request, { params }) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
-  const hasUpdatePermission = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const hasUpdatePermission = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   
   if (!hasUpdatePermission) {
     return Response.json({ 
@@ -158,8 +157,7 @@ export async function PUT(request, { params }) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
-  const hasUpdatePermission = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const hasUpdatePermission = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   
   if (!hasUpdatePermission) {
     return Response.json({ 
@@ -245,8 +243,7 @@ export async function DELETE(request, { params }) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
-  const hasUpdatePermission = user.is_super_admin || isProjectAdmin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const hasUpdatePermission = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   
   if (!hasUpdatePermission) {
     return Response.json({ 

@@ -94,15 +94,8 @@ export default function Navbar() {
     if (userLoading || !user) return []; // Hide reports while loading
     if (user.is_super_admin) return reportsMenuConfig; // Super admin sees all
     
-    // Check if user is Rajesh Panchal
-    const isRajeshPanchal = user.full_name?.toLowerCase() === 'rajesh panchal';
-    
-    // Filter based on permissions, but also include Project Activities for Rajesh Panchal
+    // Filter based on permissions
     const filteredItems = reportsMenuConfig.filter(item => {
-      // If Rajesh Panchal, always include Project Activities
-      if (isRajeshPanchal && item.href === '/reports/project-activities') {
-        return true;
-      }
       return can(item.resource, PERMISSIONS.READ);
     });
     

@@ -53,14 +53,13 @@ export default function Projects() {
   );
 }
 
-// Special permission: only Rajesh Panchal (and super admins) can edit, delete, and view all projects
-const PROJECTS_ADMIN_NAME = 'Rajesh Panchal';
+// Special permission: only super admins can edit, delete, and view all projects
 
 function ProjectsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user: sessionUser } = useSession();
-  const isProjectAdmin = sessionUser?.full_name?.toLowerCase() === PROJECTS_ADMIN_NAME.toLowerCase() || sessionUser?.is_super_admin;
+  const isProjectAdmin = sessionUser?.is_super_admin;
   const viewParam = searchParams.get('view');
   const focusParam = searchParams.get('focus');
 

@@ -162,19 +162,21 @@ export async function PUT(request, { params }) {
     }
 
     // Users can update their own assignments
-    // Rajesh Panchal can override/edit any user's assignments
     // Super admins can edit any user's assignments
     const isOwnData = requestedUserId === currentUser.id;
-    const isRajeshPanchal = currentUser.full_name?.toLowerCase() === 'rajesh panchal';
-    if (!isOwnData && !currentUser.is_super_admin && !isRajeshPanchal) {
+    if (!isOwnData && !currentUser.is_super_admin) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Forbidden' 
+        error: 'Forbidden - Only super admins can edit other users\' assignments' 
       }, { status: 403 });
     }
 
     const body = await request.json();
     const { project_id, activity_id, qty_assigned, qty_completed, actual_hours, status, remarks, description, start_date, due_date, notes, daily_entries } = body;
+
+    console.log('[Activity Assignment Update] User:', currentUser.username, '(super_admin:', currentUser.is_super_admin, ') updating user:', requestedUserId);
+    console.log('[Activity Assignment Update] project_id:', project_id, 'activity_id:', activity_id);
+    console.log('[Activity Assignment Update] daily_entries count:', daily_entries?.length || 0);
 
     if (!project_id || !activity_id) {
       return NextResponse.json({ 
@@ -185,38 +187,67 @@ export async function PUT(request, { params }) {
 
     db = await dbConnect();
 
-    // Get the project's activities list
-    const [projects] = await db.execute(
-      'SELECT project_activities_list FROM projects WHERE project_id = ?',
-      [project_id]
-    );
+    // Get the project's activities list - try both project_id and id columns
+    let projects;
+    try {
+      [projects] = await db.execute(
+        'SELECT id, project_id, project_activities_list FROM projects WHERE project_id = ? OR id = ?',
+        [project_id, project_id]
+      );
+    } catch (err) {
+      console.error('[Activity Assignment Update] Error fetching project:', err.message);
+      db.release();
+      throw err;
+    }
 
     if (projects.length === 0) {
+      console.error('[Activity Assignment Update] Project not found with project_id:', project_id);
       db.release();
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    let activitiesList = projects[0].project_activities_list;
+    const project = projects[0];
+    console.log('[Activity Assignment Update] Found project with id:', project.id, 'project_id:', project.project_id);
+
+    let activitiesList = project.project_activities_list;
     if (typeof activitiesList === 'string') {
-      activitiesList = JSON.parse(activitiesList);
+      try {
+        activitiesList = JSON.parse(activitiesList);
+      } catch (parseErr) {
+        console.error('[Activity Assignment Update] Error parsing activities list:', parseErr.message);
+        db.release();
+        return NextResponse.json({ success: false, error: 'Invalid activities data' }, { status: 500 });
+      }
     }
 
     if (!Array.isArray(activitiesList)) {
+      console.error('[Activity Assignment Update] Activities list is not an array');
       db.release();
       return NextResponse.json({ success: false, error: 'No activities found' }, { status: 404 });
     }
 
+    console.log('[Activity Assignment Update] Found', activitiesList.length, 'activities');
+
     // Find and update the activity
     let updated = false;
+    let activityFound = false;
     for (const activity of activitiesList) {
-      if (String(activity.id) === String(activity_id)) {
+      // More flexible activity ID matching
+      const activityIdMatch = String(activity.id) === String(activity_id) || 
+                              String(activity.activity_id) === String(activity_id);
+      
+      if (activityIdMatch) {
+        activityFound = true;
+        console.log('[Activity Assignment Update] Found matching activity:', activity.activity_name || activity.name);
         const assignedUsers = activity.assigned_users || [];
+        console.log('[Activity Assignment Update] Activity has', assignedUsers.length, 'assigned users');
         
         for (let i = 0; i < assignedUsers.length; i++) {
           const assignment = assignedUsers[i];
           const assignedUserId = typeof assignment === 'object' ? assignment.user_id : assignment;
           
           if (String(assignedUserId) === String(requestedUserId)) {
+            console.log('[Activity Assignment Update] Found user assignment at index', i);
             // Update this user's assignment
             if (typeof assignment === 'object') {
               if (qty_assigned !== undefined) assignedUsers[i].qty_assigned = parseFloat(qty_assigned) || 0;
@@ -228,7 +259,10 @@ export async function PUT(request, { params }) {
               if (start_date !== undefined) assignedUsers[i].start_date = start_date;
               if (due_date !== undefined) assignedUsers[i].due_date = due_date;
               if (notes !== undefined) assignedUsers[i].notes = notes;
-              if (daily_entries !== undefined) assignedUsers[i].daily_entries = daily_entries;
+              if (daily_entries !== undefined) {
+                assignedUsers[i].daily_entries = daily_entries;
+                console.log('[Activity Assignment Update] Updated daily_entries:', daily_entries.length, 'entries');
+              }
             } else {
               // Convert to object
               assignedUsers[i] = {
@@ -257,24 +291,37 @@ export async function PUT(request, { params }) {
     }
 
     if (!updated) {
-      db.release();
-      return NextResponse.json({ success: false, error: 'Assignment not found' }, { status: 404 });
+      if (activityFound) {
+        console.error('[Activity Assignment Update] Activity found but user not assigned - activity_id:', activity_id, 'user_id:', requestedUserId);
+        db.release();
+        return NextResponse.json({ success: false, error: 'User is not assigned to this activity' }, { status: 404 });
+      } else {
+        console.error('[Activity Assignment Update] Activity not found - activity_id:', activity_id);
+        console.error('[Activity Assignment Update] Available activity IDs:', activitiesList.map(a => a.id || a.activity_id).join(', '));
+        db.release();
+        return NextResponse.json({ success: false, error: 'Activity not found in project' }, { status: 404 });
+      }
     }
 
-    // Save back to database
-    await db.execute(
-      'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
-      [JSON.stringify(activitiesList), project_id]
+    console.log('[Activity Assignment Update] Saving updated activities list to database...');
+
+    // Save back to database using the actual primary key (id)
+    const updateResult = await db.execute(
+      'UPDATE projects SET project_activities_list = ? WHERE id = ?',
+      [JSON.stringify(activitiesList), project.id]
     );
+
+    console.log('[Activity Assignment Update] Update result - rows affected:', updateResult[0].affectedRows);
 
     db.release();
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Assignment updated successfully'
+      message: 'Assignment updated successfully',
+      affected_rows: updateResult[0].affectedRows
     });
   } catch (error) {
-    console.error('Error updating activity assignment:', error);
+    console.error('[Activity Assignment Update] Error:', error);
     if (db) {
       try { db.release(); } catch {}
     }

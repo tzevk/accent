@@ -31,9 +31,8 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Only Rajesh Panchal and super admins can see all projects; everyone else sees only their team's projects
-    const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
-    const canSeeAllProjects = user.is_super_admin || isProjectAdmin;
+    // Only super admins can see all projects; everyone else sees only their team's projects
+    const canSeeAllProjects = user.is_super_admin;
     
     db = await dbConnect();
     

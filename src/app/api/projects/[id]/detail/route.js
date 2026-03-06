@@ -59,8 +59,7 @@ export async function GET(request, { params }) {
     }
 
     const isSuperAdmin = user.is_super_admin;
-    const isProjectAdmin = user.full_name?.toLowerCase() === 'rajesh panchal';
-    const canSeeAllProjects = isSuperAdmin || isProjectAdmin;
+    const canSeeAllProjects = isSuperAdmin;
 
     const db = await dbConnect();
     
