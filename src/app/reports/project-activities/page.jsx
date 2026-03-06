@@ -508,7 +508,7 @@ export default function ProjectActivitiesReport() {
                           
                           {(project.activities || []).length === 0 ? (
                             <div className="px-6 py-10 text-center">
-                              <div className="text-gray-300 text-5xl mb-3">📋</div>
+                              <div className="text-gray-300 text-5xl mb-3"></div>
                               <p className="text-gray-500 font-medium">No activities defined</p>
                               <p className="text-gray-400 text-sm mt-1">Add activities to this project to track progress</p>
                             </div>

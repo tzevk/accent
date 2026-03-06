@@ -187,12 +187,12 @@ export async function PUT(request, { params }) {
 
     db = await dbConnect();
 
-    // Get the project's activities list - try both project_id and id columns
+    // Get the project's activities list
     let projects;
     try {
       [projects] = await db.execute(
-        'SELECT id, project_id, project_activities_list FROM projects WHERE project_id = ? OR id = ?',
-        [project_id, project_id]
+        'SELECT project_id, project_activities_list FROM projects WHERE project_id = ?',
+        [project_id]
       );
     } catch (err) {
       console.error('[Activity Assignment Update] Error fetching project:', err.message);
@@ -207,7 +207,7 @@ export async function PUT(request, { params }) {
     }
 
     const project = projects[0];
-    console.log('[Activity Assignment Update] Found project with id:', project.id, 'project_id:', project.project_id);
+    console.log('[Activity Assignment Update] Found project with project_id:', project.project_id);
 
     let activitiesList = project.project_activities_list;
     if (typeof activitiesList === 'string') {
@@ -305,10 +305,10 @@ export async function PUT(request, { params }) {
 
     console.log('[Activity Assignment Update] Saving updated activities list to database...');
 
-    // Save back to database using the actual primary key (id)
+    // Save back to database using project_id
     const updateResult = await db.execute(
-      'UPDATE projects SET project_activities_list = ? WHERE id = ?',
-      [JSON.stringify(activitiesList), project.id]
+      'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
+      [JSON.stringify(activitiesList), project.project_id]
     );
 
     console.log('[Activity Assignment Update] Update result - rows affected:', updateResult[0].affectedRows);
