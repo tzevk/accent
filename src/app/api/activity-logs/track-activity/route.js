@@ -14,7 +14,18 @@ export async function POST(request) {
       return auth;
     }
 
-    const data = await request.json();
+    // Parse request body with error handling
+    let data;
+    try {
+      const text = await request.text();
+      if (!text || text.trim() === '') {
+        return NextResponse.json({ success: true }); // Silently ignore empty requests
+      }
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.warn('Activity tracking: Invalid JSON body', parseError.message);
+      return NextResponse.json({ success: true }); // Silently ignore invalid JSON
+    }
     
     // Handle batched activities
     if (data.batch && data.activities) {
