@@ -4,8 +4,9 @@ import mysql from 'mysql2/promise'
 // Load env from .env.local for server-side tools/scripts that may not automatically load it
 dotenv.config({ path: '.env.local' });
 
-let pool;
-let _shutdownRegistered = false;
+// Use globalThis to persist across HMR reloads in dev
+let pool = globalThis.__dbPool || null;
+let _shutdownRegistered = globalThis.__dbShutdownRegistered || false;
 
 export async function dbConnect() {
   const host = process.env.DB_HOST
@@ -92,9 +93,13 @@ export async function dbConnect() {
       throw enriched
     }
     
-    // Register graceful shutdown handlers once
+    // Persist pool on globalThis so HMR doesn't orphan it
+    globalThis.__dbPool = pool;
+
+    // Register graceful shutdown handlers once (survives HMR via globalThis flag)
     if (!_shutdownRegistered) {
       _shutdownRegistered = true;
+      globalThis.__dbShutdownRegistered = true;
       const gracefulShutdown = async (signal) => {
         console.log(`[DB Pool] Received ${signal}, closing pool...`);
         await closePool();
@@ -157,6 +162,7 @@ export async function closePool() {
       console.error('Error closing MySQL pool:', err);
     }
     pool = null;
+    globalThis.__dbPool = null;
   }
 }
 

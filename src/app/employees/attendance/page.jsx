@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { 
-  ArrowLeftIcon, 
+import {
+  ArrowLeftIcon,
   CalendarDaysIcon,
-  UserGroupIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ArrowPathIcon,
@@ -14,611 +13,266 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   MagnifyingGlassIcon,
-  ClockIcon
+  ClockIcon,
+  PlusIcon,
+  TrashIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 
+// ── Status types ──
+const STATUS_OPTIONS = ['P', 'A', 'H', 'WO', 'PL', 'CL', 'SL', 'HD', 'OT', 'LWP'];
+
+const STATUS_STYLES = {
+  'P':   { bg: 'bg-emerald-50',  text: 'text-emerald-700', label: 'P',   full: 'Present',     border: 'border-emerald-200' },
+  'A':   { bg: 'bg-red-50',      text: 'text-red-700',     label: 'A',   full: 'Absent',      border: 'border-red-200' },
+  'H':   { bg: 'bg-amber-50',    text: 'text-amber-700',   label: 'H',   full: 'Holiday',     border: 'border-amber-200' },
+  'WO':  { bg: 'bg-gray-100',    text: 'text-gray-500',    label: 'WO',  full: 'Weekly Off',  border: 'border-gray-200' },
+  'PL':  { bg: 'bg-blue-50',     text: 'text-blue-700',    label: 'PL',  full: 'Priv. Leave', border: 'border-blue-200' },
+  'CL':  { bg: 'bg-cyan-50',     text: 'text-cyan-700',    label: 'CL',  full: 'Casual',      border: 'border-cyan-200' },
+  'SL':  { bg: 'bg-pink-50',     text: 'text-pink-700',    label: 'SL',  full: 'Sick',        border: 'border-pink-200' },
+  'HD':  { bg: 'bg-yellow-50',   text: 'text-yellow-700',  label: 'HD',  full: 'Half Day',    border: 'border-yellow-200' },
+  'OT':  { bg: 'bg-violet-50',   text: 'text-violet-700',  label: 'OT',  full: 'Overtime',    border: 'border-violet-200' },
+  'LWP': { bg: 'bg-rose-50',     text: 'text-rose-700',    label: 'LWP', full: 'LWP',         border: 'border-rose-200' },
+};
+
+const getStyle = (s) => STATUS_STYLES[s] || { bg: 'bg-gray-50', text: 'text-gray-400', label: '-', full: 'Not Marked', border: 'border-gray-200' };
+
+// Calculate OT hours based on in/out time (standard 8-hour workday)
+const calculateOTHours = (inTime, outTime) => {
+  if (!inTime || !outTime) return 0;
+  const [inH, inM] = inTime.split(':').map(Number);
+  const [outH, outM] = outTime.split(':').map(Number);
+  const inMinutes = inH * 60 + inM;
+  const outMinutes = outH * 60 + outM;
+  // Handle overnight shifts
+  let totalMinutes = outMinutes >= inMinutes ? outMinutes - inMinutes : (24 * 60 - inMinutes) + outMinutes;
+  const totalHours = totalMinutes / 60;
+  // Standard work hours (8 hours)
+  const standardHours = 8;
+  const otHours = Math.max(0, totalHours - standardHours);
+  return Math.round(otHours * 2) / 2; // Round to nearest 0.5
+};
+
+// Calculate total hours from in/out time
+const calculateTotalHours = (inTime, outTime) => {
+  if (!inTime || !outTime) return 0;
+  const [inH, inM] = inTime.split(':').map(Number);
+  const [outH, outM] = outTime.split(':').map(Number);
+  const inMinutes = inH * 60 + inM;
+  const outMinutes = outH * 60 + outM;
+  // Handle overnight shifts
+  let totalMinutes = outMinutes >= inMinutes ? outMinutes - inMinutes : (24 * 60 - inMinutes) + outMinutes;
+  return Math.round((totalMinutes / 60) * 2) / 2; // Round to nearest 0.5
+};
+
 export default function EmployeeAttendancePage() {
+  // ── Core state ──
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // PL (Privilege Leave) data per employee from salary profiles
+
+  // Month navigation
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth(); // 0-indexed
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  // ── Attendance grid data ──
+  // Shape: { "empId|YYYY-MM-DD": { status: 'P', inTime: '09:00', outTime: '17:30', otHours: 0 } }
+  const [gridData, setGridData] = useState({});
+  const [dirtyKeys, setDirtyKeys] = useState(new Set()); // edited keys
+
+  // ── Monthly summary from attendance_monthly ──
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [markedEmployeeIds, setMarkedEmployeeIds] = useState(new Set());
+
+  // ── Inline editing for monthly totals ──
+  const [editedRows, setEditedRows] = useState({});
+  const [monthlyDirty, setMonthlyDirty] = useState(false);
+  const [monthlySaving, setMonthlySaving] = useState(false);
+
+  // ── Add employee modal ──
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newRow, setNewRow] = useState({
+    employee_id: '', present_days: '', absent_days: '', half_days: '',
+    holidays: '', weekly_offs: '', overtime_hours: '', privileged_leave: '',
+    sick_leave: '', casual_leave: '', lop_days: '', payable_days: '', remarks: ''
+  });
+
+  // ── Bulk time modal ──
+  const [showBulkTimeModal, setShowBulkTimeModal] = useState(false);
+  const [bulkTime, setBulkTime] = useState({ inTime: '09:00', outTime: '17:30' });
+
+  // ── PL data ──
   const [plData, setPlData] = useState({});
 
-  // Tab: 'marked' = has attendance_monthly record | 'unmarked' = daily grid
-  const [activeTab, setActiveTab] = useState('unmarked');
-  const [monthlyAttendance, setMonthlyAttendance] = useState([]);
-  const [markedEmployeeIds, setMarkedEmployeeIds] = useState(new Set());
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
-  
-  // Modal state
-  const [showModal, setShowModal] = useState(false);
-  const [selectedCell, setSelectedCell] = useState(null);
-  const [modalData, setModalData] = useState({
-    attendanceType: 'P',
-    startDate: '',
-    endDate: '',
-    inTime: '09:00',
-    outTime: '17:30',
-    idleTime: 0,
-    reason: ''
-  });
-  
-  // Bulk time modal state
-  const [showBulkTimeModal, setShowBulkTimeModal] = useState(false);
-  const [bulkTimeData, setBulkTimeData] = useState({
-    inTime: '09:00',
-    outTime: '17:30'
-  });
+  // ── Context menu for quick status pick ──
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const ctxRef = useRef(null);
 
-  // Current month/year for calendar
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [attendanceData, setAttendanceData] = useState({});
-  
-  // Get current month's days
-  const currentYear = currentDate.getFullYear();
-  const currentMonth = currentDate.getMonth();
-  
-  // Generate days of the month with week info
+  // ── View mode ──
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'monthly'
+
+  // ── Cell detail modal (replaces expandable rows) ──
+  // { empId, fullDate, empName } or null
+  const [cellModal, setCellModal] = useState(null);
+
+  // ──────────────── Days of month ────────────────
   const daysInMonth = useMemo(() => {
     const days = [];
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    
-    for (let d = 1; d <= lastDay.getDate(); d++) {
+    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+    for (let d = 1; d <= lastDay; d++) {
       const date = new Date(currentYear, currentMonth, d);
-      const dayOfWeek = date.getDay();
-      const weekNumber = Math.ceil((d + firstDay.getDay()) / 7);
-      
+      const dow = date.getDay();
       days.push({
         date: d,
         fullDate: date.toISOString().split('T')[0],
         dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        dayOfWeek,
-        weekNumber,
-        isSunday: dayOfWeek === 0,
-        isSaturday: dayOfWeek === 6,
+        dow,
+        isSun: dow === 0,
+        isSat: dow === 6,
         isToday: date.toDateString() === new Date().toDateString()
       });
     }
     return days;
   }, [currentYear, currentMonth]);
 
-  // Fetch holidays for the current month
+  // ──────────────── Fetch holidays ────────────────
   const fetchHolidays = useCallback(async () => {
     try {
       const res = await fetch(`/api/masters/holidays?year=${currentYear}`);
       const data = await res.json();
-      if (res.ok && data.data) {
-        return data.data;
-      }
-      return [];
-    } catch (err) {
-      console.error('Error fetching holidays:', err);
-      return [];
-    }
+      return (res.ok && data.data) ? data.data : [];
+    } catch { return []; }
   }, [currentYear]);
 
-  // Fetch employees
+  // ──────────────── Fetch employees + build default grid ────────────────
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const holidayList = await fetchHolidays();
-      
+      const [holidayList, empRes] = await Promise.all([
+        fetchHolidays(),
+        fetch('/api/employees?limit=1000&status=active')
+      ]);
+      const empData = await empRes.json();
+      if (!empRes.ok) throw new Error(empData.error || 'Failed to fetch employees');
+
+      const employeeList = empData.employees || empData.data || [];
+      setEmployees(employeeList);
+
+      // Build holiday date set for this month
       const holidayDates = new Set(
         holidayList
           .filter(h => {
-            const hDate = new Date(h.date);
-            return hDate.getMonth() === currentMonth && hDate.getFullYear() === currentYear;
+            const d = new Date(h.date);
+            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
           })
           .map(h => h.date.split('T')[0])
       );
-      
-      const res = await fetch('/api/employees?limit=1000&status=active');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch employees');
-      
-      const employeeList = data.employees || data.data || [];
-      setEmployees(employeeList);
-      
-      const initialAttendance = {};
-      employeeList.forEach(emp => {
-        initialAttendance[emp.id] = {
-          ...emp,
-          days: {},
-          dayDetails: {},
-          overtime: 0,
-          weeklyOff: 0,
-          present: 0,
-          absent: 0,
-          privilegedLeave: 0,
-          casualLeave: 0,
-          sickLeave: 0,
-          lwp: 0,
-          halfDay: 0,
-          holiday: 0,
-          monthlyHours: 0,
-          stdInTime: '09:00',
-          stdOutTime: '17:30'
-        };
-        
-        // Build weekly off dates: All Sundays + 2nd & 4th Saturdays
-        const sundays = daysInMonth.filter(d => d.isSunday && !holidayDates.has(d.fullDate));
-        const saturdaysForWO = daysInMonth
-          .filter(d => d.isSaturday && !holidayDates.has(d.fullDate))
-          .filter(d => {
-            const satOfMonth = Math.ceil(d.date / 7);
-            return satOfMonth === 2 || satOfMonth === 4;
-          });
-        const woDates = new Set();
-        for (const day of sundays) {
-          woDates.add(day.fullDate);
-        }
-        for (const day of saturdaysForWO) {
-          woDates.add(day.fullDate);
-        }
 
+      // Build default grid: all employees × all days
+      const grid = {};
+      employeeList.forEach(emp => {
         daysInMonth.forEach(day => {
-          if (holidayDates.has(day.fullDate)) {
-            initialAttendance[emp.id].days[day.fullDate] = 'H';
-            initialAttendance[emp.id].holiday++;
-          } else if (woDates.has(day.fullDate)) {
-            initialAttendance[emp.id].days[day.fullDate] = 'WO';
-            initialAttendance[emp.id].weeklyOff++;
-          } else {
-            initialAttendance[emp.id].days[day.fullDate] = 'P';
-            initialAttendance[emp.id].present++;
-          }
+          const key = `${emp.id}|${day.fullDate}`;
+          let status = 'P';
+          if (holidayDates.has(day.fullDate)) status = 'H';
+          else if (day.isSun) status = 'WO';
+          else if (day.isSat && (Math.ceil(day.date / 7) === 2 || Math.ceil(day.date / 7) === 4)) status = 'WO';
+
+          grid[key] = { status, inTime: '', outTime: '', otHours: 0 };
         });
       });
-      
-      setAttendanceData(initialAttendance);
-      
-      // Stop loading immediately - attendance grid is ready to display
-      setLoading(false);
-      
-      // Fetch PL data in background (non-blocking) and in parallel
+      setGridData(grid);
+      setDirtyKeys(new Set());
+
+      // Load saved daily attendance and merge into grid
       try {
-        const plMap = {};
-        
-        // 1. Fetch pl_total from salary profiles - in parallel
-        const plResults = await Promise.allSettled(
-          employeeList.map(async (emp) => {
-            const plRes = await fetch(`/api/payroll/salary-profile?employee_id=${emp.id}`);
-            const plResult = await plRes.json();
-            if (plRes.ok && plResult.data && plResult.data.length > 0) {
-              const activeProfile = plResult.data[0];
-              return {
-                empId: emp.id,
-                total: parseInt(activeProfile.pl_total) || 0,
-              };
-            }
-            return null;
-          })
-        );
-        
-        plResults.forEach(result => {
-          if (result.status === 'fulfilled' && result.value) {
-            plMap[result.value.empId] = {
-              total: result.value.total,
-              used: 0,
-              balance: result.value.total
-            };
-          }
-        });
-        
-        // 2. Fetch pl_used from attendance summary API (sum PL days across all months of the year)
-        try {
-          const summaryRes = await fetch(`/api/attendance/summary?year=${currentYear}`);
-          const summaryResult = await summaryRes.json();
-          if (summaryRes.ok && summaryResult.data && summaryResult.data.length > 0) {
-            summaryResult.data.forEach(row => {
-              const empId = row.employee_id;
-              const plUsed = parseInt(row.total_privilege_leave) || 0;
-              if (plMap[empId]) {
-                plMap[empId].used += plUsed;
-                plMap[empId].balance = Math.max(0, plMap[empId].total - plMap[empId].used);
-              } else {
-                plMap[empId] = { total: 0, used: plUsed, balance: 0 };
+        const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+        const attnRes = await fetch(`/api/attendance?month=${monthKey}`);
+        const attnData = await attnRes.json();
+        if (attnRes.ok && attnData.summary && attnData.summary.length > 0) {
+          const formatTime = (t) => t ? t.toString().substring(0, 5) : '';
+          attnData.summary.forEach(empSummary => {
+            Object.entries(empSummary.days).forEach(([dateKey, dayData]) => {
+              const key = `${empSummary.employee_id}|${dateKey}`;
+              if (grid[key]) {
+                grid[key] = {
+                  status: dayData.status || grid[key].status,
+                  inTime: formatTime(dayData.in_time) || grid[key].inTime,
+                  outTime: formatTime(dayData.out_time) || grid[key].outTime,
+                  otHours: parseFloat(dayData.overtime_hours || 0)
+                };
               }
             });
-          }
-        } catch (summaryErr) {
-          console.error('Error fetching attendance summary for PL:', summaryErr);
+          });
+          setGridData({ ...grid });
         }
-        
-        setPlData(plMap);
-      } catch (plFetchErr) {
-        console.error('Error fetching PL data:', plFetchErr);
+      } catch (err) {
+        console.error('Error loading saved attendance:', err);
       }
+
+      setLoading(false);
+
+      // Fetch PL data in background
+      try {
+        const plMap = {};
+        const batchRes = await fetch('/api/payroll/salary-profile/batch');
+        const batchResult = await batchRes.json();
+        if (batchRes.ok && batchResult.data) {
+          Object.entries(batchResult.data).forEach(([eid, profile]) => {
+            plMap[Number(eid)] = { total: profile.pl_total || 0, used: 0 };
+          });
+        }
+        try {
+          const sumRes = await fetch(`/api/attendance/summary?year=${currentYear}`);
+          const sumData = await sumRes.json();
+          if (sumRes.ok && sumData.data) {
+            sumData.data.forEach(row => {
+              const eid = row.employee_id;
+              const used = parseInt(row.total_privilege_leave) || 0;
+              if (plMap[eid]) plMap[eid].used += used;
+              else plMap[eid] = { total: 0, used };
+            });
+          }
+        } catch {}
+        setPlData(plMap);
+      } catch {}
     } catch (err) {
-      console.error('Error fetching employees:', err);
       setError(err.message);
       setLoading(false);
     }
   }, [daysInMonth, fetchHolidays, currentMonth, currentYear]);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
-
-  // Open modal for attendance
-  const openAttendanceModal = (employeeId, fullDate, currentStatus, employeeName) => {
-    const empData = attendanceData[employeeId] || {};
-    const dayDetail = empData.dayDetails?.[fullDate] || {};
-    setSelectedCell({ employeeId, fullDate, currentStatus, employeeName });
-    setModalData({
-      attendanceType: currentStatus || 'P',
-      startDate: fullDate,
-      endDate: fullDate,
-      inTime: dayDetail.inTime || empData.stdInTime || '09:00',
-      outTime: dayDetail.outTime || empData.stdOutTime || '17:30',
-      idleTime: dayDetail.idleTime || 0,
-      reason: dayDetail.reason || ''
-    });
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    setSelectedCell(null);
-  };
-
-  const handleModalSubmit = () => {
-    if (!selectedCell) return;
-    
-    const { employeeId } = selectedCell;
-    const { attendanceType, startDate, endDate, inTime, outTime, idleTime, reason } = modalData;
-    
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    // If marking PL, check PL balance and auto-convert to LWP when exhausted
-    if (attendanceType === 'PL') {
-      const empPl = plData[employeeId] || { total: 0, used: 0, balance: 0 };
-      // Count how many PL days the employee currently has marked in this month
-      const empData = attendanceData[employeeId] || {};
-      const currentMonthPLCount = Object.values(empData.days || {}).filter(s => s === 'PL').length;
-      // Available PL balance = total - used from previous months - current month PL already marked
-      let availablePL = Math.max(0, empPl.total - empPl.used);
-      // Subtract PL already marked this month (since they haven't been saved/synced to summary yet)
-      // But empPl.used already includes saved months
-      // For current unsaved month, count PL days already in the grid
-      let remainingPL = Math.max(0, availablePL - currentMonthPLCount);
-      
-      // Collect target dates
-      const targetDates = [];
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateKey = d.toISOString().split('T')[0];
-        if (daysInMonth.some(day => day.fullDate === dateKey)) {
-          // Don't re-count days that are already PL
-          const existingStatus = empData.days?.[dateKey];
-          if (existingStatus === 'PL') {
-            // Already PL, no change needed for balance
-            targetDates.push({ dateKey, status: 'PL' });
-          } else {
-            targetDates.push({ dateKey, status: null });
-          }
-        }
-      }
-      
-      let lwpCount = 0;
-      for (const target of targetDates) {
-        if (target.status === 'PL') {
-          // Already PL, just update details
-          updateAttendanceStatus(employeeId, target.dateKey, 'PL', { inTime, outTime, idleTime, reason });
-        } else if (remainingPL > 0) {
-          updateAttendanceStatus(employeeId, target.dateKey, 'PL', { inTime, outTime, idleTime, reason });
-          remainingPL--;
-        } else {
-          // No PL balance left, mark as LWP
-          updateAttendanceStatus(employeeId, target.dateKey, 'LWP', { inTime, outTime, idleTime, reason: reason || 'Auto: PL balance exhausted' });
-          lwpCount++;
-        }
-      }
-      
-      closeModal();
-      if (lwpCount > 0) {
-        setSuccess(`Attendance updated for ${selectedCell.employeeName} — ${lwpCount} day(s) marked as LWP (PL balance exhausted)`);
-      } else {
-        setSuccess(`Attendance updated for ${selectedCell.employeeName}`);
-      }
-      setTimeout(() => setSuccess(''), 4000);
-      return;
-    }
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateKey = d.toISOString().split('T')[0];
-      if (daysInMonth.some(day => day.fullDate === dateKey)) {
-        updateAttendanceStatus(employeeId, dateKey, attendanceType, { inTime, outTime, idleTime, reason });
-      }
-    }
-    
-    closeModal();
-    setSuccess(`Attendance updated for ${selectedCell.employeeName}`);
-    setTimeout(() => setSuccess(''), 3000);
-  };
-
-  const updateAttendanceStatus = (employeeId, fullDate, newStatus, extraData = {}) => {
-    setAttendanceData(prev => {
-      const empData = { ...prev[employeeId] };
-      const oldStatus = empData.days[fullDate];
-      const oldDayDetail = empData.dayDetails?.[fullDate] || {};
-      
-      empData.days = { ...empData.days, [fullDate]: newStatus };
-      
-      const STANDARD_OUT_TIME = 17.5;
-      let newOvertimeHours = 0;
-      if (extraData.outTime && (newStatus === 'P' || newStatus === 'OT')) {
-        const [hours, minutes] = extraData.outTime.split(':').map(Number);
-        const outTimeDecimal = hours + (minutes / 60);
-        if (outTimeDecimal > STANDARD_OUT_TIME) {
-          newOvertimeHours = parseFloat((outTimeDecimal - STANDARD_OUT_TIME).toFixed(2));
-        }
-      }
-      
-      empData.dayDetails = { 
-        ...empData.dayDetails, 
-        [fullDate]: { 
-          ...(empData.dayDetails?.[fullDate] || {}), 
-          ...extraData, 
-          status: newStatus,
-          overtimeHours: newOvertimeHours
-        } 
-      };
-      
-      const oldOvertimeHours = oldDayDetail.overtimeHours || 0;
-      
-      // Update counts
-      if (oldStatus === 'P') empData.present--;
-      if (oldStatus === 'A') empData.absent--;
-      if (oldStatus === 'PL') empData.privilegedLeave--;
-      if (oldStatus === 'CL') empData.casualLeave = (empData.casualLeave || 1) - 1;
-      if (oldStatus === 'SL') empData.sickLeave = (empData.sickLeave || 1) - 1;
-      if (oldStatus === 'LWP') empData.lwp = (empData.lwp || 1) - 1;
-      if (oldStatus === 'HD') empData.halfDay = (empData.halfDay || 1) - 1;
-      if (oldStatus === 'OT' || oldStatus === 'P') empData.overtime = (empData.overtime || oldOvertimeHours) - oldOvertimeHours;
-      if (oldStatus === 'WO') empData.weeklyOff--;
-      if (oldStatus === 'H') empData.holiday = (empData.holiday || 1) - 1;
-      
-      if (newStatus === 'P') empData.present++;
-      if (newStatus === 'A') empData.absent++;
-      if (newStatus === 'PL') empData.privilegedLeave++;
-      if (newStatus === 'CL') empData.casualLeave = (empData.casualLeave || 0) + 1;
-      if (newStatus === 'SL') empData.sickLeave = (empData.sickLeave || 0) + 1;
-      if (newStatus === 'LWP') empData.lwp = (empData.lwp || 0) + 1;
-      if (newStatus === 'HD') empData.halfDay = (empData.halfDay || 0) + 1;
-      if (newStatus === 'OT' || newStatus === 'P') empData.overtime = (empData.overtime || 0) + newOvertimeHours;
-      if (newStatus === 'WO') empData.weeklyOff++;
-      if (newStatus === 'H') empData.holiday = (empData.holiday || 0) + 1;
-      
-      return { ...prev, [employeeId]: empData };
-    });
-  };
-
-  const getStatusStyle = (status) => {
-    const styles = {
-      'P': { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'P', fullLabel: 'Present', border: 'border-emerald-200' },
-      'A': { bg: 'bg-red-50', text: 'text-red-700', label: 'A', fullLabel: 'Absent', border: 'border-red-200' },
-      'PL': { bg: 'bg-blue-50', text: 'text-blue-700', label: 'PL', fullLabel: 'Privilege Leave', border: 'border-blue-200' },
-      'OT': { bg: 'bg-violet-50', text: 'text-violet-700', label: 'OT', fullLabel: 'Overtime', border: 'border-violet-200' },
-      'WO': { bg: 'bg-gray-100', text: 'text-gray-500', label: 'WO', fullLabel: 'Weekly Off', border: 'border-gray-200' },
-      'H': { bg: 'bg-amber-50', text: 'text-amber-700', label: 'H', fullLabel: 'Holiday', border: 'border-amber-200' },
-      'HD': { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'HD', fullLabel: 'Half Day', border: 'border-yellow-200' },
-      'CL': { bg: 'bg-cyan-50', text: 'text-cyan-700', label: 'CL', fullLabel: 'Casual Leave', border: 'border-cyan-200' },
-      'SL': { bg: 'bg-pink-50', text: 'text-pink-700', label: 'SL', fullLabel: 'Sick Leave', border: 'border-pink-200' },
-      'LWP': { bg: 'bg-rose-50', text: 'text-rose-700', label: 'LWP', fullLabel: 'Leave Without Pay', border: 'border-rose-200' },
-    };
-    return styles[status] || { bg: 'bg-gray-50', text: 'text-gray-400', label: '-', fullLabel: 'Not Marked', border: 'border-gray-200' };
-  };
-
-  const goToPreviousMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
-  const goToNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
-  const goToCurrentMonth = () => setCurrentDate(new Date());
-
-  // Apply bulk in/out time to all employees
-  const applyBulkTime = () => {
-    const { inTime, outTime } = bulkTimeData;
-    setAttendanceData(prev => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach(empId => {
-        const empData = { ...updated[empId] };
-        empData.stdInTime = inTime;
-        empData.stdOutTime = outTime;
-        empData.dayDetails = { ...empData.dayDetails };
-
-        Object.entries(empData.days).forEach(([dateKey, status]) => {
-          if (status === 'P' || status === 'HD' || status === 'OT') {
-            const STANDARD_OUT_TIME = 17.5;
-            let newOvertimeHours = 0;
-            if (outTime) {
-              const [hours, minutes] = outTime.split(':').map(Number);
-              const outTimeDecimal = hours + (minutes / 60);
-              if (outTimeDecimal > STANDARD_OUT_TIME) {
-                newOvertimeHours = parseFloat((outTimeDecimal - STANDARD_OUT_TIME).toFixed(2));
-              }
-            }
-            empData.dayDetails[dateKey] = {
-              ...(empData.dayDetails[dateKey] || {}),
-              inTime,
-              outTime,
-              overtimeHours: newOvertimeHours
-            };
-          }
-        });
-
-        // Recalculate overtime total
-        let totalOvertime = 0;
-        Object.entries(empData.dayDetails).forEach(([, detail]) => {
-          totalOvertime += detail.overtimeHours || 0;
-        });
-        empData.overtime = parseFloat(totalOvertime.toFixed(2));
-
-        updated[empId] = empData;
-      });
-      return updated;
-    });
-    setShowBulkTimeModal(false);
-    setSuccess(`In time (${inTime}) and Out time (${outTime}) applied to all employees`);
-    setTimeout(() => setSuccess(''), 3000);
-  };
-
-  // Save attendance
-  const saveAttendance = async () => {
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      const attendance_records = [];
-      const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-      const STANDARD_OUT_TIME = 17.5;
-      
-      const timeToDecimal = (timeStr) => {
-        if (!timeStr) return 0;
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        return hours + (minutes / 60);
-      };
-      
-      Object.values(attendanceData).forEach(empData => {
-        Object.entries(empData.days).forEach(([dateKey, status]) => {
-          if (!status || status === '-') return;
-          
-          const dayDetail = empData.dayDetails?.[dateKey] || {};
-          let overtimeHours = 0;
-          if (dayDetail.outTime && (status === 'P' || status === 'OT')) {
-            const outTimeDecimal = timeToDecimal(dayDetail.outTime);
-            if (outTimeDecimal > STANDARD_OUT_TIME) {
-              overtimeHours = parseFloat((outTimeDecimal - STANDARD_OUT_TIME).toFixed(2));
-            }
-          }
-          if (status === 'OT') overtimeHours = 8;
-          
-          attendance_records.push({
-            employee_id: empData.id,
-            attendance_date: dateKey,
-            status: status,
-            overtime_hours: overtimeHours,
-            is_weekly_off: status === 'WO',
-            in_time: dayDetail.inTime || null,
-            out_time: dayDetail.outTime || null,
-            idle_time: dayDetail.idleTime || 0
-          });
-        });
-      });
-
-      if (attendance_records.length === 0) {
-        setError('No attendance records to save.');
-        setSaving(false);
-        return;
-      }
-
-      const res = await fetch('/api/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attendance_records, month: monthKey })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save attendance');
-      
-      setSuccess(`Saved successfully! ${data.successCount} records updated.`);
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      console.error('Error saving attendance:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
-
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  // Fetch attendance_monthly records (Marked tab)
-  const fetchMonthlyAttendance = useCallback(async () => {
-    setMonthlyLoading(true);
-    try {
-      const res = await fetch(`/api/attendance/monthly?month=${currentMonth + 1}&year=${currentYear}`);
-      const data = await res.json();
-      if (res.ok && data.data) {
-        setMonthlyAttendance(data.data);
-        setMarkedEmployeeIds(new Set(data.markedEmployeeIds || []));
-      } else {
-        setMonthlyAttendance([]);
-        setMarkedEmployeeIds(new Set());
-      }
-    } catch (err) {
-      console.error('Error fetching monthly attendance:', err);
-    } finally {
-      setMonthlyLoading(false);
-    }
-  }, [currentMonth, currentYear]);
-
-  useEffect(() => {
-    fetchMonthlyAttendance();
-  }, [fetchMonthlyAttendance]);
-
-  // Load saved attendance
+  // ──────────────── Load saved daily attendance (employee_attendance) ────────────────
   const loadSavedAttendance = useCallback(async () => {
     if (employees.length === 0) return;
-    
     try {
       const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
       const res = await fetch(`/api/attendance?month=${monthKey}`);
       const data = await res.json();
-      
       if (res.ok && data.summary && data.summary.length > 0) {
-        setAttendanceData(prev => {
+        setGridData(prev => {
           const updated = { ...prev };
           data.summary.forEach(empSummary => {
-            if (updated[empSummary.employee_id]) {
-              Object.entries(empSummary.days).forEach(([dateKey, dayData]) => {
-                updated[empSummary.employee_id].days[dateKey] = dayData.status;
-                if (!updated[empSummary.employee_id].dayDetails) {
-                  updated[empSummary.employee_id].dayDetails = {};
-                }
-                const formatTime = (time) => time ? time.toString().substring(0, 5) : null;
-                updated[empSummary.employee_id].dayDetails[dateKey] = {
-                  ...updated[empSummary.employee_id].dayDetails[dateKey],
-                  overtimeHours: parseFloat(dayData.overtime_hours || 0),
-                  status: dayData.status,
-                  inTime: formatTime(dayData.in_time),
-                  outTime: formatTime(dayData.out_time),
-                  idleTime: dayData.idle_time || 0
+            Object.entries(empSummary.days).forEach(([dateKey, dayData]) => {
+              const key = `${empSummary.employee_id}|${dateKey}`;
+              if (updated[key]) {
+                const formatTime = (t) => t ? t.toString().substring(0, 5) : '';
+                updated[key] = {
+                  status: dayData.status || updated[key].status,
+                  inTime: formatTime(dayData.in_time) || updated[key].inTime,
+                  outTime: formatTime(dayData.out_time) || updated[key].outTime,
+                  otHours: parseFloat(dayData.overtime_hours || 0)
                 };
-              });
-              
-              let present = 0, absent = 0, pl = 0, cl = 0, sl = 0, lwp = 0, hd = 0, ot = 0, wo = 0, holiday = 0;
-              Object.entries(updated[empSummary.employee_id].days).forEach(([dateKey, status]) => {
-                const dayDetail = updated[empSummary.employee_id].dayDetails?.[dateKey] || {};
-                if (status === 'P') present++;
-                if (status === 'A') absent++;
-                if (status === 'PL') pl++;
-                if (status === 'CL') cl++;
-                if (status === 'SL') sl++;
-                if (status === 'LWP') lwp++;
-                if (status === 'HD') hd++;
-                if (status === 'OT' || status === 'P') ot += (dayDetail.overtimeHours || 0);
-                if (status === 'WO') wo++;
-                if (status === 'H') holiday++;
-              });
-              updated[empSummary.employee_id].present = present;
-              updated[empSummary.employee_id].absent = absent;
-              updated[empSummary.employee_id].privilegedLeave = pl;
-              updated[empSummary.employee_id].casualLeave = cl;
-              updated[empSummary.employee_id].sickLeave = sl;
-              updated[empSummary.employee_id].lwp = lwp;
-              updated[empSummary.employee_id].halfDay = hd;
-              updated[empSummary.employee_id].overtime = parseFloat(ot.toFixed(2));
-              updated[empSummary.employee_id].weeklyOff = wo;
-              updated[empSummary.employee_id].holiday = holiday;
-            }
+              }
+            });
           });
           return updated;
         });
@@ -628,646 +282,734 @@ export default function EmployeeAttendancePage() {
     }
   }, [currentYear, currentMonth, employees.length]);
 
-  useEffect(() => {
-    if (employees.length > 0) loadSavedAttendance();
-  }, [employees.length, currentMonth, currentYear, loadSavedAttendance]);
+  // ──────────────── Fetch monthly attendance data ────────────────
+  const fetchMonthly = useCallback(async () => {
+    setMonthlyLoading(true);
+    try {
+      const res = await fetch(`/api/attendance/monthly?month=${currentMonth + 1}&year=${currentYear}`);
+      const data = await res.json();
+      if (res.ok && data.data) {
+        setMonthlyData(data.data);
+        setMarkedEmployeeIds(new Set(data.markedEmployeeIds || []));
+      } else {
+        setMonthlyData([]);
+        setMarkedEmployeeIds(new Set());
+      }
+    } catch { }
+    finally { setMonthlyLoading(false); }
+  }, [currentMonth, currentYear]);
 
-  // Filter employees by search
-  const filteredAttendance = useMemo(() => {
-    let list = Object.values(attendanceData);
-    // Unmarked tab: only show employees NOT in attendance_monthly
-    if (activeTab === 'unmarked') {
-      list = list.filter(emp => !markedEmployeeIds.has(emp.id));
+  // ── Effects ──
+  useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
+  useEffect(() => { 
+    if (employees.length > 0) loadSavedAttendance(); 
+  }, [employees.length, loadSavedAttendance, currentMonth, currentYear]);
+  useEffect(() => { fetchMonthly(); }, [fetchMonthly]);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const h = () => setCtxMenu(null);
+    document.addEventListener('click', h);
+    return () => document.removeEventListener('click', h);
+  }, [ctxMenu]);
+
+  // ──────────────── Grid operations ────────────────
+  const updateCell = (empId, fullDate, field, value) => {
+    const key = `${empId}|${fullDate}`;
+    setGridData(prev => {
+      const currentCell = prev[key] || {};
+      const updatedCell = { ...currentCell, [field]: value };
+      
+      // Auto-calculate OT when in/out time changes
+      if (field === 'inTime' || field === 'outTime') {
+        const inTime = field === 'inTime' ? value : currentCell.inTime;
+        const outTime = field === 'outTime' ? value : currentCell.outTime;
+        updatedCell.otHours = calculateOTHours(inTime, outTime);
+      }
+      
+      return {
+        ...prev,
+        [key]: updatedCell
+      };
+    });
+    setDirtyKeys(prev => new Set([...prev, key]));
+  };
+
+  const cycleStatus = (empId, fullDate) => {
+    const key = `${empId}|${fullDate}`;
+    const current = gridData[key]?.status || 'P';
+    const idx = STATUS_OPTIONS.indexOf(current);
+    const next = STATUS_OPTIONS[(idx + 1) % STATUS_OPTIONS.length];
+    updateCell(empId, fullDate, 'status', next);
+  };
+
+  const openCtxMenu = (e, empId, fullDate) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, empId, fullDate });
+  };
+
+  const pickStatus = (status) => {
+    if (!ctxMenu) return;
+    updateCell(ctxMenu.empId, ctxMenu.fullDate, 'status', status);
+    setCtxMenu(null);
+  };
+
+  // ──────────────── Navigation ────────────────
+  const goToPrev = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+  const goToNext = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+  const goToNow = () => setCurrentDate(new Date());
+
+  // ──────────────── Bulk time ────────────────
+  const applyBulkTime = () => {
+    setGridData(prev => {
+      const updated = { ...prev };
+      const dirty = new Set(dirtyKeys);
+      Object.keys(updated).forEach(key => {
+        const cell = updated[key];
+        if (cell.status === 'P' || cell.status === 'HD' || cell.status === 'OT') {
+          updated[key] = { ...cell, inTime: bulkTime.inTime, outTime: bulkTime.outTime };
+          dirty.add(key);
+        }
+      });
+      setDirtyKeys(dirty);
+      return updated;
+    });
+    setShowBulkTimeModal(false);
+    setSuccess('In/Out time applied to all present/HD/OT days');
+    setTimeout(() => setSuccess(''), 3000);
+  };
+
+  // ──────────────── Save daily attendance ────────────────
+  const saveAttendance = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      const records = [];
+
+      // Always save ALL grid data (not just dirty keys) to ensure complete attendance record
+      const keysToSave = Object.keys(gridData);
+
+      keysToSave.forEach(key => {
+        const cell = gridData[key];
+        if (!cell || !cell.status || cell.status === '-') return;
+        const [empIdStr, dateKey] = key.split('|');
+        records.push({
+          employee_id: parseInt(empIdStr),
+          attendance_date: dateKey,
+          status: cell.status,
+          overtime_hours: cell.otHours || 0,
+          is_weekly_off: cell.status === 'WO',
+          in_time: cell.inTime || null,
+          out_time: cell.outTime || null,
+          idle_time: 0
+        });
+      });
+
+      if (records.length === 0) {
+        setError('No attendance records to save');
+        setSaving(false);
+        return;
+      }
+
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendance_records: records, month: monthKey })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+
+      setSuccess(`Saved ${data.successCount || records.length} records`);
+      setDirtyKeys(new Set());
+      setTimeout(() => setSuccess(''), 3000);
+      fetchMonthly();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ━━━━━━━━━━━━━━━ Monthly tab helpers ━━━━━━━━━━━━━━━
+  const getCellValue = (rowId, field, orig) => {
+    if (editedRows[rowId]?.[field] !== undefined) return editedRows[rowId][field];
+    return orig;
+  };
+
+  const handleMonthlyChange = (rowId, field, raw) => {
+    const v = raw === '' ? 0 : parseFloat(raw) || 0;
+    setEditedRows(prev => ({ ...prev, [rowId]: { ...(prev[rowId] || {}), [field]: v } }));
+    setMonthlyDirty(true);
+  };
+
+  const saveMonthlyChanges = async () => {
+    if (!monthlyDirty || Object.keys(editedRows).length === 0) return;
+    setMonthlySaving(true);
+    setError('');
+    try {
+      const promises = Object.entries(editedRows).map(async ([rowId, changes]) => {
+        const row = monthlyData.find(r => String(r.id) === String(rowId));
+        if (!row) return;
+        const g = (f) => changes[f] !== undefined ? changes[f] : parseFloat(row[f]) || 0;
+        const payable = changes.payable_days !== undefined
+          ? changes.payable_days
+          : g('present_days') + g('half_days') * 0.5 + g('privileged_leave') + g('sick_leave') + g('casual_leave');
+        const res = await fetch('/api/attendance/monthly', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: parseInt(rowId), ...changes, payable_days: payable })
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+      });
+      await Promise.all(promises);
+      setEditedRows({});
+      setMonthlyDirty(false);
+      setSuccess('Monthly attendance saved');
+      setTimeout(() => setSuccess(''), 3000);
+      fetchMonthly();
+    } catch (err) { setError(err.message); }
+    finally { setMonthlySaving(false); }
+  };
+
+  const addEmployeeMonthly = async () => {
+    if (!newRow.employee_id) { setError('Select an employee'); return; }
+    setMonthlySaving(true);
+    setError('');
+    try {
+      const payload = {
+        employee_id: parseInt(newRow.employee_id),
+        month: currentMonth + 1,
+        year: currentYear,
+        present_days: parseFloat(newRow.present_days) || 0,
+        absent_days: parseFloat(newRow.absent_days) || 0,
+        half_days: parseFloat(newRow.half_days) || 0,
+        holidays: parseFloat(newRow.holidays) || 0,
+        weekly_offs: parseFloat(newRow.weekly_offs) || 0,
+        overtime_hours: parseFloat(newRow.overtime_hours) || 0,
+        privileged_leave: parseFloat(newRow.privileged_leave) || 0,
+        sick_leave: parseFloat(newRow.sick_leave) || 0,
+        casual_leave: parseFloat(newRow.casual_leave) || 0,
+        lop_days: parseFloat(newRow.lop_days) || 0,
+        payable_days: newRow.payable_days ? parseFloat(newRow.payable_days) : null,
+        remarks: newRow.remarks || ''
+      };
+      const res = await fetch('/api/attendance/monthly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setShowAddModal(false);
+      setNewRow({
+        employee_id: '', present_days: '', absent_days: '', half_days: '',
+        holidays: '', weekly_offs: '', overtime_hours: '', privileged_leave: '',
+        sick_leave: '', casual_leave: '', lop_days: '', payable_days: '', remarks: ''
+      });
+      setSuccess('Employee added');
+      setTimeout(() => setSuccess(''), 3000);
+      fetchMonthly();
+    } catch (err) { setError(err.message); }
+    finally { setMonthlySaving(false); }
+  };
+
+  const deleteMonthlyRecord = async (id) => {
+    if (!confirm('Remove this record?')) return;
+    try {
+      const res = await fetch(`/api/attendance/monthly?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+      setSuccess('Record removed');
+      setTimeout(() => setSuccess(''), 3000);
+      fetchMonthly();
+    } catch (err) { setError(err.message); }
+  };
+
+  // ──────────────── Computed / memos ────────────────
+  const unmarkedOptions = useMemo(() => employees.filter(e => !markedEmployeeIds.has(e.id)), [employees, markedEmployeeIds]);
+
+  const filteredEmployees = useMemo(() => {
+    let list = employees;
+    if (viewMode === 'grid') {
+      list = list.filter(e => !markedEmployeeIds.has(e.id));
     }
     if (!searchQuery) return list;
     const q = searchQuery.toLowerCase();
-    return list.filter(emp =>
-      `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(q) ||
-      (emp.employee_id || '').toLowerCase().includes(q)
+    return list.filter(e =>
+      `${e.first_name} ${e.last_name}`.toLowerCase().includes(q) ||
+      (e.employee_id || '').toLowerCase().includes(q)
     );
-  }, [attendanceData, searchQuery, activeTab, markedEmployeeIds]);
+  }, [employees, searchQuery, viewMode, markedEmployeeIds]);
 
-  // Filter marked attendance by search
-  const filteredMarked = useMemo(() => {
-    if (!searchQuery) return monthlyAttendance;
+  const filteredMonthly = useMemo(() => {
+    if (!searchQuery) return monthlyData;
     const q = searchQuery.toLowerCase();
-    return monthlyAttendance.filter(r =>
+    return monthlyData.filter(r =>
       `${r.first_name} ${r.last_name}`.toLowerCase().includes(q) ||
       (r.employee_code || '').toLowerCase().includes(q)
     );
-  }, [monthlyAttendance, searchQuery]);
+  }, [monthlyData, searchQuery]);
 
-  // Calculate summary stats
-  const summaryStats = useMemo(() => {
-    const stats = { totalEmployees: employees.length, totalPresent: 0, totalAbsent: 0 };
-    Object.values(attendanceData).forEach(emp => {
-      stats.totalPresent += emp.present || 0;
-      stats.totalAbsent += emp.absent || 0;
+  // Per-employee summary stats from grid
+  const empSummary = useCallback((empId) => {
+    let p = 0, a = 0, wo = 0, h = 0, ot = 0, lwp = 0, pl = 0, cl = 0, sl = 0, hd = 0, totalOtHrs = 0, totalHrs = 0;
+    daysInMonth.forEach(day => {
+      const cell = gridData[`${empId}|${day.fullDate}`];
+      if (!cell) return;
+      const s = cell.status;
+      if (s === 'P') p++;
+      else if (s === 'A') a++;
+      else if (s === 'WO') wo++;
+      else if (s === 'H') h++;
+      else if (s === 'OT') { ot++; }
+      else if (s === 'LWP') lwp++;
+      else if (s === 'PL') pl++;
+      else if (s === 'CL') cl++;
+      else if (s === 'SL') sl++;
+      else if (s === 'HD') hd++;
+      totalOtHrs += (cell.otHours || 0);
+      // Calculate total hours from in/out time
+      if (cell.inTime && cell.outTime) {
+        totalHrs += calculateTotalHours(cell.inTime, cell.outTime);
+      }
     });
-    return stats;
-  }, [attendanceData, employees.length]);
+    return { p, a, wo, h, ot, lwp, pl, cl, sl, hd, totalOtHrs, totalHrs };
+  }, [daysInMonth, gridData]);
 
-  // Status legend items
-  const legendItems = [
-    { code: 'P', label: 'Present', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-    { code: 'A', label: 'Absent', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
-    { code: 'H', label: 'Holiday', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-    { code: 'WO', label: 'Weekly Off', bg: 'bg-gray-100', text: 'text-gray-500', border: 'border-gray-200' },
-    { code: 'PL', label: 'Priv. Leave', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-    { code: 'CL', label: 'Casual', bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-    { code: 'SL', label: 'Sick', bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
-    { code: 'HD', label: 'Half Day', bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
-    { code: 'OT', label: 'Overtime', bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
-    { code: 'LWP', label: 'LWP', bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
-  ];
+  const openCellModal = (emp, fullDate) => {
+    const empName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'N/A';
+    setCellModal({ empId: emp.id, fullDate, empName });
+  };
 
+  const closeCellModal = () => setCellModal(null);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // RENDER
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
-      <div>
-        {/* Hero Header */}
-        <div className="bg-white border-b border-gray-200">
-          <div className="max-w-[1800px] mx-auto px-6 lg:px-8 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Link 
-                  href="/employees"
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-all text-gray-500"
-                >
-                  <ArrowLeftIcon className="h-5 w-5" />
-                </Link>
-                <div>
-                  <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-3">
-                    <CalendarDaysIcon className="h-7 w-7 text-gray-700" />
-                    Attendance
-                  </h1>
-                  <p className="text-gray-500 text-sm mt-0.5">
-                    Track and manage employee attendance
-                  </p>
-                </div>
-              </div>
-              
-              {/* Quick Stats */}
-              <div className="flex items-center gap-4">
-                <div className="text-center px-5 py-2 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="text-xl font-semibold text-gray-900">{summaryStats.totalEmployees}</div>
-                  <div className="text-xs text-gray-500">Employees</div>
-                </div>
-                <div className="text-center px-5 py-2 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="text-xl font-semibold text-gray-900">{daysInMonth.length}</div>
-                  <div className="text-xs text-gray-500">Days</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Controls Bar */}
-        <div className="bg-white border-b border-gray-200 sticky top-16 z-40">
-          <div className="max-w-[1920px] mx-auto px-6 py-3">
-            <div className="flex items-center justify-between gap-4">
-              {/* Month Navigation */}
-              <div className="flex items-center gap-2">
-                <div className="flex items-center border border-gray-200 rounded-lg">
-                  <button
-                    onClick={goToPreviousMonth}
-                    className="p-2 hover:bg-gray-50 rounded-l-lg transition-all border-r border-gray-200"
-                  >
-                    <ChevronLeftIcon className="h-4 w-4 text-gray-600" />
-                  </button>
-                  <div className="px-4 py-1.5 min-w-[160px] text-center">
-                    <span className="font-medium text-gray-900">{monthName}</span>
-                  </div>
-                  <button
-                    onClick={goToNextMonth}
-                    className="p-2 hover:bg-gray-50 rounded-r-lg transition-all border-l border-gray-200"
-                  >
-                    <ChevronRightIcon className="h-4 w-4 text-gray-600" />
-                  </button>
-                </div>
-                <button
-                  onClick={goToCurrentMonth}
-                  className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
-                >
-                  Today
-                </button>
-              </div>
-
-              {/* Search */}
-              <div className="flex-1 max-w-sm">
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search employees..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Tabs */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setActiveTab('unmarked')}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                    activeTab === 'unmarked'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Unmarked
-                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                    activeTab === 'unmarked' ? 'bg-gray-100 text-gray-700' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {Object.values(attendanceData).filter(e => !markedEmployeeIds.has(e.id)).length}
-                  </span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('marked')}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-                    activeTab === 'marked'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Marked
-                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                    activeTab === 'marked' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {monthlyAttendance.length}
-                  </span>
-                </button>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowBulkTimeModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-all"
-                >
-                  <ClockIcon className="h-4 w-4" />
-                  Set All In/Out Time
-                </button>
-                <button
-                  onClick={saveAttendance}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-all disabled:opacity-50"
-                >
-                  {saving ? (
-                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircleIcon className="h-4 w-4" />
-                  )}
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Status Messages */}
-        {(error || success) && (
-          <div className="max-w-[1920px] mx-auto px-6 pt-4">
-            {error && (
-              <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-                <ExclamationCircleIcon className="h-5 w-5 flex-shrink-0" />
-                <span>{error}</span>
-                <button onClick={() => setError('')} className="ml-auto hover:bg-red-100 p-1 rounded-lg">
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-            )}
-            {success && (
-              <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700">
-                <CheckCircleSolid className="h-5 w-5 flex-shrink-0" />
-                <span>{success}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Legend */}
-        <div className="max-w-[1920px] mx-auto px-6 py-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            <span className="text-xs text-gray-400 mr-1 flex-shrink-0">Legend:</span>
-            {legendItems.map(item => (
-              <div key={item.code} className="flex items-center gap-1 px-2 py-1 rounded flex-shrink-0">
-                <span className={`w-5 h-5 ${item.bg} ${item.text} border ${item.border} rounded flex items-center justify-center text-[10px] font-semibold`}>
-                  {item.code}
-                </span>
-                <span className="text-xs text-gray-500">{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="max-w-[1920px] mx-auto px-6 pb-6">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin"></div>
-              <span className="mt-4 text-sm text-gray-500">Loading...</span>
-            </div>
-          ) : activeTab === 'marked' ? (
-            /* ── MARKED TAB ── */
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              {monthlyLoading ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <div className="w-7 h-7 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin"></div>
-                  <span className="mt-3 text-sm text-gray-500">Loading attendance data...</span>
-                </div>
-              ) : filteredMarked.length === 0 ? (
-                <div className="text-center py-16">
-                  <CalendarDaysIcon className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">No attendance records found for {monthName}.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        <th className="px-4 py-3 text-left sticky left-0 bg-gray-50 border-r border-gray-200 min-w-[110px]">Code</th>
-                        <th className="px-4 py-3 text-left sticky left-[110px] bg-gray-50 border-r border-gray-200 min-w-[200px]">Name</th>
-                        <th className="px-3 py-3 text-center bg-emerald-50 text-emerald-700">Present</th>
-                        <th className="px-3 py-3 text-center bg-red-50 text-red-600">Absent</th>
-                        <th className="px-3 py-3 text-center">Half Days</th>
-                        <th className="px-3 py-3 text-center bg-amber-50 text-amber-700">Holidays</th>
-                        <th className="px-3 py-3 text-center bg-gray-100">Weekly Off</th>
-                        <th className="px-3 py-3 text-center bg-violet-50 text-violet-700">OT Hrs</th>
-                        <th className="px-3 py-3 text-center bg-blue-50 text-blue-700">PL</th>
-                        <th className="px-3 py-3 text-center bg-pink-50 text-pink-700">SL</th>
-                        <th className="px-3 py-3 text-center bg-cyan-50 text-cyan-700">CL</th>
-                        <th className="px-3 py-3 text-center bg-rose-50 text-rose-700">LWP</th>
-                        <th className="px-3 py-3 text-center bg-green-50 text-green-700">Payable Days</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredMarked.map((row, index) => (
-                        <tr key={row.id} className={`hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                          <td className="px-4 py-2.5 sticky left-0 bg-inherit border-r border-gray-100">
-                            <span className="font-mono text-xs text-gray-600">{row.employee_code}</span>
-                          </td>
-                          <td className="px-4 py-2.5 sticky left-[110px] bg-inherit border-r border-gray-200">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                                {(row.first_name?.[0] || 'E').toUpperCase()}
-                              </div>
-                              <span className="text-sm text-gray-900">{`${row.first_name || ''} ${row.last_name || ''}`.trim()}</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className="text-xs font-semibold text-emerald-600">{parseFloat(row.present_days || 0).toFixed(1)}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-semibold ${parseFloat(row.absent_days || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                              {parseFloat(row.absent_days || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-medium ${parseFloat(row.half_days || 0) > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>
-                              {parseFloat(row.half_days || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className="text-xs font-medium text-amber-600">{row.holidays || 0}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className="text-xs font-medium text-gray-500">{row.weekly_offs || 0}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-medium ${parseFloat(row.overtime_hours || 0) > 0 ? 'text-violet-600 font-semibold' : 'text-gray-400'}`}>
-                              {parseFloat(row.overtime_hours || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-medium ${parseFloat(row.privileged_leave || 0) > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-                              {parseFloat(row.privileged_leave || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-medium ${parseFloat(row.sick_leave || 0) > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
-                              {parseFloat(row.sick_leave || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-medium ${parseFloat(row.casual_leave || 0) > 0 ? 'text-cyan-600' : 'text-gray-400'}`}>
-                              {parseFloat(row.casual_leave || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`text-xs font-medium ${parseFloat(row.lop_days || 0) > 0 ? 'text-rose-600 font-semibold' : 'text-gray-400'}`}>
-                              {parseFloat(row.lop_days || 0).toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className="text-xs font-semibold text-green-700">
-                              {row.payable_days != null ? parseFloat(row.payable_days).toFixed(1) : parseFloat(row.working_days || 0).toFixed(1)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {/* Footer */}
-              <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>{filteredMarked.length} employee{filteredMarked.length !== 1 ? 's' : ''} with attendance data</span>
-                  <span>{monthName}</span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ── UNMARKED / DAILY GRID TAB ── */
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              {/* Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    {/* Main Headers */}
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="sticky left-0 z-20 bg-gray-50 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] border-r border-gray-200">
-                        Code
-                      </th>
-                      <th className="sticky left-[100px] z-20 bg-gray-50 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px] border-r border-gray-200">
-                        Name
-                      </th>
-                      {daysInMonth.map(day => (
-                        <th
-                          key={day.fullDate}
-                          className={`px-0 py-2 text-center min-w-[36px] ${
-                            day.isToday ? 'bg-gray-100' : 'bg-gray-50'
-                          }`}
-                        >
-                          <div className={`text-[9px] font-medium uppercase ${
-                            day.isSunday ? 'text-red-400' :
-                            day.isSaturday ? 'text-amber-500' :
-                            'text-gray-400'
-                          }`}>{day.dayName}</div>
-                          <div className={`text-xs font-medium ${
-                            day.isToday ? 'text-gray-900' :
-                            day.isSunday ? 'text-red-500' :
-                            day.isSaturday ? 'text-amber-600' :
-                            'text-gray-600'
-                          }`}>{day.date}</div>
-                        </th>
-                      ))}
-                      {/* Summary Columns */}
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50 border-l border-gray-200">P</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">A</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">WO</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">H</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50">OT</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-rose-600 bg-rose-50">LWP</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50 border-l border-gray-200">PL Total</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50">PL Used</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50">PL Bal</th>
-                      <th className="px-2 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 bg-gray-50 border-l border-gray-200">Hrs</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredAttendance.map((empData, index) => (
-                      <tr 
-                        key={empData.id} 
-                        className={`group hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
-                      >
-                        <td className="sticky left-0 z-10 bg-inherit px-3 py-2 border-r border-gray-100 group-hover:bg-gray-50">
-                          <span className="font-mono text-xs text-gray-600">
-                            {empData.employee_id || empData.employee_code || `EMP${String(empData.id).padStart(3, '0')}`}
-                          </span>
-                        </td>
-                        <td className="sticky left-[100px] z-10 bg-inherit px-3 py-2 border-r border-gray-200 group-hover:bg-gray-50">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-medium">
-                              {(empData.first_name?.[0] || 'E').toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="text-sm text-gray-900">
-                                {`${empData.first_name || ''} ${empData.last_name || ''}`.trim() || 'N/A'}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        {daysInMonth.map(day => {
-                          const status = empData.days[day.fullDate] || '-';
-                          const style = getStatusStyle(status);
-                          const employeeName = `${empData.first_name || ''} ${empData.last_name || ''}`.trim().toUpperCase() || 'EMPLOYEE';
-                          
-                          return (
-                            <td
-                              key={day.fullDate}
-                              className={`px-0.5 py-1.5 text-center ${
-                                day.isToday ? 'bg-purple-50/50' :
-                                day.isSunday ? 'bg-red-50/30' : 
-                                day.isSaturday ? 'bg-amber-50/30' : ''
-                              }`}
-                            >
-                              <div className="relative group/cell">
-                                <button
-                                  onClick={() => openAttendanceModal(empData.id, day.fullDate, status, employeeName)}
-                                  className={`w-7 h-7 rounded text-[10px] font-semibold border ${style.bg} ${style.text} ${style.border} hover:opacity-80 transition-all ${day.isToday ? 'ring-1 ring-gray-400' : ''}`}
-                                >
-                                  {style.label}
-                                </button>
-
-                              </div>
-                            </td>
-                          );
-                        })}
-                        {/* Summary cells */}
-                        <td className="px-2 py-2 text-center border-l border-gray-100">
-                          <span className="text-xs font-medium text-emerald-600">
-                            {empData.present || 0}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <span className="text-xs font-medium text-red-600">
-                            {empData.absent || 0}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <span className="text-xs font-medium text-gray-500">
-                            {empData.weeklyOff || 0}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <span className="text-xs font-medium text-amber-600">
-                            {empData.holiday || 0}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <span className="text-xs font-medium text-violet-600">
-                            {empData.overtime || 0}
-                          </span>
-                        </td>
-                        {/* LWP column */}
-                        <td className="px-2 py-2 text-center">
-                          <span className={`text-xs font-medium ${(empData.lwp || 0) > 0 ? 'text-rose-600 font-semibold' : 'text-gray-400'}`}>
-                            {empData.lwp || 0}
-                          </span>
-                        </td>
-                        {/* PL columns */}
-                        <td className="px-2 py-2 text-center border-l border-gray-100 bg-blue-50/30">
-                          <span className="text-xs font-medium text-blue-700">
-                            {plData[empData.id]?.total || 0}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center bg-blue-50/30">
-                          <span className="text-xs font-medium text-blue-600">
-                            {(plData[empData.id]?.used || 0) + (empData.privilegedLeave || 0)}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center bg-blue-50/30">
-                          <span className={`text-xs font-semibold ${
-                            ((plData[empData.id]?.total || 0) - (plData[empData.id]?.used || 0) - (empData.privilegedLeave || 0)) > 0 ? 'text-green-600' : 'text-red-500'
-                          }`}>
-                            {Math.max(0, (plData[empData.id]?.total || 0) - (plData[empData.id]?.used || 0) - (empData.privilegedLeave || 0))}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center border-l border-gray-100">
-                          <span className="text-xs font-medium text-gray-700">
-                            {(() => {
-                              let totalHours = 0;
-                              const defaultInTime = empData.stdInTime || '09:00';
-                              const defaultOutTime = empData.stdOutTime || '17:30';
-                              
-                              Object.entries(empData.days || {}).forEach(([dateKey, status]) => {
-                                if (status === 'P' || status === 'HD' || status === 'OT') {
-                                  const dayDetail = empData.dayDetails?.[dateKey] || {};
-                                  const inTime = dayDetail.inTime || defaultInTime;
-                                  const outTime = dayDetail.outTime || defaultOutTime;
-                                  const idleMinutes = dayDetail.idleTime || 0;
-                                  
-                                  const [inH, inM] = inTime.split(':').map(Number);
-                                  const [outH, outM] = outTime.split(':').map(Number);
-                                  const inDecimal = inH + (inM / 60);
-                                  const outDecimal = outH + (outM / 60);
-                                  
-                                  if (outDecimal > inDecimal) {
-                                    let hours = outDecimal - inDecimal;
-                                    // Subtract idle time (in minutes converted to hours)
-                                    hours = Math.max(0, hours - (idleMinutes / 60));
-                                    if (status === 'HD') hours = hours / 2;
-                                    totalHours += hours;
-                                  }
-                                }
-                              });
-                              
-                              return totalHours.toFixed(0);
-                            })()}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Footer */}
-              {employees.length > 0 && (
-                <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>
-                      {filteredAttendance.length} of {Object.values(attendanceData).filter(e => !markedEmployeeIds.has(e.id)).length} unmarked employees
-                    </span>
-                    <span>
-                      {daysInMonth.length} days
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!loading && employees.length === 0 && (
-            <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
-              <UserGroupIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-1">No Employees Found</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Add employees to start tracking attendance.
-              </p>
-              <Link
-                href="/employees"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                <ArrowLeftIcon className="h-4 w-4" />
-                Go to Employees
+      {/* ── Header ── */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-[1920px] mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Link href="/employees" className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
+                <ArrowLeftIcon className="h-5 w-5" />
               </Link>
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                  <CalendarDaysIcon className="h-6 w-6 text-gray-700" />
+                  Attendance
+                </h1>
+                <p className="text-gray-500 text-xs mt-0.5">
+                  Click to cycle status &middot; Right-click to pick &middot; Double-click for in/out time &amp; OT
+                </p>
+              </div>
             </div>
-          )}
+            <div className="flex items-center gap-3 text-center">
+              <div className="px-4 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-lg font-semibold text-gray-900">{employees.length}</div>
+                <div className="text-[10px] text-gray-500">Employees</div>
+              </div>
+              <div className="px-4 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-lg font-semibold text-gray-900">{daysInMonth.length}</div>
+                <div className="text-[10px] text-gray-500">Days</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Bulk Time Modal */}
-      {showBulkTimeModal && (
+      {/* ── Controls Bar ── */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-[1920px] mx-auto px-6 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            {/* Month nav */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center border border-gray-200 rounded-lg">
+                <button onClick={goToPrev} className="p-2 hover:bg-gray-50 rounded-l-lg border-r border-gray-200">
+                  <ChevronLeftIcon className="h-4 w-4 text-gray-600" />
+                </button>
+                <div className="px-4 py-1.5 min-w-[150px] text-center">
+                  <span className="font-medium text-sm text-gray-900">{monthName}</span>
+                </div>
+                <button onClick={goToNext} className="p-2 hover:bg-gray-50 rounded-r-lg border-l border-gray-200">
+                  <ChevronRightIcon className="h-4 w-4 text-gray-600" />
+                </button>
+              </div>
+              <button onClick={goToNow} className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200">Today</button>
+            </div>
+
+            {/* Search */}
+            <div className="flex-1 max-w-xs">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input type="text" placeholder="Search employee..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-300" />
+              </div>
+            </div>
+
+            {/* View toggle */}
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              <button onClick={() => setViewMode('grid')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                Daily Grid
+              </button>
+              <button onClick={() => setViewMode('monthly')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${viewMode === 'monthly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                Monthly
+                <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${viewMode === 'monthly' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>{monthlyData.length}</span>
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              {viewMode === 'grid' && (
+                <>
+                  <button onClick={() => setShowBulkTimeModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">
+                    <ClockIcon className="h-3.5 w-3.5" /> Bulk In/Out
+                  </button>
+                  <button onClick={saveAttendance} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
+                    {saving ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <CheckCircleIcon className="h-3.5 w-3.5" />}
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+              {viewMode === 'monthly' && (
+                <>
+                  {monthlyDirty && (
+                    <button onClick={saveMonthlyChanges} disabled={monthlySaving} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                      {monthlySaving ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <CheckCircleIcon className="h-3.5 w-3.5" />}
+                      Save Changes
+                    </button>
+                  )}
+                  <button onClick={() => setShowAddModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800">
+                    <PlusIcon className="h-3.5 w-3.5" /> Add Employee
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Status messages */}
+      {(error || success) && (
+        <div className="max-w-[1920px] mx-auto px-6 pt-3">
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <ExclamationCircleIcon className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1">{error}</span>
+              <button onClick={() => setError('')} className="hover:bg-red-100 p-1 rounded"><XMarkIcon className="h-4 w-4" /></button>
+            </div>
+          )}
+          {success && (
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm">
+              <CheckCircleSolid className="h-4 w-4 flex-shrink-0" />
+              <span>{success}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="max-w-[1920px] mx-auto px-6 py-2">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          <span className="text-[10px] text-gray-400 mr-1">Legend:</span>
+          {STATUS_OPTIONS.map(code => {
+            const s = STATUS_STYLES[code];
+            return (
+              <div key={code} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded flex-shrink-0">
+                <span className={`w-4 h-4 ${s.bg} ${s.text} border ${s.border} rounded flex items-center justify-center text-[8px] font-bold`}>{s.label}</span>
+                <span className="text-[10px] text-gray-500">{s.full}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ════════════════ MAIN CONTENT ════════════════ */}
+      <div className="max-w-[1920px] mx-auto px-6 pb-6">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin" />
+            <span className="mt-3 text-sm text-gray-500">Loading...</span>
+          </div>
+        ) : viewMode === 'grid' ? (
+          /* ═══════ DAILY GRID VIEW ═══════ */
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="sticky left-0 z-20 bg-gray-50 px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider min-w-[70px] border-r border-gray-200">Code</th>
+                    <th className="sticky left-[70px] z-20 bg-gray-50 px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider min-w-[140px] border-r border-gray-200">Name</th>
+                    {daysInMonth.map(day => (
+                      <th key={day.fullDate} className={`px-0 py-1.5 text-center min-w-[30px] ${day.isToday ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                        <div className={`text-[8px] font-medium uppercase ${day.isSun ? 'text-red-400' : day.isSat ? 'text-amber-500' : 'text-gray-400'}`}>{day.dayName.charAt(0)}</div>
+                        <div className={`text-[10px] font-medium ${day.isToday ? 'text-gray-900 font-bold' : day.isSun ? 'text-red-500' : day.isSat ? 'text-amber-600' : 'text-gray-600'}`}>{day.date}</div>
+                      </th>
+                    ))}
+                    {/* Summary columns */}
+                    <th className="px-1 py-2 text-center text-[9px] font-medium text-emerald-600 bg-emerald-50 border-l border-gray-200 min-w-[28px]">P</th>
+                    <th className="px-1 py-2 text-center text-[9px] font-medium text-red-600 bg-red-50 min-w-[28px]">A</th>
+                    <th className="px-1 py-2 text-center text-[9px] font-medium text-gray-500 bg-gray-50 min-w-[28px]">WO</th>
+                    <th className="px-1 py-2 text-center text-[9px] font-medium text-amber-600 bg-amber-50 min-w-[28px]">H</th>
+                    <th className="px-1 py-2 text-center text-[9px] font-medium text-blue-600 bg-blue-50 min-w-[38px]">Total h</th>
+                    <th className="px-1 py-2 text-center text-[9px] font-medium text-violet-600 bg-violet-50 min-w-[30px]">OT h</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredEmployees.map((emp, idx) => {
+                    const stats = empSummary(emp.id);
+                    return (
+                      <React.Fragment key={emp.id}>
+                        {/* Main status row */}
+                        <tr className={`group hover:bg-gray-50/80 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          {/* Code */}
+                          <td className="sticky left-0 z-10 bg-inherit px-2 py-1 border-r border-gray-100 group-hover:bg-gray-50">
+                            <span className="font-mono text-[10px] text-gray-600">{emp.employee_id || `EMP${String(emp.id).padStart(3, '0')}`}</span>
+                          </td>
+                          {/* Name */}
+                          <td className="sticky left-[70px] z-10 bg-inherit px-2 py-1 border-r border-gray-200 group-hover:bg-gray-50">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-[9px] font-medium flex-shrink-0">
+                                {(emp.first_name?.[0] || 'E').toUpperCase()}
+                              </div>
+                              <span className="text-[11px] text-gray-900 truncate max-w-[100px]">
+                                {`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'N/A'}
+                              </span>
+                            </div>
+                          </td>
+                          {/* Day cells */}
+                          {daysInMonth.map(day => {
+                            const key = `${emp.id}|${day.fullDate}`;
+                            const cell = gridData[key];
+                            const status = cell?.status || '-';
+                            const st = getStyle(status);
+                            const isDirty = dirtyKeys.has(key);
+                            return (
+                              <td key={day.fullDate} className={`px-0.5 py-0.5 text-center ${day.isToday ? 'bg-purple-50/50' : day.isSun ? 'bg-red-50/20' : day.isSat ? 'bg-amber-50/20' : ''}`}>
+                                <button
+                                  onClick={() => openCellModal(emp, day.fullDate)}
+                                  onContextMenu={(e) => openCtxMenu(e, emp.id, day.fullDate)}
+                                  className={`w-[22px] h-[22px] rounded text-[8px] font-bold border ${st.bg} ${st.text} ${st.border} hover:scale-110 hover:shadow-sm transition-all ${day.isToday ? 'ring-1 ring-purple-400' : ''} ${isDirty ? 'ring-1 ring-yellow-400' : ''}`}
+                                  title={`${st.full} — Click: mark attendance, Right-click: quick pick`}
+                                >
+                                  {st.label}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          {/* Summary */}
+                          <td className="px-1 py-1 text-center border-l border-gray-100"><span className="text-[10px] font-medium text-emerald-600">{stats.p}</span></td>
+                          <td className="px-1 py-1 text-center"><span className="text-[10px] font-medium text-red-600">{stats.a}</span></td>
+                          <td className="px-1 py-1 text-center"><span className="text-[10px] font-medium text-gray-500">{stats.wo}</span></td>
+                          <td className="px-1 py-1 text-center"><span className="text-[10px] font-medium text-amber-600">{stats.h}</span></td>
+                          <td className="px-1 py-1 text-center"><span className="text-[10px] font-semibold text-blue-600">{stats.totalHrs > 0 ? stats.totalHrs.toFixed(1) : '0'}</span></td>
+                          <td className="px-1 py-1 text-center"><span className="text-[10px] font-semibold text-violet-600">{stats.totalOtHrs > 0 ? stats.totalOtHrs.toFixed(1) : '0'}</span></td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="bg-gray-50 px-4 py-2 border-t border-gray-200 flex items-center justify-between text-[10px] text-gray-500">
+              <span>{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''}</span>
+              <span>{dirtyKeys.size > 0 ? `${dirtyKeys.size} unsaved changes` : monthName}</span>
+            </div>
+          </div>
+        ) : (
+          /* ═══════ MONTHLY VIEW ═══════ */
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {monthlyLoading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="w-7 h-7 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin" />
+                <span className="mt-3 text-sm text-gray-500">Loading...</span>
+              </div>
+            ) : filteredMonthly.length === 0 ? (
+              <div className="text-center py-16">
+                <CalendarDaysIcon className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500 mb-3">No records for {monthName}.</p>
+                <button onClick={() => setShowAddModal(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800">
+                  <PlusIcon className="h-4 w-4" /> Add Employee
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-2.5 text-left sticky left-0 bg-gray-50 border-r border-gray-200 min-w-[90px]">Code</th>
+                      <th className="px-3 py-2.5 text-left sticky left-[90px] bg-gray-50 border-r border-gray-200 min-w-[160px]">Name</th>
+                      <th className="px-2 py-2.5 text-center bg-emerald-50 text-emerald-700 min-w-[55px]">Present</th>
+                      <th className="px-2 py-2.5 text-center bg-red-50 text-red-600 min-w-[55px]">Absent</th>
+                      <th className="px-2 py-2.5 text-center min-w-[45px]">HD</th>
+                      <th className="px-2 py-2.5 text-center bg-amber-50 text-amber-700 min-w-[45px]">H</th>
+                      <th className="px-2 py-2.5 text-center bg-gray-100 min-w-[45px]">WO</th>
+                      <th className="px-2 py-2.5 text-center bg-violet-50 text-violet-700 min-w-[45px]">OT</th>
+                      <th className="px-2 py-2.5 text-center bg-blue-50 text-blue-700 min-w-[45px]">PL</th>
+                      <th className="px-2 py-2.5 text-center bg-pink-50 text-pink-700 min-w-[45px]">SL</th>
+                      <th className="px-2 py-2.5 text-center bg-cyan-50 text-cyan-700 min-w-[45px]">CL</th>
+                      <th className="px-2 py-2.5 text-center bg-rose-50 text-rose-700 min-w-[45px]">LWP</th>
+                      <th className="px-2 py-2.5 text-center bg-green-50 text-green-700 min-w-[65px]">Payable</th>
+                      <th className="px-2 py-2.5 text-center min-w-[32px]"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredMonthly.map((row, idx) => {
+                      const rid = row.id;
+                      const isEd = !!editedRows[rid];
+
+                      const eCell = (field, orig, color = 'text-gray-700') => {
+                        const val = getCellValue(rid, field, orig);
+                        const wasEd = isEd && editedRows[rid][field] !== undefined;
+                        return (
+                          <input type="number" step="0.5" min="0" value={val}
+                            onChange={e => handleMonthlyChange(rid, field, e.target.value)}
+                            className={`w-12 text-center text-xs font-medium border border-transparent hover:border-gray-300 focus:border-gray-400 focus:ring-1 focus:ring-gray-300 rounded px-0.5 py-0.5 bg-transparent transition-all ${color} ${wasEd ? 'bg-yellow-50 border-yellow-300' : ''}`}
+                          />
+                        );
+                      };
+
+                      const pD = parseFloat(getCellValue(rid, 'present_days', row.present_days) || 0);
+                      const hD = parseFloat(getCellValue(rid, 'half_days', row.half_days) || 0);
+                      const plD = parseFloat(getCellValue(rid, 'privileged_leave', row.privileged_leave) || 0);
+                      const slD = parseFloat(getCellValue(rid, 'sick_leave', row.sick_leave) || 0);
+                      const clD = parseFloat(getCellValue(rid, 'casual_leave', row.casual_leave) || 0);
+                      const payable = (pD + hD * 0.5 + plD + slD + clD).toFixed(1);
+
+                      return (
+                        <tr key={rid} className={`hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'} ${isEd ? 'ring-1 ring-inset ring-yellow-200' : ''}`}>
+                          <td className="px-3 py-1.5 sticky left-0 bg-inherit border-r border-gray-100">
+                            <span className="font-mono text-[11px] text-gray-600">{row.employee_code}</span>
+                          </td>
+                          <td className="px-3 py-1.5 sticky left-[90px] bg-inherit border-r border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-[10px] font-medium flex-shrink-0">
+                                {(row.first_name?.[0] || 'E').toUpperCase()}
+                              </div>
+                              <span className="text-xs text-gray-900 truncate max-w-[120px]">{`${row.first_name || ''} ${row.last_name || ''}`.trim()}</span>
+                            </div>
+                          </td>
+                          <td className="px-1 py-1 text-center">{eCell('present_days', row.present_days, 'text-emerald-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('absent_days', row.absent_days, 'text-red-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('half_days', row.half_days, 'text-yellow-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('holidays', row.holidays, 'text-amber-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('weekly_offs', row.weekly_offs, 'text-gray-500')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('overtime_hours', row.overtime_hours, 'text-violet-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('privileged_leave', row.privileged_leave, 'text-blue-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('sick_leave', row.sick_leave, 'text-pink-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('casual_leave', row.casual_leave, 'text-cyan-600')}</td>
+                          <td className="px-1 py-1 text-center">{eCell('lop_days', row.lop_days, 'text-rose-600')}</td>
+                          <td className="px-1 py-1.5 text-center">
+                            <span className="text-xs font-semibold text-green-700">{payable}</span>
+                          </td>
+                          <td className="px-1 py-1.5 text-center">
+                            <button onClick={() => deleteMonthlyRecord(rid)} className="p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded" title="Remove">
+                              <TrashIcon className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="bg-gray-50 px-4 py-2 border-t border-gray-200 flex items-center justify-between text-[10px] text-gray-500">
+              <span>{filteredMonthly.length} employee{filteredMonthly.length !== 1 ? 's' : ''}</span>
+              <span>{monthName}</span>
+            </div>
+          </div>
+        )}
+
+        {!loading && employees.length === 0 && (
+          <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
+            <UserGroupIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-1">No Employees Found</h3>
+            <p className="text-sm text-gray-500 mb-4">Add employees to start tracking attendance.</p>
+            <Link href="/employees" className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800">
+              <ArrowLeftIcon className="h-4 w-4" /> Go to Employees
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {/* ── Context menu ── */}
+      {ctxMenu && (
+        <div ref={ctxRef}
+          className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-lg p-1 min-w-[120px]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
+          <div className="text-[9px] text-gray-400 px-2 py-1 font-medium uppercase">Set Status</div>
+          {STATUS_OPTIONS.map(code => {
+            const s = STATUS_STYLES[code];
+            return (
+              <button key={code} onClick={() => pickStatus(code)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-gray-50 rounded transition-colors text-left">
+                <span className={`w-5 h-5 ${s.bg} ${s.text} border ${s.border} rounded flex items-center justify-center text-[8px] font-bold`}>{s.label}</span>
+                <span className="text-gray-700">{s.full}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Add Employee Modal ── */}
+      {showAddModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4">
-            <div className="fixed inset-0 bg-black/40" onClick={() => setShowBulkTimeModal(false)}></div>
-            
-            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-sm">
-              {/* Header */}
-              <div className="px-5 py-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                      <ClockIcon className="h-5 w-5 text-gray-600" />
-                      Set In/Out Time for All
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-0.5">Apply to all employees&apos; present days</p>
-                  </div>
-                  <button 
-                    onClick={() => setShowBulkTimeModal(false)}
-                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <XMarkIcon className="h-5 w-5 text-gray-500" />
-                  </button>
-                </div>
+            <div className="fixed inset-0 bg-black/40" onClick={() => setShowAddModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg">
+              <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <PlusIcon className="h-4 w-4 text-gray-600" /> Add Employee &mdash; {monthName}
+                </h3>
+                <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-gray-100 rounded-lg"><XMarkIcon className="h-4 w-4 text-gray-500" /></button>
               </div>
-              
-              {/* Body */}
               <div className="p-5 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">In Time</label>
-                    <input
-                      type="time"
-                      value={bulkTimeData.inTime}
-                      onChange={(e) => setBulkTimeData({ ...bulkTimeData, inTime: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Out Time</label>
-                    <input
-                      type="time"
-                      value={bulkTimeData.outTime}
-                      onChange={(e) => setBulkTimeData({ ...bulkTimeData, outTime: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Employee</label>
+                  <select value={newRow.employee_id} onChange={e => setNewRow({ ...newRow, employee_id: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300">
+                    <option value="">Select employee...</option>
+                    {unmarkedOptions.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.employee_id} &mdash; {emp.first_name} {emp.last_name}</option>
+                    ))}
+                  </select>
                 </div>
-                <p className="text-xs text-gray-400">
-                  This will update the in/out time for all {employees.length} employees on their present, half-day, and overtime days.
-                </p>
+                <div className="grid grid-cols-4 gap-2.5">
+                  {[
+                    { f: 'present_days', l: 'Present', c: 'text-emerald-600' },
+                    { f: 'absent_days', l: 'Absent', c: 'text-red-600' },
+                    { f: 'half_days', l: 'Half Days', c: 'text-yellow-600' },
+                    { f: 'holidays', l: 'Holidays', c: 'text-amber-600' },
+                    { f: 'weekly_offs', l: 'Weekly Off', c: 'text-gray-600' },
+                    { f: 'overtime_hours', l: 'OT Hours', c: 'text-violet-600' },
+                    { f: 'privileged_leave', l: 'PL', c: 'text-blue-600' },
+                    { f: 'sick_leave', l: 'SL', c: 'text-pink-600' },
+                    { f: 'casual_leave', l: 'CL', c: 'text-cyan-600' },
+                    { f: 'lop_days', l: 'LWP', c: 'text-rose-600' },
+                    { f: 'payable_days', l: 'Payable', c: 'text-green-600' },
+                  ].map(({ f, l, c }) => (
+                    <div key={f}>
+                      <label className={`block text-[10px] font-medium mb-0.5 ${c}`}>{l}</label>
+                      <input type="number" step="0.5" min="0" value={newRow[f]}
+                        onChange={e => setNewRow({ ...newRow, [f]: e.target.value })} placeholder="0"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300" />
+                    </div>
+                  ))}
+                </div>
               </div>
-
-              {/* Footer */}
-              <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
-                <button
-                  onClick={() => setShowBulkTimeModal(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={applyBulkTime}
-                  className="px-4 py-2 text-sm bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-all"
-                >
-                  Apply to All
+              <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+                <button onClick={() => setShowAddModal(false)} className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onClick={addEmployeeMonthly} disabled={monthlySaving} className="px-3 py-1.5 text-xs bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
+                  {monthlySaving ? 'Adding...' : 'Add'}
                 </button>
               </div>
             </div>
@@ -1275,138 +1017,124 @@ export default function EmployeeAttendancePage() {
         </div>
       )}
 
-      {/* Mark Attendance Modal */}
-      {showModal && selectedCell && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4">
-            <div className="fixed inset-0 bg-black/40" onClick={closeModal}></div>
-            
-            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md">
-              {/* Header */}
-              <div className="px-5 py-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
+      {/* ── Cell Detail Modal (In/Out Time & OT) ── */}
+      {cellModal && (() => {
+        const key = `${cellModal.empId}|${cellModal.fullDate}`;
+        const cell = gridData[key] || { status: 'P', inTime: '', outTime: '', otHours: 0 };
+        const st = getStyle(cell.status);
+        const dayObj = daysInMonth.find(d => d.fullDate === cellModal.fullDate);
+        const dateLabel = dayObj
+          ? new Date(cellModal.fullDate).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+          : cellModal.fullDate;
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="fixed inset-0 bg-black/40" onClick={closeCellModal} />
+              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm">
+                <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
                   <div>
-                    <h3 className="text-base font-semibold text-gray-900">Mark Attendance</h3>
-                    <p className="text-sm text-gray-500 mt-0.5">{selectedCell.employeeName}</p>
+                    <h3 className="text-sm font-semibold text-gray-900">{cellModal.empName}</h3>
+                    <p className="text-xs text-gray-500">{dateLabel}</p>
                   </div>
-                  <button 
-                    onClick={closeModal}
-                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <XMarkIcon className="h-5 w-5 text-gray-500" />
-                  </button>
+                  <button onClick={closeCellModal} className="p-1 hover:bg-gray-100 rounded-lg"><XMarkIcon className="h-4 w-4 text-gray-500" /></button>
+                </div>
+                <div className="p-5 space-y-4">
+                  {/* Status picker */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {STATUS_OPTIONS.map(code => {
+                        const s = STATUS_STYLES[code];
+                        const active = cell.status === code;
+                        return (
+                          <button key={code} onClick={() => updateCell(cellModal.empId, cellModal.fullDate, 'status', code)}
+                            className={`px-2.5 py-1.5 text-[11px] font-medium rounded-md border transition-all ${active ? `${s.bg} ${s.text} ${s.border} ring-2 ring-offset-1 ring-gray-400` : `bg-white text-gray-500 border-gray-200 hover:${s.bg} hover:${s.text}`}`}>
+                            {s.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Time inputs */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-blue-600 mb-1 flex items-center gap-1"><ClockIcon className="h-3 w-3" /> In Time</label>
+                      <input type="time" value={cell.inTime || ''}
+                        onChange={e => updateCell(cellModal.empId, cellModal.fullDate, 'inTime', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-300 focus:border-blue-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-orange-600 mb-1 flex items-center gap-1"><ClockIcon className="h-3 w-3" /> Out Time</label>
+                      <input type="time" value={cell.outTime || ''}
+                        onChange={e => updateCell(cellModal.empId, cellModal.fullDate, 'outTime', e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-300 focus:border-orange-400" />
+                    </div>
+                  </div>
+                  {/* OT Hours - Auto-calculated */}
+                  <div>
+                    <label className="block text-xs font-medium text-violet-600 mb-1 flex items-center gap-1">
+                      Overtime Hours
+                      <span className="text-[10px] text-gray-400 font-normal">(auto-calculated)</span>
+                    </label>
+                    <div className="w-full px-3 py-2 text-sm bg-violet-50 border border-violet-200 rounded-lg text-violet-700 font-medium">
+                      {cell.otHours || 0} hrs
+                      {cell.inTime && cell.outTime && (
+                        <span className="text-[10px] text-violet-500 ml-2">
+                          (based on {cell.inTime} → {cell.outTime}, 8hr standard)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Current status badge */}
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 text-xs font-bold rounded ${st.bg} ${st.text} border ${st.border}`}>{st.label}</span>
+                      <span className="text-xs text-gray-500">{st.full}</span>
+                    </div>
+                    {cell.inTime && cell.outTime && (
+                      <span className="text-[10px] text-gray-400">{cell.inTime} &rarr; {cell.outTime}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+                  <button onClick={closeCellModal} className="px-4 py-1.5 text-xs bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800">Done</button>
                 </div>
               </div>
-              
-              {/* Body */}
-              <div className="p-5 space-y-4">
-                {/* Attendance Type */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Attendance Type</label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {legendItems.map(item => (
-                      <button
-                        key={item.code}
-                        onClick={() => setModalData({ ...modalData, attendanceType: item.code })}
-                        className={`flex flex-col items-center gap-0.5 p-2 rounded-lg border transition-all ${
-                          modalData.attendanceType === item.code
-                            ? 'border-gray-400 bg-gray-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <span className={`w-6 h-6 ${item.bg} ${item.text} border ${item.border} rounded flex items-center justify-center text-[10px] font-semibold`}>
-                          {item.code}
-                        </span>
-                        <span className="text-[9px] text-gray-500 text-center leading-tight">{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            </div>
+          </div>
+        );
+      })()}
 
-                {/* Date Range */}
+      {/* ── Bulk Time Modal ── */}
+      {showBulkTimeModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/40" onClick={() => setShowBulkTimeModal(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-sm">
+              <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <ClockIcon className="h-4 w-4 text-gray-600" /> Set Bulk In/Out Time
+                </h3>
+                <button onClick={() => setShowBulkTimeModal(false)} className="p-1 hover:bg-gray-100 rounded-lg"><XMarkIcon className="h-4 w-4 text-gray-500" /></button>
+              </div>
+              <div className="p-5 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
-                    <input
-                      type="date"
-                      value={modalData.startDate}
-                      onChange={(e) => setModalData({ ...modalData, startDate: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
-                    <input
-                      type="date"
-                      value={modalData.endDate}
-                      onChange={(e) => setModalData({ ...modalData, endDate: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Time Range */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">In Time</label>
-                    <input
-                      type="time"
-                      value={modalData.inTime}
-                      onChange={(e) => setModalData({ ...modalData, inTime: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
+                    <input type="time" value={bulkTime.inTime} onChange={e => setBulkTime({ ...bulkTime, inTime: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Out Time</label>
-                    <input
-                      type="time"
-                      value={modalData.outTime}
-                      onChange={(e) => setModalData({ ...modalData, outTime: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Idle (mins)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={modalData.idleTime}
-                      onChange={(e) => setModalData({ ...modalData, idleTime: parseInt(e.target.value) || 0 })}
-                      placeholder="0"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all"
-                    />
+                    <input type="time" value={bulkTime.outTime} onChange={e => setBulkTime({ ...bulkTime, outTime: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300" />
                   </div>
                 </div>
-
-                {/* Reason */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Reason <span className="text-gray-400">(Optional)</span>
-                  </label>
-                  <textarea
-                    value={modalData.reason}
-                    onChange={(e) => setModalData({ ...modalData, reason: e.target.value })}
-                    rows={2}
-                    placeholder="Enter reason..."
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all resize-none"
-                  />
-                </div>
+                <p className="text-xs text-gray-400">Applies to all employees&apos; present, half-day, and OT days.</p>
               </div>
-
-              {/* Footer */}
-              <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
-                <button
-                  onClick={closeModal}
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleModalSubmit}
-                  className="px-4 py-2 text-sm bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-all"
-                >
-                  Save
-                </button>
+              <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+                <button onClick={() => setShowBulkTimeModal(false)} className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onClick={applyBulkTime} className="px-3 py-1.5 text-xs bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800">Apply</button>
               </div>
             </div>
           </div>
