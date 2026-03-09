@@ -91,7 +91,7 @@ export async function POST(req) {
       )
     }
 
-    // Check by username OR email, using the same password_hash field for now (plaintext)
+    // Check by username OR email (plaintext password comparison)
     let rows = []
     try {
       const [qRows] = await db.execute(
