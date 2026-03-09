@@ -29,13 +29,11 @@ export async function GET(request) {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`);
     
-    // Add default_manhours column if it doesn't exist
+    // Add default_manhours column if it doesn't exist (ignore error if already present)
     try {
       await db.execute(`ALTER TABLE activities_master ADD COLUMN default_manhours DECIMAL(10,2) DEFAULT 0`);
     } catch (e) {
-      // Column already exists, ignore
-    } finally {
-      if (db) db.release();
+      // Column already exists — ignore
     }
 
     const [functions] = await db.execute(
@@ -64,6 +62,8 @@ export async function GET(request) {
   } catch (error) {
     console.error('GET /api/activities error:', error);
     return NextResponse.json({ success: false, error: 'Failed to load activities', details: error.message }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch (_) {}
   }
 }
 

@@ -21,8 +21,11 @@ const PERMISSIONS_CACHE_TTL = 24 * 60 * 60 * 1000;
 // In-memory user cache to reduce DB queries (short TTL for freshness)
 // ═══════════════════════════════════════════════════════════════════════════
 const userCache = new Map();
-const USER_CACHE_TTL = 60 * 1000; // 1 minute cache for user data
+const USER_CACHE_TTL = 5 * 60 * 1000; // 5 min — reduces DB hits from high-frequency polling
 const MAX_CACHE_SIZE = 500;
+// In-flight dedup: if two requests arrive for the same cold-cache user simultaneously,
+// share the single pending DB promise instead of both creating a connection.
+const pendingUserFetches = new Map();
 
 function getCachedUser(userId) {
   const entry = userCache.get(userId);
@@ -114,21 +117,35 @@ export async function checkPermissionFast(request, resource, permission) {
 }
 
 // Load current user from cookie and DB (includes role permissions)
-// Uses in-memory cache to reduce DB queries
+// Uses in-memory cache + in-flight deduplication to minimise DB connections.
 export async function getCurrentUser(request, options = {}) {
+  const userId = request?.cookies?.get?.('user_id')?.value;
+  if (!userId) return null;
+
+  if (!options.skipCache) {
+    const cached = getCachedUser(userId);
+    if (cached) return cached;
+
+    // If another concurrent request is already fetching this user, share its promise
+    // instead of opening a second DB connection for the same data.
+    if (pendingUserFetches.has(userId)) {
+      return pendingUserFetches.get(userId);
+    }
+  }
+
+  const authenticated = !!request?.cookies?.get?.('auth')?.value;
+  const promise = _fetchUserFromDb(userId, authenticated);
+
+  if (!options.skipCache) {
+    pendingUserFetches.set(userId, promise);
+    promise.finally(() => pendingUserFetches.delete(userId));
+  }
+  return promise;
+}
+
+async function _fetchUserFromDb(userId, authenticated) {
   let db;
   try {
-    const userId = request?.cookies?.get?.('user_id')?.value;
-    if (!userId) return null;
-
-    // Check cache first (skip if force refresh requested)
-    if (!options.skipCache) {
-      const cached = getCachedUser(userId);
-      if (cached) {
-        return cached;
-      }
-    }
-
     db = await dbConnect();
     const [rows] = await db.execute(
       `SELECT 
@@ -207,7 +224,6 @@ export async function getCurrentUser(request, options = {}) {
         }
       : null;
 
-    const authenticated = !!request?.cookies?.get?.('auth')?.value;
     const user = {
       id: row.id,
       username: row.username,
@@ -246,7 +262,7 @@ export async function getCurrentUser(request, options = {}) {
     return null;
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore release error */ }
+      try { db.release(); } catch { /* ignore */ }
     }
   }
 }

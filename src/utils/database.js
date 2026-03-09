@@ -16,7 +16,9 @@ export async function dbConnect() {
   const connectTimeout = Number(process.env.DB_CONNECT_TIMEOUT || 10000) // ms
   // Optimized for production: allow more connections but manage idle efficiently
   // Increased from 10 to 25 to handle concurrent users and polling
-  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 25)
+  // Keep this LOW (5–8) to stay under MySQL's max_user_connections.
+  // waitForConnections + queueLimit handles bursts via queuing, not more connections.
+  const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5)
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 3)
 
   // Initialize pool once
@@ -35,14 +37,13 @@ export async function dbConnect() {
           password,
           waitForConnections: true,
           connectionLimit,
-          queueLimit: 100,        // Allow more queued requests during high load
+          queueLimit: 200,        // Queue requests during high load instead of throwing
           connectTimeout,
           dateStrings: true,
-          maxIdle: 10,            // Keep more idle connections for burst handling
-          idleTimeout: 60000,     // 60 seconds - allow longer idle time for reuse
+          maxIdle: connectionLimit, // Keep all connections warm — no re-connect cost on burst
+          idleTimeout: 120000,    // 2 min idle before teardown
           enableKeepAlive: true,
-          keepAliveInitialDelay: 30000, // Send keepalive after 30s
-          acquireTimeout: 30000   // Wait up to 30s for a connection from the pool
+          keepAliveInitialDelay: 10000
         });
         // Warm a connection to validate database existence
         const test = await pool.getConnection();
@@ -106,8 +107,8 @@ export async function dbConnect() {
 
   const conn = await pool.getConnection();
   
-  // Reduced from 30s to 15s — if a connection is held this long, something is wrong
-  const FORCE_RELEASE_MS = Number(process.env.DB_FORCE_RELEASE_MS || 15000);
+  // Reduced to 10s — connections should never be held this long
+  const FORCE_RELEASE_MS = Number(process.env.DB_FORCE_RELEASE_MS || 10000);
   const releaseTimer = setTimeout(() => {
     console.warn('⚠️  Connection held for more than ' + (FORCE_RELEASE_MS / 1000) + 's, force releasing:', {
       threadId: conn.threadId,

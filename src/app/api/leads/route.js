@@ -110,6 +110,8 @@ export async function GET(request) {
       success: false, 
       error: 'Failed to fetch leads' 
     }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch (_) {}
   }
 }
 
@@ -324,5 +326,7 @@ export async function POST(request) {
       error: 'Failed to create lead',
       details: error.message 
     }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch (_) {}
   }
 }

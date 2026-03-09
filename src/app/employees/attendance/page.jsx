@@ -28,6 +28,12 @@ export default function EmployeeAttendancePage() {
   
   // PL (Privilege Leave) data per employee from salary profiles
   const [plData, setPlData] = useState({});
+
+  // Tab: 'marked' = has attendance_monthly record | 'unmarked' = daily grid
+  const [activeTab, setActiveTab] = useState('unmarked');
+  const [monthlyAttendance, setMonthlyAttendance] = useState([]);
+  const [markedEmployeeIds, setMarkedEmployeeIds] = useState(new Set());
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
   
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -534,6 +540,30 @@ export default function EmployeeAttendancePage() {
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
+  // Fetch attendance_monthly records (Marked tab)
+  const fetchMonthlyAttendance = useCallback(async () => {
+    setMonthlyLoading(true);
+    try {
+      const res = await fetch(`/api/attendance/monthly?month=${currentMonth + 1}&year=${currentYear}`);
+      const data = await res.json();
+      if (res.ok && data.data) {
+        setMonthlyAttendance(data.data);
+        setMarkedEmployeeIds(new Set(data.markedEmployeeIds || []));
+      } else {
+        setMonthlyAttendance([]);
+        setMarkedEmployeeIds(new Set());
+      }
+    } catch (err) {
+      console.error('Error fetching monthly attendance:', err);
+    } finally {
+      setMonthlyLoading(false);
+    }
+  }, [currentMonth, currentYear]);
+
+  useEffect(() => {
+    fetchMonthlyAttendance();
+  }, [fetchMonthlyAttendance]);
+
   // Load saved attendance
   const loadSavedAttendance = useCallback(async () => {
     if (employees.length === 0) return;
@@ -604,13 +634,28 @@ export default function EmployeeAttendancePage() {
 
   // Filter employees by search
   const filteredAttendance = useMemo(() => {
-    if (!searchQuery) return Object.values(attendanceData);
+    let list = Object.values(attendanceData);
+    // Unmarked tab: only show employees NOT in attendance_monthly
+    if (activeTab === 'unmarked') {
+      list = list.filter(emp => !markedEmployeeIds.has(emp.id));
+    }
+    if (!searchQuery) return list;
     const q = searchQuery.toLowerCase();
-    return Object.values(attendanceData).filter(emp => 
+    return list.filter(emp =>
       `${emp.first_name} ${emp.last_name}`.toLowerCase().includes(q) ||
       (emp.employee_id || '').toLowerCase().includes(q)
     );
-  }, [attendanceData, searchQuery]);
+  }, [attendanceData, searchQuery, activeTab, markedEmployeeIds]);
+
+  // Filter marked attendance by search
+  const filteredMarked = useMemo(() => {
+    if (!searchQuery) return monthlyAttendance;
+    const q = searchQuery.toLowerCase();
+    return monthlyAttendance.filter(r =>
+      `${r.first_name} ${r.last_name}`.toLowerCase().includes(q) ||
+      (r.employee_code || '').toLowerCase().includes(q)
+    );
+  }, [monthlyAttendance, searchQuery]);
 
   // Calculate summary stats
   const summaryStats = useMemo(() => {
@@ -723,6 +768,40 @@ export default function EmployeeAttendancePage() {
                 </div>
               </div>
 
+              {/* Tabs */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab('unmarked')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    activeTab === 'unmarked'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Unmarked
+                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                    activeTab === 'unmarked' ? 'bg-gray-100 text-gray-700' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {Object.values(attendanceData).filter(e => !markedEmployeeIds.has(e.id)).length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('marked')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    activeTab === 'marked'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Marked
+                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                    activeTab === 'marked' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {monthlyAttendance.length}
+                  </span>
+                </button>
+              </div>
+
               {/* Actions */}
               <div className="flex items-center gap-2">
                 <button
@@ -792,7 +871,118 @@ export default function EmployeeAttendancePage() {
               <div className="w-8 h-8 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin"></div>
               <span className="mt-4 text-sm text-gray-500">Loading...</span>
             </div>
+          ) : activeTab === 'marked' ? (
+            /* ── MARKED TAB ── */
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              {monthlyLoading ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="w-7 h-7 border-2 border-gray-200 border-t-gray-600 rounded-full animate-spin"></div>
+                  <span className="mt-3 text-sm text-gray-500">Loading attendance data...</span>
+                </div>
+              ) : filteredMarked.length === 0 ? (
+                <div className="text-center py-16">
+                  <CalendarDaysIcon className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">No attendance records found for {monthName}.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-left sticky left-0 bg-gray-50 border-r border-gray-200 min-w-[110px]">Code</th>
+                        <th className="px-4 py-3 text-left sticky left-[110px] bg-gray-50 border-r border-gray-200 min-w-[200px]">Name</th>
+                        <th className="px-3 py-3 text-center bg-emerald-50 text-emerald-700">Present</th>
+                        <th className="px-3 py-3 text-center bg-red-50 text-red-600">Absent</th>
+                        <th className="px-3 py-3 text-center">Half Days</th>
+                        <th className="px-3 py-3 text-center bg-amber-50 text-amber-700">Holidays</th>
+                        <th className="px-3 py-3 text-center bg-gray-100">Weekly Off</th>
+                        <th className="px-3 py-3 text-center bg-violet-50 text-violet-700">OT Hrs</th>
+                        <th className="px-3 py-3 text-center bg-blue-50 text-blue-700">PL</th>
+                        <th className="px-3 py-3 text-center bg-pink-50 text-pink-700">SL</th>
+                        <th className="px-3 py-3 text-center bg-cyan-50 text-cyan-700">CL</th>
+                        <th className="px-3 py-3 text-center bg-rose-50 text-rose-700">LWP</th>
+                        <th className="px-3 py-3 text-center bg-green-50 text-green-700">Payable Days</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredMarked.map((row, index) => (
+                        <tr key={row.id} className={`hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          <td className="px-4 py-2.5 sticky left-0 bg-inherit border-r border-gray-100">
+                            <span className="font-mono text-xs text-gray-600">{row.employee_code}</span>
+                          </td>
+                          <td className="px-4 py-2.5 sticky left-[110px] bg-inherit border-r border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                                {(row.first_name?.[0] || 'E').toUpperCase()}
+                              </div>
+                              <span className="text-sm text-gray-900">{`${row.first_name || ''} ${row.last_name || ''}`.trim()}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="text-xs font-semibold text-emerald-600">{parseFloat(row.present_days || 0).toFixed(1)}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-semibold ${parseFloat(row.absent_days || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                              {parseFloat(row.absent_days || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-medium ${parseFloat(row.half_days || 0) > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>
+                              {parseFloat(row.half_days || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="text-xs font-medium text-amber-600">{row.holidays || 0}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="text-xs font-medium text-gray-500">{row.weekly_offs || 0}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-medium ${parseFloat(row.overtime_hours || 0) > 0 ? 'text-violet-600 font-semibold' : 'text-gray-400'}`}>
+                              {parseFloat(row.overtime_hours || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-medium ${parseFloat(row.privileged_leave || 0) > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                              {parseFloat(row.privileged_leave || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-medium ${parseFloat(row.sick_leave || 0) > 0 ? 'text-pink-600' : 'text-gray-400'}`}>
+                              {parseFloat(row.sick_leave || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-medium ${parseFloat(row.casual_leave || 0) > 0 ? 'text-cyan-600' : 'text-gray-400'}`}>
+                              {parseFloat(row.casual_leave || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={`text-xs font-medium ${parseFloat(row.lop_days || 0) > 0 ? 'text-rose-600 font-semibold' : 'text-gray-400'}`}>
+                              {parseFloat(row.lop_days || 0).toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className="text-xs font-semibold text-green-700">
+                              {row.payable_days != null ? parseFloat(row.payable_days).toFixed(1) : parseFloat(row.working_days || 0).toFixed(1)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {/* Footer */}
+              <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>{filteredMarked.length} employee{filteredMarked.length !== 1 ? 's' : ''} with attendance data</span>
+                  <span>{monthName}</span>
+                </div>
+              </div>
+            </div>
           ) : (
+            /* ── UNMARKED / DAILY GRID TAB ── */
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               {/* Table */}
               <div className="overflow-x-auto">
@@ -982,7 +1172,7 @@ export default function EmployeeAttendancePage() {
                 <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
                   <div className="flex items-center justify-between text-xs text-gray-500">
                     <span>
-                      {filteredAttendance.length} of {employees.length} employees
+                      {filteredAttendance.length} of {Object.values(attendanceData).filter(e => !markedEmployeeIds.has(e.id)).length} unmarked employees
                     </span>
                     <span>
                       {daysInMonth.length} days

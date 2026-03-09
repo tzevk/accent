@@ -239,5 +239,7 @@ export async function GET(request) {
   } catch (error) {
     console.error('Project analytics error:', error);
     return Response.json({ success: false, error: 'Failed to load project analytics' }, { status: 500 });
+  } finally {
+    if (db) try { db.release(); } catch (_) {}
   }
 }
