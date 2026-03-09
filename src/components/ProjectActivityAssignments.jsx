@@ -31,7 +31,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const ensureTodayEntry = (list) => {
     const today = new Date().toISOString().split('T')[0];
     return list.map(a => {
-      const entries = a.daily_entries || [];
+      const entries = (a.daily_entries || []).filter(e => e != null);
       // Check if there's already an unlocked (editable) entry for today
       const hasUnlockedToday = entries.some(e => e.date === today && !e.isLocked);
       if (!hasUnlockedToday) {

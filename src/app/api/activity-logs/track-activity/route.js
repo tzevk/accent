@@ -8,7 +8,8 @@ import { logActivity, updateScreenTime } from '@/utils/activity-logger';
  */
 export async function POST(request) {
   try {
-    const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
+    // Users should always be able to track their own activity
+    const auth = await ensurePermission(request, RESOURCES.PROFILE, PERMISSIONS.READ);
     if (auth instanceof NextResponse) {
       return auth;
     }

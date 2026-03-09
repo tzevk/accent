@@ -2674,8 +2674,9 @@ function EditProjectForm() {
             const currentEntries = (typeof u === 'object' && u.daily_entries) ? u.daily_entries : [];
             // Get the next date based on last entry, or today if no entries
             let nextDate;
-            if (currentEntries.length > 0) {
-              const lastEntry = currentEntries[currentEntries.length - 1];
+            const validEntries = currentEntries.filter(e => e != null);
+            if (validEntries.length > 0) {
+              const lastEntry = validEntries[validEntries.length - 1];
               const lastDate = new Date(lastEntry.date);
               lastDate.setDate(lastDate.getDate() + 1);
               nextDate = lastDate.toISOString().split('T')[0];
@@ -2683,7 +2684,7 @@ function EditProjectForm() {
               nextDate = new Date().toISOString().split('T')[0];
             }
             // Lock all previous entries and add new unlocked entry
-            const lockedEntries = currentEntries.map(e => ({ ...e, isLocked: true }));
+            const lockedEntries = validEntries.map(e => ({ ...e, isLocked: true }));
             const newEntry = { date: nextDate, qty_done: '', hours: '', remarks: '', isLocked: false };
             return { ...u, daily_entries: [...lockedEntries, newEntry] };
           }

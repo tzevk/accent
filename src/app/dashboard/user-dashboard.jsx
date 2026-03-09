@@ -255,7 +255,7 @@ export default function UserDashboard({ verifiedUser }) {
           // Check for pending daily entries
           const missing = assignmentsList.filter(a => {
             const entries = a.daily_entries || [];
-            return !entries.some(e => e.date === today && e.isLocked);
+            return !entries.some(e => e && e.date === today && e.isLocked);
           });
           if (missing.length > 0) {
             setPendingActivities(missing);
@@ -310,7 +310,7 @@ export default function UserDashboard({ verifiedUser }) {
         const wlVal = tier2[2].status === 'fulfilled' ? tier2[2].value : null;
         if (wlVal?._denied) accessPatch.workLogs = false;
         else if (wlVal?.success && wlVal.data) {
-          const totalHours = wlVal.data.reduce((sum, log) => sum + (parseFloat(log.hours_worked) || 0), 0);
+          const totalHours = wlVal.data.reduce((sum, log) => sum + (log && parseFloat(log.hours_worked) || 0), 0);
           dataPatch.recentWorkLogs = wlVal.data.slice(0, 5);
           dataPatch.todayWorkHours = Math.round(totalHours * 10) / 10;
         }

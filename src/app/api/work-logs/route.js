@@ -1,27 +1,40 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import { ensurePermission, getCurrentUser, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 import { dbConnect } from '@/utils/database';
+import { checkPermission } from '@/utils/permissions';
 
 /**
  * GET - Fetch work logs
- * Admins can see all logs (except their own), employees see only their own
+ * Users can always view their own logs; viewing others requires WORK_LOGS:READ permission
  */
 export async function GET(request) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
-    if (!auth.authorized) {
+    // Get current user (all authenticated users can access this endpoint for their own data)
+    const user = await getCurrentUser(request);
+    if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('user_id');
+    const requestedUserId = searchParams.get('user_id');
     const logType = searchParams.get('log_type');
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     const limit = parseInt(searchParams.get('limit') || '100');
     const page = parseInt(searchParams.get('page') || '1');
     const offset = (page - 1) * limit;
+
+    // Check if user is trying to access someone else's data
+    const accessingOwnData = !requestedUserId || String(requestedUserId) === String(user.id);
+    
+    // If not accessing own data, require WORK_LOGS:READ permission
+    if (!accessingOwnData && !user.is_super_admin && !checkPermission(user, RESOURCES.WORK_LOGS, PERMISSIONS.READ)) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'You do not have permission to view other users\' work logs' 
+      }, { status: 403 });
+    }
 
     db = await dbConnect();
 
@@ -41,19 +54,19 @@ export async function GET(request) {
     // Permission logic: 
     // - Admins can view ALL logs EXCEPT their own
     // - Regular users can only view their own logs
-    if (auth.user.is_super_admin || auth.user.role?.name === 'Admin') {
-      if (userId) {
+    if (user.is_super_admin || user.role?.name === 'Admin') {
+      if (requestedUserId) {
         query += ` AND wl.user_id = ?`;
-        params.push(userId);
+        params.push(requestedUserId);
       } else {
         // Admin viewing all logs - exclude admin's own logs
         query += ` AND wl.user_id != ?`;
-        params.push(auth.user.id);
+        params.push(user.id);
       }
     } else {
       // Regular users can only see their own logs
       query += ` AND wl.user_id = ?`;
-      params.push(auth.user.id);
+      params.push(user.id);
     }
 
     if (logType) {
@@ -106,12 +119,14 @@ export async function GET(request) {
 
 /**
  * POST - Create a new work log entry
+ * Users can always create their own work logs
  */
 export async function POST(request) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
-    if (!auth.authorized) {
+    // Get current user (all authenticated users can create their own work logs)
+    const user = await getCurrentUser(request);
+    if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -143,7 +158,7 @@ export async function POST(request) {
       (user_id, log_date, log_type, title, description, category, priority, status, time_spent, project_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        auth.user.id,
+        user.id,
         log_date,
         log_type || 'done',
         title,
@@ -181,7 +196,7 @@ export async function POST(request) {
 export async function PUT(request) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
+    const auth = await ensurePermission(request, RESOURCES.WORK_LOGS, PERMISSIONS.UPDATE);
     if (!auth.authorized) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
@@ -272,7 +287,7 @@ export async function PUT(request) {
 export async function DELETE(request) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.DASHBOARD, PERMISSIONS.READ);
+    const auth = await ensurePermission(request, RESOURCES.WORK_LOGS, PERMISSIONS.DELETE);
     if (!auth.authorized) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }

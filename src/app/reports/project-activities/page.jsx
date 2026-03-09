@@ -152,8 +152,8 @@ export default function ProjectActivitiesReport() {
       };
       
       // Recalculate totals
-      const totalQtyDone = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
-      const totalHours = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+      const totalQtyDone = dailyEntries.reduce((sum, e) => sum + (e && parseFloat(e.qty_done) || 0), 0);
+      const totalHours = dailyEntries.reduce((sum, e) => sum + (e && parseFloat(e.hours) || 0), 0);
       
       // Save to backend
       const res = await fetch(`/api/users/${userId}/activity-assignments`, {
@@ -188,16 +188,6 @@ export default function ProjectActivitiesReport() {
   const formatShortDate = (d) => {
     if (!d) return '–';
     return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-  };
-
-  const getStatusBadge = (status) => {
-    const map = {
-      'Completed': 'bg-green-100 text-green-700 border-green-200',
-      'In Progress': 'bg-blue-100 text-blue-700 border-blue-200',
-      'Not Started': 'bg-gray-100 text-gray-600 border-gray-200',
-      'On Hold': 'bg-yellow-100 text-yellow-700 border-yellow-200'
-    };
-    return map[status] || map['Not Started'];
   };
 
   const filteredProjects = projects.filter(p => {
@@ -427,42 +417,27 @@ export default function ProjectActivitiesReport() {
                   });
 
                   return (
-                    <div key={project.project_id} className="bg-white rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow overflow-hidden">
+                    <div key={project.project_id} className="bg-white border border-gray-300 mb-4">
                       {/* Project Header */}
                       <button onClick={() => toggleProject(project.project_id)}
-                        className="w-full px-6 py-5 flex items-center justify-between hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 transition-all border-b border-gray-100">
+                        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors border-b border-gray-200">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                            <FolderIcon className="w-6 h-6 text-white" />
-                          </div>
                           <div className="text-left">
-                            <div className="flex items-center gap-3 mb-1">
-                              <span className="font-mono text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-md font-bold">{project.project_code || `#${project.project_id}`}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-500 font-mono">{project.project_code || `#${project.project_id}`}</span>
                               <span className="font-semibold text-gray-900 text-base">{project.project_name}</span>
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border shadow-sm ${getStatusBadge(project.project_status)}`}>{project.project_status || 'Active'}</span>
+                              <span className="text-[10px] text-gray-600">{project.project_status || 'Active'}</span>
                             </div>
                             <div className="flex items-center gap-4 text-xs text-gray-600 mt-1">
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div>
-                                <span className="font-medium">{totals.totalActivities}</span>
-                                <span className="text-gray-400">activities</span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                                <span className="font-medium">{totals.totalMembers}</span>
-                                <span className="text-gray-400">assignments</span>
-                              </div>
-                              <span className="text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded">{totals.totalQtyDone}/{totals.totalQtyAssigned} qty</span>
-                              <span className="text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded">{totals.totalActualHrs}/{totals.totalPlannedHrs} hrs</span>
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm ${
-                                totals.overallProgress >= 100 ? 'bg-green-100 text-green-700' :
-                                totals.overallProgress >= 75 ? 'bg-blue-100 text-blue-700' :
-                                totals.overallProgress >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                                totals.overallProgress >= 25 ? 'bg-orange-100 text-orange-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>
-                                {totals.overallProgress}% Complete
-                              </span>
+                              <span>{totals.totalActivities} activities</span>
+                              <span>•</span>
+                              <span>{totals.totalMembers} assignments</span>
+                              <span>•</span>
+                              <span className="text-purple-600 font-semibold">{totals.totalQtyDone}/{totals.totalQtyAssigned} qty</span>
+                              <span>•</span>
+                              <span className="text-blue-600 font-semibold">{totals.totalActualHrs}/{totals.totalPlannedHrs} hrs</span>
+                              <span>•</span>
+                              <span className="text-gray-700 font-semibold">{totals.overallProgress}% complete</span>
                             </div>
                           </div>
                         </div>
@@ -472,35 +447,21 @@ export default function ProjectActivitiesReport() {
                       {/* Activities Table */}
                       {isExpanded && (
                         <div className="border-t border-gray-200">
-                          {/* Project Progress Summary Bar */}
-                          <div className="bg-gradient-to-r from-purple-50 via-blue-50 to-purple-50 px-6 py-4 border-b-2 border-purple-100">
-                            <div className="flex items-center gap-6">
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between text-xs mb-2">
-                                  <span className="text-gray-700 font-semibold uppercase tracking-wide text-[10px]">Overall Progress</span>
-                                  <span className="font-black text-2xl text-purple-700">{totals.overallProgress}%</span>
+                          {/* Project Progress Summary */}
+                          <div className="bg-gray-50 px-6 py-3 border-b border-gray-300">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-6 text-xs text-gray-700">
+                                <div>
+                                  <span className="font-semibold">Overall: </span>
+                                  <span className="font-bold text-gray-900">{totals.overallProgress}%</span>
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
-                                  <div 
-                                    className={`h-4 rounded-full transition-all shadow-md ${
-                                      totals.overallProgress >= 100 ? 'bg-gradient-to-r from-green-500 to-green-600' :
-                                      totals.overallProgress >= 75 ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
-                                      totals.overallProgress >= 50 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
-                                      totals.overallProgress >= 25 ? 'bg-gradient-to-r from-orange-500 to-orange-600' :
-                                      'bg-gradient-to-r from-red-500 to-red-600'
-                                    }`}
-                                    style={{ width: `${Math.min(totals.overallProgress, 100)}%` }}
-                                  ></div>
+                                <div>
+                                  <span className="font-semibold">Qty: </span>
+                                  <span className="font-bold text-purple-600">{totals.qtyProgress}%</span>
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-3 text-[11px]">
-                                <div className="text-center px-4 py-2 bg-white rounded-xl shadow-sm border border-purple-100">
-                                  <div className="text-purple-700 font-black text-lg">{totals.qtyProgress}%</div>
-                                  <div className="text-gray-500 text-[10px] font-medium uppercase tracking-wide">Quantity</div>
-                                </div>
-                                <div className="text-center px-4 py-2 bg-white rounded-xl shadow-sm border border-blue-100">
-                                  <div className="text-blue-700 font-black text-lg">{totals.hrsProgress}%</div>
-                                  <div className="text-gray-500 text-[10px] font-medium uppercase tracking-wide">Hours</div>
+                                <div>
+                                  <span className="font-semibold">Hours: </span>
+                                  <span className="font-bold text-blue-600">{totals.hrsProgress}%</span>
                                 </div>
                               </div>
                             </div>
@@ -514,44 +475,38 @@ export default function ProjectActivitiesReport() {
                             </div>
                           ) : (
                             <table className="w-full text-xs">
-                              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
+                              <thead className="border-b border-gray-300">
                                 <tr>
-                                  <th className="text-left py-3 px-4 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Activity</th>
-                                  <th className="text-center py-3 px-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Progress</th>
-                                  <th className="text-left py-3 px-3 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Team Member</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Qty Asgn</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Qty Done</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Balance</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Plan Hrs</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Manhours</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Due Date</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px]">Status</th>
-                                  <th className="text-center py-3 px-2 font-bold text-gray-600 uppercase tracking-wider text-[10px] w-8"></th>
+                                  <th className="text-left py-2 px-3 font-semibold text-gray-700 text-[11px]">Activity</th>
+                                  <th className="text-center py-2 px-3 font-semibold text-gray-700 text-[11px]">Qty %</th>
+                                  <th className="text-center py-2 px-3 font-semibold text-gray-700 text-[11px]">Hrs %</th>
+                                  <th className="text-left py-2 px-3 font-semibold text-gray-700 text-[11px]">Team Member</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Assigned</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Done</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Balance</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Plan Hrs</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Actual</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Due</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px]">Status</th>
+                                  <th className="text-center py-2 px-2 font-semibold text-gray-700 text-[11px] w-8"></th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-200">
+                              <tbody>
                                 {(project.activities || []).map((activity) => {
                                   const activityTotals = getActivityTotals(activity);
                                   const members = activity.members || [];
                                   
                                   if (members.length === 0) {
                                     return (
-                                      <tr key={activity.id} className="hover:bg-purple-50/30 transition-colors">
-                                        <td className="py-3 px-4 align-middle">
-                                          <div className="font-semibold text-gray-900 text-[11px]">{activity.activity_name}</div>
+                                      <tr key={activity.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                        <td className="py-2 px-3">
+                                          <div className="font-medium text-gray-900 text-[11px]">{activity.activity_name}</div>
                                           {activity.activity_description && <div className="text-[10px] text-gray-500 mt-0.5">{activity.activity_description}</div>}
-                                          {activity.source && <span className="inline-block mt-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[9px] uppercase font-medium">{activity.source}</span>}
                                         </td>
-                                        <td className="py-3 px-3 align-middle">
-                                          <div className="text-[10px] text-gray-400 font-medium">—</div>
-                                        </td>
-                                        <td colSpan={9} className="py-3 px-3 text-gray-500 text-[11px] italic">
-                                          <div className="flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                                            </svg>
-                                            <span>No team members assigned</span>
-                                          </div>
+                                        <td className="py-2 px-3 text-center text-gray-400 text-[10px]">—</td>
+                                        <td className="py-2 px-3 text-center text-gray-400 text-[10px]">—</td>
+                                        <td colSpan={9} className="py-2 px-3 text-gray-400 text-[10px] italic">
+                                          No team members assigned
                                         </td>
                                       </tr>
                                     );
@@ -568,111 +523,62 @@ export default function ProjectActivitiesReport() {
 
                                     return (
                                       <Fragment key={memberKey}>
-                                        <tr className={`hover:bg-purple-50/20 transition-colors border-l-2 ${isDuePast ? 'bg-red-50/50 border-l-red-400' : 'border-l-transparent'}`}>
+                                        <tr className={`border-b border-gray-100 hover:bg-gray-50 ${isDuePast ? 'bg-red-50' : ''}`}>
                                           {/* Activity (only on first member row) */}
                                           {mIdx === 0 ? (
-                                            <td className="py-3 px-4 align-middle bg-gray-50/50" rowSpan={members.length}>
-                                              <div className="font-semibold text-gray-900 text-[11px]">{activity.activity_name}</div>
-                                              {activity.activity_description && <div className="text-[10px] text-gray-500 max-w-[200px] truncate mt-0.5" title={activity.activity_description}>{activity.activity_description}</div>}
-                                              {activity.discipline && <span className="inline-block mt-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-medium">{activity.discipline}</span>}
-                                              {activity.source && <span className="inline-block ml-1 mt-1 px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[9px] uppercase font-medium">{activity.source}</span>}
+                                            <td className="py-2 px-3" rowSpan={members.length}>
+                                              <div className="font-medium text-gray-900 text-[11px]">{activity.activity_name}</div>
+                                              {activity.activity_description && <div className="text-[10px] text-gray-500 mt-0.5">{activity.activity_description}</div>}
                                             </td>
                                           ) : null}
 
-                                          {/* Activity Progress (only on first member row) */}
+                                          {/* Quantity Progress */}
                                           {mIdx === 0 ? (
-                                            <td className="py-3 px-3 align-middle bg-gray-50/50" rowSpan={members.length}>
-                                              <div className="space-y-2.5">
-                                                {/* Quantity Progress */}
-                                                <div className="bg-white p-2 rounded-lg border border-gray-100">
-                                                  <div className="flex items-center justify-between text-[9px] mb-1">
-                                                    <span className="text-gray-600 font-semibold uppercase">Qty</span>
-                                                    <span className="font-bold text-purple-700">{activityTotals.qtyProgress}%</span>
-                                                  </div>
-                                                  <div className="w-full bg-gray-200 rounded-full h-2 shadow-inner">
-                                                    <div 
-                                                      className={`h-2 rounded-full transition-all shadow-sm ${
-                                                        activityTotals.qtyProgress >= 100 ? 'bg-green-500' :
-                                                        activityTotals.qtyProgress >= 75 ? 'bg-blue-500' :
-                                                        activityTotals.qtyProgress >= 50 ? 'bg-yellow-500' :
-                                                        activityTotals.qtyProgress >= 25 ? 'bg-orange-500' :
-                                                        'bg-red-500'
-                                                      }`}
-                                                      style={{ width: `${Math.min(activityTotals.qtyProgress, 100)}%` }}
-                                                    ></div>
-                                                  </div>
-                                                  <div className="text-[9px] text-gray-600 mt-1 font-medium">
-                                                    {activityTotals.qtyDone} / {activityTotals.qtyAssigned}
-                                                  </div>
-                                                </div>
-                                                {/* Hours Progress */}
-                                                <div className="bg-white p-2 rounded-lg border border-gray-100">
-                                                  <div className="flex items-center justify-between text-[9px] mb-1">
-                                                    <span className="text-gray-600 font-semibold uppercase">Hrs</span>
-                                                    <span className="font-bold text-blue-700">{activityTotals.hrsProgress}%</span>
-                                                  </div>
-                                                  <div className="w-full bg-gray-200 rounded-full h-2 shadow-inner">
-                                                    <div 
-                                                      className={`h-2 rounded-full transition-all shadow-sm ${
-                                                        activityTotals.hrsProgress >= 100 ? 'bg-green-500' :
-                                                        activityTotals.hrsProgress >= 75 ? 'bg-blue-500' :
-                                                        activityTotals.hrsProgress >= 50 ? 'bg-yellow-500' :
-                                                        activityTotals.hrsProgress >= 25 ? 'bg-orange-500' :
-                                                        'bg-red-500'
-                                                      }`}
-                                                      style={{ width: `${Math.min(activityTotals.hrsProgress, 100)}%` }}
-                                                    ></div>
-                                                  </div>
-                                                  <div className="text-[9px] text-gray-600 mt-1 font-medium">
-                                                    {activityTotals.actualHrs} / {activityTotals.plannedHrs} hrs
-                                                  </div>
-                                                </div>
-                                              </div>
+                                            <td className="py-2 px-3 text-center" rowSpan={members.length}>
+                                              <div className="font-semibold text-purple-600 text-[11px]">{activityTotals.qtyProgress}%</div>
+                                              <div className="text-[9px] text-gray-500 mt-0.5">{activityTotals.qtyDone}/{activityTotals.qtyAssigned}</div>
+                                            </td>
+                                          ) : null}
+
+                                          {/* Hours Progress */}
+                                          {mIdx === 0 ? (
+                                            <td className="py-2 px-3 text-center" rowSpan={members.length}>
+                                              <div className="font-semibold text-blue-600 text-[11px]">{activityTotals.hrsProgress}%</div>
+                                              <div className="text-[9px] text-gray-500 mt-0.5">{activityTotals.actualHrs}/{activityTotals.plannedHrs}</div>
                                             </td>
                                           ) : null}
 
                                           {/* Team Member */}
-                                          <td className="py-3 px-3 align-middle">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-white font-bold text-[10px] shadow-sm">
-                                                {member.user_name?.charAt(0)?.toUpperCase() || 'U'}
-                                              </div>
-                                              <span className="text-[11px] text-gray-900 font-semibold">{member.user_name}</span>
-                                            </div>
+                                          <td className="py-2 px-3">
+                                            <span className="text-[11px] text-gray-900">{member.user_name}</span>
                                           </td>
 
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className="text-[11px] text-gray-700 font-medium">{qtyAssigned}</span>
-                                          </td>
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className="font-bold text-purple-600">{qtyDone}</span>
-                                          </td>
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className={`font-bold text-[11px] px-2 py-0.5 rounded ${balance > 0 ? 'bg-amber-50 text-amber-700' : balance === 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{balance}</span>
-                                          </td>
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className="text-[11px] text-gray-700 font-medium">{member.planned_hours || 0}</span>
-                                          </td>
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className="font-bold text-blue-600 text-[11px]">{member.actual_hours || 0}</span>
-                                          </td>
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className={`text-[10px] font-semibold px-2 py-1 rounded ${isDuePast ? 'bg-red-100 text-red-700' : 'text-gray-600'}`}>{formatShortDate(member.due_date)}</span>
-                                          </td>
-                                          <td className="py-3 px-2 text-center align-middle">
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold shadow-sm ${
-                                              member.status === 'Completed' ? 'bg-green-100 text-green-800 border border-green-200' :
-                                              member.status === 'In Progress' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                                              member.status === 'Pending' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
-                                              'bg-gray-100 text-gray-700 border border-gray-200'
+                                          <td className="py-2 px-2 text-center text-[11px] text-gray-700">{qtyAssigned}</td>
+                                          <td className="py-2 px-2 text-center text-[11px] font-semibold text-purple-600">{qtyDone}</td>
+                                          <td className={`py-2 px-2 text-center text-[11px] font-semibold ${
+                                            balance > 0 ? 'text-amber-600' : 
+                                            balance === 0 ? 'text-green-600' : 
+                                            'text-red-600'
+                                          }`}>{balance}</td>
+                                          <td className="py-2 px-2 text-center text-[11px] text-gray-700">{member.planned_hours || 0}</td>
+                                          <td className="py-2 px-2 text-center text-[11px] font-semibold text-blue-600">{member.actual_hours || 0}</td>
+                                          <td className={`py-2 px-2 text-center text-[10px] ${
+                                            isDuePast ? 'font-semibold text-red-600' : 'text-gray-600'
+                                          }`}>{formatShortDate(member.due_date)}</td>
+                                          <td className="py-2 px-2 text-center">
+                                            <span className={`text-[10px] font-medium ${
+                                              member.status === 'Completed' ? 'text-green-700' :
+                                              member.status === 'In Progress' ? 'text-blue-700' :
+                                              member.status === 'Pending' ? 'text-yellow-700' :
+                                              'text-gray-600'
                                             }`}>
                                               {member.status}
                                             </span>
                                           </td>
-                                          <td className="py-3 px-2 text-center align-middle">
+                                          <td className="py-2 px-2 text-center">
                                             {dailyEntries.length > 0 && (
                                               <button onClick={() => toggleMember(memberKey)}
-                                                className="p-1.5 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors shadow-sm" title="Daily entries">
+                                                className="text-gray-500 hover:text-purple-600" title="Daily entries">
                                                 {isMemberExpanded ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
                                               </button>
                                             )}
@@ -682,44 +588,39 @@ export default function ProjectActivitiesReport() {
                                         {/* Daily Entries */}
                                         {isMemberExpanded && dailyEntries.length > 0 && (
                                           <tr>
-                                            <td colSpan={11} className="px-6 py-4 bg-gradient-to-r from-purple-50/50 to-blue-50/50">
-                                              <div className="ml-8 border-l-2 border-purple-300 pl-4 bg-white rounded-lg shadow-sm p-3">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                  <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                  </svg>
-                                                  <div className="text-[10px] font-bold text-gray-700 uppercase tracking-wide">Daily Entries</div>
-                                                </div>
-                                                <table className="w-full text-[10px] border border-gray-200 rounded-lg overflow-hidden">
-                                                  <thead>
-                                                    <tr className="bg-gradient-to-r from-purple-500 to-blue-500 text-white uppercase">
-                                                      <th className="text-center py-2 px-3 font-bold">Date</th>
-                                                      <th className="text-center py-2 px-3 font-bold">Qty Done</th>
-                                                      <th className="text-center py-2 px-3 font-bold">Manhours</th>
-                                                      <th className="text-center py-2 px-3 font-bold">Remarks</th>
-                                                      {isSuperAdmin && <th className="text-center py-2 px-3 font-bold">Actions</th>}
+                                            <td colSpan={12} className="py-0 px-3 bg-gray-50">
+                                              <div className="ml-6 pl-4 py-2 border-l-2 border-gray-300">
+                                                <div className="text-[10px] font-semibold text-gray-600 mb-1">Daily Entries</div>
+                                                <table className="w-full text-[10px]">
+                                                  <thead className="border-b border-gray-300">
+                                                    <tr>
+                                                      <th className="text-left py-1 px-2 font-semibold text-gray-600">Date</th>
+                                                      <th className="text-center py-1 px-2 font-semibold text-gray-600">Qty</th>
+                                                      <th className="text-center py-1 px-2 font-semibold text-gray-600">Hours</th>
+                                                      <th className="text-left py-1 px-2 font-semibold text-gray-600">Remarks</th>
+                                                      {isSuperAdmin && <th className="text-center py-1 px-2 font-semibold text-gray-600">Actions</th>}
                                                     </tr>
                                                   </thead>
                                                   <tbody>
-                                                    {dailyEntries.map((entry, eIdx) => {
+                                                    {dailyEntries.filter(e => e != null).map((entry, eIdx) => {
                                                       const entryKey = `${project.project_id}-${activity.id}-${member.user_id}-${eIdx}`;
                                                       const isEditing = editingEntry === entryKey;
                                                       
                                                       return (
-                                                        <tr key={eIdx} className="text-gray-700 border-b border-gray-100 hover:bg-purple-50/30 transition-colors">
-                                                          <td className="py-2 px-3 text-center">
+                                                        <tr key={eIdx} className="border-b border-gray-100 hover:bg-gray-50">
+                                                          <td className="py-1 px-2">
                                                             {isEditing ? (
                                                               <input 
                                                                 type="date" 
                                                                 value={editForm.date || ''} 
                                                                 onChange={(e) => setEditForm({...editForm, date: e.target.value})}
-                                                                className="w-full px-2 py-1 text-[10px] border border-purple-300 rounded-md focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                                                                className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:outline-none"
                                                               />
                                                             ) : (
-                                                              <span className="font-medium">{formatShortDate(entry.date)}</span>
+                                                              <span className="text-gray-700">{formatShortDate(entry.date)}</span>
                                                             )}
                                                           </td>
-                                                          <td className="py-2 px-3 text-center">
+                                                          <td className="py-1 px-2 text-center">
                                                             {isEditing ? (
                                                               <input 
                                                                 type="number" 
@@ -727,13 +628,13 @@ export default function ProjectActivitiesReport() {
                                                                 onChange={(e) => setEditForm({...editForm, qty_done: e.target.value})}
                                                                 min="0"
                                                                 step="0.01"
-                                                                className="w-20 px-2 py-1 text-[10px] border border-purple-300 rounded-md text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                                                                className="w-16 px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-purple-500 focus:outline-none"
                                                               />
                                                             ) : (
-                                                              <span className="font-bold text-purple-600">{entry.qty_done || 0}</span>
+                                                              <span className="font-semibold text-purple-600">{entry.qty_done || 0}</span>
                                                             )}
                                                           </td>
-                                                          <td className="py-2 px-3 text-center">
+                                                          <td className="py-1 px-2 text-center">
                                                             {isEditing ? (
                                                               <input 
                                                                 type="number" 
@@ -741,53 +642,53 @@ export default function ProjectActivitiesReport() {
                                                                 onChange={(e) => setEditForm({...editForm, hours: e.target.value})}
                                                                 min="0"
                                                                 step="0.5"
-                                                                className="w-20 px-2 py-1 text-[10px] border border-purple-300 rounded-md text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                                                                className="w-16 px-1 py-0.5 text-[10px] border border-gray-300 rounded text-center focus:border-purple-500 focus:outline-none"
                                                               />
                                                             ) : (
-                                                              <span className="font-bold text-blue-600">{entry.hours || 0}</span>
+                                                              <span className="font-semibold text-blue-600">{entry.hours || 0}</span>
                                                             )}
                                                           </td>
-                                                          <td className="py-2 px-3 text-center">
+                                                          <td className="py-1 px-2">
                                                             {isEditing ? (
                                                               <input 
                                                                 type="text" 
                                                                 value={editForm.remarks || ''} 
                                                                 onChange={(e) => setEditForm({...editForm, remarks: e.target.value})}
                                                                 placeholder="Remarks..."
-                                                                className="w-full px-2 py-1 text-[10px] border border-purple-300 rounded-md focus:border-purple-500 focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                                                                className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:border-purple-500 focus:outline-none"
                                                               />
                                                             ) : (
-                                                              <span className="text-gray-600 italic">{entry.remarks || '–'}</span>
+                                                              <span className="text-gray-600 text-[10px]">{entry.remarks || '–'}</span>
                                                             )}
                                                           </td>
                                                           {isSuperAdmin && (
-                                                            <td className="py-2 px-3 text-center">
+                                                            <td className="py-1 px-2 text-center">
                                                               {isEditing ? (
-                                                                <div className="flex items-center justify-center gap-1.5">
+                                                                <div className="flex items-center justify-center gap-1">
                                                                   <button 
                                                                     onClick={() => saveEditedEntry(project.project_id, activity.id, member.user_id, member)}
                                                                     disabled={saving}
-                                                                    className="p-1 text-green-600 hover:bg-green-100 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                                                                    className="text-green-600 hover:text-green-700 disabled:opacity-50"
                                                                     title="Save"
                                                                   >
-                                                                    <CheckIcon className="w-4 h-4" />
+                                                                    <CheckIcon className="w-3.5 h-3.5" />
                                                                   </button>
                                                                   <button 
                                                                     onClick={cancelEditingEntry}
                                                                     disabled={saving}
-                                                                    className="p-1 text-red-600 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                                                                    className="text-red-600 hover:text-red-700 disabled:opacity-50"
                                                                     title="Cancel"
                                                                   >
-                                                                    <XMarkIcon className="w-4 h-4" />
+                                                                    <XMarkIcon className="w-3.5 h-3.5" />
                                                                   </button>
                                                                 </div>
                                                               ) : (
                                                                 <button 
                                                                   onClick={() => startEditingEntry(project.project_id, activity.id, member.user_id, eIdx, entry)}
-                                                                  className="p-1 text-purple-600 hover:bg-purple-100 rounded-lg transition-colors shadow-sm"
+                                                                  className="text-purple-600 hover:text-purple-700"
                                                                   title="Edit"
                                                                 >
-                                                                  <PencilSquareIcon className="w-4 h-4" />
+                                                                  <PencilSquareIcon className="w-3.5 h-3.5" />
                                                                 </button>
                                                               )}
                                                             </td>
@@ -796,12 +697,12 @@ export default function ProjectActivitiesReport() {
                                                       );
                                                     })}
                                                     {/* Totals row */}
-                                                    <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-t-2 border-gray-300">
-                                                      <td className="py-2 px-3 text-[10px] font-black text-gray-800 uppercase tracking-wide">Total</td>
-                                                      <td className="py-2 px-3 text-center font-black text-purple-700">{dailyEntries.reduce((s, e) => s + (parseFloat(e.qty_done) || 0), 0)}</td>
-                                                      <td className="py-2 px-3 text-center font-black text-blue-700">{dailyEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0)}</td>
-                                                      <td className="py-2 px-3"></td>
-                                                      {isSuperAdmin && <td className="py-2 px-3"></td>}
+                                                    <tr className="border-t-2 border-gray-300 font-semibold">
+                                                      <td className="py-1 px-2 text-[10px] text-gray-700">Total</td>
+                                                      <td className="py-1 px-2 text-center text-purple-600">{dailyEntries.reduce((s, e) => s + (e && parseFloat(e.qty_done) || 0), 0)}</td>
+                                                      <td className="py-1 px-2 text-center text-blue-600">{dailyEntries.reduce((s, e) => s + (e && parseFloat(e.hours) || 0), 0)}</td>
+                                                      <td className="py-1 px-2"></td>
+                                                      {isSuperAdmin && <td className="py-1 px-2"></td>}
                                                     </tr>
                                                   </tbody>
                                                 </table>
