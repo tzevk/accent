@@ -16,8 +16,7 @@ import {
   UserCircleIcon,
   ChevronDownIcon,
   ShieldCheckIcon,
-  ChartBarIcon,
-  DocumentCurrencyDollarIcon
+  ChartBarIcon
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
@@ -32,7 +31,6 @@ const navigationConfig = [
 
 // Reports menu items
 const reportsMenuConfig = [
-  { name: 'Salary Slip', href: '/reports', icon: DocumentCurrencyDollarIcon, resource: 'reports' },
   { name: 'Project Activities', href: '/reports/project-activities', icon: ChartBarIcon, resource: 'reports' },
 ];
 
@@ -43,6 +41,8 @@ const adminMenuConfig = [
   { name: 'Invoice', href: '/admin/invoice', resource: 'admin' },
   { name: 'Cash Voucher', href: '/admin/cash-voucher', resource: 'admin' },
   { name: 'Material Requisition', href: '/admin/material-requisition', resource: 'admin' },
+  { name: 'Salary Sheet (Excel)', href: '/admin/salary-sheet', resource: 'admin' },
+  { name: 'Salary Slip (PDF)', href: '/admin/salary-slip', resource: 'admin' },
   { name: 'Live Monitoring', href: '/admin/live-monitoring', resource: 'admin' },
   { name: 'Admin Logs', href: '/admin/activity-logs', resource: 'admin' },
   { name: 'All Todos', href: '/admin/todos', resource: 'admin' },

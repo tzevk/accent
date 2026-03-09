@@ -7,6 +7,7 @@
  *  - employee_salary_profile
  *  - payroll_slips
  *  - employee_attendance (for monthly calculations)
+ *  - holiday_master (for official holidays)
  */
 
 import PAYROLL_CONFIG, { 
@@ -41,6 +42,101 @@ export async function getCurrentDA(forDate = new Date()) {
   } finally {
     try { db.release(); } catch (_) { /* ignore */ }
   }
+}
+
+/**
+ * Get holidays from holiday_master for a given month
+ * @param {string} month - Month in YYYY-MM format
+ * @param {boolean} includeOptional - Whether to include optional holidays (default: false)
+ * @returns {Promise<Array>} Array of holiday objects with date, name, type
+ */
+export async function getHolidaysForMonth(month, includeOptional = false) {
+  const db = await dbConnect();
+  
+  try {
+    const monthStr = month.substring(0, 7); // Extract YYYY-MM
+    const [year, monthNum] = monthStr.split('-');
+    
+    // Get first and last day of month
+    const firstDay = `${year}-${monthNum}-01`;
+    const lastDay = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
+    const lastDayStr = `${year}-${monthNum}-${String(lastDay).padStart(2, '0')}`;
+    
+    let query = `
+      SELECT id, name, date, type, is_optional
+      FROM holiday_master 
+      WHERE is_active = 1 
+        AND date BETWEEN ? AND ?
+    `;
+    
+    if (!includeOptional) {
+      query += ` AND is_optional = 0`;
+    }
+    
+    query += ` ORDER BY date ASC`;
+    
+    const [rows] = await db.execute(query, [firstDay, lastDayStr]);
+    
+    return rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      date: row.date,
+      type: row.type,
+      is_optional: row.is_optional
+    }));
+  } catch (error) {
+    console.error('Error getting holidays for month:', error);
+    return [];
+  } finally {
+    try { db.release(); } catch (_) { /* ignore */ }
+  }
+}
+
+/**
+ * Calculate actual working days for a month (excluding Sundays and official holidays)
+ * @param {string} month - Month in YYYY-MM format
+ * @returns {Promise<object>} Working days info
+ */
+export async function getWorkingDaysForMonth(month) {
+  const monthStr = month.substring(0, 7);
+  const [year, monthNum] = monthStr.split('-');
+  const totalDaysInMonth = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
+  
+  // Get official holidays from holiday_master
+  const holidays = await getHolidaysForMonth(month, false);
+  const holidayDates = new Set(holidays.map(h => {
+    const d = new Date(h.date);
+    return d.getDate();
+  }));
+  
+  let sundays = 0;
+  let weekdays = 0;
+  let holidaysNotOnSunday = 0;
+  
+  for (let day = 1; day <= totalDaysInMonth; day++) {
+    const date = new Date(parseInt(year), parseInt(monthNum) - 1, day);
+    const isSunday = date.getDay() === 0;
+    const isHoliday = holidayDates.has(day);
+    
+    if (isSunday) {
+      sundays++;
+    } else if (isHoliday) {
+      holidaysNotOnSunday++;
+    } else {
+      weekdays++;
+    }
+  }
+  
+  const workingDays = totalDaysInMonth - sundays - holidaysNotOnSunday;
+  
+  return {
+    totalDaysInMonth,
+    sundays,
+    holidays: holidays.length,
+    holidaysNotOnSunday,
+    workingDays,
+    holidayList: holidays
+  };
 }
 
 /**
@@ -109,6 +205,7 @@ export async function getEmployeeMonthlyHours(employeeId, month, defaultInTime =
 
 /**
  * Get employee's attendance summary for a given month
+ * Integrates with holiday_master for official holidays
  * @param {number} employeeId - Employee ID
  * @param {string} month - Month in YYYY-MM format
  * @returns {Promise<object>} Attendance summary
@@ -117,8 +214,9 @@ export async function getEmployeeAttendance(employeeId, month) {
   const db = await dbConnect();
   
   try {
-    // Get standard working days from config (default 26)
-    const standardWorkingDays = PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26;
+    // Get actual working days from holiday_master (excluding Sundays and official holidays)
+    const workingDaysInfo = await getWorkingDaysForMonth(month);
+    const standardWorkingDays = workingDaysInfo.workingDays;
     
     // Get attendance records for the month
     const [records] = await db.execute(
@@ -137,7 +235,7 @@ export async function getEmployeeAttendance(employeeId, month) {
     let daysAbsent = 0;
     let daysLeave = 0;
     let weeklyOff = 0;
-    let holidays = 0;
+    let holidays = workingDaysInfo.holidaysNotOnSunday; // Use holidays from holiday_master
     let halfDays = 0;
     let totalOvertimeHours = 0;
     
@@ -167,7 +265,7 @@ export async function getEmployeeAttendance(employeeId, month) {
         case 'WO': // Weekly Off
           weeklyOff++;
           break;
-        case 'H': // Holiday
+        case 'H': // Holiday (from attendance - may be additional company holidays)
           holidays++;
           break;
       }
@@ -186,7 +284,7 @@ export async function getEmployeeAttendance(employeeId, month) {
       daysPresent: effectivePresentDays,
       daysAbsent: lossOfPayDays,
       daysLeave,
-      weeklyOff,
+      weeklyOff: weeklyOff + workingDaysInfo.sundays,
       holidays,
       halfDays,
       totalOvertimeHours,
@@ -194,7 +292,11 @@ export async function getEmployeeAttendance(employeeId, month) {
       // Payable days = Present + Paid Leaves (excluding unpaid leaves/absents)
       payableDays: effectivePresentDays,
       // Loss of Pay days
-      lopDays: lossOfPayDays
+      lopDays: lossOfPayDays,
+      // Holiday list from holiday_master
+      holidayList: workingDaysInfo.holidayList,
+      // Working days breakdown
+      workingDaysBreakdown: workingDaysInfo
     };
   } catch (error) {
     console.error('Error getting employee attendance:', error);
@@ -210,7 +312,9 @@ export async function getEmployeeAttendance(employeeId, month) {
       totalOvertimeHours: 0,
       hasAttendanceData: false,
       payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-      lopDays: 0
+      lopDays: 0,
+      holidayList: [],
+      workingDaysBreakdown: null
     };
   } finally {
     try { db.release(); } catch (_) { /* ignore */ }
@@ -711,14 +815,23 @@ async function batchGetSalaryProfiles(db, employeeIds) {
 /**
  * Fetch attendance records for a list of employee IDs for a given month
  * in a single query. Returns Map<employee_id, attendanceSummary>.
+ * Integrates with holiday_master for accurate working days calculation.
  */
 async function batchGetAttendance(db, employeeIds, month) {
+  // Get actual working days from holiday_master
+  const workingDaysInfo = await getWorkingDaysForMonth(month);
+  const standardWorkingDays = workingDaysInfo.workingDays;
+  
   const defaultSummary = () => ({
-    standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-    daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-    daysAbsent: 0, daysLeave: 0, weeklyOff: 0, holidays: 0, halfDays: 0,
+    standardWorkingDays,
+    daysPresent: standardWorkingDays,
+    daysAbsent: 0, daysLeave: 0, 
+    weeklyOff: workingDaysInfo.sundays, 
+    holidays: workingDaysInfo.holidaysNotOnSunday, 
+    halfDays: 0,
     totalOvertimeHours: 0, hasAttendanceData: false,
-    payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26, lopDays: 0
+    payableDays: standardWorkingDays, lopDays: 0,
+    holidayList: workingDaysInfo.holidayList
   });
 
   if (employeeIds.length === 0) return new Map();
@@ -741,7 +854,6 @@ async function batchGetAttendance(db, employeeIds, month) {
     grouped.get(r.employee_id).push(r);
   }
 
-  const standardWorkingDays = PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26;
   const resultMap = new Map();
 
   for (const empId of employeeIds) {
@@ -774,13 +886,14 @@ async function batchGetAttendance(db, employeeIds, month) {
       daysPresent,
       daysAbsent,
       daysLeave,
-      weeklyOff,
-      holidays,
+      weeklyOff: weeklyOff + workingDaysInfo.sundays,
+      holidays: holidays + workingDaysInfo.holidaysNotOnSunday,
       halfDays,
       totalOvertimeHours,
       hasAttendanceData: true,
       payableDays: daysPresent,
-      lopDays: daysAbsent
+      lopDays: daysAbsent,
+      holidayList: workingDaysInfo.holidayList
     });
   }
 

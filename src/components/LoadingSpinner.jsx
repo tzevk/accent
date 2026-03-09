@@ -86,7 +86,14 @@ export default function LoadingSpinner({
 /**
  * Inline loading spinner for smaller contexts
  */
-export function InlineSpinner({ message = 'Loading...' }) {
+export function InlineSpinner({ message = 'Loading...', className = '' }) {
+  // If className is provided, assume it's for icon-only usage (no message, no container padding)
+  if (className) {
+    return (
+      <div className={`rounded-full border-2 border-gray-200 border-t-current animate-spin ${className}`}></div>
+    );
+  }
+  
   return (
     <div className="flex items-center justify-center gap-2 p-4 text-gray-500">
       <div className="w-5 h-5 rounded-full border-2 border-gray-200 border-t-violet-500 animate-spin"></div>

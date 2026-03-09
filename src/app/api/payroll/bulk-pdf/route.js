@@ -249,8 +249,9 @@ function renderSlip(doc, slip, yStart) {
 }
 
 /**
- * GET /api/payroll/bulk-pdf?month=YYYY-MM-01&salary_type=payroll
- * Returns a PDF containing all salary slips for the selected month, one per page.
+ * GET /api/payroll/bulk-pdf?month=YYYY-MM-01&salary_type=payroll&employee_id=123
+ * Returns a PDF containing salary slips for the selected month.
+ * If employee_id is provided, returns single slip; otherwise returns all slips.
  */
 export async function GET(request) {
   const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
@@ -261,6 +262,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const salaryType = searchParams.get('salary_type');
+    const employeeId = searchParams.get('employee_id');
 
     if (!month) {
       return NextResponse.json(
@@ -282,13 +284,18 @@ export async function GET(request) {
              e.uan as uan_number,
              e.pf_no as pf_number,
              e.esi_no as esic_number,
-             e.pan as pan_number,
-             e.payment_mode
+             e.pan as pan_number
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
       WHERE ps.month = ?
     `;
     const params = [month];
+
+    // Filter by single employee if provided
+    if (employeeId) {
+      query += ` AND ps.employee_id = ?`;
+      params.push(employeeId);
+    }
 
     if (salaryType === 'payroll') {
       query += ` AND NOT EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
@@ -302,7 +309,7 @@ export async function GET(request) {
 
     if (slips.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No payroll slips found for this month. Please generate payroll first.' },
+        { success: false, error: employeeId ? 'No payroll slip found for this employee. Please generate payroll first.' : 'No payroll slips found for this month. Please generate payroll first.' },
         { status: 404 }
       );
     }
@@ -318,11 +325,16 @@ export async function GET(request) {
     const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
 
     const monthLabel = month.substring(0, 7); // YYYY-MM
+    // Use employee name for single slip, otherwise use generic name
+    const filename = employeeId && slips.length === 1 
+      ? `Salary_Slip_${slips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
+      : `Salary_Slips_${monthLabel}.pdf`;
+    
     return new Response(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="Salary_Slips_${monthLabel}.pdf"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Length': pdfBuffer.length.toString(),
       },
     });
