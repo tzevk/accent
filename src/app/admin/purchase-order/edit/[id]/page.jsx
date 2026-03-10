@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
+import DocumentUpload from '@/components/DocumentUpload';
 import { 
   ClipboardDocumentListIcon,
   ArrowLeftIcon,
@@ -593,6 +594,14 @@ export default function EditPurchaseOrderPage() {
               placeholder="Additional notes or terms..."
             />
           </div>
+
+          {/* Document Upload */}
+          {purchaseOrder.id && (
+            <div className="mt-8">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Attached Documents</label>
+              <DocumentUpload entityType="purchase_order" entityId={purchaseOrder.id} />
+            </div>
+          )}
         </div>
       </main>
     </div>

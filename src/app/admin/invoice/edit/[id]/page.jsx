@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
+import DocumentUpload from '@/components/DocumentUpload';
 import { 
   DocumentCurrencyDollarIcon,
   ArrowLeftIcon,
@@ -605,6 +606,14 @@ export default function EditInvoicePage() {
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
+
+          {/* Document Upload */}
+          {invoiceId && (
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Attached Documents</label>
+              <DocumentUpload entityType="invoice" entityId={invoiceId} />
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -55,7 +55,7 @@ const formatCurrency = (value) => {
 };
 
 
-export default function EmployeesPage() {
+export function EmployeesPageInner({ employeeType = null }) {
   // Safe profile photo change handler: forwards to canonical handler if present,
   // otherwise shows a friendly error and avoids runtime ReferenceError while
   // the file is mid-refactor.
@@ -159,7 +159,7 @@ export default function EmployeesPage() {
   const [workplaces, setWorkplaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeTab, setActiveTab] = useState('list'); // Keep for add/edit/view modes
+  const [activeTab, setActiveTab] = useState(employeeType ? 'list' : 'add'); // list for type pages, add for main page
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -405,11 +405,11 @@ export default function EmployeesPage() {
           setSuccessMessage('');
         }, 2000);
       } else {
-        // Reset form and go back to list for new employee
+        // Reset form and go back to list for type pages, stay on add for main page
         setTimeout(() => {
-          setActiveTab('list');
+          setActiveTab(employeeType ? 'list' : 'add');
           setSelectedEmployee(null);
-          setFormData(defaultFormData);
+          setFormData(employeeType ? { ...defaultFormData, employee_type: employeeType } : defaultFormData);
           setSuccessMessage('');
         }, 1500);
       }
@@ -2191,6 +2191,7 @@ export default function EmployeesPage() {
         ...(selectedStatus && { status: selectedStatus }),
         ...(selectedWorkplace && { workplace: selectedWorkplace }),
         ...(selectedEmploymentStatus && { employment_status: selectedEmploymentStatus }),
+        ...(employeeType && { employee_type: employeeType }),
         // Add cache buster to ensure fresh data
         _t: Date.now()
       });
@@ -2235,7 +2236,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, selectedDepartment, selectedStatus, selectedWorkplace, selectedEmploymentStatus]);
+  }, [currentPage, searchTerm, selectedDepartment, selectedStatus, selectedWorkplace, selectedEmploymentStatus, employeeType]);
 
   useEffect(() => {
     fetchEmployees();
@@ -2404,32 +2405,29 @@ export default function EmployeesPage() {
           <div>
             <h1 className="text-3xl xl:text-4xl font-bold text-gray-900 mb-2 flex items-center">
               <UserGroupIcon className="h-8 w-8 xl:h-9 xl:w-9 mr-3 text-purple-600" />
-              Employee Management
+              {employeeType ? `${employeeType} Employees` : 'Add Employee'}
             </h1>
-            <p className="text-gray-600 xl:text-lg">Manage your team members and organizational structure</p>
+            <p className="text-gray-600 xl:text-lg">
+              {employeeType ? `Manage ${employeeType.toLowerCase()} employees` : 'Add a new employee to the system'}
+            </p>
             {successMessage && (
               <div className="mt-2 text-sm text-green-600">{successMessage}</div>
             )}
           </div>
           <div className="flex-shrink-0 flex items-center gap-3">
-            <Link
-              href="/employees/attendance"
-              className="inline-flex items-center space-x-2 bg-white border-2 border-purple-600 text-purple-600 hover:bg-purple-50 px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-300"
-            >
-              <CalendarDaysIcon className="h-5 w-5" />
-              <span>Attendance</span>
-            </Link>
-            <button
-              onClick={() => {
-                setActiveTab('add');
-                setFormData(defaultFormData);
-                setFormErrors({});
-              }}
-              className="inline-flex items-center space-x-2 bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-4 py-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              <PlusIcon className="h-5 w-5" />
-              <span>Add Employee</span>
-            </button>
+            {employeeType && (
+              <button
+                onClick={() => {
+                  setActiveTab('add');
+                  setFormData({ ...defaultFormData, employee_type: employeeType });
+                  setFormErrors({});
+                }}
+                className="inline-flex items-center space-x-2 bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-4 py-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              >
+                <PlusIcon className="h-5 w-5" />
+                <span>Add {employeeType} Employee</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -2531,14 +2529,17 @@ export default function EmployeesPage() {
                 ) : employees.length === 0 ? (
                   <div className="text-center py-16">
                     <UserGroupIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-600 mb-2">No employees yet</h3>
-                    <p className="text-gray-500 mb-6">Get started by adding your first employee</p>
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">No {employeeType ? employeeType.toLowerCase() : ''} employees yet</h3>
+                    <p className="text-gray-500 mb-6">Get started by adding your first {employeeType ? employeeType.toLowerCase() : ''} employee</p>
                     <button
-                      onClick={() => setActiveTab('add')}
+                      onClick={() => {
+                        setActiveTab('add');
+                        if (employeeType) setFormData({ ...defaultFormData, employee_type: employeeType });
+                      }}
                       className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl inline-flex items-center space-x-2 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
                     >
                       <PlusIcon className="h-5 w-5" />
-                      <span>Add Your First Employee</span>
+                      <span>Add Your First {employeeType || ''} Employee</span>
                     </button>
                   </div>
                 ) : (
@@ -2709,57 +2710,9 @@ export default function EmployeesPage() {
 
           {activeTab === 'add' && (
             <div className="grid grid-cols-12 gap-6">
-              {/* Left Pane: Employee list */}
-              <aside className="col-span-12 lg:col-span-3">
-                <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden max-h-[calc(100vh-220px)] flex flex-col">
-                  <div className="px-4 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-base font-semibold text-gray-900 tracking-tight">EMPLOYEE</h2>
-                        <p className="text-xs text-gray-500">{employees.length} Total</p>
-                      </div>
-                      <button
-                        onClick={() => setActiveTab('add')}
-                        className="h-8 px-3 rounded-lg text-white text-sm font-medium"
-                        style={{ background: 'linear-gradient(135deg, #64126D 0%, #86288F 100%)' }}
-                        title="Add Employee"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <div className="relative mt-4">
-                      <input
-                        type="text"
-                        placeholder="Search"
-                        value={searchTerm}
-                        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                        className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
-                      />
-                      <svg className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l4.387 4.387a1 1 0 01-1.414 1.414l-4.387-4.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
-                    </div>
-                  </div>
-                  <div className="overflow-y-auto">
-                    {employees.map(emp => (
-                      <div key={emp.id} onClick={() => openEditForm_safe(emp)} role="button" tabIndex={0} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer focus:outline-none" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openEditForm_safe(emp); }}>
-                        <div className="flex items-center">
-                          <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
-                          <div className="ml-3 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
-                            <p className="text-xs text-gray-500 truncate">{emp.email}</p>
-                            <p className="text-xs text-gray-400">Hired: {formatDate(emp.hire_date)}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {employees.length === 0 && (
-                      <div className="p-6 text-center text-sm text-gray-500">No employees found</div>
-                    )}
-                  </div>
-                </div>
-              </aside>
 
               {/* Right Pane: Add Employee form */}
-              <section className="col-span-12 lg:col-span-9">
+              <section className="col-span-12">
                 <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-6 lg:p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-2xl font-semibold text-gray-900">Add Employee</h3>
@@ -3125,9 +3078,6 @@ export default function EmployeesPage() {
                       <div className="text-center py-6 bg-gray-50 rounded-xl border border-gray-200 mb-4">
                         <CalendarDaysIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
                         <p className="text-sm text-gray-500">Attendance data will be available after saving the employee</p>
-                        <Link href="/employees/attendance" className="mt-2 inline-block text-sm text-purple-600 hover:text-purple-700 font-medium">
-                          Go to Attendance Page →
-                        </Link>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
@@ -3168,7 +3118,7 @@ export default function EmployeesPage() {
                         </button>
                       </div>
                       <div className="flex gap-3">
-                        <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button type="button" onClick={() => setActiveTab(employeeType ? 'list' : 'add')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
                         <button type="submit" disabled={loading} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Saving...' : 'Save Employee'}</button>
                       </div>
                     </div>
@@ -3297,10 +3247,10 @@ export default function EmployeesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setActiveTab('list')}
+                          onClick={() => setActiveTab(employeeType ? 'list' : 'add')}
                           className="px-4 py-2 rounded-xl border border-gray-300 hover:bg-gray-50 transition-colors"
                         >
-                          Back to List
+                          {employeeType ? 'Back to List' : 'Back'}
                         </button>
                       </div>
                     </div>
@@ -5851,12 +5801,6 @@ export default function EmployeesPage() {
                             onChange={(e) => setAttendanceSummaryMonth(e.target.value)}
                             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                           />
-                          <Link
-                            href="/employees/attendance"
-                            className="ml-auto px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#64126D] to-[#86288F] rounded-lg hover:from-[#86288F] hover:to-[#64126D] transition-all"
-                          >
-                            Go to Attendance Page
-                          </Link>
                         </div>
 
                         {/* Summary Cards */}
@@ -6012,7 +5956,7 @@ export default function EmployeesPage() {
                       </button>
 
                       <div className="flex space-x-4">
-                        <button type="button" onClick={() => setActiveTab('list')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button type="button" onClick={() => setActiveTab(employeeType ? 'list' : 'add')} className="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
                         <button type="submit" disabled={loading || profileLocked} className="bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">{loading ? 'Saving...' : 'Save'}</button>
                         {editSubTabOrder.indexOf(editSubTab) < editSubTabOrder.length - 1 && (
                           <button
@@ -6047,4 +5991,8 @@ export default function EmployeesPage() {
 </div>
 </AccessGuard>
 );
+}
+
+export default function EmployeesPage() {
+  return <EmployeesPageInner />;
 }

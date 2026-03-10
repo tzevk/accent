@@ -41,8 +41,8 @@ export async function dbConnect() {
           queueLimit: 200,        // Queue requests during high load instead of throwing
           connectTimeout,
           dateStrings: true,
-          maxIdle: connectionLimit, // Keep all connections warm — no re-connect cost on burst
-          idleTimeout: 120000,    // 2 min idle before teardown
+          maxIdle: 2,              // Only keep 2 idle connections — release the rest quickly
+          idleTimeout: 30000,     // 30s idle before teardown (was 120s)
           enableKeepAlive: true,
           keepAliveInitialDelay: 10000
         });
@@ -110,10 +110,28 @@ export async function dbConnect() {
     }
   }
 
-  const conn = await pool.getConnection();
+  // Retry getConnection if we hit "too many connections"
+  let conn;
+  let connAttempts = 0;
+  const MAX_CONN_RETRIES = 3;
+  while (true) {
+    try {
+      conn = await pool.getConnection();
+      break;
+    } catch (err) {
+      connAttempts++;
+      // ER_TOO_MANY_USER_CONNECTIONS (1203) or ER_CON_COUNT_ERROR (1040)
+      if ((err.errno === 1203 || err.errno === 1040 || err.code === 'ER_CON_COUNT_ERROR' || err.code === 'ER_TOO_MANY_USER_CONNECTIONS') && connAttempts <= MAX_CONN_RETRIES) {
+        console.warn(`[DB] Too many connections (attempt ${connAttempts}/${MAX_CONN_RETRIES}), waiting before retry...`);
+        await new Promise(r => setTimeout(r, 500 * connAttempts)); // 500ms, 1s, 1.5s
+        continue;
+      }
+      throw err;
+    }
+  }
   
-  // Reduced to 10s — connections should never be held this long
-  const FORCE_RELEASE_MS = Number(process.env.DB_FORCE_RELEASE_MS || 10000);
+  // Force-release connections held too long (leak safety net)
+  const FORCE_RELEASE_MS = Number(process.env.DB_FORCE_RELEASE_MS || 8000);
   const releaseTimer = setTimeout(() => {
     console.warn('⚠️  Connection held for more than ' + (FORCE_RELEASE_MS / 1000) + 's, force releasing:', {
       threadId: conn.threadId,
@@ -197,5 +215,33 @@ export async function withDb(fn) {
     return await fn(db);
   } finally {
     try { db.release(); } catch (_) { /* ignore */ }
+  }
+}
+
+/**
+ * Execute a single query directly on the pool — no getConnection/release needed.
+ * This is the SAFEST way to run simple queries because the pool handles the
+ * connection lifecycle automatically. Use for any simple SELECT/INSERT/UPDATE.
+ *
+ * Usage:
+ *   const [rows] = await query('SELECT * FROM users WHERE id = ?', [userId]);
+ *
+ * @param {string} sql
+ * @param {any[]} [params]
+ * @returns {Promise<[any[], any]>}
+ */
+export async function query(sql, params = []) {
+  await ensurePool();
+  return pool.execute(sql, params);
+}
+
+/**
+ * Ensure pool is initialized (called internally by query())
+ */
+async function ensurePool() {
+  if (!pool) {
+    // dbConnect creates the pool as a side effect, then we release the connection
+    const conn = await dbConnect();
+    conn.release();
   }
 }

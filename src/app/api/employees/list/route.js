@@ -39,6 +39,7 @@ export async function GET(request) {
     const status = searchParams.get('status') || '';
     const workplace = searchParams.get('workplace') || '';
     const employment_status = searchParams.get('employment_status') || '';
+    const employee_type = searchParams.get('employee_type') || '';
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = Math.max(1, Math.min(1000, parseInt(searchParams.get('limit')) || 100));
     const offset = (page - 1) * limit;
@@ -77,6 +78,11 @@ export async function GET(request) {
         } else if (employment_status === 'resigned') {
           whereClause += ' AND e.exit_date IS NOT NULL AND e.exit_date != \'\'';
         }
+      }
+
+      if (employee_type) {
+        whereClause += ' AND e.employee_type = ?';
+        params.push(employee_type);
       }
 
       // Execute all queries in parallel

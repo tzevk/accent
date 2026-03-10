@@ -28,6 +28,14 @@ export default function Sidebar() {
   const [pinned, setPinned] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [accountMasterExpanded, setAccountMasterExpanded] = useState(false);
+  const [employeeMasterExpanded, setEmployeeMasterExpanded] = useState(false);
+  
+  // Auto-expand employee dropdown when on an employee route
+  useEffect(() => {
+    if (pathname.startsWith('/employees')) {
+      setEmployeeMasterExpanded(true);
+    }
+  }, [pathname]);
   const [todoPanelOpen, setTodoPanelOpen] = useState(false);
 
   // Sync todoPanelOpen from localStorage on mount
@@ -139,7 +147,7 @@ export default function Sidebar() {
       data-pinned={pinned}
       className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px] xl:w-[280px]' : 'w-[64px] hover:w-[260px] xl:hover:w-[280px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
     >  
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col overflow-y-auto overflow-x-hidden">
         {/* Pin/Unpin control - at the top */}
         <div className="px-2.5 pt-2 pb-1.5">
           <button
@@ -224,7 +232,57 @@ export default function Sidebar() {
           </div>
           <div className="space-y-1 mt-1">
             {canViewEmployees && (
-              <NavRow icon={UserGroupIcon} label="Employee Master" href="/employees" active={pathname.startsWith('/employees')} />
+              <>
+                <button
+                  onClick={() => setEmployeeMasterExpanded(!employeeMasterExpanded)}
+                  className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
+                    pathname.startsWith('/employees') ? 'bg-[#64126D] text-white shadow-sm' : 'text-[#64126D] hover:bg-purple-50'
+                  }`}
+                  title="Employee Master"
+                >
+                  <UserGroupIcon className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`} />
+                  <span className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/employees') ? 'text-white' : 'text-gray-900'}`}>
+                    Employee Master
+                  </span>
+                  <ChevronDownIcon className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${employeeMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`} />
+                </button>
+                {employeeMasterExpanded && (
+                  <div className="ml-6 space-y-1 mt-1">
+                    <Link
+                      href="/employees"
+                      className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+                        pathname === '/employees' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                      }`}
+                    >
+                      <span className="hidden sidebar-open:inline">Add Employee</span>
+                    </Link>
+                    <Link
+                      href="/employees/payroll"
+                      className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+                        pathname === '/employees/payroll' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                      }`}
+                    >
+                      <span className="hidden sidebar-open:inline">Payroll</span>
+                    </Link>
+                    <Link
+                      href="/employees/contract"
+                      className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+                        pathname === '/employees/contract' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                      }`}
+                    >
+                      <span className="hidden sidebar-open:inline">Contract</span>
+                    </Link>
+                    <Link
+                      href="/employees/deputation"
+                      className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+                        pathname === '/employees/deputation' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                      }`}
+                    >
+                      <span className="hidden sidebar-open:inline">Deputation</span>
+                    </Link>
+                  </div>
+                )}
+              </>
             )}
             {canViewUsers && (
               <NavRow icon={ShieldCheckIcon} label="User Master" href="/masters/users" active={pathname.startsWith('/masters/users')} />

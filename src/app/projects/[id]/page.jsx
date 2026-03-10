@@ -20,6 +20,7 @@ import {
   CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import ProjectActivityTab from '@/components/ProjectActivityTab';
+import DocumentUpload from '@/components/DocumentUpload';
 
 export default function ProjectViewPage() {
   const params = useParams();
@@ -311,7 +312,8 @@ export default function ProjectViewPage() {
                   { id: 'project_manhours', label: 'Project Manhours' },
                   { id: 'query_log', label: 'Query Log' },
                   { id: 'assumption', label: 'Assumption' },
-                  { id: 'lessons_learnt', label: 'Lessons Learnt' }
+                  { id: 'lessons_learnt', label: 'Lessons Learnt' },
+                  { id: 'upload_documents', label: 'Upload Documents' }
                 ].map((t) => (
                   <button
                     id={`tab-${t.id}`}
@@ -859,6 +861,19 @@ export default function ProjectViewPage() {
             {/* Project Activity Tab — shows all team members' activity assignments */}
             {activeTab === 'project_activity' && (
               <ProjectActivityTab projectId={project.id ?? project.project_id} />
+            )}
+
+            {/* Upload Documents Tab */}
+            {activeTab === 'upload_documents' && (
+              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                  <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
+                  <h2 className="text-sm font-semibold text-black">Upload Documents</h2>
+                </div>
+                <div className="px-6 py-5">
+                  <DocumentUpload entityType="project" entityId={project.id ?? project.project_id} />
+                </div>
+              </section>
             )}
 
             {/* Project Team Tab */}

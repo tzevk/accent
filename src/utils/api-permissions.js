@@ -27,10 +27,11 @@ const MAX_CACHE_SIZE = 500;
 // share the single pending DB promise instead of both creating a connection.
 const pendingUserFetches = new Map();
 
-function getCachedUser(userId) {
+function getCachedUser(userId, allowExpired = false) {
   const entry = userCache.get(userId);
   if (!entry) return null;
   if (Date.now() - entry.timestamp > USER_CACHE_TTL) {
+    if (allowExpired) return entry.user; // stale data is better than "Unauthorized"
     userCache.delete(userId);
     return null;
   }
@@ -259,6 +260,13 @@ async function _fetchUserFromDb(userId, authenticated) {
     return user;
   } catch (error) {
     console.error('[getCurrentUser]', error.message);
+    // On DB pool exhaustion, try returning a stale cached user rather than null
+    // which would cascade into "Unauthorized" everywhere.
+    const stale = getCachedUser(userId, true);
+    if (stale) {
+      console.warn('[getCurrentUser] Returning stale cached user due to DB error');
+      return stale;
+    }
     return null;
   } finally {
     if (db && typeof db.release === 'function') {
