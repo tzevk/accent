@@ -112,6 +112,7 @@ export default function EditProposalPage() {
     priority: 'MEDIUM',
     progress: 0,
     notes: '',
+    discussion: '',
 
     // Linkage
     lead_id: null,
@@ -271,6 +272,7 @@ Dispute Resolution
             priority: p.priority ?? 'MEDIUM',
             progress: p.progress ?? 0,
             notes: p.notes ?? '',
+            discussion: p.discussion ?? '',
             software: p.software ?? '',
             software_items: Array.isArray(p.software_items) ? p.software_items : parseMaybe(p.software_items, []),
             duration: p.duration ?? p.project_duration_planned ?? '',
@@ -469,6 +471,7 @@ Dispute Resolution
             <Tab label="Commercials" id="commercials" activeTab={activeTab} setActiveTab={setActiveTab} icon={CurrencyDollarIcon} />
             <Tab label="Quotation details" id="quotation" activeTab={activeTab} setActiveTab={setActiveTab} icon={ChartBarIcon} />
             <Tab label="Follow-ups" id="followups" activeTab={activeTab} setActiveTab={setActiveTab} icon={ChatBubbleLeftRightIcon} />
+            <Tab label="Discussion" id="discussion" activeTab={activeTab} setActiveTab={setActiveTab} icon={ChatBubbleLeftRightIcon} />
           </div>
         </div>
       </div>
@@ -533,6 +536,9 @@ Dispute Resolution
             {activeTab === 'followups' && (
               <FollowupsForm proposalId={proposalId} />
             )}
+            {activeTab === 'discussion' && (
+              <DiscussionPage proposalData={proposalData} setProposalData={setProposalData} />
+            )}
           </div>
         </div>
       </div>
@@ -541,6 +547,16 @@ Dispute Resolution
 }
 
 /* ---------------------- New main-tab pages ---------------------- */
+function DiscussionPage({ proposalData, setProposalData }) {
+  const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
+  return (
+    <div className="space-y-6">
+      <Section title="Discussion" subtitle="Internal discussion notes for this proposal" />
+      <Textarea label="Discussion" rows={10} value={proposalData.discussion} onChange={v => set('discussion', v)} placeholder="Add discussion notes…" />
+    </div>
+  );
+}
+
 function SiteVisitPage({ proposalData, setProposalData }) {
   const set = useMemo(() => fieldSetter(setProposalData), [setProposalData]);
   return (

@@ -359,9 +359,6 @@ export default function Proposals() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Created Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Discussion
-                    </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
@@ -424,9 +421,6 @@ export default function Proposals() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {proposal.created_at ? new Date(proposal.created_at).toLocaleDateString() : '—'}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 max-w-[180px] truncate" title={proposal.discussion || ''}>
-                          {proposal.discussion || <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex justify-end space-x-2">

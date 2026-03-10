@@ -769,6 +769,7 @@ export async function PUT(request, { params }) {
     pushIf('additional_fields', body.additional_fields ?? null);
     pushIf('general_terms', body.general_terms ?? null);
     pushIf('payment_terms', body.payment_terms ?? body.payment_terms ?? null);
+    pushIf('discussion', body.discussion ?? null);
 
     // JSON fields for various data structures
     pushIf('commercial_items', body.commercial_items ?? null);
