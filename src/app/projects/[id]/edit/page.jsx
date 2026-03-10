@@ -244,6 +244,9 @@ function EditProjectForm() {
   const [selectedActivitiesForAdd, setSelectedActivitiesForAdd] = useState({});
   const [activitySelectorSearch, setActivitySelectorSearch] = useState('');
   
+  // Track which activity is in edit mode
+  const [editingActivityId, setEditingActivityId] = useState(null);
+
   // Multi-select user assignment state (for assigning multiple users to one activity)
   const [openUserSelectorForActivity, setOpenUserSelectorForActivity] = useState(null);
   const userSelectorRef = useRef(null);
@@ -5589,17 +5592,25 @@ function EditProjectForm() {
                                       <tr key={`${act.id}-row-${uIdx}`} className={`${isLastRow ? 'border-b-2 border-b-gray-200' : 'border-b border-b-gray-100'} transition-colors ${status === 'Completed' ? 'bg-green-50/20' : status === 'On Hold' ? 'bg-amber-50/20' : 'hover:bg-gray-50/30'} border-l-3 ${leftBorderColor}`}>
                                         {/* Activity Name */}
                                         {isFirstRow && (
-                                          <td className="py-2 px-3 align-top bg-indigo-50/20 border-r border-gray-100" rowSpan={rowCount}>
+                                          <td className={`py-2 px-3 align-top border-r border-gray-100 ${editingActivityId === act.id ? 'bg-blue-50/40 ring-2 ring-blue-300 ring-inset' : 'bg-indigo-50/20'}`} rowSpan={rowCount}>
                                             <div className="flex flex-col gap-1">
-                                              <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="w-full px-1.5 py-1 text-xs font-medium border border-transparent hover:border-gray-300 focus:border-blue-500 rounded focus:outline-none text-gray-800 bg-transparent" placeholder="Activity name" />
+                                              {editingActivityId === act.id ? (
+                                                <input type="text" value={act.activity_name || act.name || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_name', e.target.value)} className="w-full px-1.5 py-1 text-xs font-medium border border-blue-400 bg-white rounded focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-800" placeholder="Activity name" autoFocus onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditingActivityId(null); }} />
+                                              ) : (
+                                                <span className="px-1.5 py-1 text-xs font-medium text-gray-800">{act.activity_name || act.name || '—'}</span>
+                                              )}
                                               {discipline && <span className="text-[10px] text-gray-400 pl-1.5">{discipline}</span>}
                                             </div>
                                           </td>
                                         )}
                                         {/* Activity Description */}
                                         {isFirstRow && (
-                                          <td className="py-2 px-3 align-top bg-slate-50/20 border-r border-gray-100" rowSpan={rowCount}>
-                                            <textarea value={act.activity_description || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_description', e.target.value)} className="w-full px-1.5 py-1 text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 rounded focus:outline-none text-gray-700 bg-transparent resize-none" placeholder="Activity description..." rows={Math.max(2, rowCount)} />
+                                          <td className={`py-2 px-3 align-top border-r border-gray-100 ${editingActivityId === act.id ? 'bg-blue-50/40' : 'bg-slate-50/20'}`} rowSpan={rowCount}>
+                                            {editingActivityId === act.id ? (
+                                              <textarea value={act.activity_description || ''} onChange={(e) => updateScopeActivity(act.id, 'activity_description', e.target.value)} className="w-full px-1.5 py-1 text-xs border border-blue-400 bg-white rounded focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-700 resize-none" placeholder="Activity description..." rows={Math.max(2, rowCount)} />
+                                            ) : (
+                                              <span className="px-1.5 py-1 text-xs text-gray-700 whitespace-pre-wrap">{act.activity_description || '—'}</span>
+                                            )}
                                           </td>
                                         )}
                                         {/* Team Member — one per row, same level as other fields */}
@@ -5698,10 +5709,16 @@ function EditProjectForm() {
                                                     );
                                                   })()}
                                                 </div>
-                                                <button type="button" onClick={() => { /* edit mode placeholder */ }} className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors" title="Edit activity">
-                                                  <PencilIcon className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button type="button" onClick={() => removeScopeActivity(act.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Delete activity">
+                                                {editingActivityId === act.id ? (
+                                                  <button type="button" onClick={() => setEditingActivityId(null)} className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100 transition-colors" title="Done editing">
+                                                    <CheckIcon className="h-3.5 w-3.5" />
+                                                  </button>
+                                                ) : (
+                                                  <button type="button" onClick={() => setEditingActivityId(act.id)} className="p-1 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors" title="Edit activity">
+                                                    <PencilIcon className="h-3.5 w-3.5" />
+                                                  </button>
+                                                )}
+                                                <button type="button" onClick={() => { removeScopeActivity(act.id); if (editingActivityId === act.id) setEditingActivityId(null); }} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Delete activity">
                                                   <TrashIcon className="h-3.5 w-3.5" />
                                                 </button>
                                               </>
