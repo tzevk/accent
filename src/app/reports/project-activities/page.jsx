@@ -12,6 +12,7 @@ import {
   PencilSquareIcon,
   CheckIcon,
   XMarkIcon,
+  TrashIcon,
   UserIcon,
   ClockIcon,
   CalendarDaysIcon,
@@ -152,6 +153,43 @@ export default function ProjectActivitiesReport() {
   const cancelEditing = () => {
     setEditingEntry(null);
     setEditForm({});
+  };
+
+  const deleteEntry = async (pId, aId, uId, member, idx) => {
+    if (!confirm("Are you sure you want to delete this entry?")) return;
+    setSaving(true);
+    try {
+      const entries = [...(member.daily_entries || [])];
+      entries.splice(idx, 1);
+      const totQ = entries.reduce(
+        (s, e) => s + ((e && parseFloat(e.qty_done)) || 0),
+        0
+      );
+      const totH = entries.reduce(
+        (s, e) => s + ((e && parseFloat(e.hours)) || 0),
+        0
+      );
+      const res = await fetch(`/api/users/${uId}/activity-assignments`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: pId,
+          activity_id: aId,
+          daily_entries: entries,
+          qty_completed: totQ,
+          actual_hours: totH,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadData();
+        cancelEditing();
+      } else alert("Delete failed: " + (data.error || "Unknown"));
+    } catch {
+      alert("Failed to delete entry");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveEdited = async (pId, aId, uId, member) => {
@@ -508,6 +546,7 @@ export default function ProjectActivitiesReport() {
                   startEditing={startEditing}
                   cancelEditing={cancelEditing}
                   saveEdited={saveEdited}
+                  deleteEntry={deleteEntry}
                 />
               );
             })}
@@ -539,6 +578,7 @@ function ProjectCard({
   startEditing,
   cancelEditing,
   saveEdited,
+  deleteEntry,
 }) {
   return (
     <div
@@ -1062,20 +1102,37 @@ function ProjectCard({
                                                                 </button>
                                                               </div>
                                                             ) : (
-                                                              <button
-                                                                onClick={() =>
-                                                                  startEditing(
-                                                                    project.project_id,
-                                                                    activity.id,
-                                                                    member.user_id,
-                                                                    eIdx,
-                                                                    entry
-                                                                  )
-                                                                }
-                                                                className="text-gray-400 hover:text-purple-600 transition"
-                                                              >
-                                                                <PencilSquareIcon className="w-3.5 h-3.5" />
-                                                              </button>
+                                                              <div className="flex items-center justify-center gap-1">
+                                                                <button
+                                                                  onClick={() =>
+                                                                    startEditing(
+                                                                      project.project_id,
+                                                                      activity.id,
+                                                                      member.user_id,
+                                                                      eIdx,
+                                                                      entry
+                                                                    )
+                                                                  }
+                                                                  className="text-gray-400 hover:text-purple-600 transition"
+                                                                >
+                                                                  <PencilSquareIcon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                                <button
+                                                                  onClick={() =>
+                                                                    deleteEntry(
+                                                                      project.project_id,
+                                                                      activity.id,
+                                                                      member.user_id,
+                                                                      member,
+                                                                      eIdx
+                                                                    )
+                                                                  }
+                                                                  disabled={saving}
+                                                                  className="text-gray-400 hover:text-red-600 transition disabled:opacity-40"
+                                                                >
+                                                                  <TrashIcon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                              </div>
                                                             )}
                                                           </td>
                                                         )}
