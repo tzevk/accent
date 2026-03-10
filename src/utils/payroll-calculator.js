@@ -334,17 +334,10 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
   const dateStr = typeof forDate === 'string' ? forDate : forDate.toISOString().split('T')[0];
   
   try {
-    // First try the salary_structures table (newer) - simplified query
+    // First try the salary_structures table (newer)
     const [rows] = await db.execute(
       `SELECT 
-        ss.*,
-        ss.ctc as gross_salary,
-        ss.basic_salary as basic_plus_da,
-        ss.pf_applicable,
-        ss.esic_applicable,
-        ss.pt_applicable,
-        ss.mlwf_applicable,
-        ss.standard_working_days
+        ss.*
        FROM salary_structures ss
        WHERE ss.employee_id = ? 
          AND ss.is_active = 1
@@ -354,7 +347,13 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
     );
     
     if (rows.length > 0) {
-      return rows[0];
+      // Map salary_structures fields to expected format
+      const profile = rows[0];
+      return {
+        ...profile,
+        gross_salary: profile.ctc || profile.gross_salary,
+        standard_working_days: profile.standard_working_days || 26
+      };
     }
     
     // Fallback to employee_salary_profile table (legacy)
@@ -436,9 +435,9 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
   // Use saved breakdown values if available, otherwise calculate
   let basic, da, hra, conveyance, callAllowance, bonus, incentive;
   
-  if (profile.basic_plus_da && profile.da) {
+  if (profile.basic && profile.da) {
     // Use saved values and apply attendance factor
-    basic = Math.round((parseFloat(profile.basic_plus_da) || 0) * attendanceFactor);
+    basic = Math.round((parseFloat(profile.basic) || 0) * attendanceFactor);
     da = Math.round((parseFloat(profile.da) || 0) * attendanceFactor);
     hra = Math.round((parseFloat(profile.hra) || 0) * attendanceFactor);
     conveyance = Math.round((parseFloat(profile.conveyance) || 0) * attendanceFactor);
@@ -520,7 +519,7 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
   const insurance = insuranceApplicable ? (parseFloat(profile.insurance) || 0) : 0;
   
   // Gratuity: 4.81% of Basic (calculated on full basic, not pro-rata)
-  const fullBasic = parseFloat(profile.basic_plus_da) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
+  const fullBasic = parseFloat(profile.basic) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
   const gratuity = Math.round(fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100));
   
   // PF Admin: 0.5% of wage base
@@ -772,12 +771,7 @@ async function batchGetSalaryProfiles(db, employeeIds) {
 
   // Newer salary_structures table (takes priority)
   const [ssRows] = await db.execute(
-    `SELECT ss.*,
-            ss.ctc as gross_salary,
-            ss.basic_salary as basic_plus_da,
-            ss.pf_applicable, ss.esic_applicable,
-            ss.pt_applicable, ss.mlwf_applicable,
-            ss.standard_working_days
+    `SELECT ss.*
      FROM salary_structures ss
      INNER JOIN (
        SELECT employee_id, MAX(id) as max_id
@@ -789,7 +783,13 @@ async function batchGetSalaryProfiles(db, employeeIds) {
   );
 
   const profileMap = new Map();
-  for (const row of ssRows) profileMap.set(row.employee_id, row);
+  for (const row of ssRows) {
+    profileMap.set(row.employee_id, {
+      ...row,
+      gross_salary: row.ctc || row.gross_salary,
+      standard_working_days: row.standard_working_days || 26
+    });
+  }
 
   // Legacy employee_salary_profile for employees not found above
   const missingIds = employeeIds.filter(id => !profileMap.has(id));
@@ -925,8 +925,8 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
 
   let basic, da, hra, conveyance, callAllowance, bonus, incentive;
 
-  if (profile.basic_plus_da && profile.da) {
-    basic = Math.round((parseFloat(profile.basic_plus_da) || 0) * attendanceFactor);
+  if (profile.basic && profile.da) {
+    basic = Math.round((parseFloat(profile.basic) || 0) * attendanceFactor);
     da = Math.round((parseFloat(profile.da) || 0) * attendanceFactor);
     hra = Math.round((parseFloat(profile.hra) || 0) * attendanceFactor);
     conveyance = Math.round((parseFloat(profile.conveyance) || 0) * attendanceFactor);
@@ -960,7 +960,7 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
   const esicEmployer = esicBreakdown.employerContribution;
   const mlwfEmployer = (mlwfApplicable && isMLWFMonth) ? (parseFloat(profile.mlwf_employer) || 0) : 0;
   const insurance = insuranceApplicable ? (parseFloat(profile.insurance) || 0) : 0;
-  const fullBasic = parseFloat(profile.basic_plus_da) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
+  const fullBasic = parseFloat(profile.basic) || Math.round(fullGross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100) - daAmount);
   const gratuity = Math.round(fullBasic * (PAYROLL_CONFIG.GRATUITY_PERCENT / 100));
   const pfAdmin = pfBreakdown.pfAdmin;
   const edli = Math.round(pfBreakdown.wageBase * (PAYROLL_CONFIG.EDLI_PERCENT / 100));

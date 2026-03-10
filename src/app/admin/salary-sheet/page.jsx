@@ -321,42 +321,62 @@ export default function SalarySheetPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">#</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Employee</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Department</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Working Days</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Present</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Basic</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">HRA</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">DA</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Gross</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">PF</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">PT</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Deductions</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Net Pay</th>
-                    <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
+                    <th className="px-3 py-3 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 z-10">#</th>
+                    <th className="px-3 py-3 text-left font-semibold text-gray-700 sticky left-8 bg-gray-50 z-10 min-w-[160px]">Employee</th>
+                    <th className="px-3 py-3 text-left font-semibold text-gray-700 min-w-[100px]">Department</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">Days</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">Present</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px]">Basic</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">HRA</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[70px]">DA</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px]">Conveyance</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px]">Call Allow</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px]">Other Allow</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">Bonus</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">Incentive</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px] bg-green-50">Gross</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[70px]">PF</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[70px]">ESIC</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[60px]">PT</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[70px]">MLWF</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[70px]">TDS</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">Retention</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[80px]">LOP</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[90px] bg-red-50">Deductions</th>
+                    <th className="px-3 py-3 text-right font-semibold text-gray-700 min-w-[100px] bg-green-100 sticky right-0 z-10">Net Pay</th>
+                    <th className="px-3 py-3 text-center font-semibold text-gray-700 min-w-[80px]">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {slips.map((slip, idx) => (
                     <tr key={slip.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 text-gray-500 sticky left-0 bg-white z-10">{idx + 1}</td>
+                      <td className="px-3 py-3 sticky left-8 bg-white z-10">
                         <div className="font-medium text-gray-900">{slip.employee_name}</div>
                         <div className="text-xs text-gray-500">{slip.employee_code}</div>
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{slip.department || '-'}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{slip.standard_working_days || 0}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{slip.payable_days || slip.standard_working_days || 0}</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(slip.basic)}</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(slip.hra)}</td>
-                      <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(slip.da)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(slip.gross)}</td>
-                      <td className="px-4 py-3 text-right text-red-600">{formatCurrency(slip.pf_employee)}</td>
-                      <td className="px-4 py-3 text-right text-red-600">{formatCurrency(slip.pt)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-red-600">{formatCurrency(slip.total_deductions)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-green-700">{formatCurrency(slip.net_pay)}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-3 py-3 text-gray-600">{slip.department || '-'}</td>
+                      <td className="px-3 py-3 text-right text-gray-600">{slip.standard_working_days || 0}</td>
+                      <td className="px-3 py-3 text-right text-gray-600">{slip.payable_days || slip.standard_working_days || 0}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.basic)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.hra)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.da)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.conveyance)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.call_allowance)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.other_allowances)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.bonus)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.incentive)}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-gray-900 bg-green-50">{formatCurrency(slip.gross)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.pf_employee)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.esic_employee)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.pt)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.mlwf)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.tds)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.retention)}</td>
+                      <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.lop_deduction)}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-red-600 bg-red-50">{formatCurrency(slip.total_deductions)}</td>
+                      <td className="px-3 py-3 text-right font-bold text-green-700 bg-green-100 sticky right-0 z-10">{formatCurrency(slip.net_pay)}</td>
+                      <td className="px-3 py-3 text-center">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
                           slip.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
                           slip.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
@@ -371,15 +391,26 @@ export default function SalarySheetPage() {
                 </tbody>
                 <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                   <tr className="font-bold">
-                    <td colSpan="5" className="px-4 py-3 text-right text-gray-700">TOTALS:</td>
-                    <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.basic) || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.hra) || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.da) || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(totalGross)}</td>
-                    <td className="px-4 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.pf_employee) || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.pt) || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right text-red-600">{formatCurrency(totalDeductions)}</td>
-                    <td className="px-4 py-3 text-right text-green-700">{formatCurrency(totalNet)}</td>
+                    <td colSpan="3" className="px-3 py-3 text-right text-gray-700 sticky left-0 bg-gray-50 z-10">TOTALS:</td>
+                    <td colSpan="2" className="px-3 py-3"></td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.basic) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.hra) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.da) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.conveyance) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.call_allowance) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.other_allowances) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.bonus) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.incentive) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900 bg-green-50">{formatCurrency(totalGross)}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.pf_employee) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.esic_employee) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.pt) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.mlwf) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.tds) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.retention) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slips.reduce((s, r) => s + (Number(r.lop_deduction) || 0), 0))}</td>
+                    <td className="px-3 py-3 text-right text-red-600 bg-red-50">{formatCurrency(totalDeductions)}</td>
+                    <td className="px-3 py-3 text-right text-green-700 bg-green-100 sticky right-0 z-10">{formatCurrency(totalNet)}</td>
                     <td></td>
                   </tr>
                 </tfoot>
