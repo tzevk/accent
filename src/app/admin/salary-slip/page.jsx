@@ -397,10 +397,10 @@ export default function SalarySlipPage() {
       {/* Preview Modal */}
       {previewSlip && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-            <div className="p-6">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-4">
               {/* Modal Header */}
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-gray-900">Salary Slip Preview</h2>
                 <button
                   onClick={() => setPreviewSlip(null)}
@@ -411,172 +411,194 @@ export default function SalarySlipPage() {
                   </svg>
                 </button>
               </div>
-              
-              {/* Company Header */}
-              <div className="text-center mb-6 pb-4 border-b border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900">ACCENT TECHNO SOLUTIONS PVT LTD</h3>
-                <p className="text-xs text-gray-500 mt-1">17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E), MUMBAI - 400055</p>
-                <div className="mt-3 inline-block bg-gray-100 px-4 py-1 rounded">
-                  <span className="text-sm font-semibold text-gray-700">
-                    SALARY SLIP FOR {formatMonthDisplay(previewSlip.month).toUpperCase()}
-                  </span>
+
+              <div className="border-2 rounded overflow-hidden" style={{borderColor: '#64126D'}}>
+                {/* Company Header Banner */}
+                <div className="flex items-center" style={{background: 'linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%)', padding: '14px 20px'}}>
+                  <div className="w-[80px] mr-4 bg-white rounded-md p-1.5">
+                    <img src="/accent-logo.png" alt="Accent Logo" className="w-full h-auto" />
+                  </div>
+                  <div className="flex-1 text-center">
+                    <h1 className="text-[20px] font-extrabold text-white tracking-wide">ACCENT TECHNO SOLUTIONS PVT LTD</h1>
+                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),</p>
+                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">MUMBAI,MAHARASHTRA - 400055</p>
+                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">Mobile: 9324670725</p>
+                  </div>
+                </div>
+
+                {/* Month Title Bar */}
+                <div className="px-3 py-1.5 font-bold text-center text-xs tracking-wide" style={{background: 'linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5)', color: '#64126D', borderBottom: '2px solid #64126D'}}>
+                  SALARY SLIP FOR THE MONTH OF {formatMonthDisplay(previewSlip.month).toUpperCase()}
+                </div>
+
+                {/* Employee Info Table */}
+                <table className="w-full border-collapse text-[11px]">
+                  <colgroup>
+                    <col style={{width: '12%'}} />
+                    <col style={{width: '15%'}} />
+                    <col style={{width: '12%'}} />
+                    <col style={{width: '13%'}} />
+                    <col style={{width: '13%'}} />
+                    <col style={{width: '13%'}} />
+                    <col style={{width: '11%'}} />
+                    <col style={{width: '11%'}} />
+                  </colgroup>
+                  <tbody>
+                    <tr>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>NAME :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.employee_name || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>DESIGNATION :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.designation || previewSlip.position || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>TOTAL DAYS :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.standard_working_days || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>TOTAL PAID LEAVES :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pl_total || 21}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>DEPARTMENT :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.department || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>DATE OF JOINING :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.joining_date ? new Date(previewSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PRESENT DAYS :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.payable_days || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PL USED :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pl_used || 0}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PF NUMBER :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pf_number || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>ESIC NUMBER :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.esic_number || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>ABSENT DAYS :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.standard_working_days && previewSlip.payable_days ? (parseFloat(previewSlip.standard_working_days) - parseFloat(previewSlip.payable_days)).toFixed(1) : (previewSlip.lop_days || '0.0')}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>BALANCE :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pl_balance ?? (21 - (previewSlip.pl_used || 0))}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>UAN NUMBER :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.uan_number || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PAN NO :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pan_number || ''}</td>
+                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PAYMENT MODE :</td>
+                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}} colSpan={3}>{previewSlip.payment_mode || ''}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Earnings & Deductions Table */}
+                <table className="w-full border-collapse text-[11px]">
+                  <colgroup>
+                    <col style={{width: '25%'}} />
+                    <col style={{width: '12.5%'}} />
+                    <col style={{width: '12.5%'}} />
+                    <col style={{width: '25%'}} />
+                    <col style={{width: '25%'}} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}>
+                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>DESCRIPTION</th>
+                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>GROSS</th>
+                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>EARNING</th>
+                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>DESCRIPTION</th>
+                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>AMOUNT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>BASIC</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.basic || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.basic || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>PROVIDENT FUND</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.pf_employee || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>DA</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.da || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.da || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>ESIC</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.esic_employee || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>HRA</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.hra || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.hra || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>PROFESSIONAL TAX</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.pt || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>CONVEYANCE ALLOWANCE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.conveyance || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.conveyance || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>LOAN</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.loan || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>CALL ALLOWANCE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.call_allowance || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.call_allowance || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>ADVANCE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.advance || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>OTHER ALLOWANCE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.other_allowances || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.other_allowances || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>TAX DEDUCTED AT SOURCE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.tds || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>PAID HOLIDAY AMOUNT</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.paid_holiday || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.paid_holiday || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>RETENTION AMOUNT</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.retention || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>BONUS</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.bonus || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.bonus || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>MLWF</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.mlwf || ''}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>OT RATE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.ot_rate || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.ot_rate || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}></td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}></td>
+                    </tr>
+                    <tr>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>INCENTIVE</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.incentive || ''}</td>
+                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.incentive || ''}</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}></td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}></td>
+                    </tr>
+                    {/* Totals Row */}
+                    <tr className="font-bold" style={{background: 'linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec)'}}>
+                      <td className="px-2 py-1.5" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D'}}>GROSS EARNING</td>
+                      <td className="px-2 py-1.5 text-right font-mono" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D'}}></td>
+                      <td className="px-2 py-1.5 text-right font-mono" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D', color: '#15803d'}}>{previewSlip.total_earnings || previewSlip.gross || '0.00'}</td>
+                      <td className="px-2 py-1.5" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D'}}>TOTAL DEDUCTION</td>
+                      <td className="px-2 py-1.5 text-right font-mono" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D', color: '#b91c1c'}}>{previewSlip.total_deductions || '0.00'}</td>
+                    </tr>
+                    {/* Net Salary Row */}
+                    <tr style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}>
+                      <td className="px-2 py-2 text-white" style={{border: '1px solid #a855f7'}} colSpan={3}></td>
+                      <td className="px-2 py-2 text-white font-extrabold text-[12px] tracking-wide" style={{border: '1px solid #a855f7'}}>NET SALARY PAYABLE</td>
+                      <td className="px-2 py-2 text-right text-white font-extrabold text-[13px] font-mono" style={{border: '1px solid #a855f7'}}>{previewSlip.net_pay || '0.00'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Footer */}
+                <div className="text-center text-[10px] font-medium pt-2 pb-2" style={{background: '#f3e5f5', color: '#64126D', borderTop: '2px solid #64126D'}}>
+                  <p>NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN&apos;T REQUIRE SIGNATURE</p>
                 </div>
               </div>
-              
-              {/* Employee Info */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Name:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.employee_name}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Employee Code:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.employee_code}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Department:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.department || '-'}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Designation:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.designation || previewSlip.position || '-'}</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Working Days:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.standard_working_days || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Present Days:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.payable_days || previewSlip.standard_working_days || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">LOP Days:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.lop_days || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">PL Balance:</span>
-                    <span className="font-medium text-gray-900">{previewSlip.pl_balance ?? 21}</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Earnings & Deductions */}
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                {/* Earnings */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b">Earnings</h4>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Basic</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.basic)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">DA</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.da)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">HRA</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.hra)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Conveyance</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.conveyance)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Call Allowance</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.call_allowance)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Other Allowances</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.other_allowances)}</span>
-                    </div>
-                    {Number(previewSlip.bonus) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Bonus</span>
-                        <span className="text-gray-900">{formatCurrency(previewSlip.bonus)}</span>
-                      </div>
-                    )}
-                    {Number(previewSlip.incentive) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Incentive</span>
-                        <span className="text-gray-900">{formatCurrency(previewSlip.incentive)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-                      <span className="text-gray-700">Total Earnings</span>
-                      <span className="text-gray-900">{formatCurrency(previewSlip.total_earnings || previewSlip.gross)}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Deductions */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2 pb-1 border-b">Deductions</h4>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Provident Fund</span>
-                      <span className="text-red-600">{formatCurrency(previewSlip.pf_employee)}</span>
-                    </div>
-                    {Number(previewSlip.esic_employee) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">ESIC</span>
-                        <span className="text-red-600">{formatCurrency(previewSlip.esic_employee)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Professional Tax</span>
-                      <span className="text-red-600">{formatCurrency(previewSlip.pt)}</span>
-                    </div>
-                    {Number(previewSlip.tds) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">TDS</span>
-                        <span className="text-red-600">{formatCurrency(previewSlip.tds)}</span>
-                      </div>
-                    )}
-                    {Number(previewSlip.mlwf) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">MLWF</span>
-                        <span className="text-red-600">{formatCurrency(previewSlip.mlwf)}</span>
-                      </div>
-                    )}
-                    {Number(previewSlip.lop_deduction) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">LOP Deduction</span>
-                        <span className="text-red-600">{formatCurrency(previewSlip.lop_deduction)}</span>
-                      </div>
-                    )}
-                    {Number(previewSlip.other_deductions) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Other Deductions</span>
-                        <span className="text-red-600">{formatCurrency(previewSlip.other_deductions)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-                      <span className="text-gray-700">Total Deductions</span>
-                      <span className="text-red-600">{formatCurrency(previewSlip.total_deductions)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Net Pay */}
-              <div className="bg-green-50 rounded-lg p-4 mb-6">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold text-gray-700">Net Salary Payable</span>
-                  <span className="text-2xl font-bold text-green-700">{formatCurrency(previewSlip.net_pay)}</span>
-                </div>
-              </div>
-              
-              {/* Footer */}
-              <p className="text-xs text-gray-400 text-center mb-4">
-                This is a computer generated salary slip and does not require signature.
-              </p>
-              
+
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-4">
                 <button
                   onClick={() => setPreviewSlip(null)}
                   className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
@@ -589,7 +611,8 @@ export default function SalarySlipPage() {
                     setPreviewSlip(null);
                   }}
                   disabled={exporting}
-                  className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
+                  className="flex-1 inline-flex items-center justify-center px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors font-medium"
+                  style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}
                 >
                   <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
                   Download PDF

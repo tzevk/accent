@@ -73,6 +73,7 @@ async function ensureEmployeesTable(connection) {
     ['exit_date', "DATE"],
     ['exit_reason', "TEXT"],
     ['deputation_company_id', "INT"],
+    ['company_name', "VARCHAR(255) DEFAULT 'Accent Techno Solutions Pvt Ltd'"],
   ];
 
   const existing = await getExistingColumns(connection);
@@ -337,7 +338,8 @@ export async function POST(request) {
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
       'qualification','institute','passing_year','work_experience',
       'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
-      'attendance_id','biometric_code','exit_date','exit_reason'
+      'attendance_id','biometric_code','exit_date','exit_reason',
+      'company_name'
     ];
     // Only include columns that actually exist in DB
     const existingCols = await getExistingColumns(connection);
@@ -486,7 +488,8 @@ export async function PUT(request) {
       'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
       'qualification','institute','passing_year','work_experience',
       'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
-      'attendance_id','biometric_code','device_code','exit_date','exit_reason'
+      'attendance_id','biometric_code','device_code','exit_date','exit_reason',
+      'company_name'
     ];
     const existingCols = await getExistingColumns(connection);
     const updatable = allowedFields.filter(f => existingCols.has(f));

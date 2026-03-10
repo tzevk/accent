@@ -41,9 +41,12 @@ export async function GET(request) {
         e.position,
         e.uan,
         e.pf_no,
-        e.esi_no
+        e.esi_no,
+        sp_inner.gross_salary as profile_gross,
+        sp_inner.employer_cost as profile_ctc
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
+      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE ps.month = ?`;
     const params = [month];
 
@@ -117,6 +120,25 @@ export async function GET(request) {
       } catch (lwpErr) {
         console.log('LWP fetch for export skipped:', lwpErr.message);
       }
+    }
+
+    // Fetch DA from payroll_schedules for this month
+    let scheduledDA = 0;
+    try {
+      const monthDate = `${yr}-${mn}-01`;
+      const [daRows] = await db.execute(
+        `SELECT value FROM payroll_schedules 
+         WHERE component_type = 'da' AND is_active = 1 
+           AND effective_from <= ?
+           AND (effective_to IS NULL OR effective_to >= ?)
+         ORDER BY effective_from DESC LIMIT 1`,
+        [monthDate, monthDate]
+      );
+      if (daRows.length > 0) {
+        scheduledDA = parseFloat(daRows[0].value) || 0;
+      }
+    } catch (daErr) {
+      console.log('DA schedule fetch for export skipped:', daErr.message);
     }
 
     // Fetch loan and advance data from salary profiles
@@ -351,7 +373,7 @@ export async function GET(request) {
         'MLWF',
         'TOTAL DEDUCTION',
         // Net (36)
-        'NET SALARY',
+        'NET PAY',
       ];
 
       // Row 6: Headers
@@ -381,31 +403,36 @@ export async function GET(request) {
       for (let idx = 0; idx < slips.length; idx++) {
         const slip = slips[idx];
         // All numeric values use safeNum() to guarantee finite numbers (never NaN/Infinity/strings)
-        const gross = safeNum(slip.gross || slip.total_earnings);
         const tds = safeNum(slip.tds);
-        const basic = safeNum(slip.basic);
-        const da = safeNum(slip.da || slip.da_used);
+        const basicRaw = safeNum(slip.basic);
+        const da = scheduledDA;
+        const basic = basicRaw - da;
         const hra = safeNum(slip.hra);
         const conveyance = safeNum(slip.conveyance);
         const callAllowance = safeNum(slip.call_allowance);
         const otherAllowances = safeNum(slip.other_allowances);
         const bonus = safeNum(slip.bonus);
         const incentive = safeNum(slip.incentive);
+        const paidHoliday = safeNum(slip.paid_holiday);
+        const otRate = safeNum(slip.ot_rate);
+        // Gross = total earnings (sum of all earning components)
+        const gross = basic + da + hra + conveyance + callAllowance + otherAllowances + paidHoliday + bonus + otRate + incentive;
         const pfEmployee = safeNum(slip.pf_employee);
         const esicEmployee = safeNum(slip.esic_employee);
-        const pt = safeNum(slip.pt);
+        // PT is always 300 in February
+        const originalPt = safeNum(slip.pt);
+        const pt = (monthNum === 2) ? 300 : originalPt;
+        const ptDiff = pt - originalPt;
         const empLoanAdvance = loanAdvanceMap[slip.employee_id] || { loan: 0, advance: 0 };
         const loan = empLoanAdvance.loan || safeNum(slip.loan);
         const advance = empLoanAdvance.advance || safeNum(slip.advance);
         const retention = safeNum(slip.retention);
         // MLWF: compulsory ₹25 deduction in June and December
         const mlwf = (monthNum === 6 || monthNum === 12) ? 25 : safeNum(slip.mlwf);
-        // Recalculate total deductions to include loan/advance from salary profile
-        const baseDeductions = pfEmployee + esicEmployee + pt + tds + retention + mlwf;
-        const totalDeductions = baseDeductions + loan + advance;
+        // Use stored total_deductions as base, then add loan/advance and PT adjustment
+        const storedDeductions = safeNum(slip.total_deductions);
+        const totalDeductions = storedDeductions + loan + advance + ptDiff;
         const netPay = gross - totalDeductions;
-        const paidHoliday = safeNum(slip.paid_holiday);
-        const otRate = safeNum(slip.ot_rate);
         const totalDays = daysInMonth;
         const daysPresent = attendanceMap[slip.employee_id] != null ? safeNum(attendanceMap[slip.employee_id]) : safeNum(slip.days_present);
         const payableDays = safeNum(slip.payable_days);
@@ -429,7 +456,7 @@ export async function GET(request) {
         // Accumulate totals for numeric columns (8..36 = index 7..35)
         totals[7] += totalDays; totals[8] += daysPresent; totals[9] += payableDays;
         totals[10] += lopDays; totals[11] += daysLeave; totals[12] += 4; totals[14] += otHours;
-        totals[15] += basic; totals[16] += da; totals[17] += hra;
+        totals[15] += basic; totals[16] += da; // basic already has da subtracted totals[17] += hra;
         totals[18] += conveyance; totals[19] += callAllowance; totals[20] += otherAllowances;
         totals[21] += paidHoliday; totals[22] += bonus; totals[23] += otRate;
         totals[24] += incentive; totals[25] += gross;

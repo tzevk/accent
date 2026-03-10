@@ -31,9 +31,12 @@ export async function GET(request) {
              e.department,
              e.grade as designation,
              e.position,
-             e.joining_date
+             e.joining_date,
+             sp_inner.gross_salary as profile_gross,
+             sp_inner.employer_cost as profile_ctc
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
+      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE 1=1
     `;
     const params = [];

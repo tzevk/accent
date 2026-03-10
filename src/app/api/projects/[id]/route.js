@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 import { RESOURCES, PERMISSIONS, getCurrentUser } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
@@ -949,6 +950,7 @@ export async function PUT(request, context) {
           for (const [, row] of incomingMap) {
             if (!validUserIds.has(row.user_id)) continue;
             batchRows.push([
+              randomUUID(),
               row.user_id,
               row.project_id,
               row.activity_id,
@@ -971,11 +973,11 @@ export async function PUT(request, context) {
           const BATCH_SIZE = 500;
           for (let i = 0; i < batchRows.length; i += BATCH_SIZE) {
             const batch = batchRows.slice(i, i + BATCH_SIZE);
-            const valuePlaceholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())').join(',');
+            const valuePlaceholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())').join(',');
             const flatValues = batch.flat();
             await db.execute(
               `INSERT INTO user_activity_assignments 
-               (user_id, project_id, activity_id, activity_name, discipline_name, description, due_date, start_date, priority, estimated_hours, actual_hours, qty_assigned, qty_completed, status, notes, daily_entries, assigned_date, created_at, updated_at)
+               (id, user_id, project_id, activity_id, activity_name, discipline_name, description, due_date, start_date, priority, estimated_hours, actual_hours, qty_assigned, qty_completed, status, notes, daily_entries, assigned_date, created_at, updated_at)
                VALUES ${valuePlaceholders}`,
               flatValues
             );

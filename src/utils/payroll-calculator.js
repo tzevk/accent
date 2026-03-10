@@ -279,6 +279,12 @@ export async function getEmployeeAttendance(employeeId, month) {
     const effectivePresentDays = hasAttendanceData ? daysPresent : standardWorkingDays;
     const lossOfPayDays = hasAttendanceData ? daysAbsent : 0;
     
+    // Payable days = standard working days - explicit absences (LWP/UL only) - half day deductions.
+    // Days without attendance records are NOT treated as absences — only explicit
+    // unpaid leave/absent entries reduce pay. This prevents salary reduction when
+    // attendance hasn't been fully entered for the month.
+    const payableDays = standardWorkingDays - lossOfPayDays - (halfDays * 0.5);
+    
     return {
       standardWorkingDays,
       daysPresent: effectivePresentDays,
@@ -289,8 +295,8 @@ export async function getEmployeeAttendance(employeeId, month) {
       halfDays,
       totalOvertimeHours,
       hasAttendanceData,
-      // Payable days = Present + Paid Leaves (excluding unpaid leaves/absents)
-      payableDays: effectivePresentDays,
+      // Payable days = standard working days minus only explicit absences
+      payableDays,
       // Loss of Pay days
       lopDays: lossOfPayDays,
       // Holiday list from holiday_master
@@ -334,7 +340,19 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
   const dateStr = typeof forDate === 'string' ? forDate : forDate.toISOString().split('T')[0];
   
   try {
-    // First try the salary_structures table (newer)
+    // Always fetch employee_salary_profile for individual component values
+    const [legacyRows] = await db.execute(
+      `SELECT * 
+       FROM employee_salary_profile 
+       WHERE employee_id = ? 
+         AND is_active = 1
+       ORDER BY effective_from DESC
+       LIMIT 1`,
+      [employeeId]
+    );
+    const legacyProfile = legacyRows.length > 0 ? legacyRows[0] : null;
+
+    // Try the salary_structures table (newer)
     const [rows] = await db.execute(
       `SELECT 
         ss.*
@@ -347,27 +365,40 @@ export async function getEmployeeSalaryProfile(employeeId, forDate = new Date())
     );
     
     if (rows.length > 0) {
-      // Map salary_structures fields to expected format
       const profile = rows[0];
+      
+      // Use gross_salary (total earnings), NOT CTC.
+      // CTC includes employer contributions (PF employer, ESIC employer, bonus, insurance, etc.)
+      // and should NOT be used as the base for salary component calculations.
+      // Only fall back to CTC if gross_salary is truly unavailable.
+      const grossSalary = (parseFloat(profile.gross_salary) || 0) > 0
+        ? parseFloat(profile.gross_salary)
+        : (legacyProfile ? (parseFloat(legacyProfile.gross_salary) || 0) : 0) > 0
+          ? parseFloat(legacyProfile.gross_salary)
+          : parseFloat(profile.ctc) || 0;
+
+      // Merge: start with legacy profile (has individual components like basic, da, hra),
+      // then overlay salary_structures values (has overall parameters and flags).
+      // This ensures the payroll calculator has access to saved component breakdowns.
       return {
+        ...(legacyProfile || {}),
         ...profile,
-        gross_salary: profile.ctc || profile.gross_salary,
+        gross_salary: grossSalary,
+        // Carry individual component values from legacy profile if salary_structures doesn't have them
+        basic: profile.basic || (legacyProfile ? legacyProfile.basic : null),
+        da: profile.da || (legacyProfile ? legacyProfile.da : null),
+        hra: profile.hra || (legacyProfile ? legacyProfile.hra : null),
+        conveyance: profile.conveyance || (legacyProfile ? legacyProfile.conveyance : null),
+        call_allowance: profile.call_allowance || (legacyProfile ? legacyProfile.call_allowance : null),
+        other_allowances: profile.other_allowances || (legacyProfile ? legacyProfile.other_allowances : null),
+        bonus: profile.bonus || (legacyProfile ? legacyProfile.bonus : null),
+        incentive: profile.incentive || (legacyProfile ? legacyProfile.incentive : null),
         standard_working_days: profile.standard_working_days || 26
       };
     }
     
-    // Fallback to employee_salary_profile table (legacy)
-    const [legacyRows] = await db.execute(
-      `SELECT * 
-       FROM employee_salary_profile 
-       WHERE employee_id = ? 
-         AND is_active = 1
-       ORDER BY effective_from DESC
-       LIMIT 1`,
-      [employeeId]
-    );
-    
-    return legacyRows.length > 0 ? legacyRows[0] : null;
+    // Fallback to employee_salary_profile if no salary_structures record
+    return legacyProfile;
   } catch (error) {
     console.error('Error getting employee salary profile:', error);
     return null;
@@ -401,10 +432,7 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
   // Get attendance data for the month
   const attendance = await getEmployeeAttendance(employeeId, month);
   
-  // Calculate attendance factor (payable days / standard working days)
-  const attendanceFactor = attendance.payableDays / attendance.standardWorkingDays;
-  
-  // Full month values from salary profile
+  // Full month values from salary profile — use as-is, no pro-rata multiplication
   const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
   const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
   const pfApplicable = profile.pf_applicable === 1;
@@ -417,16 +445,10 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
   const incentiveApplicable = profile.incentive_applicable === 1;
   const insuranceApplicable = profile.insurance_applicable === 1;
   
-  // ═══════════════════════════════════════════════════════════════════
-  // PRO-RATA CALCULATION BASED ON ATTENDANCE
-  // ═══════════════════════════════════════════════════════════════════
-  
-  // Apply attendance factor to get actual payable amounts
-  const gross = Math.round(fullGross * attendanceFactor);
-  const otherAllowances = Math.round(fullOtherAllowances * attendanceFactor);
-  
-  // Loss of Pay (LOP) deduction
-  const lopDeduction = Math.round(fullGross - gross);
+  // Use profile values directly — no attendance-based pro-rata
+  const gross = fullGross;
+  const otherAllowances = fullOtherAllowances;
+  const lopDeduction = 0;
   
   // ═══════════════════════════════════════════════════════════════════
   // EARNINGS (Using saved profile values or calculate from percentages)
@@ -436,20 +458,20 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
   let basic, da, hra, conveyance, callAllowance, bonus, incentive;
   
   if (profile.basic && profile.da) {
-    // Use saved values and apply attendance factor
-    basic = Math.round((parseFloat(profile.basic) || 0) * attendanceFactor);
-    da = Math.round((parseFloat(profile.da) || 0) * attendanceFactor);
-    hra = Math.round((parseFloat(profile.hra) || 0) * attendanceFactor);
-    conveyance = Math.round((parseFloat(profile.conveyance) || 0) * attendanceFactor);
-    callAllowance = Math.round((parseFloat(profile.call_allowance) || 0) * attendanceFactor);
-    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round((parseFloat(profile.bonus) || 0) * attendanceFactor) : 0;
-    incentive = incentiveApplicable ? Math.round((parseFloat(profile.incentive) || 0) * attendanceFactor) : 0;
+    // Use saved values as-is
+    basic = Math.round(parseFloat(profile.basic) || 0);
+    da = Math.round(parseFloat(profile.da) || 0);
+    hra = Math.round(parseFloat(profile.hra) || 0);
+    conveyance = Math.round(parseFloat(profile.conveyance) || 0);
+    callAllowance = Math.round(parseFloat(profile.call_allowance) || 0);
+    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round(parseFloat(profile.bonus) || 0) : 0;
+    incentive = incentiveApplicable ? Math.round(parseFloat(profile.incentive) || 0) : 0;
   } else {
     // Calculate from gross using PAYROLL_CONFIG percentages
     // Basic + DA = 60% of Gross
     const basicDaTotal = Math.round(gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
-    basic = basicDaTotal - Math.round(daAmount * attendanceFactor);
-    da = Math.round(daAmount * attendanceFactor);
+    basic = basicDaTotal - Math.round(daAmount);
+    da = Math.round(daAmount);
     
     // HRA = 20% of Gross
     hra = Math.round(gross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
@@ -769,7 +791,22 @@ async function batchGetSalaryProfiles(db, employeeIds) {
 
   const placeholders = employeeIds.map(() => '?').join(',');
 
-  // Newer salary_structures table (takes priority)
+  // Always fetch employee_salary_profile for individual component values (basic, da, hra, etc.)
+  const [allLegacyRows] = await db.execute(
+    `SELECT esp.*
+     FROM employee_salary_profile esp
+     INNER JOIN (
+       SELECT employee_id, MAX(id) as max_id
+       FROM employee_salary_profile
+       WHERE is_active = 1 AND employee_id IN (${placeholders})
+       GROUP BY employee_id
+     ) latest ON esp.id = latest.max_id`,
+    employeeIds
+  );
+  const legacyMap = new Map();
+  for (const row of allLegacyRows) legacyMap.set(row.employee_id, row);
+
+  // Newer salary_structures table (takes priority for overall parameters)
   const [ssRows] = await db.execute(
     `SELECT ss.*
      FROM salary_structures ss
@@ -784,29 +821,38 @@ async function batchGetSalaryProfiles(db, employeeIds) {
 
   const profileMap = new Map();
   for (const row of ssRows) {
+    const legacyProfile = legacyMap.get(row.employee_id) || {};
+    
+    // Use gross_salary (total earnings), NOT CTC.
+    // CTC includes employer contributions and should not be used as salary base.
+    const grossSalary = (parseFloat(row.gross_salary) || 0) > 0
+      ? parseFloat(row.gross_salary)
+      : (parseFloat(legacyProfile.gross_salary) || 0) > 0
+        ? parseFloat(legacyProfile.gross_salary)
+        : parseFloat(row.ctc) || 0;
+
     profileMap.set(row.employee_id, {
+      ...legacyProfile,
       ...row,
-      gross_salary: row.ctc || row.gross_salary,
+      gross_salary: grossSalary,
+      // Carry individual component values from legacy profile if salary_structures doesn't have them
+      basic: row.basic || legacyProfile.basic || null,
+      da: row.da || legacyProfile.da || null,
+      hra: row.hra || legacyProfile.hra || null,
+      conveyance: row.conveyance || legacyProfile.conveyance || null,
+      call_allowance: row.call_allowance || legacyProfile.call_allowance || null,
+      other_allowances: row.other_allowances || legacyProfile.other_allowances || null,
+      bonus: row.bonus || legacyProfile.bonus || null,
+      incentive: row.incentive || legacyProfile.incentive || null,
       standard_working_days: row.standard_working_days || 26
     });
   }
 
-  // Legacy employee_salary_profile for employees not found above
-  const missingIds = employeeIds.filter(id => !profileMap.has(id));
-  if (missingIds.length > 0) {
-    const ph2 = missingIds.map(() => '?').join(',');
-    const [legacyRows] = await db.execute(
-      `SELECT esp.*
-       FROM employee_salary_profile esp
-       INNER JOIN (
-         SELECT employee_id, MAX(id) as max_id
-         FROM employee_salary_profile
-         WHERE is_active = 1 AND employee_id IN (${ph2})
-         GROUP BY employee_id
-       ) latest ON esp.id = latest.max_id`,
-      missingIds
-    );
-    for (const row of legacyRows) profileMap.set(row.employee_id, row);
+  // For employees not found in salary_structures, use legacy profile directly
+  for (const [empId, legacyProfile] of legacyMap) {
+    if (!profileMap.has(empId)) {
+      profileMap.set(empId, legacyProfile);
+    }
   }
 
   return profileMap;
@@ -891,7 +937,8 @@ async function batchGetAttendance(db, employeeIds, month) {
       halfDays,
       totalOvertimeHours,
       hasAttendanceData: true,
-      payableDays: daysPresent,
+      // Payable days = standard working days - explicit absences - half day deductions
+      payableDays: standardWorkingDays - daysAbsent - (halfDays * 0.5),
       lopDays: daysAbsent,
       holidayList: workingDaysInfo.holidayList
     });
@@ -906,7 +953,6 @@ async function batchGetAttendance(db, employeeIds, month) {
  * @param {boolean} includeBonus - Whether to include bonus (default: false)
  */
 function computePayroll(employeeId, month, profile, daAmount, attendance, includeBonus = false) {
-  const attendanceFactor = attendance.payableDays / attendance.standardWorkingDays;
   const fullGross = parseFloat(profile.gross_salary || profile.gross) || 0;
   const fullOtherAllowances = parseFloat(profile.other_allowances) || 0;
   const pfApplicable = profile.pf_applicable === 1;
@@ -919,24 +965,25 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
   const incentiveApplicable = profile.incentive_applicable === 1;
   const insuranceApplicable = profile.insurance_applicable === 1;
 
-  const gross = Math.round(fullGross * attendanceFactor);
-  const otherAllowances = Math.round(fullOtherAllowances * attendanceFactor);
-  const lopDeduction = Math.round(fullGross - gross);
+  // Use profile values directly — no attendance-based pro-rata
+  const gross = fullGross;
+  const otherAllowances = fullOtherAllowances;
+  const lopDeduction = 0;
 
   let basic, da, hra, conveyance, callAllowance, bonus, incentive;
 
   if (profile.basic && profile.da) {
-    basic = Math.round((parseFloat(profile.basic) || 0) * attendanceFactor);
-    da = Math.round((parseFloat(profile.da) || 0) * attendanceFactor);
-    hra = Math.round((parseFloat(profile.hra) || 0) * attendanceFactor);
-    conveyance = Math.round((parseFloat(profile.conveyance) || 0) * attendanceFactor);
-    callAllowance = Math.round((parseFloat(profile.call_allowance) || 0) * attendanceFactor);
-    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round((parseFloat(profile.bonus) || 0) * attendanceFactor) : 0;
-    incentive = incentiveApplicable ? Math.round((parseFloat(profile.incentive) || 0) * attendanceFactor) : 0;
+    basic = Math.round(parseFloat(profile.basic) || 0);
+    da = Math.round(parseFloat(profile.da) || 0);
+    hra = Math.round(parseFloat(profile.hra) || 0);
+    conveyance = Math.round(parseFloat(profile.conveyance) || 0);
+    callAllowance = Math.round(parseFloat(profile.call_allowance) || 0);
+    bonus = (monthlyBonus || (includeBonus && bonusApplicable)) ? Math.round(parseFloat(profile.bonus) || 0) : 0;
+    incentive = incentiveApplicable ? Math.round(parseFloat(profile.incentive) || 0) : 0;
   } else {
     const basicDaTotal = Math.round(gross * (PAYROLL_CONFIG.BASIC_DA_PERCENT / 100));
-    basic = basicDaTotal - Math.round(daAmount * attendanceFactor);
-    da = Math.round(daAmount * attendanceFactor);
+    basic = basicDaTotal - Math.round(daAmount);
+    da = Math.round(daAmount);
     hra = Math.round(gross * (PAYROLL_CONFIG.HRA_PERCENT / 100));
     conveyance = Math.round(gross * (PAYROLL_CONFIG.CONVEYANCE_PERCENT / 100));
     callAllowance = Math.round(gross * (PAYROLL_CONFIG.CALL_ALLOWANCE_PERCENT / 100));

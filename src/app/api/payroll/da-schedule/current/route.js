@@ -20,12 +20,9 @@ export async function GET(request) {
       `SELECT da_amount, effective_from, effective_to
        FROM da_schedule 
        WHERE is_active = 1 
-         AND YEAR(effective_from) <= ?
-         AND (YEAR(effective_to) >= ? OR effective_to IS NULL)
-         AND ? BETWEEN effective_from AND COALESCE(effective_to, '9999-12-31')
        ORDER BY effective_from DESC
        LIMIT 1`,
-      [forYear, forYear, forDate]
+      []
     );
 
     if (rows.length === 0) {

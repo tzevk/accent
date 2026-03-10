@@ -273,12 +273,12 @@ export default function Sidebar() {
                       <span className="hidden sidebar-open:inline">Contract</span>
                     </Link>
                     <Link
-                      href="/employees/deputation"
+                      href="/employees/attendance"
                       className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-                        pathname === '/employees/deputation' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+                        pathname === '/employees/attendance' ? 'bg-purple-100 text-[#64126D]' : 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
                       }`}
                     >
-                      <span className="hidden sidebar-open:inline">Deputation</span>
+                      <span className="hidden sidebar-open:inline">Attendance</span>
                     </Link>
                   </div>
                 )}

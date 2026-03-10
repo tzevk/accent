@@ -410,10 +410,10 @@ export default function ReportsPage() {
             @page { size: A5 portrait; margin: 4mm; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: Arial, sans-serif; padding: 0; font-size: 6px; color: #1a1a2e; }
-            .slip-container { width: 100%; max-height: 50vh; border: 0.25px solid #4B0082; border-radius: 3px; overflow: hidden; }
+            .slip-container { width: 100%; max-height: 50vh; border: 0.25px solid #64126D; border-radius: 3px; overflow: hidden; }
             
             /* Header with Logo */
-            .header { display: flex; align-items: center; padding: 4px 8px; background: linear-gradient(135deg, #4B0082 0%, #7B2FBE 50%, #9B59B6 100%); border-bottom: 0.25px solid #4B0082; }
+            .header { display: flex; align-items: center; padding: 4px 8px; background: linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%); border-bottom: 0.25px solid #64126D; }
             .logo { width: 35px; margin-right: 8px; background: #fff; border-radius: 3px; padding: 2px; }
             .logo img { width: 100%; height: auto; }
             .company-info { flex: 1; text-align: center; }
@@ -421,7 +421,7 @@ export default function ReportsPage() {
             .company-info p { font-size: 5.5px; color: #e8d5f5; font-weight: 500; line-height: 1.3; }
             
             /* Month Title */
-            .slip-title { text-align: center; padding: 2px; background: linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5); border-bottom: 0.25px solid #4B0082; font-weight: 700; font-size: 6px; color: #4B0082; letter-spacing: 0.3px; }
+            .slip-title { text-align: center; padding: 2px; background: linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5); border-bottom: 0.25px solid #64126D; font-weight: 700; font-size: 6px; color: #64126D; letter-spacing: 0.3px; }
             
             /* Tables */
             .main-table { width: 100%; border-collapse: collapse; border-spacing: 0; table-layout: fixed; }
@@ -429,18 +429,18 @@ export default function ReportsPage() {
             .main-table tr > * { border-right: 0.1px solid #e8d0f0; border-bottom: 0.1px solid #e8d0f0; }
             .main-table tr > *:last-child { border-right: 0; }
             .main-table tr:last-child > * { border-bottom: 0; }
-            .main-table th { background: linear-gradient(135deg, #4B0082, #7B2FBE); font-weight: 700; text-align: center; color: #fff; font-size: 5.5px; letter-spacing: 0.2px; }
-            .label { font-weight: 700; background: #f3e5f5; color: #4B0082; font-size: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .main-table th { background: linear-gradient(135deg, #64126D, #86288F); font-weight: 700; text-align: center; color: #fff; font-size: 5.5px; letter-spacing: 0.2px; }
+            .label { font-weight: 700; background: #f3e5f5; color: #64126D; font-size: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .value { background: #fff; color: #1a1a2e; }
             td.amount { text-align: right; font-family: 'Arial', sans-serif; }
             .total-row { background: linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec); font-weight: 700; }
-            .total-row td { border-top: 0.25px solid #4B0082; }
-            .net-salary-row { background: linear-gradient(135deg, #4B0082, #7B2FBE) !important; }
+            .total-row td { border-top: 0.25px solid #64126D; }
+            .net-salary-row { background: linear-gradient(135deg, #64126D, #86288F) !important; }
             .net-salary-cell { color: #fff !important; font-weight: 800; vertical-align: middle; font-size: 6px; letter-spacing: 0.2px; }
             .net-salary-cell.amount { font-size: 7px; }
             
             /* Footer */
-            .footer { padding: 3px; text-align: center; font-size: 5px; border-top: 0.25px solid #4B0082; background: #f3e5f5; color: #4B0082; font-weight: 500; }
+            .footer { padding: 3px; text-align: center; font-size: 5px; border-top: 0.25px solid #64126D; background: #f3e5f5; color: #64126D; font-weight: 500; }
             
             @media print { 
               body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -520,7 +520,7 @@ export default function ReportsPage() {
                 <th>Gross</th>
                 <th>EARNING</th>
                 <th colspan="2">DESCRIPTION</th>
-                <th colspan="2">DEDUCTION</th>
+                <th colspan="2">AMOUNT</th>
               </tr>
               <tr class="earn-row">
                 <td colspan="2">BASIC</td>
@@ -946,7 +946,7 @@ export default function ReportsPage() {
 
             <div ref={slipRef} className="p-4 border-2 border-purple-800 rounded overflow-hidden">
               {/* Header with Logo */}
-              <div className="flex items-center pb-0 rounded-t" style={{background: 'linear-gradient(135deg, #4B0082 0%, #7B2FBE 50%, #9B59B6 100%)', padding: '14px 20px'}}>
+              <div className="flex items-center pb-0 rounded-t" style={{background: 'linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%)', padding: '14px 20px'}}>
                 <div className="w-[90px] mr-5 bg-white rounded-md p-1.5">
                   <img src="/accent-logo.png" alt="Accent Logo" className="w-full h-auto" />
                 </div>
@@ -1027,12 +1027,12 @@ export default function ReportsPage() {
                   <col style={{width: '25%'}} />
                 </colgroup>
                 <thead>
-                  <tr style={{background: 'linear-gradient(135deg, #4B0082, #7B2FBE)'}}>
+                  <tr style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}>
                     <th className="border border-purple-400 px-2 py-1.7 text-white text-[11px] tracking-wide">DESCRIPTION</th>
                     <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">Gross</th>
                     <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">EARNING</th>
                     <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">DESCRIPTION</th>
-                    <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">DEDUCTION</th>
+                    <th className="border border-purple-400 px-2 py-1.5 text-white text-[11px] tracking-wide">AMOUNT</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1113,7 +1113,7 @@ export default function ReportsPage() {
                     <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5">TOTAL DEDUCTION</td>
                     <td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5 text-right font-mono text-red-700">{selectedSlip.total_deductions || '0.00'}</td>
                   </tr>
-                  <tr style={{background: 'linear-gradient(135deg, #4B0082, #7B2FBE)'}}>
+                  <tr style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}>
                     <td className="border border-purple-400 px-2 py-2 text-white" colSpan={3}></td>
                     <td className="border border-purple-400 px-2 py-2 text-white font-extrabold text-[12px] tracking-wide">NET SALARY PAYABLE</td>
                     <td className="border border-purple-400 px-2 py-2 text-right text-white font-extrabold text-[13px] font-mono">{selectedSlip.net_salary || selectedSlip.net_pay || '0.00'}</td>

@@ -25,48 +25,54 @@ function formatDate(dateStr) {
 /**
  * Render one salary slip on the given jsPDF page.
  * Uses landscape A4, offset by yStart.
+ * Draws everything inside a single outer box with equal spacing.
  */
 function renderSlip(doc, slip, yStart) {
   const pageW = doc.internal.pageSize.getWidth();
-  const margin = 12;
+  const margin = 14;
   const tableW = pageW - margin * 2;
   let y = yStart + margin;
 
-  // ─── Company Header ───
-  doc.setFontSize(16);
+  // ─── Outer Box ───
+  // We'll calculate the total height at the end and draw the border then.
+  const boxStartY = y;
+
+  // ─── Company Header (inside the box) ───
+  doc.setFillColor(100, 18, 109);
+  doc.rect(margin, y, tableW, 18, 'F');
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 0, 0);
-  doc.text('ACCENT TECHNO SOLUTIONS PVT LTD', pageW / 2, y, { align: 'center' });
-  y += 6;
-  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text('ACCENT TECHNO SOLUTIONS PVT LTD', pageW / 2, y + 7, { align: 'center' });
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
-  doc.text('17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),', pageW / 2, y, { align: 'center' });
-  y += 4;
-  doc.text('MUMBAI, MAHARASHTRA - 400055  |  Mobile: 9324670725', pageW / 2, y, { align: 'center' });
-  y += 6;
+  doc.text('17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),', pageW / 2, y + 12, { align: 'center' });
+  doc.text('MUMBAI, MAHARASHTRA - 400055  |  Mobile: 9324670725', pageW / 2, y + 16, { align: 'center' });
+  y += 18;
 
   // ─── Month Title Bar ───
-  doc.setFillColor(232, 232, 232);
-  doc.rect(margin, y, tableW, 7, 'F');
-  doc.setDrawColor(0);
-  doc.rect(margin, y, tableW, 7, 'S');
+  doc.setFillColor(134, 40, 143);
+  doc.rect(margin, y, tableW, 8, 'F');
+  doc.setDrawColor(100, 18, 109);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text(`SALARY SLIP FOR THE MONTH OF ${formatMonthLabel(slip.month)}`, pageW / 2, y + 5, { align: 'center' });
-  y += 9;
+  doc.setTextColor(255, 255, 255);
+  doc.text(`SALARY SLIP FOR THE MONTH OF ${formatMonthLabel(slip.month)}`, pageW / 2, y + 5.5, { align: 'center' });
+  y += 8;
 
-  // ─── Employee Info Section ───
+  // ─── Employee Info Section (4 pairs per row, 8 columns) ───
   const infoRows = [
     [
       { label: 'NAME', value: safeStr(slip.employee_name) },
       { label: 'DESIGNATION', value: safeStr(slip.designation) },
       { label: 'TOTAL DAYS', value: safeStr(slip.standard_working_days) },
+      { label: 'TOTAL PAID LEAVES', value: safeStr(slip.pl_total || 21) },
     ],
     [
       { label: 'DEPARTMENT', value: safeStr(slip.department) },
       { label: 'DATE OF JOINING', value: formatDate(slip.joining_date) },
       { label: 'PRESENT DAYS', value: safeStr(slip.payable_days) },
+      { label: 'PL USED', value: safeStr(slip.pl_used || 0) },
     ],
     [
       { label: 'PF NUMBER', value: safeStr(slip.pf_number) },
@@ -74,79 +80,98 @@ function renderSlip(doc, slip, yStart) {
       { label: 'ABSENT DAYS', value: slip.standard_working_days && slip.payable_days
           ? (safeNum(slip.standard_working_days) - safeNum(slip.payable_days)).toFixed(1)
           : safeStr(slip.lop_days || '0.0') },
+      { label: 'BALANCE', value: safeStr(slip.pl_balance ?? (21 - (slip.pl_used || 0))) },
     ],
     [
       { label: 'UAN NUMBER', value: safeStr(slip.uan_number) },
       { label: 'PAN NO', value: safeStr(slip.pan_number) },
-      { label: 'TOTAL PAID LEAVES', value: safeStr(slip.pl_total || 21) },
-    ],
-    [
-      { label: 'PAYMENT MODE', value: safeStr(slip.payment_mode) },
+      { label: 'PAYMENT MODE', value: safeStr(slip.payment_mode || 'NEFT') },
       { label: '', value: '' },
-      { label: 'PL USED', value: safeStr(slip.pl_used || 0) },
-    ],
-    [
-      { label: '', value: '' },
-      { label: '', value: '' },
-      { label: 'BALANCE', value: safeStr(slip.pl_balance ?? (21 - (slip.pl_used || 0))) },
     ],
   ];
 
-  const infoCols = [
-    { labelW: 30, valueW: 48 },
-    { labelW: 34, valueW: 44 },
-    { labelW: 28, valueW: 34 },
-  ];
-  const infoRowH = 6;
-  doc.setFontSize(7);
+  // 8 equal columns across the full table width
+  const infoPairW = tableW / 4; // each label+value pair
+  const infoLabelW = infoPairW * 0.45;
+  const infoValueW = infoPairW * 0.55;
+  const infoRowH = 7;
+
+  doc.setDrawColor(100, 18, 109);
+  doc.setTextColor(0, 0, 0);
 
   for (let ri = 0; ri < infoRows.length; ri++) {
     const row = infoRows[ri];
     let x = margin;
     for (let ci = 0; ci < row.length; ci++) {
-      const col = infoCols[ci];
-      // Label cell
+      // Label cell - light background
+      doc.setFillColor(243, 229, 245);
+      doc.rect(x, y, infoLabelW, infoRowH, 'FD');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.rect(x, y, col.labelW, infoRowH, 'S');
-      doc.text(row[ci].label + ' :', x + 1.5, y + 4);
-      x += col.labelW;
-      // Value cell
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 18, 109);
+      if (row[ci].label) {
+        doc.text(row[ci].label + ' :', x + 2, y + 4.5);
+      }
+      x += infoLabelW;
+
+      // Value cell - white background
+      doc.setFillColor(255, 255, 255);
+      doc.rect(x, y, infoValueW, infoRowH, 'FD');
       doc.setFont('helvetica', 'normal');
-      doc.rect(x, y, col.valueW, infoRowH, 'S');
-      doc.text(safeStr(row[ci].value), x + 1.5, y + 4);
-      x += col.valueW;
+      doc.setFontSize(7);
+      doc.setTextColor(0, 0, 0);
+      doc.text(safeStr(row[ci].value), x + 2, y + 4.5);
+      x += infoValueW;
     }
     y += infoRowH;
   }
 
   // ─── Main Earnings / Deductions Table ───
-  y += 2;
-  const mainCols = [
-    { header: 'DESCRIPTION', w: 52 },
-    { header: 'GROSS', w: 30 },
-    { header: 'EARNING', w: 30 },
-    { header: 'DESCRIPTION', w: 52 },
-    { header: 'DEDUCTION', w: 30 },
-  ];
-  // Adjust column widths to fit tableW
-  const totalColW = mainCols.reduce((s, c) => s + c.w, 0);
-  const scale = tableW / totalColW;
-  for (const c of mainCols) c.w *= scale;
+  // Use 8 columns that align with the employee info grid above:
+  // Col 0: Earn DESCRIPTION (label width pair 1)
+  // Col 1: GROSS           (value width pair 1)  
+  // Col 2: EARNING         (label width pair 2)
+  // Col 3: (merged into col 2 for earning value — but we use pair2 value width)
+  // For deductions side: Col 4+5 = DESCRIPTION, Col 6+7 = AMOUNT
+  // Simpler: use the same 8-column grid as info section
+  const colW = tableW / 8; // each column = 1/8 of tableW
+  const rowH = 6.5;
+  const headerH = rowH + 1;
 
-  const rowH = 5.5;
+  // Header row — 8 cells, merged in pairs to show 4 headings:
+  // [DESCRIPTION (cols 0-1)] [GROSS (col 2-3)] [EARNING (col 4)] ... 
+  // Actually match the web: DESCRIPTION | Gross | EARNING | DESCRIPTION | DEDUCTION
+  // Using 8 equal cols: earn desc=2cols, gross=1col, earning=1col, ded desc=2cols, amount=2cols
+  const earnDescW = colW * 2;
+  const grossW = colW * 1.5;
+  const earningW = colW * 1.5;
+  const dedDescW = colW * 2;
+  const dedAmtW = colW * 1;
+
+  // Recompute to fill exactly tableW
+  const rawSum = earnDescW + grossW + earningW + dedDescW + dedAmtW;
+  const cols = [
+    { header: 'DESCRIPTION', w: earnDescW / rawSum * tableW },
+    { header: 'GROSS', w: grossW / rawSum * tableW },
+    { header: 'EARNING', w: earningW / rawSum * tableW },
+    { header: 'DESCRIPTION', w: dedDescW / rawSum * tableW },
+    { header: 'AMOUNT', w: dedAmtW / rawSum * tableW },
+  ];
 
   // Header row
-  doc.setFillColor(232, 232, 232);
+  doc.setFillColor(100, 18, 109);
+  doc.setDrawColor(100, 18, 109);
   let hx = margin;
-  for (const col of mainCols) {
-    doc.rect(hx, y, col.w, rowH, 'FD');
+  for (const col of cols) {
+    doc.rect(hx, y, col.w, headerH, 'FD');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.text(col.header, hx + col.w / 2, y + 3.8, { align: 'center' });
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text(col.header, hx + col.w / 2, y + 4.8, { align: 'center' });
     hx += col.w;
   }
-  y += rowH;
+  doc.setTextColor(0, 0, 0);
+  y += headerH;
 
   // Data rows
   const earningsDeductions = [
@@ -163,7 +188,8 @@ function renderSlip(doc, slip, yStart) {
   ];
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(7);
+  doc.setDrawColor(100, 18, 109);
   for (const row of earningsDeductions) {
     const vals = [
       { text: row.earn, align: 'left' },
@@ -173,16 +199,15 @@ function renderSlip(doc, slip, yStart) {
       { text: fmtAmt(row.dAmt), align: 'right' },
     ];
     let rx = margin;
-    for (let ci = 0; ci < mainCols.length; ci++) {
-      const cw = mainCols[ci].w;
+    for (let ci = 0; ci < cols.length; ci++) {
+      const cw = cols[ci].w;
       doc.rect(rx, y, cw, rowH, 'S');
+      doc.setTextColor(0, 0, 0);
       const txt = vals[ci].text;
       if (vals[ci].align === 'right') {
-        doc.text(txt, rx + cw - 1.5, y + 3.8, { align: 'right' });
-      } else if (vals[ci].align === 'center') {
-        doc.text(txt, rx + cw / 2, y + 3.8, { align: 'center' });
+        doc.text(txt, rx + cw - 2, y + 4.3, { align: 'right' });
       } else {
-        doc.text(txt, rx + 1.5, y + 3.8);
+        doc.text(txt, rx + 2, y + 4.3);
       }
       rx += cw;
     }
@@ -190,8 +215,10 @@ function renderSlip(doc, slip, yStart) {
   }
 
   // ─── Totals Row ───
-  doc.setFillColor(232, 232, 232);
+  doc.setFillColor(134, 40, 143);
   doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
   const totalVals = [
     { text: 'GROSS EARNING', align: 'left' },
     { text: '', align: 'right' },
@@ -199,53 +226,56 @@ function renderSlip(doc, slip, yStart) {
     { text: 'TOTAL DEDUCTION', align: 'left' },
     { text: fmtAmt(slip.total_deductions), align: 'right' },
   ];
-  // NET SALARY row
-  const netVals = [
-    { text: '', align: 'left' },
-    { text: '', align: 'right' },
-    { text: '', align: 'right' },
-    { text: 'NET SALARY PAYABLE', align: 'left' },
-    { text: fmtAmt(slip.net_salary || slip.net_pay), align: 'right' },
-  ];
   let tx = margin;
-  for (let ci = 0; ci < mainCols.length; ci++) {
-    const cw = mainCols[ci].w;
+  for (let ci = 0; ci < cols.length; ci++) {
+    const cw = cols[ci].w;
     doc.rect(tx, y, cw, rowH + 1, 'FD');
     const txt = totalVals[ci].text;
     if (totalVals[ci].align === 'right') {
-      doc.text(txt, tx + cw - 1.5, y + 4, { align: 'right' });
-    } else if (totalVals[ci].align === 'center') {
-      doc.text(txt, tx + cw / 2, y + 4, { align: 'center' });
+      doc.text(txt, tx + cw - 2, y + 4.8, { align: 'right' });
     } else {
-      doc.text(txt, tx + 1.5, y + 4);
+      doc.text(txt, tx + 2, y + 4.8);
     }
     tx += cw;
   }
   y += rowH + 1;
 
-  // Net Salary row
-  let nx = margin;
-  for (let ci = 0; ci < mainCols.length; ci++) {
-    const cw = mainCols[ci].w;
-    doc.rect(nx, y, cw, rowH + 1, 'FD');
-    const txt = netVals[ci].text;
-    if (netVals[ci].align === 'right') {
-      doc.text(txt, nx + cw - 1.5, y + 4, { align: 'right' });
-    } else if (netVals[ci].align === 'center') {
-      doc.text(txt, nx + cw / 2, y + 4, { align: 'center' });
-    } else {
-      doc.text(txt, nx + 1.5, y + 4);
-    }
-    nx += cw;
-  }
-  y += rowH + 3;
+  // ─── Net Salary Row ───
+  doc.setFillColor(100, 18, 109);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  // Left 3 cols merged (empty), right 2 cols: label + amount
+  const leftW = cols[0].w + cols[1].w + cols[2].w;
+  const netLabelW = cols[3].w;
+  const netAmtW = cols[4].w;
+  const netH = rowH + 2;
+  // Left merged cell
+  doc.rect(margin, y, leftW, netH, 'FD');
+  // Label cell
+  doc.rect(margin + leftW, y, netLabelW, netH, 'FD');
+  doc.text('NET SALARY PAYABLE', margin + leftW + 2, y + 5.2);
+  // Amount cell
+  doc.rect(margin + leftW + netLabelW, y, netAmtW, netH, 'FD');
+  doc.text(fmtAmt(slip.net_salary || slip.net_pay), margin + leftW + netLabelW + netAmtW - 2, y + 5.2, { align: 'right' });
+  y += netH;
 
   // ─── Footer ───
+  doc.setFillColor(243, 229, 245);
+  doc.rect(margin, y, tableW, 7, 'FD');
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
-  doc.setTextColor(100);
-  doc.text('NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN\'T REQUIRE SIGNATURE', pageW / 2, y, { align: 'center' });
-  doc.setTextColor(0);
+  doc.setTextColor(100, 18, 109);
+  doc.text('NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN\'T REQUIRE SIGNATURE', pageW / 2, y + 4.5, { align: 'center' });
+
+  y += 7;
+
+  // ─── Draw Outer Box ───
+  doc.setDrawColor(100, 18, 109);
+  doc.setLineWidth(0.6);
+  doc.rect(margin, boxStartY, tableW, y - boxStartY, 'S');
+  doc.setLineWidth(0.2);
+  doc.setTextColor(0, 0, 0);
 }
 
 /**
