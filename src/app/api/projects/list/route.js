@@ -107,8 +107,8 @@ export async function GET(request) {
         console.warn('Stats query failed:', statsErr?.message);
       }
 
-      // Filter by team membership if not super admin
-      const canSeeAllProjects = user.is_super_admin;
+      // Filter by team membership if not super admin and doesn't have projects read permission
+      const canSeeAllProjects = user.is_super_admin || hasPermission(user, 'projects', 'read');
       if (!canSeeAllProjects) {
         projects = projects.filter(project => 
           isUserInProjectTeam(project.project_team, user.id, user.email)

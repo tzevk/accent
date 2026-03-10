@@ -359,6 +359,9 @@ export default function Proposals() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Created Date
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Discussion
+                    </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
@@ -367,7 +370,7 @@ export default function Proposals() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {loading ? (
                     <tr>
-                      <td colSpan="5" className="px-6 py-4 text-center">
+                      <td colSpan="6" className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]"></div>
                           <span className="ml-2 text-gray-500">Loading proposals...</span>
@@ -376,7 +379,7 @@ export default function Proposals() {
                     </tr>
                   ) : filteredProposals.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="px-6 py-12 text-center">
+                      <td colSpan="6" className="px-6 py-12 text-center">
                         <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
                         <h3 className="mt-2 text-sm font-medium text-gray-900">No proposals</h3>
                         <p className="mt-1 text-sm text-gray-500">
@@ -421,6 +424,9 @@ export default function Proposals() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {proposal.created_at ? new Date(proposal.created_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 max-w-[180px] truncate" title={proposal.discussion || ''}>
+                          {proposal.discussion || <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex justify-end space-x-2">

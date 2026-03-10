@@ -860,3 +860,35 @@ export async function DELETE(request, { params }) {
     if (pool) pool.release();
   }
 }
+
+// PATCH — partial update (e.g. discussion field)
+export async function PATCH(request, { params }) {
+  let pool;
+  try {
+    const auth = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+    if (auth instanceof Response) return auth;
+
+    const { id } = await params;
+    const body = await request.json();
+
+    const allowed = ['discussion', 'notes', 'status', 'priority', 'progress'];
+    const updates = Object.entries(body).filter(([k]) => allowed.includes(k));
+    if (updates.length === 0) {
+      return NextResponse.json({ success: false, error: 'No valid fields to update' }, { status: 400 });
+    }
+
+    const { dbConnect } = await import('@/utils/database');
+    pool = await dbConnect();
+
+    const setClauses = updates.map(([k]) => `${k} = ?`).join(', ');
+    const values = [...updates.map(([, v]) => v), id];
+    await pool.execute(`UPDATE proposals SET ${setClauses}, updated_at = NOW() WHERE id = ?`, values);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('PATCH proposal error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to update proposal' }, { status: 500 });
+  } finally {
+    if (pool) pool.release();
+  }
+}

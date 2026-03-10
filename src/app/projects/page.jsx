@@ -68,6 +68,7 @@ function ProjectsInner() {
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [activeTab, setActiveTab] = useState(() => (viewParam === 'calendar' ? 'calendar' : 'list'));
   const [calendarDate, setCalendarDate] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(null);
@@ -182,12 +183,17 @@ function ProjectsInner() {
 
   const fetchProjects = async () => {
     try {
+      setFetchError(null);
       // Use optimized /api/projects/list endpoint for better TTFB
       const result = await fetchJSON('/api/projects/list');
       if (result.success) setProjects(result.data);
-      else console.error('Error fetching projects:', result.error);
+      else {
+        console.error('Error fetching projects:', result.error);
+        setFetchError(result.error || 'Failed to load projects');
+      }
     } catch (error) {
-          console.error('Error fetching projects:', error.message);
+      console.error('Error fetching projects:', error.message);
+      setFetchError(error.message || 'Failed to load projects');
     } finally {
       setLoading(false);
     }
@@ -533,6 +539,11 @@ function ProjectsInner() {
                             <div key={i} className="h-12 bg-gray-100 rounded animate-pulse"></div>
                           ))}
                         </div>
+                      </div>
+                    ) : fetchError ? (
+                      <div className="p-6 text-center">
+                        <p className="text-sm text-red-600 mb-2">{fetchError}</p>
+                        <button onClick={fetchProjects} className="text-sm text-purple-600 hover:underline">Try again</button>
                       </div>
                     ) : projects.length === 0 ? (
                       <div className="p-6 text-center">

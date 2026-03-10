@@ -18,7 +18,8 @@ import {
 
 export default function ActivityMasterPage() {
   const [disciplines, setDisciplines] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [disciplineSearch, setDisciplineSearch] = useState("");
+  const [activitySearch, setActivitySearch] = useState("");
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -66,25 +67,25 @@ export default function ActivityMasterPage() {
   // Get selected discipline
   const selectedDiscipline = disciplines.find(d => d.id === selectedDisciplineId);
 
-  // Filter disciplines by search term
+  // Filter disciplines by discipline search term
   const filteredDisciplines = useMemo(() => {
-    if (!searchTerm) return disciplines;
-    const term = searchTerm.toLowerCase();
-    return disciplines.filter(discipline => 
+    if (!disciplineSearch) return disciplines;
+    const term = disciplineSearch.toLowerCase();
+    return disciplines.filter(discipline =>
       discipline.function_name.toLowerCase().includes(term)
     );
-  }, [disciplines, searchTerm]);
+  }, [disciplines, disciplineSearch]);
 
-  // Filter activities by search term
+  // Filter activities by activity search term
   const filteredActivities = useMemo(() => {
     if (!selectedDiscipline) return [];
     const activities = selectedDiscipline.activities || [];
-    if (!searchTerm) return activities;
-    const term = searchTerm.toLowerCase();
+    if (!activitySearch) return activities;
+    const term = activitySearch.toLowerCase();
     return activities.filter(activity => 
       activity.activity_name.toLowerCase().includes(term)
     );
-  }, [selectedDiscipline, searchTerm]);
+  }, [selectedDiscipline, activitySearch]);
 
   // Show success message
   const showSuccess = (message) => {
@@ -462,19 +463,6 @@ export default function ActivityMasterPage() {
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div className="mb-6">
-            <div className="relative max-w-md">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search disciplines or activities…"
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
-              />
-            </div>
-          </div>
-
           {/* Two Panel Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
@@ -492,6 +480,19 @@ export default function ActivityMasterPage() {
                       <p className="text-xs text-white/70">{disciplines.length} total</p>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Discipline Search */}
+              <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    value={disciplineSearch}
+                    onChange={(e) => setDisciplineSearch(e.target.value)}
+                    placeholder="Search disciplines…"
+                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
+                  />
                 </div>
               </div>
 
@@ -628,6 +629,19 @@ export default function ActivityMasterPage() {
                       </p>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Activity Search */}
+              <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    value={activitySearch}
+                    onChange={(e) => setActivitySearch(e.target.value)}
+                    placeholder="Search activities…"
+                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4472C4] focus:border-transparent"
+                  />
                 </div>
               </div>
 
