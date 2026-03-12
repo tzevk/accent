@@ -486,7 +486,12 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
     incentive = 0;
   }
   
-  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive;
+  const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
+  const otRate = overtimeHours > 0
+    ? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
+    : 0;
+
+  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive + otRate;
   
   // ═══════════════════════════════════════════════════════════════════
   // EMPLOYEE DEDUCTIONS (calculated on actual payable gross)
@@ -573,6 +578,7 @@ export async function calculateEmployeePayroll(employeeId, month, options = {}) 
     other_allowances: otherAllowances,
     bonus,
     incentive,
+    ot_rate: otRate,
     total_earnings: totalEarnings,
     
     // Employee Deductions
@@ -658,6 +664,7 @@ const PAYROLL_COLUMNS_TO_ADD = [
   { name: 'lop_days', definition: 'DECIMAL(5,1)' },
   { name: 'lop_deduction', definition: 'DECIMAL(12, 2)' },
   { name: 'overtime_hours', definition: 'DECIMAL(5,2)' },
+  { name: 'ot_rate', definition: 'DECIMAL(12, 2) DEFAULT 0' },
   { name: 'full_month_gross', definition: 'DECIMAL(12, 2)' },
   { name: 'pl_total', definition: 'INT DEFAULT 21' },
   { name: 'pl_used', definition: 'INT DEFAULT 0' },
@@ -679,7 +686,7 @@ const n = (val) => val === undefined ? null : val;
 
 const INSERT_SLIP_SQL = `INSERT INTO payroll_slips (
   month, employee_id, gross, da_used, da, basic, hra, conveyance, call_allowance,
-  other_allowances, bonus, incentive, total_earnings,
+  other_allowances, bonus, incentive, ot_rate, total_earnings,
   pf_employee, esic_employee, pt, mlwf, retention, lwf, tds,
   other_deductions, total_deductions, net_pay,
   pf_employer, esic_employer, mlwf_employer, insurance,
@@ -688,7 +695,7 @@ const INSERT_SLIP_SQL = `INSERT INTO payroll_slips (
   lop_deduction, overtime_hours, full_month_gross,
   pl_total, pl_used, pl_balance,
   payment_status, remarks
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 function payrollToParams(payroll) {
   return [
@@ -704,6 +711,7 @@ function payrollToParams(payroll) {
     n(payroll.other_allowances) || 0,
     n(payroll.bonus) || 0,
     n(payroll.incentive) || 0,
+    n(payroll.ot_rate) || 0,
     n(payroll.total_earnings) || 0,
     n(payroll.pf_employee) || 0,
     n(payroll.esic_employee) || 0,
@@ -991,7 +999,11 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
     incentive = 0;
   }
 
-  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive;
+  const overtimeHours = parseFloat(attendance.totalOvertimeHours || 0);
+  const otRate = overtimeHours > 0
+    ? parseFloat((((basic + da) / 8) * overtimeHours).toFixed(2))
+    : 0;
+  const totalEarnings = basic + da + hra + conveyance + callAllowance + otherAllowances + bonus + incentive + otRate;
   const pfBreakdown = calculatePF(gross, pfApplicable, '15000');
   const pfEmployee = pfBreakdown.employeeContribution;
   const esicBreakdown = calculateESIC(gross, esicApplicable);
@@ -1018,7 +1030,7 @@ function computePayroll(employeeId, month, profile, daAmount, attendance, includ
     month, employee_id: employeeId,
     gross, da_used: daAmount, da, basic, hra, conveyance,
     call_allowance: callAllowance, other_allowances: otherAllowances,
-    bonus, incentive, total_earnings: totalEarnings,
+    bonus, incentive, ot_rate: otRate, total_earnings: totalEarnings,
     pf_employee: pfEmployee, esic_employee: esicEmployee, pt, mlwf, retention,
     lwf: 0, tds: 0, other_deductions: 0, total_deductions: totalDeductions,
     net_pay: netPay,

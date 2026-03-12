@@ -183,7 +183,7 @@ function renderSlip(doc, slip, yStart) {
     { earn: 'OTHER ALLOWANCE', eGross: slip.other_allowances, eEarn: slip.other_allowances, ded: 'TDS', dAmt: slip.tds },
     { earn: 'PAID HOLIDAY AMOUNT', eGross: slip.paid_holiday, eEarn: slip.paid_holiday, ded: 'RETENTION AMOUNT', dAmt: slip.retention },
     { earn: 'BONUS', eGross: slip.bonus, eEarn: slip.bonus, ded: 'MLWF', dAmt: slip.mlwf },
-    { earn: 'OT RATE', eGross: slip.ot_rate, eEarn: slip.ot_rate, ded: '', dAmt: '' },
+    { earn: 'OT AMOUNT', eGross: slip.ot_rate, eEarn: slip.ot_rate, ded: '', dAmt: '' },
     { earn: 'INCENTIVE', eGross: slip.incentive, eEarn: slip.incentive, ded: '', dAmt: '' },
   ];
 
@@ -314,9 +314,14 @@ export async function GET(request) {
              e.uan as uan_number,
              e.pf_no as pf_number,
              e.esi_no as esic_number,
-             e.pan as pan_number
+         e.pan as pan_number,
+         ss_inner.basic_salary as structure_basic_salary,
+         sp_inner.basic as profile_basic,
+         sp_inner.basic_plus_da as profile_basic_plus_da
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
+      LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
+      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE ps.month = ?
     `;
     const params = [month];
@@ -344,20 +349,56 @@ export async function GET(request) {
       );
     }
 
+    // Normalize BASIC/DA from canonical sources so PDF matches sheet/export logic.
+    let scheduledDA = 0;
+    try {
+      const [yr, mn] = String(month).split('-');
+      const monthDate = `${yr}-${mn}-01`;
+      const [daRows] = await db.execute(
+        `SELECT value_type, value
+         FROM payroll_schedules
+         WHERE component_type = 'da' AND is_active = 1
+           AND effective_from <= ?
+           AND (effective_to IS NULL OR effective_to >= ?)
+         ORDER BY effective_from DESC
+         LIMIT 1`,
+        [monthDate, monthDate]
+      );
+      if (daRows.length > 0) {
+        const daRow = daRows[0];
+        scheduledDA = daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
+      }
+    } catch (daErr) {
+      console.log('DA fetch in bulk-pdf route skipped:', daErr.message);
+    }
+
+    const normalizedSlips = slips.map((row) => {
+      const basicPlusDaSource = Math.max(
+        0,
+        safeNum(row.structure_basic_salary)
+          || safeNum(row.profile_basic)
+          || safeNum(row.profile_basic_plus_da)
+          || safeNum(row.basic)
+      );
+      const da = scheduledDA > 0 ? scheduledDA : (safeNum(row.da_used) || safeNum(row.da));
+      const basic = Math.max(0, basicPlusDaSource - da);
+      return { ...row, basic, da, basic_plus_da_source: basicPlusDaSource };
+    });
+
     // ─── Generate PDF ───
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-    for (let i = 0; i < slips.length; i++) {
+    for (let i = 0; i < normalizedSlips.length; i++) {
       if (i > 0) doc.addPage();
-      renderSlip(doc, slips[i], 0);
+      renderSlip(doc, normalizedSlips[i], 0);
     }
 
     const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
 
     const monthLabel = month.substring(0, 7); // YYYY-MM
     // Use employee name for single slip, otherwise use generic name
-    const filename = employeeId && slips.length === 1 
-      ? `Salary_Slip_${slips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
+    const filename = employeeId && normalizedSlips.length === 1 
+      ? `Salary_Slip_${normalizedSlips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
       : `Salary_Slips_${monthLabel}.pdf`;
     
     return new Response(pdfBuffer, {

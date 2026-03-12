@@ -42,10 +42,22 @@ export async function GET(request) {
         e.uan,
         e.pf_no,
         e.esi_no,
+        ss_inner.basic_salary as structure_basic_salary,
+        ss_inner.gross_salary as structure_gross_salary,
         sp_inner.gross_salary as profile_gross,
-        sp_inner.employer_cost as profile_ctc
+        sp_inner.employer_cost as profile_ctc,
+        sp_inner.total_earnings as profile_total_earnings,
+        sp_inner.basic_plus_da as profile_basic_plus_da,
+        sp_inner.basic as profile_basic,
+        sp_inner.da as profile_da,
+        sp_inner.hra as profile_hra,
+        sp_inner.conveyance as profile_conveyance,
+        sp_inner.call_allowance as profile_call_allowance,
+        sp_inner.other_allowances as profile_other_allowances,
+        sp_inner.incentive as profile_incentive
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
+      LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
       LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE ps.month = ?`;
     const params = [month];
@@ -77,6 +89,10 @@ export async function GET(request) {
     const monthNum = parseInt(mn, 10);
     const yearNum = parseInt(yr, 10);
     const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+    const weeklyOffDaysInMonth = Array.from({ length: daysInMonth }, (_, index) => {
+      const date = new Date(yearNum, monthNum - 1, index + 1);
+      return date.getDay() === 0 ? 1 : 0;
+    }).reduce((sum, day) => sum + day, 0);
 
     // Get days_present per employee from attendance table
     const employeeIds = slips.map(s => s.employee_id);
@@ -85,19 +101,20 @@ export async function GET(request) {
     if (employeeIds.length > 0) {
       try {
         const placeholders = employeeIds.map(() => '?').join(',');
+        const monthKey = `${yr}-${mn}`;
         const [attendanceRows] = await db.execute(
           `SELECT 
-            user_id,
-            COUNT(DISTINCT DATE(date)) as days_present
-          FROM attendance 
-          WHERE user_id IN (${placeholders})
-          AND MONTH(date) = ? 
-          AND YEAR(date) = ?
-          GROUP BY user_id`,
-          [...employeeIds, monthNum, yearNum]
+            employee_id,
+            COUNT(DISTINCT DATE(attendance_date)) as days_present
+          FROM employee_attendance 
+          WHERE employee_id IN (${placeholders})
+          AND DATE_FORMAT(attendance_date, '%Y-%m') = ?
+          AND status IN ('P', 'HD', 'OT')
+          GROUP BY employee_id`,
+          [...employeeIds, monthKey]
         );
         for (const row of attendanceRows) {
-          attendanceMap[row.user_id] = row.days_present || 0;
+          attendanceMap[row.employee_id] = row.days_present || 0;
         }
       } catch (attErr) {
         console.log('Attendance fetch for export skipped:', attErr.message);
@@ -122,12 +139,12 @@ export async function GET(request) {
       }
     }
 
-    // Fetch DA from payroll_schedules for this month
+    // Fetch DA using the same active schedule logic as the Manage Schedule flow
     let scheduledDA = 0;
     try {
       const monthDate = `${yr}-${mn}-01`;
       const [daRows] = await db.execute(
-        `SELECT value FROM payroll_schedules 
+        `SELECT value_type, value FROM payroll_schedules 
          WHERE component_type = 'da' AND is_active = 1 
            AND effective_from <= ?
            AND (effective_to IS NULL OR effective_to >= ?)
@@ -135,7 +152,10 @@ export async function GET(request) {
         [monthDate, monthDate]
       );
       if (daRows.length > 0) {
-        scheduledDA = parseFloat(daRows[0].value) || 0;
+        const daRow = daRows[0];
+        scheduledDA = daRow.value_type === 'percentage'
+          ? 0
+          : (parseFloat(daRow.value) || 0);
       }
     } catch (daErr) {
       console.log('DA schedule fetch for export skipped:', daErr.message);
@@ -357,7 +377,7 @@ export async function GET(request) {
         'OTHER ALLOWANCE',
         'PAID HOLIDAY AMOUNT',
         'BONUS',
-        'OT RATE',
+        'OT AMOUNT',
         // More Earnings (25)
         'INCENTIVE',
         // Gross (26)
@@ -404,40 +424,73 @@ export async function GET(request) {
         const slip = slips[idx];
         // All numeric values use safeNum() to guarantee finite numbers (never NaN/Infinity/strings)
         const tds = safeNum(slip.tds);
-        const basicRaw = safeNum(slip.basic);
-        const da = scheduledDA;
-        const basic = basicRaw - da;
-        const hra = safeNum(slip.hra);
-        const conveyance = safeNum(slip.conveyance);
-        const callAllowance = safeNum(slip.call_allowance);
-        const otherAllowances = safeNum(slip.other_allowances);
-        const bonus = safeNum(slip.bonus);
+        const totalDays = daysInMonth;
+        const standardWorkingDays = safeNum(slip.standard_working_days) || totalDays;
+        const lopDays = lwpMap[slip.employee_id] != null ? safeNum(lwpMap[slip.employee_id]) : safeNum(slip.lop_days);
+        const absentDays = Math.max(lopDays, safeNum(slip.days_absent));
+        const daysLeave = safeNum(slip.days_leave);
+        const weeklyOff = weeklyOffDaysInMonth;
+        const daysPresent = Math.max(0, totalDays - weeklyOff - absentDays);
+        const payableDays = Math.max(0, totalDays - lopDays);
+        // Only apply pro-rata when there are actual absent/LOP days
+        const isAbsent = absentDays > 0;
+        const prorataFactor = isAbsent && standardWorkingDays > 0
+          ? Math.min(1, (standardWorkingDays - absentDays) / standardWorkingDays)
+          : 1;
+
+        const structureBasicPlusDa = safeNum(slip.structure_basic_salary);
+        const profileBasic = safeNum(slip.profile_basic);
+        const profileBasicPlusDa = safeNum(slip.profile_basic_plus_da);
+        const basicPlusDaFull = Math.max(
+          0,
+          structureBasicPlusDa > 0
+            ? structureBasicPlusDa
+            : profileBasic > 0
+              ? profileBasic
+              : profileBasicPlusDa > 0
+                ? profileBasicPlusDa
+                : (safeNum(slip.basic) || (safeNum(slip.profile_basic) + safeNum(slip.profile_da)))
+        );
+        const daFull = scheduledDA > 0 ? scheduledDA : safeNum(slip.da_used || slip.da);
+        const basicFull = Math.max(0, basicPlusDaFull - daFull);
+        const basicPlusDa = basicFull + daFull;
+        const hraFull = safeNum(slip.hra);
+        const conveyanceFull = safeNum(slip.conveyance);
+        const callAllowanceFull = safeNum(slip.call_allowance);
+        const otherAllowancesFull = safeNum(slip.other_allowances);
+        const bonusFull = safeNum(slip.bonus);
         const incentive = safeNum(slip.incentive);
         const paidHoliday = safeNum(slip.paid_holiday);
-        const otRate = safeNum(slip.ot_rate);
-        // Gross = total earnings (sum of all earning components)
-        const gross = basic + da + hra + conveyance + callAllowance + otherAllowances + paidHoliday + bonus + otRate + incentive;
-        const pfEmployee = safeNum(slip.pf_employee);
-        const esicEmployee = safeNum(slip.esic_employee);
-        // PT is always 300 in February
+        const otRateFull = safeNum(slip.ot_rate);
+
+        // Basic/DA split should match salary structure + Manage Schedule exactly
+        const basic = basicFull;
+        const da = daFull;
+        const hra = hraFull * prorataFactor;
+        const conveyance = conveyanceFull * prorataFactor;
+        const callAllowance = callAllowanceFull * prorataFactor;
+        const otherAllowances = otherAllowancesFull * prorataFactor;
+        const bonus = bonusFull * prorataFactor;
+        const otRate = otRateFull * prorataFactor;
+        // Gross = total earnings using fetched Basic + DA from salary structure/profile
+        const gross = basicPlusDa + hra + conveyance + callAllowance + otherAllowances + paidHoliday + bonus + otRate + incentive;
+        
+        // Pro-rate percentage-based deductions only if person is absent
+        const pfEmployee = isAbsent ? safeNum(slip.pf_employee) * prorataFactor : safeNum(slip.pf_employee);
+        const esicEmployee = isAbsent ? safeNum(slip.esic_employee) * prorataFactor : safeNum(slip.esic_employee);
+        // PT is always 300 in February, but also pro-rate if absent
         const originalPt = safeNum(slip.pt);
-        const pt = (monthNum === 2) ? 300 : originalPt;
-        const ptDiff = pt - originalPt;
+        const pt = isAbsent ? ((monthNum === 2) ? 300 * prorataFactor : originalPt * prorataFactor) : ((monthNum === 2) ? 300 : originalPt);
         const empLoanAdvance = loanAdvanceMap[slip.employee_id] || { loan: 0, advance: 0 };
         const loan = empLoanAdvance.loan || safeNum(slip.loan);
         const advance = empLoanAdvance.advance || safeNum(slip.advance);
-        const retention = safeNum(slip.retention);
+        const retention = isAbsent ? safeNum(slip.retention) * prorataFactor : safeNum(slip.retention);
         // MLWF: compulsory ₹25 deduction in June and December
         const mlwf = (monthNum === 6 || monthNum === 12) ? 25 : safeNum(slip.mlwf);
-        // Use stored total_deductions as base, then add loan/advance and PT adjustment
-        const storedDeductions = safeNum(slip.total_deductions);
-        const totalDeductions = storedDeductions + loan + advance + ptDiff;
+        // Recalculate total_deductions from pro-rated components
+        const baseDeductions = pfEmployee + esicEmployee + pt + mlwf + retention;
+        const totalDeductions = baseDeductions + loan + advance;
         const netPay = gross - totalDeductions;
-        const totalDays = daysInMonth;
-        const daysPresent = attendanceMap[slip.employee_id] != null ? safeNum(attendanceMap[slip.employee_id]) : safeNum(slip.days_present);
-        const payableDays = safeNum(slip.payable_days);
-        const lopDays = lwpMap[slip.employee_id] != null ? safeNum(lwpMap[slip.employee_id]) : safeNum(slip.lop_days);
-        const daysLeave = safeNum(slip.days_leave);
         const otHours = safeNum(slip.overtime_hours);
 
         const row = sheet.getRow(7 + idx);
@@ -456,7 +509,7 @@ export async function GET(request) {
         // Accumulate totals for numeric columns (8..36 = index 7..35)
         totals[7] += totalDays; totals[8] += daysPresent; totals[9] += payableDays;
         totals[10] += lopDays; totals[11] += daysLeave; totals[12] += 4; totals[14] += otHours;
-        totals[15] += basic; totals[16] += da; // basic already has da subtracted totals[17] += hra;
+        totals[15] += basic; totals[16] += da; totals[17] += hra;
         totals[18] += conveyance; totals[19] += callAllowance; totals[20] += otherAllowances;
         totals[21] += paidHoliday; totals[22] += bonus; totals[23] += otRate;
         totals[24] += incentive; totals[25] += gross;

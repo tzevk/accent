@@ -561,7 +561,7 @@ export default function SalarySlipPage() {
                       <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.mlwf || ''}</td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>OT RATE</td>
+                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>OT AMOUNT</td>
                       <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.ot_rate || ''}</td>
                       <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.ot_rate || ''}</td>
                       <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}></td>

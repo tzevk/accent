@@ -2163,10 +2163,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
           employer_cost: lumpsumAmount,
         };
       } else if (salaryType === 'custom') {
-        // CTC-based calculation
-        // CTC = Gross + Employer Contributions
-        // So Gross = CTC - Employer Contributions
-        const ctc = parseFloat(salaryPreview.custom_ctc) || 0;
+        // Keep custom totals consistent with UI cards.
+        // Total CTC = Total Earnings + Employer Contributions.
         const employerContributions = 
           (parseFloat(salaryPreview.custom_pf_employer) || 0) +
           (parseFloat(salaryPreview.custom_esic_employer) || 0) +
@@ -2175,17 +2173,16 @@ export default function EmployeesPageInner({ employeeType = null }) {
           (parseFloat(salaryPreview.custom_insurance) || 0) +
           ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0));
         
-        const grossSalary = ctc - employerContributions;
-        
         // Calculate totals
         const totalEarnings = 
           (parseFloat(salaryPreview.custom_basic) || 0) +
-          (parseFloat(salaryPreview.custom_da) || 0) +
           (parseFloat(salaryPreview.custom_hra) || 0) +
           (parseFloat(salaryPreview.custom_conveyance) || 0) +
           (parseFloat(salaryPreview.custom_call_allowance) || 0) +
           (parseFloat(salaryPreview.custom_incentive) || 0) +
           (parseFloat(salaryPreview.custom_other_allowances) || 0);
+        const totalCtc = totalEarnings + employerContributions;
+        const grossSalary = totalEarnings;
           
         const totalDeductions = 
           (parseFloat(salaryPreview.custom_pf_employee) || 0) +
@@ -2200,10 +2197,10 @@ export default function EmployeesPageInner({ employeeType = null }) {
           ...payload,
           salary_type: 'custom',
           // CTC and hourly rate
-          employer_cost: ctc,
+          employer_cost: totalCtc,
           hourly_rate: parseFloat(salaryPreview.custom_hourly_rate) || 0,
           std_hours_per_day: (parseFloat(salaryPreview.custom_monthly_hours) || 160) / 20, // Convert monthly hours to daily
-          // Gross salary (CTC - Employer Contributions)
+          // Gross salary equals total earnings for custom profiles
           gross_salary: grossSalary,
           // Earnings breakdown
           basic: parseFloat(salaryPreview.custom_basic) || 0,
@@ -2232,7 +2229,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
           net_pay: netPay,
           // Store custom components and CTC in description
           lumpsum_description: JSON.stringify({
-            ctc: ctc,
+            ctc: totalCtc,
             monthly_hours: parseFloat(salaryPreview.custom_monthly_hours) || 160,
             custom_components: salaryPreview.custom_components || []
           }),
@@ -2875,7 +2872,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                     const customComponentsTotal = customComponents.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
                                     const loanEMI = (p.loan_active && parseFloat(p.loan_amount_per_month) > 0) ? (parseFloat(p.loan_amount_per_month) || 0) : 0;
                                     const advanceAmt = (p.advance_active && parseFloat(p.advance_amount) > 0) ? (parseFloat(p.advance_amount) || 0) : 0;
-                                    const totalEarnings = (parseFloat(p.basic) || 0) + (parseFloat(p.hra) || 0) + (parseFloat(p.conveyance) || 0) + (parseFloat(p.call_allowance) || 0) + (parseFloat(p.incentive) || 0) + (parseFloat(p.other_allowances) || 0) + (parseFloat(p.bonus) || 0) + customComponentsTotal;
+                                    const basicDaTotal = parseFloat(p.basic_da_total) || ((parseFloat(p.basic) || 0) + (parseFloat(p.da) || 0));
+                                    const totalEarnings = basicDaTotal + (parseFloat(p.hra) || 0) + (parseFloat(p.conveyance) || 0) + (parseFloat(p.call_allowance) || 0) + (parseFloat(p.incentive) || 0) + (parseFloat(p.other_allowances) || 0) + (parseFloat(p.bonus) || 0) + customComponentsTotal;
                                     const totalDeductions = (parseFloat(p.pf_employee) || 0) + (parseFloat(p.esic_employee) || 0) + (parseFloat(p.pt) || 0) + (parseFloat(p.mlwf) || 0) + (parseFloat(p.retention) || 0) + (parseFloat(p.tds) || 0) + loanEMI + advanceAmt;
                                     const totalEmployer = (parseFloat(p.pf_employer) || 0) + (parseFloat(p.esic_employer) || 0) + (parseFloat(p.mlwf_employer) || 0) + (parseFloat(p.insurance) || 0);
                                     const netPay = totalEarnings - totalDeductions;
@@ -2912,7 +2910,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                                             <h6 className="text-xs font-semibold text-green-800 mb-2">Earnings</h6>
                                             <div className="space-y-1 text-sm">
-                                              <div className="flex justify-between"><span className="text-gray-600">Basic + DA</span><span className="font-medium">₹{formatCurrency(parseFloat(p.basic) || 0)}</span></div>
+                                              <div className="flex justify-between"><span className="text-gray-600">Basic + DA</span><span className="font-medium">₹{formatCurrency(basicDaTotal)}</span></div>
                                               <div className="flex justify-between"><span className="text-gray-600">HRA</span><span className="font-medium">₹{formatCurrency(parseFloat(p.hra) || 0)}</span></div>
                                               <div className="flex justify-between"><span className="text-gray-600">Conveyance</span><span className="font-medium">₹{formatCurrency(parseFloat(p.conveyance) || 0)}</span></div>
                                               <div className="flex justify-between"><span className="text-gray-600">Call Allowance</span><span className="font-medium">₹{formatCurrency(parseFloat(p.call_allowance) || 0)}</span></div>
@@ -4878,7 +4876,6 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                         <span>From Earnings:</span>
                                         <span>₹{formatCurrency(
                                           (parseFloat(salaryPreview.custom_basic) || 0) +
-                                          (parseFloat(salaryPreview.custom_da) || 0) +
                                           (parseFloat(salaryPreview.custom_hra) || 0) +
                                           (parseFloat(salaryPreview.custom_conveyance) || 0) +
                                           (parseFloat(salaryPreview.custom_call_allowance) || 0) +
@@ -4964,7 +4961,6 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                           <span className="text-green-700">Net Pay</span>
                                           <span className="text-green-700">₹{formatCurrency(
                                             ((parseFloat(salaryPreview.custom_basic) || 0) +
-                                            (parseFloat(salaryPreview.custom_da) || 0) +
                                             (parseFloat(salaryPreview.custom_hra) || 0) +
                                             (parseFloat(salaryPreview.custom_conveyance) || 0) +
                                             (parseFloat(salaryPreview.custom_call_allowance) || 0) +
@@ -5014,7 +5010,6 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                         <span className="text-sm text-gray-600">Total Earnings</span>
                                         <span className="text-sm font-medium text-gray-900">₹{formatCurrency(
                                           (parseFloat(salaryPreview.custom_basic) || 0) +
-                                          (parseFloat(salaryPreview.custom_da) || 0) +
                                           (parseFloat(salaryPreview.custom_hra) || 0) +
                                           (parseFloat(salaryPreview.custom_conveyance) || 0) +
                                           (parseFloat(salaryPreview.custom_call_allowance) || 0) +
@@ -5119,7 +5114,20 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                       <div className="border-t-2 border-blue-400 pt-2 mt-2">
                                         <div className="flex justify-between font-bold text-base">
                                           <span className="text-blue-800">Total CTC</span>
-                                          <span className="text-blue-800">₹{formatCurrency(parseFloat(salaryPreview.custom_ctc) || 0)}</span>
+                                          <span className="text-blue-800">₹{formatCurrency(
+                                            ((parseFloat(salaryPreview.custom_basic) || 0) +
+                                            (parseFloat(salaryPreview.custom_hra) || 0) +
+                                            (parseFloat(salaryPreview.custom_conveyance) || 0) +
+                                            (parseFloat(salaryPreview.custom_call_allowance) || 0) +
+                                            (parseFloat(salaryPreview.custom_incentive) || 0) +
+                                            (parseFloat(salaryPreview.custom_other_allowances) || 0)) +
+                                            ((parseFloat(salaryPreview.custom_pf_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_esic_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+                                            (parseFloat(salaryPreview.custom_bonus) || 0) +
+                                            (parseFloat(salaryPreview.custom_insurance) || 0) +
+                                            ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0)))
+                                          )}</span>
                                         </div>
                                       </div>
                                     </div>

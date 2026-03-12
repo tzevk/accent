@@ -572,7 +572,7 @@ export default function ReportsPage() {
                 <td class="amount" colspan="2">${selectedSlip?.retention || '0.00'}</td>
               </tr>
               <tr class="earn-row">
-                <td colspan="2">OT RATE</td>
+                <td colspan="2">OT AMOUNT</td>
                 <td class="amount">${selectedSlip?.ot_rate || '0.00'}</td>
                 <td class="amount">${selectedSlip?.ot_rate || '0.00'}</td>
                 <td colspan="2">MLWF</td>
@@ -1093,7 +1093,7 @@ export default function ReportsPage() {
                     <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-rose-50">{selectedSlip.mlwf || ''}</td>
                   </tr>
                   <tr>
-                    <td className="border border-purple-200 px-2 py-1 bg-green-50">OT RATE</td>
+                    <td className="border border-purple-200 px-2 py-1 bg-green-50">OT AMOUNT</td>
                     <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.ot_rate || ''}</td>
                     <td className="border border-purple-200 px-2 py-1 text-right font-mono bg-green-50">{selectedSlip.ot_rate || ''}</td>
                     <td className="border border-purple-200 px-2 py-1 bg-red-50"></td>

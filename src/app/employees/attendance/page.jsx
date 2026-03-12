@@ -43,6 +43,7 @@ export default function AttendancePage() {
   // Data
   const [employees, setEmployees] = useState([]);
   const [attendanceData, setAttendanceData] = useState({}); // { empId: { 'YYYY-MM-DD': { status, overtime_hours, ... } } }
+  const [salaryProfiles, setSalaryProfiles] = useState({}); // { empId: { basic, da, basic_plus_da, ... } }
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -157,12 +158,69 @@ export default function AttendancePage() {
     }
   }, [selectedYear]);
 
+  // Fetch salary profiles (full) for currently loaded employees to compute OT payout
+  const fetchSalaryProfiles = useCallback(async (employeeList) => {
+    try {
+      if (!employeeList || employeeList.length === 0) {
+        setSalaryProfiles({});
+        return;
+      }
+      const ids = employeeList.map(e => e.id).filter(Boolean);
+      if (ids.length === 0) {
+        setSalaryProfiles({});
+        return;
+      }
+
+      const res = await fetch(`/api/payroll/salary-profile/batch?ids=${ids.join(',')}&full=1`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setSalaryProfiles(data.data);
+      } else {
+        setSalaryProfiles({});
+      }
+    } catch (err) {
+      console.error('Error fetching salary profiles:', err);
+      setSalaryProfiles({});
+    }
+  }, []);
+
   // Load data
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchEmployees(), fetchAttendance(), fetchHolidays()])
       .finally(() => setLoading(false));
   }, [fetchEmployees, fetchAttendance, fetchHolidays]);
+
+  // Default all unmarked days to Present while preserving existing statuses.
+  useEffect(() => {
+    if (loading || employees.length === 0 || monthDates.length === 0) return;
+
+    setAttendanceData(prev => {
+      let changed = false;
+      const updated = { ...prev };
+
+      employees.forEach(emp => {
+        const empDays = { ...(updated[emp.id] || {}) };
+        monthDates.forEach(({ dateStr }) => {
+          if (!empDays[dateStr]?.status) {
+            empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
+            changed = true;
+          }
+        });
+        updated[emp.id] = empDays;
+      });
+
+      return changed ? updated : prev;
+    });
+  }, [loading, employees, monthDates]);
+
+  useEffect(() => {
+    if (employees.length > 0) {
+      fetchSalaryProfiles(employees);
+    } else {
+      setSalaryProfiles({});
+    }
+  }, [employees, fetchSalaryProfiles]);
 
   // Navigate months
   const goToPrevMonth = () => {
@@ -267,16 +325,14 @@ export default function AttendancePage() {
     setHasChanges(true);
   };
 
-  // Mark all unmarked days as Present
+  // Mark all days as Present (overrides existing statuses)
   const markAllPresent = () => {
     setAttendanceData(prev => {
       const updated = { ...prev };
       employees.forEach(emp => {
         const empDays = { ...(updated[emp.id] || {}) };
         monthDates.forEach(({ dateStr }) => {
-          if (!empDays[dateStr]?.status) {
-            empDays[dateStr] = { status: 'P' };
-          }
+          empDays[dateStr] = { ...(empDays[dateStr] || {}), status: 'P' };
         });
         updated[emp.id] = empDays;
       });
@@ -335,7 +391,13 @@ export default function AttendancePage() {
   // Compute summary stats for an employee
   const getEmployeeSummary = (empId) => {
     const days = attendanceData[empId] || {};
-    const summary = { P: 0, A: 0, HD: 0, WO: 0, H: 0, PL: 0, CL: 0, SL: 0, LWP: 0, totalHours: 0, totalOT: 0 };
+    const summary = { P: 0, A: 0, HD: 0, WO: 0, H: 0, PL: 0, CL: 0, SL: 0, LWP: 0, totalHours: 0, totalOTHours: 0, totalOTAmount: 0 };
+    const profile = salaryProfiles[empId] || {};
+    const basicDa =
+      parseFloat(profile.basic_plus_da || 0) ||
+      ((parseFloat(profile.basic || 0) || 0) + (parseFloat(profile.da || 0) || 0));
+    const perHourRate = basicDa > 0 ? (basicDa / 8) : 0;
+
     Object.values(days).forEach(d => {
       if (d.status && summary[d.status] !== undefined) {
         summary[d.status]++;
@@ -353,9 +415,12 @@ export default function AttendancePage() {
           summary.totalHours += d.status === 'HD' ? 4 : 8;
         }
       }
-      // Only count OT when it exceeds 2 hours
+      // OT payout formula: (Basic + DA) / 8 * OT hours
       const ot = parseFloat(d.overtime_hours || 0);
-      if (ot > 2) summary.totalOT += ot;
+      if (ot > 0) {
+        summary.totalOTHours += ot;
+        summary.totalOTAmount += perHourRate * ot;
+      }
     });
     summary.payable = summary.P + (summary.HD * 0.5) + summary.PL + summary.CL + summary.SL;
     return summary;
@@ -363,7 +428,7 @@ export default function AttendancePage() {
 
   // Export to CSV
   const exportCSV = () => {
-    const headers = ['Employee ID', 'Employee Name', 'Department', ...monthDates.map(d => d.day), 'Present', 'Absent', 'Half Day', 'WO', 'Holiday', 'PL', 'CL', 'SL', 'LWP', 'Payable Days', 'Total Hours', 'OT Hours'];
+    const headers = ['Employee ID', 'Employee Name', 'Department', ...monthDates.map(d => d.day), 'Present', 'Absent', 'Half Day', 'WO', 'Holiday', 'PL', 'CL', 'SL', 'LWP', 'Payable Days', 'Total Hours', 'OT Hours', 'OT Amount'];
     const rows = filteredEmployees.map(emp => {
       const summary = getEmployeeSummary(emp.id);
       const dayStatuses = monthDates.map(d => {
@@ -376,7 +441,7 @@ export default function AttendancePage() {
         emp.department || '',
         ...dayStatuses,
         summary.P, summary.A, summary.HD, summary.WO, summary.H, summary.PL, summary.CL, summary.SL, summary.LWP,
-        summary.payable.toFixed(1), summary.totalHours.toFixed(1), summary.totalOT.toFixed(1),
+        summary.payable.toFixed(1), summary.totalHours.toFixed(1), summary.totalOTHours.toFixed(1), summary.totalOTAmount.toFixed(2),
       ];
     });
 
@@ -733,7 +798,7 @@ export default function AttendancePage() {
                           <td className="px-2 py-2 text-center text-xs font-bold text-blue-700 bg-blue-50/50">{summary.WO}</td>
                           <td className="px-2 py-2 text-center text-xs font-bold text-teal-700 bg-teal-50/50">{summary.payable.toFixed(1)}</td>
                           <td className="px-2 py-2 text-center text-xs font-bold text-indigo-700 bg-indigo-50/50">{summary.totalHours.toFixed(1)}</td>
-                          <td className="px-2 py-2 text-center text-xs font-bold text-orange-700 bg-orange-50/50">{summary.totalOT > 0 ? summary.totalOT.toFixed(1) : '–'}</td>
+                          <td className="px-2 py-2 text-center text-xs font-bold text-orange-700 bg-orange-50/50">{summary.totalOTHours > 0 ? summary.totalOTHours.toFixed(1) : '–'}</td>
                         </tr>
                       );
                     })}

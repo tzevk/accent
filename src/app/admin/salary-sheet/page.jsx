@@ -160,7 +160,17 @@ export default function SalarySheetPage() {
 
   // Calculate summary stats
   const isFeb = month.split('-')[1] === '02';
-  const calcGross = (s) => (Number(s.basic) || 0) + (Number(s.hra) || 0) + (Number(s.conveyance) || 0) + (Number(s.call_allowance) || 0) + (Number(s.other_allowances) || 0) + (Number(s.bonus) || 0) + (Number(s.incentive) || 0) + (Number(s.paid_holiday) || 0) + (Number(s.ot_rate) || 0);
+  const calcBasicPlusDa = (s) => Math.max(
+    0,
+    (Number(s.structure_basic_salary) || 0)
+      || (Number(s.profile_basic) || 0)
+      || (Number(s.profile_basic_plus_da) || 0)
+      || (Number(s.basic) || 0)
+  );
+  const calcGross = (s) => {
+    const basicPlusDa = calcBasicPlusDa(s);
+    return basicPlusDa + (Number(s.hra) || 0) + (Number(s.conveyance) || 0) + (Number(s.call_allowance) || 0) + (Number(s.other_allowances) || 0) + (Number(s.bonus) || 0) + (Number(s.incentive) || 0) + (Number(s.paid_holiday) || 0) + (Number(s.ot_rate) || 0);
+  };
   const totalGross = slips.reduce((sum, s) => sum + calcGross(s), 0);
   const totalNet = slips.reduce((sum, s) => sum + (calcGross(s) - (Number(s.total_deductions) || 0) - (isFeb ? (300 - (Number(s.pt) || 0)) : 0)), 0);
   const totalDeductions = slips.reduce((sum, s) => {
@@ -381,7 +391,7 @@ export default function SalarySheetPage() {
                       <td className="px-3 py-3 text-gray-600">{slip.department || '-'}</td>
                       <td className="px-3 py-3 text-right text-gray-600">{slip.standard_working_days || 0}</td>
                       <td className="px-3 py-3 text-right text-gray-600">{slip.payable_days || slip.standard_working_days || 0}</td>
-                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency((Number(slip.basic) || 0) - scheduledDA)}</td>
+                      <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(calcBasicPlusDa(slip) - scheduledDA)}</td>
                       <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.hra)}</td>
                       <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(scheduledDA)}</td>
                       <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.conveyance)}</td>
@@ -389,7 +399,7 @@ export default function SalarySheetPage() {
                       <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.other_allowances)}</td>
                       <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.bonus)}</td>
                       <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slip.incentive)}</td>
-                      <td className="px-3 py-3 text-right font-semibold text-gray-900 bg-green-50">{formatCurrency((Number(slip.basic) || 0) + (Number(slip.hra) || 0) + (Number(slip.conveyance) || 0) + (Number(slip.call_allowance) || 0) + (Number(slip.other_allowances) || 0) + (Number(slip.bonus) || 0) + (Number(slip.incentive) || 0) + (Number(slip.paid_holiday) || 0) + (Number(slip.ot_rate) || 0))}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-gray-900 bg-green-50">{formatCurrency(calcGross(slip))}</td>
                       <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.pf_employee)}</td>
                       <td className="px-3 py-3 text-right text-red-600">{formatCurrency(slip.esic_employee)}</td>
                       <td className="px-3 py-3 text-right text-red-600">{formatCurrency(month.split('-')[1] === '02' ? 300 : slip.pt)}</td>
@@ -416,7 +426,7 @@ export default function SalarySheetPage() {
                   <tr className="font-bold">
                     <td colSpan="3" className="px-3 py-3 text-right text-gray-700 sticky left-0 bg-gray-50 z-10">TOTALS:</td>
                     <td colSpan="2" className="px-3 py-3"></td>
-                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + ((Number(r.basic) || 0) - scheduledDA), 0))}</td>
+                    <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (calcBasicPlusDa(r) - scheduledDA), 0))}</td>
                     <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.hra) || 0), 0))}</td>
                     <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(scheduledDA * slips.length)}</td>
                     <td className="px-3 py-3 text-right text-gray-900">{formatCurrency(slips.reduce((s, r) => s + (Number(r.conveyance) || 0), 0))}</td>

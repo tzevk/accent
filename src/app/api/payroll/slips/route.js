@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
+const safeNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 /**
  * GET - Fetch payroll slips
  * Query params:
@@ -32,10 +37,15 @@ export async function GET(request) {
              e.grade as designation,
              e.position,
              e.joining_date,
+                  ss_inner.basic_salary as structure_basic_salary,
+                  ss_inner.gross_salary as structure_gross_salary,
              sp_inner.gross_salary as profile_gross,
-             sp_inner.employer_cost as profile_ctc
+                  sp_inner.employer_cost as profile_ctc,
+                        sp_inner.basic as profile_basic,
+                        sp_inner.basic_plus_da as profile_basic_plus_da
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
+                LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
       LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE 1=1
     `;
@@ -66,9 +76,53 @@ export async function GET(request) {
     
     const [rows] = await db.execute(query, params);
 
+    // Normalize BASIC/DA from canonical sources so all UIs read consistent values.
+    let scheduledDA = 0;
+    if (month) {
+      try {
+        const [yr, mn] = String(month).split('-');
+        const monthDate = `${yr}-${mn}-01`;
+        const [daRows] = await db.execute(
+          `SELECT value_type, value
+           FROM payroll_schedules
+           WHERE component_type = 'da' AND is_active = 1
+             AND effective_from <= ?
+             AND (effective_to IS NULL OR effective_to >= ?)
+           ORDER BY effective_from DESC
+           LIMIT 1`,
+          [monthDate, monthDate]
+        );
+        if (daRows.length > 0) {
+          const daRow = daRows[0];
+          scheduledDA = daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
+        }
+      } catch (daErr) {
+        console.log('DA fetch in slips route skipped:', daErr.message);
+      }
+    }
+
+    const normalizedRows = rows.map((row) => {
+      const basicPlusDaSource = Math.max(
+        0,
+        safeNum(row.structure_basic_salary)
+          || safeNum(row.profile_basic)
+          || safeNum(row.profile_basic_plus_da)
+          || safeNum(row.basic)
+      );
+      const da = scheduledDA > 0 ? scheduledDA : (safeNum(row.da_used) || safeNum(row.da));
+      const basic = Math.max(0, basicPlusDaSource - da);
+
+      return {
+        ...row,
+        basic,
+        da,
+        basic_plus_da_source: basicPlusDaSource,
+      };
+    });
+
     return NextResponse.json({ 
       success: true, 
-      data: rows 
+      data: normalizedRows 
     });
   } catch (error) {
     console.error('GET /api/payroll/slips error:', error);
