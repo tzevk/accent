@@ -173,9 +173,11 @@ export default function EmployeesPageInner({ employeeType = null }) {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedWorkplace, setSelectedWorkplace] = useState('');
   const [selectedEmploymentStatus, setSelectedEmploymentStatus] = useState('');
+  const [addPageEmployeeSearch, setAddPageEmployeeSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({});
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [allEmployeesForSidebar, setAllEmployeesForSidebar] = useState([]);
   const [profileLocked, setProfileLocked] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   // Payroll generation & export
@@ -2369,6 +2371,54 @@ export default function EmployeesPageInner({ employeeType = null }) {
     fetchEmployees();
   }, [fetchEmployees]);
 
+  const fetchAllEmployeesForSidebar = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        page: 1,
+        limit: 1000,
+        ...(employeeType && { employee_type: employeeType }),
+        _t: Date.now()
+      });
+      const response = await fetch(`/api/employees/list?${params}`, {
+        cache: 'no-store'
+      });
+      const data = await response.json();
+      if (!response.ok) return;
+
+      const sortByIdNumber = (a, b) => {
+        const extract = (value) => {
+          if (!value) return Number.POSITIVE_INFINITY;
+          const match = String(value).match(/(\d+)$/);
+          return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+        };
+        const first = extract(a.employee_id);
+        const second = extract(b.employee_id);
+        if (first === second) return 0;
+        return first === Number.POSITIVE_INFINITY ? 1 : (second === Number.POSITIVE_INFINITY ? -1 : first - second);
+      };
+
+      const sorted = Array.isArray(data.employees) ? [...data.employees].sort(sortByIdNumber) : [];
+      setAllEmployeesForSidebar(sorted);
+    } catch (error) {
+      console.error('Error fetching sidebar employees:', error);
+    }
+  }, [employeeType]);
+
+  useEffect(() => {
+    fetchAllEmployeesForSidebar();
+  }, [fetchAllEmployeesForSidebar]);
+
+  const addPageFilteredEmployees = useMemo(() => {
+    const query = addPageEmployeeSearch.trim().toLowerCase();
+    if (!query) return allEmployeesForSidebar;
+    return allEmployeesForSidebar.filter((employee) => {
+      const fullName = `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase();
+      return fullName.includes(query)
+        || String(employee.employee_id || '').toLowerCase().includes(query)
+        || String(employee.email || '').toLowerCase().includes(query);
+    });
+  }, [addPageEmployeeSearch, allEmployeesForSidebar]);
+
   // Compute next ATS id from current employees list (e.g. ATS001 -> ATS002)
   const nextAtsId = useMemo(() => {
     try {
@@ -3077,8 +3127,50 @@ export default function EmployeesPageInner({ employeeType = null }) {
           {activeTab === 'add' && (
             <div className="grid grid-cols-12 gap-6">
 
+              <aside className="col-span-12 lg:col-span-3">
+                <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden max-h-[calc(100vh-220px)] flex flex-col">
+                  <div className="px-4 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+                    <div>
+                      <h2 className="text-base font-semibold text-gray-900 tracking-tight">EMPLOYEES</h2>
+                      <p className="text-xs text-gray-500">{allEmployeesForSidebar.length} Total</p>
+                    </div>
+                    <div className="relative mt-4">
+                      <input
+                        type="text"
+                        placeholder="Search employees"
+                        value={addPageEmployeeSearch}
+                        onChange={(e) => setAddPageEmployeeSearch(e.target.value)}
+                        className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                      />
+                      <svg className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M12.9 14.32a8 8 0 111.414-1.414l4.387 4.387a1 1 0 01-1.414 1.414l-4.387-4.387zM14 8a6 6 0 11-12 0 6 6 0 0112 0z" clipRule="evenodd"/></svg>
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto">
+                    {addPageFilteredEmployees.map((emp) => (
+                      <div
+                        key={emp.id}
+                        className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => openEditForm_safe(emp)}
+                      >
+                        <div className="flex items-center">
+                          <Avatar src={emp.profile_photo_url} firstName={emp.first_name} lastName={emp.last_name} size={44} />
+                          <div className="ml-3 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{emp.first_name} {emp.last_name}</p>
+                            <p className="text-xs text-gray-500 truncate">{emp.employee_id || emp.email}</p>
+                            <p className="text-xs text-gray-400 truncate">{emp.email}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {addPageFilteredEmployees.length === 0 && (
+                      <div className="p-6 text-center text-sm text-gray-500">No employees found</div>
+                    )}
+                  </div>
+                </div>
+              </aside>
+
               {/* Right Pane: Add Employee form */}
-              <section className="col-span-12">
+              <section className="col-span-12 lg:col-span-9">
                 <div className="bg-white shadow-lg rounded-xl border border-gray-200 p-6 lg:p-8 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-2xl font-semibold text-gray-900">Add Employee</h3>
