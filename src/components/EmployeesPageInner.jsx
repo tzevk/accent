@@ -2165,12 +2165,19 @@ export default function EmployeesPageInner({ employeeType = null }) {
           employer_cost: lumpsumAmount,
         };
       } else if (salaryType === 'custom') {
+        const savedMlwfEmployee = salaryPreview.mlwf_applicable
+          ? ((parseFloat(salaryPreview.custom_mlwf) || 0) || (parseFloat(currentMLWF) || PAYROLL_CONFIG.LWF_HALF_YEARLY))
+          : 0;
+        const savedMlwfEmployer = salaryPreview.mlwf_applicable
+          ? ((parseFloat(salaryPreview.custom_mlwf_employer) || 0) || (parseFloat(currentMLWFEmployer) || 72))
+          : 0;
+
         // Keep custom totals consistent with UI cards.
         // Total CTC = Total Earnings + Employer Contributions.
         const employerContributions = 
           (parseFloat(salaryPreview.custom_pf_employer) || 0) +
           (parseFloat(salaryPreview.custom_esic_employer) || 0) +
-          (parseFloat(salaryPreview.custom_mlwf_employer) || 0) +
+          savedMlwfEmployer +
           (parseFloat(salaryPreview.custom_bonus) || 0) +
           (parseFloat(salaryPreview.custom_insurance) || 0) +
           ((salaryPreview.custom_components || []).filter(c => c.type === 'employer').reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0));
@@ -2190,7 +2197,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
           (parseFloat(salaryPreview.custom_pf_employee) || 0) +
           (parseFloat(salaryPreview.custom_esic_employee) || 0) +
           (parseFloat(salaryPreview.custom_pt) || 0) +
-          (parseFloat(salaryPreview.custom_mlwf) || 0) +
+          savedMlwfEmployee +
           (parseFloat(salaryPreview.custom_retention) || 0);
           
         const netPay = totalEarnings - totalDeductions;
@@ -2217,12 +2224,12 @@ export default function EmployeesPageInner({ employeeType = null }) {
           pf_employee: parseFloat(salaryPreview.custom_pf_employee) || 0,
           esic_employee: parseFloat(salaryPreview.custom_esic_employee) || 0,
           pt: parseFloat(salaryPreview.custom_pt) || 0,
-          mlwf: parseFloat(salaryPreview.custom_mlwf) || 0,
+          mlwf: savedMlwfEmployee,
           retention: parseFloat(salaryPreview.custom_retention) || 0,
           // Employer contributions
           pf_employer: parseFloat(salaryPreview.custom_pf_employer) || 0,
           esic_employer: parseFloat(salaryPreview.custom_esic_employer) || 0,
-          mlwf_employer: parseFloat(salaryPreview.custom_mlwf_employer) || 0,
+          mlwf_employer: savedMlwfEmployer,
           bonus: parseFloat(salaryPreview.custom_bonus) || 0,
           insurance: parseFloat(salaryPreview.custom_insurance) || 0,
           // Totals
@@ -4741,10 +4748,10 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                           const hours = parseFloat(salaryPreview.custom_monthly_hours) || 0;
                                           const ctc = hourlyRate * hours; // CTC = Hourly Rate × Hours
                                           
-                                          // Fixed costs - MLWF only in June & December
-                                          const currentMonth = new Date().getMonth() + 1;
-                                          const isMLWFMonth = currentMonth === 6 || currentMonth === 12;
-                                          const mlwfEmployer = isMLWFMonth ? 72 : 0;
+                                          // Keep configured MLWF values in salary structure all year.
+                                          // Deduction application is controlled during payroll processing (Jun/Dec only).
+                                          const mlwfConfiguredEmployee = parseFloat(currentMLWF) || PAYROLL_CONFIG.LWF_HALF_YEARLY;
+                                          const mlwfConfiguredEmployer = parseFloat(currentMLWFEmployer) || 72;
                                           const insurance = 500;
                                           
                                           // Iterative calculation to converge on correct values
@@ -4760,7 +4767,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                               ? Math.round(calculatedGross * (PAYROLL_CONFIG.EMPLOYER_ESIC_PERCENT / 100)) 
                                               : 0;
                                             bonus = Math.round(basicDa * 0.0833);
-                                            employerCosts = pfEmployer + esicEmployer + mlwfEmployer + bonus + insurance;
+                                            employerCosts = pfEmployer + esicEmployer + mlwfConfiguredEmployer + bonus + insurance;
                                             const newGross = ctc - employerCosts;
                                             if (Math.abs(newGross - calculatedGross) < 1) break; // Converged
                                             calculatedGross = newGross;
@@ -4785,7 +4792,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                             ? Math.round(calculatedGross * (PAYROLL_CONFIG.EMPLOYEE_ESIC_PERCENT / 100)) 
                                             : 0;
                                           const pt = PAYROLL_CONFIG.PROFESSIONAL_TAX.ABOVE_10000;
-                                          const mlwf = isMLWFMonth ? PAYROLL_CONFIG.LWF_HALF_YEARLY : 0;
+                                          const mlwf = mlwfConfiguredEmployee;
                                           
                                           setSalaryPreview({ 
                                             ...salaryPreview, 
@@ -4794,7 +4801,7 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                             // Employer contributions
                                             custom_pf_employer: pfEmployer.toString(),
                                             custom_esic_employer: esicEmployer.toString(),
-                                            custom_mlwf_employer: mlwfEmployer.toString(),
+                                            custom_mlwf_employer: mlwfConfiguredEmployer.toString(),
                                             custom_bonus: bonus.toString(),
                                             custom_insurance: insurance.toString(),
                                             // Earnings (calculated from Calculated Gross)

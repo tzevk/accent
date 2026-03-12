@@ -8,6 +8,7 @@ import {
   PencilSquareIcon,
   XMarkIcon,
   PlusIcon,
+  PaperAirplaneIcon,
   ChevronDownIcon,
   ChevronUpIcon
 } from '@heroicons/react/24/outline';
@@ -26,6 +27,15 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [successModal, setSuccessModal] = useState(false);
+  const [sendingOtKey, setSendingOtKey] = useState(null);
+  const [otRequestedKeys, setOtRequestedKeys] = useState({});
+  const [otModal, setOtModal] = useState({ open: false, activity: null, hours: '', remarks: '' });
+
+  const getOtHours = (activity) => {
+    const planned = parseFloat(activity?.planned_hours) || 0;
+    const actual = parseFloat(activity?.actual_hours) || 0;
+    return Math.max(0, Math.round((actual - planned) * 100) / 100);
+  };
 
   // Ensure each activity has an unlocked entry for today (allow multiple entries per date – additive)
   const ensureTodayEntry = (list) => {
@@ -208,6 +218,70 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
     finally { setSaving(false); }
   };
 
+  const openOtApprovalModal = (activity) => {
+    const defaultOtHours = getOtHours(activity);
+    if (defaultOtHours <= 0) {
+      alert('OT approval can be sent only when OT hours are greater than 0.');
+      return;
+    }
+
+    setOtModal({
+      open: true,
+      activity,
+      hours: String(defaultOtHours),
+      remarks: activity.remarks || ''
+    });
+  };
+
+  const closeOtApprovalModal = () => {
+    if (sendingOtKey) return;
+    setOtModal({ open: false, activity: null, hours: '', remarks: '' });
+  };
+
+  const sendOtApproval = async () => {
+    const activity = otModal.activity;
+    if (!activity) return;
+
+    const rowKey = `${activity.project_id}-${activity.activity_id}`;
+    const otHours = parseFloat(otModal.hours);
+
+    if (!Number.isFinite(otHours) || otHours <= 0) {
+      alert('Please enter valid OT hours greater than 0.');
+      return;
+    }
+
+    setSendingOtKey(rowKey);
+    try {
+      const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activity.project_id,
+          activity_id: activity.activity_id,
+          project_name: activity.project_name,
+          project_code: activity.project_code,
+          activity_name: activity.activity_name,
+          ot_hours: otHours,
+          remarks: otModal.remarks || ''
+        })
+      });
+
+      if (res?.success) {
+        setOtRequestedKeys(prev => ({ ...prev, [rowKey]: true }));
+        const ticketNumber = res?.data?.ticket_number ? ` (${res.data.ticket_number})` : '';
+        alert(`${res.message || 'OT approval request sent'}${ticketNumber}`);
+        closeOtApprovalModal();
+      } else {
+        alert(res?.error || 'Failed to send OT approval request');
+      }
+    } catch (error) {
+      console.error('Failed to send OT approval request:', error);
+      alert('Failed to send OT approval request');
+    } finally {
+      setSendingOtKey(null);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const map = {
       'Completed': 'bg-green-100 text-green-700 border-green-200',
@@ -301,6 +375,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
               const groupQtyDone = group.activities.reduce((s, a) => s + (parseFloat(a.qty_completed) || 0), 0);
               const groupPlannedHrs = group.activities.reduce((s, a) => s + (parseFloat(a.planned_hours) || 0), 0);
               const groupActualHrs = group.activities.reduce((s, a) => s + (parseFloat(a.actual_hours) || 0), 0);
+              const groupOtHrs = Math.max(0, Math.round((groupActualHrs - groupPlannedHrs) * 100) / 100);
               return (
                 <div key={pid} className="mb-4 last:mb-0">
                   {/* Project Header */}
@@ -313,6 +388,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                     <div className="flex items-center gap-4 text-xs font-semibold">
                       <span>Qty: {groupQtyDone}/{groupQtyAssigned}</span>
                       <span>Hrs: {groupActualHrs}/{groupPlannedHrs}</span>
+                      <span>OT: {groupOtHrs}</span>
                     </div>
                   </div>
                   <table className="w-full text-sm">
@@ -321,6 +397,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                         <th className="text-center py-2 px-4 font-bold text-[#64126D] uppercase tracking-wider text-xs">Activity</th>
                         <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Plan Hrs</th>
                         <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Manhours</th>
+                        <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">OT Hrs</th>
                         <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Qty Asgn</th>
                         <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Qty Done</th>
                         <th className="text-center py-2 px-3 font-bold text-[#64126D] uppercase tracking-wider text-xs">Balance</th>
@@ -339,6 +416,8 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                 const qtyAssigned = parseFloat(activity.qty_assigned) || 0;
                 const qtyDone = parseFloat(activity.qty_completed) || 0;
                 const balance = qtyAssigned - qtyDone;
+                const otHours = getOtHours(activity);
+                const hasRequestedOt = !!otRequestedKeys[rowKey];
 
                 return (
                   <Fragment key={rowKey}>
@@ -355,6 +434,11 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
 
                       {/* Manhours */}
                       <td className="py-3 px-3 text-center align-middle font-bold text-black">{activity.actual_hours || 0}</td>
+
+                      {/* OT Hrs */}
+                      <td className="py-3 px-3 text-center align-middle">
+                        <span className={`font-bold ${otHours > 0 ? 'text-orange-600' : 'text-gray-400'}`}>{otHours}</span>
+                      </td>
 
                       {/* Qty Asgn */}
                       <td className="py-3 px-3 text-center align-middle text-[#4A1254]">{qtyAssigned}</td>
@@ -409,6 +493,14 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                                 className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Status/Date">
                                 <PencilSquareIcon className="w-4 h-4" />
                               </button>
+                              <button
+                                onClick={() => openOtApprovalModal(activity)}
+                                disabled={sendingOtKey === rowKey || hasRequestedOt || otHours <= 0}
+                                className="p-1.5 text-orange-600 hover:bg-orange-100 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={hasRequestedOt ? 'OT approval sent' : otHours > 0 ? 'Send OT Approval to PM' : 'No OT hours to approve'}
+                              >
+                                <PaperAirplaneIcon className="w-4 h-4" />
+                              </button>
                               {dailyEntries.length > 0 && (
                                 <button onClick={() => toggleExpand(rowKey)}
                                   className="p-1.5 text-[#4A1254] hover:bg-gray-100 rounded transition-colors" title={isExpanded ? 'Collapse' : 'Expand'}>
@@ -424,7 +516,7 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
                     {/* Daily Entry Sub-Rows */}
                     {isExpanded && dailyEntries.length > 0 && (
                       <tr>
-                        <td colSpan={9} className="px-4 py-3 bg-purple-50/40">
+                        <td colSpan={10} className="px-4 py-3 bg-purple-50/40">
                           <div className="ml-4 border-l-2 border-purple-300 pl-4">
                             <div className="text-xs font-bold text-[#4A1254] uppercase mb-2 tracking-wide">Daily Work Progress</div>
                             <table className="w-full text-xs">
@@ -595,6 +687,66 @@ export default function ProjectActivityAssignments({ userId, preloadedData }) {
             <CheckCircleIcon className="w-12 h-12 text-green-500" />
             <p className="text-sm font-semibold text-[#4A1254]">Submitted Successfully!</p>
             <p className="text-xs text-[#4A1254]">Your entry has been saved.</p>
+          </div>
+        </div>
+      )}
+
+      {/* OT Approval Modal */}
+      {otModal.open && otModal.activity && (
+        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/40 p-4 sm:p-6" onClick={closeOtApprovalModal}>
+          <div className="w-full sm:max-w-md bg-white rounded-xl shadow-2xl border border-purple-200 mt-14" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-purple-100 bg-gradient-to-r from-purple-50 to-white rounded-t-xl">
+              <h4 className="text-sm font-bold text-[#4A1254]">Send OT Approval</h4>
+              <p className="text-xs text-[#4A1254]/80 mt-0.5">
+                {otModal.activity.project_code || 'N/A'} - {otModal.activity.activity_name || 'Activity'}
+              </p>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#4A1254] mb-1">OT Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={otModal.hours}
+                  onChange={(e) => setOtModal(prev => ({ ...prev, hours: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500"
+                  placeholder="Enter OT hours"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">Suggested: {getOtHours(otModal.activity)} hours</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#4A1254] mb-1">Remark</label>
+                <textarea
+                  rows={3}
+                  value={otModal.remarks}
+                  onChange={(e) => setOtModal(prev => ({ ...prev, remarks: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500"
+                  placeholder="Add reason/details for OT approval"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeOtApprovalModal}
+                disabled={!!sendingOtKey}
+                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={sendOtApproval}
+                disabled={!!sendingOtKey}
+                className="px-3 py-1.5 text-xs font-semibold rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                {sendingOtKey ? 'Sending...' : 'Send Approval'}
+              </button>
+            </div>
           </div>
         </div>
       )}

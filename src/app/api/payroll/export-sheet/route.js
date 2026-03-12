@@ -485,8 +485,8 @@ export async function GET(request) {
         const loan = empLoanAdvance.loan || safeNum(slip.loan);
         const advance = empLoanAdvance.advance || safeNum(slip.advance);
         const retention = isAbsent ? safeNum(slip.retention) * prorataFactor : safeNum(slip.retention);
-        // MLWF: compulsory ₹25 deduction in June and December
-        const mlwf = (monthNum === 6 || monthNum === 12) ? 25 : safeNum(slip.mlwf);
+        // MLWF: deduct only in June and December, but keep configured value in profile.
+        const mlwf = (monthNum === 6 || monthNum === 12) ? safeNum(slip.mlwf) : 0;
         // Recalculate total_deductions from pro-rated components
         const baseDeductions = pfEmployee + esicEmployee + pt + mlwf + retention;
         const totalDeductions = baseDeductions + loan + advance;
