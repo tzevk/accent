@@ -671,6 +671,8 @@ export default function EmployeesPageInner({ employeeType = null }) {
   const [activeSalaryStructure, setActiveSalaryStructure] = useState(null);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [salaryError, setSalaryError] = useState('');
+  const [exportingSalaryStructureExcel, setExportingSalaryStructureExcel] = useState(false);
+  const [exportingAllSalaryStructuresExcel, setExportingAllSalaryStructuresExcel] = useState(false);
   const [showSalaryForm, setShowSalaryForm] = useState(false);
   const [calculatedBreakdown, setCalculatedBreakdown] = useState(null);
   
@@ -821,6 +823,71 @@ export default function EmployeesPageInner({ employeeType = null }) {
       setSalaryLoading(false);
     }
   }, []);
+
+  const exportSalaryStructureExcel = async () => {
+    if (!selectedEmployee?.id) {
+      setPreviewError('Please select an employee first.');
+      return;
+    }
+
+    setExportingSalaryStructureExcel(true);
+    setPreviewError('');
+    try {
+      const res = await fetch(`/api/employees/${selectedEmployee.id}/salary-structure/export`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.details || 'Failed to export salary structure');
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('content-disposition') || '';
+      const match = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const filename = match?.[1] || `Salary_Structure_${selectedEmployee.employee_id || selectedEmployee.id}.xlsx`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setPreviewError(err.message || 'Failed to export salary structure');
+    } finally {
+      setExportingSalaryStructureExcel(false);
+    }
+  };
+
+  const exportAllSalaryStructuresExcel = async () => {
+    setExportingAllSalaryStructuresExcel(true);
+    setPreviewError('');
+    try {
+      const res = await fetch('/api/employees/salary-structure/export');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.details || 'Failed to export all salary structures');
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('content-disposition') || '';
+      const match = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const filename = match?.[1] || 'Salary_Structure_All_Users.xlsx';
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setPreviewError(err.message || 'Failed to export all salary structures');
+    } finally {
+      setExportingAllSalaryStructuresExcel(false);
+    }
+  };
 
   // Fetch current DA, MLWF, Retention for salary preview - from payroll schedules
   const fetchCurrentDA = async () => {
@@ -2740,6 +2807,16 @@ export default function EmployeesPageInner({ employeeType = null }) {
                       {exportingSheetExcel ? 'Exporting...' : 'Salary Sheet (Excel)'}
                     </button>
 
+                    {/* Export Salary Structures Excel (All Users) */}
+                    <button
+                      onClick={exportAllSalaryStructuresExcel}
+                      disabled={exportingAllSalaryStructuresExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <DocumentArrowDownIcon className={`h-4 w-4 ${exportingAllSalaryStructuresExcel ? 'animate-pulse' : ''}`} />
+                      {exportingAllSalaryStructuresExcel ? 'Exporting...' : 'Salary Structure (All Users)'}
+                    </button>
+
                     {/* Status Message */}
                     {payrollMessage.text && (
                       <span className={`text-sm font-medium ml-auto ${
@@ -4040,6 +4117,24 @@ export default function EmployeesPageInner({ employeeType = null }) {
                                   {savedSalaryProfiles.length} {savedSalaryProfiles.length === 1 ? 'record' : 'records'}
                                 </span>
                               </h4>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={exportSalaryStructureExcel}
+                                  disabled={exportingSalaryStructureExcel || !selectedEmployee?.id}
+                                  className="px-3 py-2 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg border border-green-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <DocumentArrowDownIcon className={`w-4 h-4 ${exportingSalaryStructureExcel ? 'animate-pulse' : ''}`} />
+                                  {exportingSalaryStructureExcel ? 'Exporting...' : 'Export Selected (Excel)'}
+                                </button>
+                                <button
+                                  onClick={exportAllSalaryStructuresExcel}
+                                  disabled={exportingAllSalaryStructuresExcel}
+                                  className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg border border-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <DocumentArrowDownIcon className={`w-4 h-4 ${exportingAllSalaryStructuresExcel ? 'animate-pulse' : ''}`} />
+                                  {exportingAllSalaryStructuresExcel ? 'Exporting...' : 'Export All Users (Excel)'}
+                                </button>
+                              </div>
                             </div>
                             
                             {/* List of all salary profiles */}

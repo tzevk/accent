@@ -127,10 +127,11 @@ function ProjectsInner() {
 
   // Derived quick stats
   const stats = useMemo(() => {
-    const total = projects.length;
-    const inProgress = projects.filter(p => String(p.status || '').toLowerCase().includes('progress')).length;
-    const completed = projects.filter(p => String(p.status || '').toLowerCase().includes('complete')).length;
-    const budgetTotal = projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
+    const activeProjects = projects.filter(p => !String(p.status || '').toLowerCase().includes('complet'));
+    const total = activeProjects.length;
+    const inProgress = activeProjects.filter(p => String(p.status || '').toLowerCase().includes('progress')).length;
+    const completed = projects.filter(p => String(p.status || '').toLowerCase().includes('complet')).length;
+    const budgetTotal = activeProjects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
     return { total, inProgress, completed, budgetTotal };
   }, [projects]);
 
@@ -319,10 +320,14 @@ function ProjectsInner() {
               </div>
               {/* Quick Stats */}
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 xl:gap-6">
-                <div className="bg-white border border-purple-200 rounded-lg p-5">
+                <div
+                  className="bg-white border border-purple-200 rounded-lg p-5 cursor-pointer hover:border-purple-400 transition-colors"
+                  onClick={() => { setStatusFilter(''); }}
+                  title="Active Projects"
+                >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">Total Projects</p>
+                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">Active Projects</p>
                         <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
                       </div>
                       <div className="bg-purple-50 p-3 rounded-lg">
@@ -341,7 +346,13 @@ function ProjectsInner() {
                       </div>
                     </div>
                 </div>
-                <div className="bg-white border border-green-200 rounded-lg p-5">
+                <div
+                  className={`bg-white border rounded-lg p-5 cursor-pointer transition-colors ${
+                    statusFilter === 'completed' ? 'border-green-500 bg-green-50' : 'border-green-200 hover:border-green-400'
+                  }`}
+                  onClick={() => { setStatusFilter(statusFilter === 'completed' ? '' : 'completed'); setActiveTab('list'); }}
+                  title="Click to view completed projects"
+                >
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">Completed</p>
@@ -370,7 +381,7 @@ function ProjectsInner() {
             <div className="mb-6">
               <div role="tablist" aria-label="Projects views" className="flex flex-wrap items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg">
                 {[
-                  { id: 'list', label: `Projects List (${projects.length})` },
+                  { id: 'list', label: `Projects List (${statusFilter === 'completed' ? stats.completed : stats.total})` },
                   { id: 'calendar', label: 'Calendar View' },
                   { id: 'board', label: 'Board' },
                   { id: 'planning', label: 'Project Planning', badge: '2 items' },
@@ -595,7 +606,12 @@ function ProjectsInner() {
                             {projects
                               .filter((p) => {
                                 if (query && !(`${p.name || ''} ${p.company_name || ''}`.toLowerCase().includes(query.toLowerCase()))) return false;
-                                if (statusFilter && String((p.status || '')).toLowerCase() !== statusFilter.toLowerCase()) return false;
+                                if (statusFilter) {
+                                  if (String((p.status || '')).toLowerCase() !== statusFilter.toLowerCase()) return false;
+                                } else {
+                                  // By default, exclude completed projects from the active list
+                                  if (String(p.status || '').toLowerCase().includes('complet')) return false;
+                                }
                                 if (priorityFilter && String((p.priority || '')).toLowerCase() !== priorityFilter.toLowerCase()) return false;
                                 return true;
                               })
