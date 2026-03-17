@@ -101,9 +101,31 @@ export async function GET(request) {
             for (const assignment of assignedUsers) {
               const userData = typeof assignment === 'object' ? assignment : { user_id: assignment };
               const userId = String(userData.user_id);
-              const dailyEntries = Array.isArray(userData.daily_entries)
-                ? userData.daily_entries.filter(e => e && typeof e === 'object')
+              
+              // Ensure daily_entries is properly parsed as an array
+              let dailyEntries = [];
+              if (userData.daily_entries) {
+                if (typeof userData.daily_entries === 'string') {
+                  try {
+                    dailyEntries = JSON.parse(userData.daily_entries);
+                  } catch {
+                    dailyEntries = [];
+                  }
+                } else if (Array.isArray(userData.daily_entries)) {
+                  dailyEntries = userData.daily_entries;
+                }
+              }
+              
+              // Filter to only valid entry objects
+              dailyEntries = Array.isArray(dailyEntries)
+                ? dailyEntries.filter(e => e && typeof e === 'object' && (e.date || e.qty_done || e.hours))
                 : [];
+              
+              if (dailyEntries.length > 0) {
+                // Log for debugging
+                console.log(`[reportAPI] Activity ${activity.id} User ${userId} has ${dailyEntries.length} daily entries`);
+              }
+              
               const totalQtyDone = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.qty_done) || 0), 0);
               const totalHours = dailyEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
 

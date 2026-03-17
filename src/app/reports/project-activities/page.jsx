@@ -101,7 +101,7 @@ export default function ProjectActivitiesReport() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/reports/project-activities");
+      const res = await fetch("/api/reports/project-activities", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setProjects(data.data || []);
@@ -171,6 +171,9 @@ export default function ProjectActivitiesReport() {
         (s, e) => s + ((e && parseFloat(e.hours)) || 0),
         0
       );
+      
+      console.log('Deleting entry at index:', idx, 'Remaining entries:', entries.length);
+      
       const res = await fetch(`/api/users/${uId}/activity-assignments`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -184,10 +187,15 @@ export default function ProjectActivitiesReport() {
       });
       const data = await res.json();
       if (data.success) {
+        console.log('Delete successful, reloading data...');
         await loadData();
         cancelEditing();
-      } else alert("Delete failed: " + (data.error || "Unknown"));
-    } catch {
+      } else {
+        console.error('Delete failed:', data.error);
+        alert("Delete failed: " + (data.error || "Unknown"));
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
       alert("Failed to delete entry");
     } finally {
       setSaving(false);
@@ -198,15 +206,24 @@ export default function ProjectActivitiesReport() {
     if (!editingEntry) return;
     setSaving(true);
     try {
-      const idx = parseInt(editingEntry.split("-")[3]);
+      // editingEntry is `${pId}-${aId}-${uId}-${idx}` but activity_id can be a UUID (contains '-')
+      // so we must extract the last segment as the index.
+      const lastDash = editingEntry.lastIndexOf("-");
+      const idx = Number(editingEntry.slice(lastDash + 1));
+      if (!Number.isFinite(idx) || idx < 0) {
+        throw new Error("Invalid edit index");
+      }
       const entries = [...(member.daily_entries || [])];
+      
+      // Ensure the entry is a proper object with required fields
+      const oldEntry = entries[idx];
       entries[idx] = {
-        ...entries[idx],
-        date: editForm.date,
+        date: editForm.date || "",
         qty_done: parseFloat(editForm.qty_done) || 0,
         hours: parseFloat(editForm.hours) || 0,
         remarks: editForm.remarks || "",
       };
+      
       const totQ = entries.reduce(
         (s, e) => s + ((e && parseFloat(e.qty_done)) || 0),
         0
@@ -215,24 +232,48 @@ export default function ProjectActivitiesReport() {
         (s, e) => s + ((e && parseFloat(e.hours)) || 0),
         0
       );
+      
+      console.log('[saveEdited] project_id:', pId, 'activity_id:', aId, 'user_id:', uId);
+      console.log('[saveEdited] Old entry:', { date: oldEntry?.date, qty_done: oldEntry?.qty_done, hours: oldEntry?.hours });
+      console.log('[saveEdited] New entry:', { date: entries[idx].date, qty_done: entries[idx].qty_done, hours: entries[idx].hours });
+      console.log('[saveEdited] All entries count:', entries.length);
+      console.log('[saveEdited] Totals - qty:', totQ, 'hours:', totH);
+      
+      const payload = {
+        project_id: pId,
+        activity_id: aId,
+        daily_entries: entries,
+        qty_completed: totQ,
+        actual_hours: totH,
+      };
+      console.log('[saveEdited] Full payload:', JSON.stringify(payload));
+      
       const res = await fetch(`/api/users/${uId}/activity-assignments`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: pId,
-          activity_id: aId,
-          daily_entries: entries,
-          qty_completed: totQ,
-          actual_hours: totH,
-        }),
+        body: JSON.stringify(payload),
       });
+      
       const data = await res.json();
-      if (data.success) {
+      console.log('[saveEdited] Response status:', res.status, 'success:', data.success, 'error:', data.error);
+      
+      if (!res.ok) {
+        console.error('[saveEdited] Non-2xx response:', res.status, data);
+        alert("Save failed: " + (data?.error || data?.details || `HTTP ${res.status}`));
+      } else if (data.success) {
+        console.log('[saveEdited] Save successful, reloading data...');
+        // Add a small delay to ensure DB write completes
+        await new Promise(r => setTimeout(r, 300));
         await loadData();
+        console.log('[saveEdited] Data reloaded');
         cancelEditing();
-      } else alert("Save failed: " + (data.error || "Unknown"));
-    } catch {
-      alert("Failed to save");
+      } else {
+        console.error('[saveEdited] Save failed:', data.error);
+        alert("Save failed: " + (data.error || "Unknown"));
+      }
+    } catch (err) {
+      console.error('[saveEdited] Exception:', err);
+      alert("Failed to save: " + err.message);
     } finally {
       setSaving(false);
     }

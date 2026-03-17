@@ -356,6 +356,8 @@ export async function PUT(request, { params }) {
           
           if (String(assignedUserId) === String(requestedUserId)) {
             console.log('[Activity Assignment Update] Found user assignment at index', i);
+            console.log('[Activity Assignment Update] Before update:', JSON.stringify(assignedUsers[i]));
+            
             // Update this user's assignment
             if (typeof assignment === 'object') {
               if (qty_assigned !== undefined) assignedUsers[i].qty_assigned = parseFloat(qty_assigned) || 0;
@@ -368,8 +370,16 @@ export async function PUT(request, { params }) {
               if (due_date !== undefined) assignedUsers[i].due_date = due_date;
               if (notes !== undefined) assignedUsers[i].notes = notes;
               if (daily_entries !== undefined) {
-                assignedUsers[i].daily_entries = daily_entries;
-                console.log('[Activity Assignment Update] Updated daily_entries:', daily_entries.length, 'entries');
+                // Ensure daily_entries is an array of proper objects
+                assignedUsers[i].daily_entries = Array.isArray(daily_entries) 
+                  ? daily_entries.map(e => ({
+                      date: e.date || '',
+                      qty_done: parseFloat(e.qty_done) || 0,
+                      hours: parseFloat(e.hours) || 0,
+                      remarks: e.remarks || ''
+                    }))
+                  : [];
+                console.log('[Activity Assignment Update] Updated daily_entries:', assignedUsers[i].daily_entries);
               }
             } else {
               // Convert to object
@@ -388,6 +398,7 @@ export async function PUT(request, { params }) {
                 daily_entries: daily_entries || []
               };
             }
+            console.log('[Activity Assignment Update] After update:', JSON.stringify(assignedUsers[i]));
             updated = true;
             break;
           }
