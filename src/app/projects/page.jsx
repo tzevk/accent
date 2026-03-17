@@ -13,6 +13,7 @@ import {
   PencilIcon,
   TrashIcon,
   CheckIcon,
+  ArrowPathIcon,
   CalendarIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -85,6 +86,7 @@ function ProjectsInner() {
   const [dragOverKey, setDragOverKey] = useState(null);
   const [dragInsertPos, setDragInsertPos] = useState(null); // 'before' | 'after' | null
   const [justDroppedKey, setJustDroppedKey] = useState(null);
+  const [activatingKey, setActivatingKey] = useState(null);
 
   const toggleSort = (field) => {
     setSortBy((prev) => {
@@ -238,6 +240,37 @@ function ProjectsInner() {
     } catch (error) {
       console.error('Error closing project:', error);
       alert('Error closing project: ' + error.message);
+    }
+  };
+
+  const handleActivateProject = async (project) => {
+    const projectKey = project.project_id ?? project.id ?? project.project_code;
+    if (!projectKey) return;
+
+    const isCompleted = String(project.status || '').toLowerCase().includes('complet');
+    if (!isCompleted) return;
+
+    const ok = window.confirm(`Activate project "${project.name || projectKey}" again?`);
+    if (!ok) return;
+
+    setActivatingKey(String(projectKey));
+    try {
+      const result = await fetchJSON(`/api/projects/${projectKey}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active' })
+      });
+
+      if (result?.success) {
+        await fetchProjects();
+      } else {
+        alert('Error activating project: ' + (result?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error activating project:', error);
+      alert('Error activating project: ' + (error?.message || 'Unknown error'));
+    } finally {
+      setActivatingKey(null);
     }
   };
 
@@ -737,6 +770,17 @@ function ProjectsInner() {
                                         title="Close Project"
                                       >
                                         <CheckIcon className="h-4 w-4" />
+                                      </button>
+                                    )}
+
+                                    {isProjectAdmin && String(project.status || '').toLowerCase().includes('complet') && (
+                                      <button
+                                        onClick={() => handleActivateProject(project)}
+                                        disabled={activatingKey === String(project.project_id ?? project.id ?? project.project_code)}
+                                        className="p-2 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                                        title="Activate Project"
+                                      >
+                                        <ArrowPathIcon className="h-4 w-4" />
                                       </button>
                                     )}
                                     {isProjectAdmin && (

@@ -92,6 +92,10 @@ export default function ProjectActivitiesReport() {
   // Allow editing of daily entries for super admins or users with report update permission
   const canEditEntries = isSuperAdmin || (can && can(RESOURCES.REPORTS, PERMISSIONS.UPDATE));
 
+  // Allow re-activating completed projects
+  const canUpdateProjects = isSuperAdmin || (can && can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE));
+  const [activatingProjectId, setActivatingProjectId] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -113,6 +117,32 @@ export default function ProjectActivitiesReport() {
       setError("Failed to connect to server.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reactivateProject = async (project) => {
+    if (!project?.project_id) return;
+    if (!confirm('Activate this project again?')) return;
+
+    setActivatingProjectId(project.project_id);
+    try {
+      const res = await fetch(`/api/projects/${project.project_id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Active' })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        alert('Failed to activate project: ' + (data?.error || data?.details || `HTTP ${res.status}`));
+        return;
+      }
+
+      await loadData();
+    } catch (e) {
+      alert('Failed to activate project: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setActivatingProjectId(null);
     }
   };
 
@@ -582,6 +612,9 @@ export default function ProjectActivitiesReport() {
                   t={t}
                   aTotals={aTotals}
                   canEditEntries={canEditEntries}
+                  canUpdateProjects={canUpdateProjects}
+                  activatingProjectId={activatingProjectId}
+                  reactivateProject={reactivateProject}
                   editingEntry={editingEntry}
                   editForm={editForm}
                   setEditForm={setEditForm}
@@ -614,6 +647,9 @@ function ProjectCard({
   t,
   aTotals,
   canEditEntries,
+  canUpdateProjects,
+  activatingProjectId,
+  reactivateProject,
   editingEntry,
   editForm,
   setEditForm,
@@ -623,6 +659,11 @@ function ProjectCard({
   saveEdited,
   deleteEntry,
 }) {
+  const statusText = (project.project_status || '').toString();
+  const statusLower = statusText.toLowerCase();
+  const isCompleted = statusLower.includes('completed') || statusLower.includes('done');
+  const isActivating = activatingProjectId === project.project_id;
+
   return (
     <div
       className={`rounded-xl border transition-all duration-200 ${
@@ -632,9 +673,18 @@ function ProjectCard({
       }`}
     >
       {/* header */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         onClick={() => onToggleProject(project.project_id)}
-        className="w-full text-left px-5 py-4 flex items-start gap-3 group"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleProject(project.project_id);
+          }
+        }}
+        className="w-full text-left px-5 py-4 flex items-start gap-3 group cursor-pointer"
       >
         <ChevronRightIcon
           className={`w-4 h-4 mt-1 flex-shrink-0 text-gray-400 group-hover:text-purple-500 transition-transform duration-200 ${
@@ -659,6 +709,22 @@ function ProjectCard({
             >
               {project.project_status || "Active"}
             </span>
+
+            {canUpdateProjects && isCompleted && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  reactivateProject(project);
+                }}
+                disabled={isActivating}
+                className="text-[10px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset bg-blue-50 text-blue-700 ring-blue-600/20 hover:bg-blue-100 disabled:opacity-50"
+                title="Activate this project again"
+              >
+                {isActivating ? 'Activating…' : 'Activate'}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-4 mt-1.5 text-[11px] text-gray-400 flex-wrap">
@@ -704,7 +770,7 @@ function ProjectCard({
             </div>
           </div>
         </div>
-      </button>
+      </div>
 
       {/* expanded */}
       {isExpanded && (

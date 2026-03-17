@@ -188,7 +188,8 @@ export async function GET(request) {
         project_id: project.project_id,
         project_name: project.project_name,
         project_code: project.project_code,
-        project_status: project.project_status,
+        // Projects table typically uses `status`; keep compatibility with any `project_status` column.
+        project_status: project.status || project.project_status,
         client_name: project.client_name || project.client || '',
         project_manager: project.project_manager || '',
         start_date: project.start_date,
