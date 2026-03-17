@@ -89,6 +89,8 @@ export default function ProjectActivitiesReport() {
   const hasReportsPermission =
     can && can(RESOURCES.REPORTS, PERMISSIONS.READ);
   const hasAccess = isSuperAdmin || hasReportsPermission;
+  // Allow editing of daily entries for super admins or users with report update permission
+  const canEditEntries = isSuperAdmin || (can && can(RESOURCES.REPORTS, PERMISSIONS.UPDATE));
 
   useEffect(() => {
     loadData();
@@ -538,7 +540,7 @@ export default function ProjectActivitiesReport() {
                   onToggleMember={toggleMember}
                   t={t}
                   aTotals={aTotals}
-                  isSuperAdmin={isSuperAdmin}
+                  canEditEntries={canEditEntries}
                   editingEntry={editingEntry}
                   editForm={editForm}
                   setEditForm={setEditForm}
@@ -570,7 +572,7 @@ function ProjectCard({
   onToggleMember,
   t,
   aTotals,
-  isSuperAdmin,
+  canEditEntries,
   editingEntry,
   editForm,
   setEditForm,
@@ -931,7 +933,7 @@ function ProjectCard({
                                                     <th className="text-left py-1.5 px-3 font-semibold text-gray-500">
                                                       Remarks
                                                     </th>
-                                                    {isSuperAdmin && (
+                                                    {canEditEntries && (
                                                       <th className="text-center py-1.5 px-3 font-semibold text-gray-500 w-16">
                                                         Actions
                                                       </th>
@@ -1069,7 +1071,7 @@ function ProjectCard({
                                                             </span>
                                                           )}
                                                         </td>
-                                                        {isSuperAdmin && (
+                                                        {canEditEntries && (
                                                           <td className="py-1.5 px-3 text-center">
                                                             {editing ? (
                                                               <div className="flex items-center justify-center gap-1">
@@ -1152,7 +1154,7 @@ function ProjectCard({
                                                         <td className="py-1.5 px-3 text-right text-gray-600 tabular-nums">{parseFloat(member.planned_hours) || 0}</td>
                                                         <td className="py-1.5 px-3 text-right text-blue-600 tabular-nums">{totHrs}</td>
                                                         <td className="py-1.5 px-3"></td>
-                                                        {isSuperAdmin && <td></td>}
+                                                        {canEditEntries && <td></td>}
                                                       </tr>
                                                     );
                                                   })()}

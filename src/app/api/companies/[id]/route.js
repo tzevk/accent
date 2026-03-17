@@ -82,42 +82,41 @@ export async function PUT(request, { params }) {
 
     db = await dbConnect();
     
-    // Update the company
-    const [result] = await db.execute(
-      `UPDATE companies SET 
-        company_id = COALESCE(?, company_id),
-        company_name = COALESCE(?, company_name),
-        industry = COALESCE(?, industry),
-        company_size = COALESCE(?, company_size),
-        website = COALESCE(?, website),
-        phone = COALESCE(?, phone),
-        email = COALESCE(?, email),
-        address = COALESCE(?, address),
-        city = COALESCE(?, city),
-        state = COALESCE(?, state),
-        country = COALESCE(?, country),
-        postal_code = COALESCE(?, postal_code),
-        description = COALESCE(?, description),
-        founded_year = COALESCE(?, founded_year),
-        revenue = COALESCE(?, revenue),
-        notes = COALESCE(?, notes),
-        location = COALESCE(?, location),
-        contact_person = COALESCE(?, contact_person),
-        designation = COALESCE(?, designation),
-        mobile_number = COALESCE(?, mobile_number),
-        sector = COALESCE(?, sector),
-        gstin = COALESCE(?, gstin),
-        pan_number = COALESCE(?, pan_number),
-        company_profile = COALESCE(?, company_profile),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?`,
-      [
-        company_id, company_name, industry, company_size, website, phone, email,
-        address, city, state, country, postal_code, description,
-        founded_year, revenue, notes, location, contact_person, designation,
-        mobile_number, sector, gstin, pan_number, company_profile, companyId
-      ]
-    );
+    // Build UPDATE query dynamically - only include fields that were provided
+    const updateFields = [];
+    const updateValues = [];
+    
+    // Map of field names to check
+    const fieldMap = {
+      company_id, company_name, industry, company_size, website, phone, email,
+      address, city, state, country, postal_code, description,
+      founded_year, revenue, notes, location, contact_person, designation,
+      mobile_number, sector, gstin, pan_number, company_profile
+    };
+    
+    // Add only fields that were explicitly provided (not undefined)
+    for (const [field, value] of Object.entries(fieldMap)) {
+      if (value !== undefined) {
+        updateFields.push(`${field} = ?`);
+        updateValues.push(value || null); // Allow empty strings to clear the field
+      }
+    }
+    
+    // Add updated_at
+    updateFields.push('updated_at = CURRENT_TIMESTAMP');
+    
+    if (updateFields.length === 1) {
+      // Only updated_at - no fields to update
+      return Response.json({ 
+        success: false, 
+        error: 'No fields to update' 
+      }, { status: 400 });
+    }
+    
+    const sql = `UPDATE companies SET ${updateFields.join(', ')} WHERE id = ?`;
+    updateValues.push(companyId);
+    
+    const [result] = await db.execute(sql, updateValues);
 
     if (result.affectedRows === 0) {
       return Response.json({ 
