@@ -214,6 +214,33 @@ function ProjectsInner() {
     }
   };
 
+  const handleCloseProject = async (project) => {
+    const projectKey = project.project_id ?? project.id ?? project.project_code;
+    if (!projectKey) return;
+    const isCompleted = String(project.status || '').toLowerCase().includes('complet');
+    if (isCompleted) return;
+
+    const ok = window.confirm(`Close project \"${project.name || projectKey}\"? This will mark it as completed.`);
+    if (!ok) return;
+
+    try {
+      const result = await fetchJSON(`/api/projects/${projectKey}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed', progress: 100 })
+      });
+
+      if (result?.success) {
+        await fetchProjects();
+      } else {
+        alert('Error closing project: ' + (result?.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error closing project:', error);
+      alert('Error closing project: ' + error.message);
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'planning': return 'bg-yellow-100 text-yellow-800';
@@ -703,6 +730,15 @@ function ProjectsInner() {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end gap-2">
+                                    {isProjectAdmin && !String(project.status || '').toLowerCase().includes('complet') && (
+                                      <button
+                                        onClick={() => handleCloseProject(project)}
+                                        className="p-2 text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                                        title="Close Project"
+                                      >
+                                        <CheckIcon className="h-4 w-4" />
+                                      </button>
+                                    )}
                                     {isProjectAdmin && (
                                       <button
                                         onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`)}
