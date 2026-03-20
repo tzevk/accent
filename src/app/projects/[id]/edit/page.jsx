@@ -98,24 +98,24 @@ const INITIAL_FORM = {
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
   { id: 'project_details', label: 'Project Details' },
-  { id: 'project_team_tab', label: 'Project Team' },
-  { id: 'input_documents', label: 'Input Documents' },
-  { id: 'scope', label: 'Scope' },
-  { id: 'software', label: 'Software' },
-  { id: 'minutes_internal_meet', label: 'Meetings' },
-  { id: 'project_schedule', label: 'Project Schedule' },
-  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true },
+  { id: 'project_team_tab', label: 'Project Team', requiresUpdate: true },
+  { id: 'input_documents', label: 'Input Documents', requiresUpdate: true },
+  { id: 'scope', label: 'Scope', requiresUpdate: true },
+  { id: 'software', label: 'Software', requiresUpdate: true },
+  { id: 'minutes_internal_meet', label: 'Meetings', requiresUpdate: true },
+  { id: 'project_schedule', label: 'Project Schedule', requiresUpdate: true },
+  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true, requiresUpdate: true },
   { id: 'my_activities', label: 'My Activities', userOnly: true },
-  { id: 'documents_issued', label: 'Documents Issued' },
-  { id: 'project_handover', label: 'Project Handover' },
-  { id: 'project_manhours', label: 'Project Manhours' },
-  { id: 'query_log', label: 'Query Log' },
-  { id: 'assumption', label: 'Assumption' },
-  { id: 'lessons_learnt', label: 'Lessons Learnt' },
-  { id: 'discussion', label: 'Discussion' },
-  { id: 'quotation', label: 'Quotation', requiresPermission: 'quotations' },
-  { id: 'purchase_order', label: 'Purchase Order', requiresPermission: 'purchase_orders' },
-  { id: 'invoice', label: 'Invoice', requiresPermission: 'invoices' }
+  { id: 'documents_issued', label: 'Documents Issued', requiresUpdate: true },
+  { id: 'project_handover', label: 'Project Handover', requiresUpdate: true },
+  { id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true },
+  { id: 'query_log', label: 'Query Log', requiresUpdate: true },
+  { id: 'assumption', label: 'Assumption', requiresUpdate: true },
+  { id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true },
+  { id: 'discussion', label: 'Discussion', requiresUpdate: true },
+  { id: 'quotation', label: 'Quotation', requiresPermission: 'quotations', requiresUpdate: true },
+  { id: 'purchase_order', label: 'Purchase Order', requiresPermission: 'purchase_orders', requiresUpdate: true },
+  { id: 'invoice', label: 'Invoice', requiresPermission: 'invoices', requiresUpdate: true }
 ];
 
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
@@ -3068,6 +3068,7 @@ function EditProjectForm() {
       if (tab.adminOnly && !isAdminUser) return false;
       if (tab.adminOrActivities && !isAdminUser && !hasActivitiesPermission) return false;
       if (tab.userOnly && isAdminUser) return false;
+      if (tab.requiresUpdate && !canEditProjectContent) return false;
 
       if (tab.requiresPermission) {
         const hasAnyPermission = can(tab.requiresPermission, PERMISSIONS.READ) || can(tab.requiresPermission, PERMISSIONS.UPDATE);
