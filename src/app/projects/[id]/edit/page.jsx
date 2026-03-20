@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useMemo, useState, Fragment, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon, ArrowTopRightOnSquareIcon, PencilIcon, ArrowUpTrayIcon, PaperClipIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, DocumentIcon, XMarkIcon, UserIcon, ClockIcon, ChatBubbleLeftRightIcon, CheckIcon, PhoneIcon, EnvelopeIcon, CalendarIcon, ClipboardDocumentListIcon, MagnifyingGlassIcon, DocumentTextIcon, ArrowTopRightOnSquareIcon, PencilIcon, ArrowUpTrayIcon, PaperClipIcon, LockClosedIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
@@ -456,6 +456,7 @@ function EditProjectForm() {
   // Project Schedule - structured rows
   const [projectSchedule, setProjectSchedule] = useState([]);
   const scheduleAutofilledRef = useRef(false);
+  const [scheduleLocked, setScheduleLocked] = useState(false);
 
   const SCHEDULE_LEGENDS = useMemo(() => ([
     { key: 'accent_activities', label: 'Accent Activities', cellClass: 'bg-gray-200', textClass: 'text-gray-900' },
@@ -501,6 +502,9 @@ function EditProjectForm() {
       };
     });
   }, [generateScheduleRowId]);
+
+  const canEditSchedule = canEditProjectContent && !scheduleLocked;
+  const scheduleEffectivelyLocked = scheduleLocked || !canEditProjectContent;
 
   const [selectedScheduleLegend, setSelectedScheduleLegend] = useState('accent_activities');
 
@@ -1367,11 +1371,19 @@ function EditProjectForm() {
                 const parsed = typeof project.project_schedule_list === 'string'
                   ? JSON.parse(project.project_schedule_list)
                   : project.project_schedule_list;
-                setProjectSchedule(normalizeScheduleRows(Array.isArray(parsed) ? parsed : []));
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.rows)) {
+                  setScheduleLocked(Boolean(parsed.locked));
+                  setProjectSchedule(normalizeScheduleRows(parsed.rows));
+                } else {
+                  setScheduleLocked(false);
+                  setProjectSchedule(normalizeScheduleRows(Array.isArray(parsed) ? parsed : []));
+                }
               } catch {
+                setScheduleLocked(false);
                 setProjectSchedule([]);
               }
             } else {
+              setScheduleLocked(false);
               setProjectSchedule([]);
             }
 
@@ -2792,6 +2804,7 @@ function EditProjectForm() {
   }, [scheduleWeeks]);
 
   const addSchedule = (seed = {}) => {
+    if (!canEditSchedule) return;
     const defaultSr = seed.sr_no && String(seed.sr_no).trim() !== '' ? seed.sr_no : String(projectSchedule.length + 1);
     const legendKey = seed.legend || seed.schedule_legend || '';
     const disciplineSeed = seed.discipline || '';
@@ -2817,6 +2830,7 @@ function EditProjectForm() {
   };
 
   const updateSchedule = (id, field, value) => {
+    if (!canEditSchedule) return;
     setProjectSchedule(prev => prev.map(r => {
       if (r.id !== id) return r;
       const updated = { ...r, [field]: value };
@@ -2829,7 +2843,7 @@ function EditProjectForm() {
   };
 
   const toggleScheduleWeek = useCallback((rowId, weekIndex) => {
-    if (!canEditProjectContent) return;
+    if (!canEditSchedule) return;
     const wi = Number(weekIndex);
     if (!Number.isFinite(wi) || wi < 0 || wi >= scheduleWeeks.length) return;
 
@@ -2869,9 +2883,10 @@ function EditProjectForm() {
 
       return nextRow;
     }));
-  }, [canEditProjectContent, scheduleWeeks.length, computeScheduleWeeksFromDates, computeScheduleDatesFromWeeks, selectedScheduleLegend, getScheduleLegend]);
+  }, [canEditSchedule, scheduleWeeks.length, computeScheduleWeeksFromDates, computeScheduleDatesFromWeeks, selectedScheduleLegend, getScheduleLegend]);
 
   const removeSchedule = (id) => {
+    if (!canEditSchedule) return;
     setProjectSchedule(prev => prev.filter(r => r.id !== id));
   };
 
@@ -4119,7 +4134,7 @@ function EditProjectForm() {
         project_query_log_list: JSON.stringify(queryLog),
         project_assumption_list: JSON.stringify(assumptions),
         project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
-        project_schedule_list: JSON.stringify(projectSchedule)
+        project_schedule_list: JSON.stringify({ locked: scheduleLocked, rows: projectSchedule })
       };
 
       console.log('[SUBMIT] Sending update for project:', id);
@@ -6373,9 +6388,10 @@ function EditProjectForm() {
                             key={l.key}
                             type="button"
                             onClick={() => setSelectedScheduleLegend(l.key)}
+                            disabled={!canEditSchedule}
                             className={`inline-flex items-center gap-2 px-2 py-1 rounded border text-xs transition-colors ${
-                              active ? 'border-[#7F2487] bg-purple-25' : 'border-gray-200 bg-white hover:bg-gray-50'
-                            }`}
+                              active ? 'border-[#7F2487] bg-purple-25' : 'border-gray-200 bg-white'
+                            } ${canEditSchedule ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed'}`}
                             title={l.label}
                           >
                             <span className={`h-3 w-6 rounded ${l.cellClass}`} />
@@ -6384,14 +6400,33 @@ function EditProjectForm() {
                         );
                       })}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setScheduleLocked((prev) => !prev)}
+                      disabled={!canEditProjectContent}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors border ${
+                        canEditProjectContent
+                          ? (scheduleEffectivelyLocked
+                            ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-800'
+                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          )
+                          : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      }`}
+                      title={canEditProjectContent ? (scheduleLocked ? 'Unlock schedule editing' : 'Lock schedule editing') : 'You have view-only access'}
+                    >
+                      {scheduleEffectivelyLocked ? <LockClosedIcon className="h-4 w-4" /> : <LockOpenIcon className="h-4 w-4" />}
+                      {canEditProjectContent ? (scheduleLocked ? 'Unlock Schedule' : 'Lock Schedule') : 'Schedule Locked'}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => addSchedule()}
-                      disabled={!canEditProjectContent}
+                      disabled={!canEditSchedule}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${
-                        canEditProjectContent ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        canEditSchedule ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       }`}
-                      title={canEditProjectContent ? 'Add a new schedule row' : 'You have view-only access'}
+                      title={canEditSchedule ? 'Add a new schedule row' : (!canEditProjectContent ? 'You have view-only access' : 'Schedule is locked')}
                     >
                       <PlusIcon className="h-4 w-4" />
                       Add Row
@@ -6450,14 +6485,14 @@ function EditProjectForm() {
                                       className="w-full text-[11px] px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
                                       placeholder="Activity"
                                       list="project-schedule-activity-options"
-                                      disabled={!canEditProjectContent}
+                                      disabled={!canEditSchedule}
                                     />
                                     <button
                                       type="button"
                                       onClick={() => removeSchedule(s.id)}
-                                      className="text-red-500 hover:text-red-700 p-1 flex-shrink-0"
+                                      className={`p-1 flex-shrink-0 ${canEditSchedule ? 'text-red-500 hover:text-red-700' : 'text-gray-300 cursor-not-allowed'}`}
                                       title="Remove row"
-                                      disabled={!canEditProjectContent}
+                                      disabled={!canEditSchedule}
                                     >
                                       <XMarkIcon className="h-4 w-4" />
                                     </button>
@@ -6471,7 +6506,7 @@ function EditProjectForm() {
                                       className="w-full text-[11px] px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
                                       placeholder="Discipline"
                                       list="project-schedule-discipline-options"
-                                      disabled={!canEditProjectContent}
+                                      disabled={!canEditSchedule}
                                     />
                                   </div>
                                 </div>
@@ -6491,13 +6526,13 @@ function EditProjectForm() {
                                         key={w.index}
                                         type="button"
                                         onClick={() => toggleScheduleWeek(s.id, w.index)}
-                                        disabled={!canEditProjectContent}
+                                        disabled={!canEditSchedule}
                                         style={cellStyle}
                                         className={`h-10 border-r border-gray-100 text-[12px] font-semibold flex items-center justify-center select-none ${
                                           isMarked
                                             ? (legend ? `${legend.cellClass} ${legend.textClass}` : (s.color ? 'text-gray-900' : 'bg-gray-200 text-gray-800'))
                                             : 'bg-white text-gray-500'
-                                        } ${canEditProjectContent ? 'hover:bg-gray-100' : 'cursor-default'}`}
+                                        } ${canEditSchedule ? 'hover:bg-gray-100' : 'cursor-default'}`}
                                         title={w.rangeLabel}
                                       >
                                         {isMarked ? 'x' : ''}
@@ -6539,20 +6574,22 @@ function EditProjectForm() {
                                   className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
                                   placeholder="Activity / task"
                                   list="project-schedule-activity-options"
+                                  disabled={!canEditSchedule}
                                 />
                               </td>
-                              <td className="py-2 px-3"><input type="text" value={s.unit_qty || ''} onChange={(e) => updateSchedule(s.id, 'unit_qty', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                              <td className="py-2 px-3"><input type="date" value={s.start_date || ''} onChange={(e) => updateSchedule(s.id, 'start_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                              <td className="py-2 px-3"><input type="date" value={s.end_date || ''} onChange={(e) => updateSchedule(s.id, 'end_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                              <td className="py-2 px-3"><input type="text" value={s.time_required || ''} onChange={(e) => updateSchedule(s.id, 'time_required', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
-                              <td className="py-2 px-3"><select value={s.status_completed || ''} onChange={(e) => updateSchedule(s.id, 'status_completed', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Ongoing">Ongoing</option></select></td>
-                              <td className="py-2 px-3"><input type="text" value={s.remarks || ''} onChange={(e) => updateSchedule(s.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="text" value={s.unit_qty || ''} onChange={(e) => updateSchedule(s.id, 'unit_qty', e.target.value)} disabled={!canEditSchedule} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="date" value={s.start_date || ''} onChange={(e) => updateSchedule(s.id, 'start_date', e.target.value)} disabled={!canEditSchedule} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="date" value={s.end_date || ''} onChange={(e) => updateSchedule(s.id, 'end_date', e.target.value)} disabled={!canEditSchedule} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><input type="text" value={s.time_required || ''} onChange={(e) => updateSchedule(s.id, 'time_required', e.target.value)} disabled={!canEditSchedule} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
+                              <td className="py-2 px-3"><select value={s.status_completed || ''} onChange={(e) => updateSchedule(s.id, 'status_completed', e.target.value)} disabled={!canEditSchedule} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"><option value="">Select</option><option value="Yes">Yes</option><option value="No">No</option><option value="Ongoing">Ongoing</option></select></td>
+                              <td className="py-2 px-3"><input type="text" value={s.remarks || ''} onChange={(e) => updateSchedule(s.id, 'remarks', e.target.value)} disabled={!canEditSchedule} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
                               <td className="py-2 px-3 text-center">
                                 <button 
                                   type="button" 
                                   onClick={() => removeSchedule(s.id)} 
-                                  className="text-red-500 hover:text-red-700 p-1"
+                                  className={`p-1 ${canEditSchedule ? 'text-red-500 hover:text-red-700' : 'text-gray-300 cursor-not-allowed'}`}
                                   title="Remove item"
+                                  disabled={!canEditSchedule}
                                 >
                                   <XMarkIcon className="h-4 w-4" />
                                 </button>

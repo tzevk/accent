@@ -266,7 +266,12 @@ export default function ProjectViewPage() {
   const parsedProjectSchedule = useMemo(() => {
     if (!project || !project.project_schedule_list) return [];
     try {
-      return typeof project.project_schedule_list === 'string' ? JSON.parse(project.project_schedule_list) : project.project_schedule_list;
+      const parsed = typeof project.project_schedule_list === 'string'
+        ? JSON.parse(project.project_schedule_list)
+        : project.project_schedule_list;
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.rows)) return parsed.rows;
+      return [];
     } catch {
       return [];
     }
