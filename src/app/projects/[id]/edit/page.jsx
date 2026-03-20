@@ -205,7 +205,12 @@ function EditProjectForm() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id;
-  const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
+  const { user: sessionUser, can, RESOURCES, PERMISSIONS, refreshSession } = useSession();
+
+  useEffect(() => {
+    // Ensure latest permissions are used for tab visibility after permission updates.
+    refreshSession?.();
+  }, [refreshSession]);
 
   const isAdminUser = useMemo(() => {
     const hierarchy = Number(
