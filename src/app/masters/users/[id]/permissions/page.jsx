@@ -1196,7 +1196,7 @@ const MODULE_FIELDS = {
 const SPECIAL_PERMS = {
   leads: ['convert'],
   proposals: ['convert', 'approve'],
-  projects: ['assign'],
+  projects: ['assign', 'close'],
   activities: ['assign']
 };
 
@@ -1339,7 +1339,8 @@ export default function UserPermissionsPage() {
               import: savedModule.crud?.import || false,
               convert: savedModule.crud?.convert || false,
               approve: savedModule.crud?.approve || false,
-              assign: savedModule.crud?.assign || false
+              assign: savedModule.crud?.assign || false,
+              close: savedModule.crud?.close || false
             };
             modulePerms[moduleKey] = permObj;
             
@@ -1567,7 +1568,8 @@ export default function UserPermissionsPage() {
         import: true,
         convert: (SPECIAL_PERMS[module] || []).includes('convert'),
         approve: (SPECIAL_PERMS[module] || []).includes('approve'),
-        assign: (SPECIAL_PERMS[module] || []).includes('assign')
+        assign: (SPECIAL_PERMS[module] || []).includes('assign'),
+        close: (SPECIAL_PERMS[module] || []).includes('close')
       }
     }));
     // Enable all sections
@@ -1640,7 +1642,8 @@ export default function UserPermissionsPage() {
             import: !!modulePerms.import,
             convert: !!modulePerms.convert,
             approve: !!modulePerms.approve,
-            assign: !!modulePerms.assign
+            assign: !!modulePerms.assign,
+            close: !!modulePerms.close
           },
           sections: {}
         };
@@ -1680,6 +1683,7 @@ export default function UserPermissionsPage() {
           if (modulePerms.convert) permissionsArray.push(`${moduleKey}:convert`);
           if (modulePerms.approve) permissionsArray.push(`${moduleKey}:approve`);
           if (modulePerms.assign) permissionsArray.push(`${moduleKey}:assign`);
+          if (modulePerms.close) permissionsArray.push(`${moduleKey}:close`);
         }
       });
       
@@ -1696,6 +1700,7 @@ export default function UserPermissionsPage() {
         if (perms.convert) oldPermissionsArray.push(`${module}:convert`);
         if (perms.approve) oldPermissionsArray.push(`${module}:approve`);
         if (perms.assign) oldPermissionsArray.push(`${module}:assign`);
+        if (perms.close) oldPermissionsArray.push(`${module}:close`);
       });
 
       const res = await fetch('/api/users', {

@@ -349,9 +349,6 @@ export async function PUT(request, context) {
     return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
   
-  // Check if user has full projects:update permission (only super admins)
-  const hasFullAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-  
   let db = null;
   let retries = 0;
   const maxRetries = 2;
@@ -359,6 +356,13 @@ export async function PUT(request, context) {
   // Parse request data once outside the loop
   const { id } = await context.params;
   const data = await request.json();
+
+  // Close/activate actions send a status-only payload and should be allowed via projects:close.
+  const payloadKeys = Object.keys(data || {}).filter((key) => data[key] !== undefined);
+  const isStatusOnlyUpdate = payloadKeys.length > 0 && payloadKeys.every((key) => key === 'status' || key === 'progress');
+  const hasCloseAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.CLOSE);
+  const hasUpdateAccess = user.is_super_admin || hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const hasFullAccess = hasUpdateAccess || (hasCloseAccess && isStatusOnlyUpdate);
   
   while (retries <= maxRetries) {
     try {
