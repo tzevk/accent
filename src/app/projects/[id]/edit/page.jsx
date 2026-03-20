@@ -97,22 +97,22 @@ const INITIAL_FORM = {
 
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
-  { id: 'project_details', label: 'Project Details' },
-  { id: 'project_team_tab', label: 'Project Team', requiresUpdate: true },
-  { id: 'input_documents', label: 'Input Documents', requiresUpdate: true },
-  { id: 'scope', label: 'Scope', requiresUpdate: true },
+  { id: 'project_details', label: 'Project Details', projectSectionKey: 'project_details' },
+  { id: 'project_team_tab', label: 'Project Team', requiresUpdate: true, projectSectionKey: 'project_details' },
+  { id: 'input_documents', label: 'Input Documents', requiresUpdate: true, projectSectionKey: 'documents_received' },
+  { id: 'scope', label: 'Scope', requiresUpdate: true, projectSectionKey: 'scope' },
   { id: 'software', label: 'Software', requiresUpdate: true },
-  { id: 'minutes_internal_meet', label: 'Meetings', requiresUpdate: true },
-  { id: 'project_schedule', label: 'Project Schedule', requiresUpdate: true },
-  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true, requiresUpdate: true },
+  { id: 'minutes_internal_meet', label: 'Meetings', requiresUpdate: true, projectSectionKey: 'minutes_internal_meet' },
+  { id: 'project_schedule', label: 'Project Schedule', requiresUpdate: true, projectSectionKey: 'project_schedule' },
+  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true, requiresUpdate: true, projectSectionKey: 'project_activity' },
   { id: 'my_activities', label: 'My Activities', userOnly: true },
-  { id: 'documents_issued', label: 'Documents Issued', requiresUpdate: true },
-  { id: 'project_handover', label: 'Project Handover', requiresUpdate: true },
-  { id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true },
-  { id: 'query_log', label: 'Query Log', requiresUpdate: true },
-  { id: 'assumption', label: 'Assumption', requiresUpdate: true },
-  { id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true },
-  { id: 'discussion', label: 'Discussion', requiresUpdate: true },
+  { id: 'documents_issued', label: 'Documents Issued', requiresUpdate: true, projectSectionKey: 'documents_issued' },
+  { id: 'project_handover', label: 'Project Handover', requiresUpdate: true, projectSectionKey: 'project_handover' },
+  { id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true, projectSectionKey: 'project_manhours' },
+  { id: 'query_log', label: 'Query Log', requiresUpdate: true, projectSectionKey: 'query_log' },
+  { id: 'assumption', label: 'Assumption', requiresUpdate: true, projectSectionKey: 'assumption' },
+  { id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true, projectSectionKey: 'lessons_learnt' },
+  { id: 'discussion', label: 'Discussion', requiresUpdate: true, projectSectionKey: 'minutes_internal_meet' },
   { id: 'quotation', label: 'Quotation', requiresPermission: 'quotations', requiresUpdate: true },
   { id: 'purchase_order', label: 'Purchase Order', requiresPermission: 'purchase_orders', requiresUpdate: true },
   { id: 'invoice', label: 'Invoice', requiresPermission: 'invoices', requiresUpdate: true }
@@ -3068,12 +3068,23 @@ function EditProjectForm() {
   };
 
   const visibleTabs = useMemo(() => {
+    const projectModule = sessionUser?.field_permissions?.modules?.projects;
+    const sectionAccess = projectModule?.sections || {};
+
     return TABS.filter((tab) => {
       const hasActivitiesPermission = can('activities', PERMISSIONS.READ) || can('activities', PERMISSIONS.ASSIGN);
       if (tab.adminOnly && !isAdminUser) return false;
       if (tab.adminOrActivities && !isAdminUser && !hasActivitiesPermission) return false;
       if (tab.userOnly && isAdminUser) return false;
       if (tab.requiresUpdate && !canEditProjectContent) return false;
+
+      if (tab.projectSectionKey) {
+        if (projectModule?.enabled === false) return false;
+        // When project sections are configured, show only explicitly enabled sections.
+        if (projectModule && Object.keys(sectionAccess).length > 0) {
+          if (sectionAccess?.[tab.projectSectionKey]?.enabled !== true) return false;
+        }
+      }
 
       if (tab.requiresPermission) {
         const hasAnyPermission = can(tab.requiresPermission, PERMISSIONS.READ) || can(tab.requiresPermission, PERMISSIONS.UPDATE);
@@ -3082,7 +3093,7 @@ function EditProjectForm() {
 
       return true;
     });
-  }, [can, isAdminUser, PERMISSIONS]);
+  }, [can, isAdminUser, PERMISSIONS, canEditProjectContent, sessionUser]);
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
