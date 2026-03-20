@@ -20,6 +20,82 @@ const normalizeDate = (val) => {
   return d.toISOString().split('T')[0];
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Parse a YYYY-MM-DD date into a stable local Date at midnight.
+const parseIsoDay = (iso) => {
+  if (!iso || typeof iso !== 'string') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const formatShortDayMonth = (d) => {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+};
+
+const formatWeekHeaderDate = (d) => {
+  const label = formatShortDayMonth(d);
+  return label ? label.replace(' ', '-') : '';
+};
+
+// Build week buckets starting from project start date (W1 = start..start+6).
+const buildProjectWeeks = (projectStartIso, projectEndIso) => {
+  const start = parseIsoDay(projectStartIso);
+  const end = parseIsoDay(projectEndIso);
+  if (!start || !end) return [];
+
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  if (endMs < startMs) return [];
+
+  const totalDays = Math.floor((endMs - startMs) / DAY_MS) + 1;
+  const weekCount = Math.ceil(totalDays / 7);
+
+  const weeks = [];
+  for (let i = 0; i < weekCount; i++) {
+    const ws = new Date(startMs + i * 7 * DAY_MS);
+    const we = new Date(Math.min(endMs, ws.getTime() + 6 * DAY_MS));
+    weeks.push({
+      index: i,
+      label: `W${i + 1}`,
+      start: ws,
+      end: we,
+      rangeLabel: `${formatShortDayMonth(ws)} - ${formatShortDayMonth(we)}`
+    });
+  }
+  return weeks;
+};
+
+// Returns { startWeek, endWeek } (inclusive) for an item range clamped to the project range.
+const getWeekSpanForProjectRange = (projectStartIso, projectEndIso, itemStartIso, itemEndIso) => {
+  const ps = parseIsoDay(projectStartIso);
+  const pe = parseIsoDay(projectEndIso);
+  const is = parseIsoDay(normalizeDate(itemStartIso));
+  const ie = parseIsoDay(normalizeDate(itemEndIso));
+  if (!ps || !pe || !is || !ie) return null;
+
+  let startMs = is.getTime();
+  let endMs = ie.getTime();
+  if (endMs < startMs) [startMs, endMs] = [endMs, startMs];
+
+  const psMs = ps.getTime();
+  const peMs = pe.getTime();
+  if (endMs < psMs || startMs > peMs) return null;
+
+  const clampedStart = Math.max(psMs, startMs);
+  const clampedEnd = Math.min(peMs, endMs);
+
+  const startDayOffset = Math.floor((clampedStart - psMs) / DAY_MS);
+  const endDayOffset = Math.floor((clampedEnd - psMs) / DAY_MS);
+
+  return {
+    startWeek: Math.floor(startDayOffset / 7),
+    endWeek: Math.floor(endDayOffset / 7)
+  };
+};
+
 const INITIAL_FORM = {
   // Scope & Annexure fields
   scope_of_work: '',
@@ -98,9 +174,9 @@ const INITIAL_FORM = {
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
   { id: 'scope', label: 'Scope', requiresUpdate: true, projectSectionKey: 'scope' },
-  { id: 'project_activity', label: 'Project Activity (Discipline-wise)', adminOrActivities: true, requiresUpdate: true, projectSectionKey: 'project_activity' },
+  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true, requiresUpdate: true, projectSectionKey: 'project_activity' },
   { id: 'project_schedule', label: 'Schedule', requiresUpdate: true, projectSectionKey: 'project_schedule' },
-  { id: 'project_team_tab', label: 'Project Team Assign to the Activity', requiresUpdate: true, projectSectionKey: 'project_details' },
+  { id: 'project_team_tab', label: 'Project Team', requiresUpdate: true, projectSectionKey: 'project_details' },
   { id: 'project_handover', label: 'Progress Measurement', requiresUpdate: true, projectSectionKey: 'project_handover' },
   { id: 'input_documents', label: 'Input Document', requiresUpdate: true, projectSectionKey: 'documents_received' },
   { id: 'documents_issued', label: 'Deliverables', requiresUpdate: true, projectSectionKey: 'documents_issued' },
@@ -231,6 +307,7 @@ function EditProjectForm() {
   const canEditPurchaseOrders = isSuperAdmin || can(RESOURCES.PURCHASE_ORDERS, PERMISSIONS.UPDATE);
   const canViewInvoices = isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.READ) || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
   const canEditInvoices = isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
+  const canViewProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.READ) || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   const canEditProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
@@ -358,6 +435,7 @@ function EditProjectForm() {
   const [documentsIssued, setDocumentsIssued] = useState([]);
   const [newIssuedDoc, setNewIssuedDoc] = useState({
     document_name: '',
+    issued_for: '',
     document_number: '',
     revision_number: '',
     issue_date: '',
@@ -377,17 +455,190 @@ function EditProjectForm() {
 
   // Project Schedule - structured rows
   const [projectSchedule, setProjectSchedule] = useState([]);
-  const [newSchedule, setNewSchedule] = useState({
-    sr_no: '',
-    activity_description: '',
-    unit_qty: '',
-    start_date: '',
-    end_date: '',
-    time_required: '',
-    status_completed: '',
-    remarks: ''
-  });
-  const newScheduleDescRef = useRef(null);
+  const scheduleAutofilledRef = useRef(false);
+
+  const SCHEDULE_LEGENDS = useMemo(() => ([
+    { key: 'accent_activities', label: 'Accent Activities', cellClass: 'bg-gray-200', textClass: 'text-gray-900' },
+    { key: 'piping_modelling', label: 'Piping/Modelling', cellClass: 'bg-purple-200', textClass: 'text-gray-900' },
+    { key: 'civil_structural', label: 'Civil/Structural', cellClass: 'bg-amber-200', textClass: 'text-gray-900' },
+    { key: 'electrical', label: 'Electrical', cellClass: 'bg-indigo-200', textClass: 'text-gray-900' },
+    { key: 'instrumentation', label: 'Instrumentation', cellClass: 'bg-slate-200', textClass: 'text-gray-900' },
+    { key: 'swpl_controlled', label: 'SWPL Controlled', cellClass: 'bg-green-700', textClass: 'text-white' },
+    { key: 'milestone', label: 'Milestone', cellClass: 'bg-emerald-200', textClass: 'text-gray-900' },
+  ]), []);
+
+  const generateScheduleRowId = useCallback(() => {
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+    } catch {
+      // ignore
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }, []);
+
+  const normalizeScheduleRows = useCallback((rows) => {
+    const seen = new Set();
+    return (Array.isArray(rows) ? rows : []).map((row) => {
+      const base = row && typeof row === 'object' ? row : {};
+      let id = base.id;
+      if (id === null || id === undefined || id === '') id = null;
+      const idStr = id === null ? '' : String(id);
+      const safeId = !idStr || seen.has(idStr) ? generateScheduleRowId() : idStr;
+      seen.add(safeId);
+
+      const legend = base.legend || base.schedule_legend || '';
+      const weeks = Array.isArray(base.weeks)
+        ? base.weeks.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+        : base.weeks;
+
+      return {
+        ...base,
+        id: safeId,
+        legend,
+        weeks,
+      };
+    });
+  }, [generateScheduleRowId]);
+
+  const [selectedScheduleLegend, setSelectedScheduleLegend] = useState('accent_activities');
+
+  const getScheduleLegend = useCallback((key) => {
+    const k = String(key || '').trim();
+    return SCHEDULE_LEGENDS.find((l) => l.key === k) || null;
+  }, [SCHEDULE_LEGENDS]);
+
+  const scheduleWeeks = useMemo(
+    () => buildProjectWeeks(form.start_date, form.end_date),
+    [form.start_date, form.end_date]
+  );
+
+  const projectActivityScheduleGroups = useMemo(() => {
+    const byDiscipline = new Map();
+
+    (projectActivities || []).forEach((pa) => {
+      const type = String(pa?.type || '').toLowerCase();
+      if (type !== 'activity' && type !== 'subactivity') return;
+
+      const disciplineName =
+        pa?.discipline ||
+        pa?.function_name ||
+        (pa?.function_id
+          ? (functions || []).find((f) => String(f.id) === String(pa.function_id))?.function_name
+          : null) ||
+        'Other';
+
+      const parentName = pa?.activity_name || pa?.activity || '';
+      const childName = pa?.name || pa?.sub_activity_name || pa?.sub_activity || '';
+      const label =
+        type === 'subactivity'
+          ? (parentName && childName ? `${parentName} - ${childName}` : (childName || parentName))
+          : (parentName || pa?.name || '');
+
+      if (!label) return;
+
+      if (!byDiscipline.has(disciplineName)) byDiscipline.set(disciplineName, new Set());
+      byDiscipline.get(disciplineName).add(label);
+    });
+
+    return Array.from(byDiscipline.entries())
+      .map(([discipline, optionSet]) => ({
+        discipline,
+        options: Array.from(optionSet.values()).sort((a, b) => a.localeCompare(b)),
+      }))
+      .sort((a, b) => a.discipline.localeCompare(b.discipline));
+  }, [projectActivities, functions]);
+
+  const projectActivityDocumentNameOptions = useMemo(() => {
+    const unique = new Set();
+    (projectActivityScheduleGroups || []).forEach((g) => {
+      (g.options || []).forEach((opt) => {
+        if (opt) unique.add(opt);
+      });
+    });
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+  }, [projectActivityScheduleGroups]);
+
+  useEffect(() => {
+    if (scheduleAutofilledRef.current) return;
+    if (projectSchedule.length > 0) {
+      scheduleAutofilledRef.current = true;
+      return;
+    }
+    if (!projectActivities || projectActivities.length === 0) return;
+
+    const normalizeDateOnly = (value) => {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toISOString().slice(0, 10);
+    };
+
+    const parseDateMs = (value) => {
+      if (!value) return null;
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.getTime();
+    };
+
+    const derived = (projectActivities || [])
+      .filter((pa) => ['activity', 'subactivity'].includes(String(pa?.type || '').toLowerCase()))
+      .map((pa, idx) => {
+        const type = String(pa?.type || '').toLowerCase();
+        const disciplineName =
+          pa?.discipline ||
+          pa?.function_name ||
+          pa?.function ||
+          pa?.department ||
+          'Manual / Other';
+        const parentName = pa?.activity_name || pa?.activity || '';
+        const childName = pa?.name || pa?.sub_activity_name || pa?.sub_activity || '';
+        const activityLabel =
+          type === 'subactivity'
+            ? (parentName && childName ? `${parentName} - ${childName}` : (childName || parentName))
+            : (parentName || pa?.name || '');
+
+        const assignments = Array.isArray(pa?.assigned_users) ? pa.assigned_users : [];
+        const startCandidates = assignments
+          .map((a) => a?.start_date)
+          .map(parseDateMs)
+          .filter((v) => typeof v === 'number');
+        const endCandidates = assignments
+          .map((a) => a?.due_date || a?.end_date)
+          .map(parseDateMs)
+          .filter((v) => typeof v === 'number');
+
+        const minStart = startCandidates.length ? new Date(Math.min(...startCandidates)).toISOString().slice(0, 10) : '';
+        const maxEnd = endCandidates.length ? new Date(Math.max(...endCandidates)).toISOString().slice(0, 10) : '';
+
+        const qtyTotal = assignments.reduce((sum, a) => sum + (parseFloat(a?.qty_assigned) || 0), 0);
+        const statusValues = assignments.map((a) => String(a?.status || '').toLowerCase()).filter(Boolean);
+        const allDone = statusValues.length > 0 && statusValues.every((s) => ['done', 'completed', 'complete', 'yes'].includes(s));
+        const anyAssigned = assignments.length > 0;
+
+        return {
+          id: generateScheduleRowId(),
+          sr_no: String(idx + 1),
+          activity_description: activityLabel,
+          discipline: disciplineName,
+          legend: 'accent_activities',
+          color: '',
+          unit_qty: qtyTotal > 0 ? String(qtyTotal) : '',
+          start_date: normalizeDateOnly(minStart) || '',
+          end_date: normalizeDateOnly(maxEnd) || '',
+          time_required: '',
+          status_completed: allDone ? 'Yes' : (anyAssigned ? 'Ongoing' : ''),
+          remarks: '',
+        };
+      })
+      .filter((row) => !!row.activity_description);
+
+    if (derived.length > 0) {
+      setProjectSchedule(normalizeScheduleRows(derived));
+      scheduleAutofilledRef.current = true;
+    }
+  }, [projectActivities, projectSchedule.length, generateScheduleRowId, normalizeScheduleRows]);
 
   // Project Manhours - structured by month with employee entries
   const [projectManhours, setProjectManhours] = useState([{
@@ -1116,7 +1367,7 @@ function EditProjectForm() {
                 const parsed = typeof project.project_schedule_list === 'string'
                   ? JSON.parse(project.project_schedule_list)
                   : project.project_schedule_list;
-                setProjectSchedule(Array.isArray(parsed) ? parsed : []);
+                setProjectSchedule(normalizeScheduleRows(Array.isArray(parsed) ? parsed : []));
               } catch {
                 setProjectSchedule([]);
               }
@@ -2256,7 +2507,7 @@ function EditProjectForm() {
     const issueDate = newIssuedDoc.issue_date || new Date().toISOString().slice(0,10);
     const doc = { ...newIssuedDoc, id: Date.now(), issue_date: issueDate };
     setDocumentsIssued(prev => [...prev, doc]);
-    setNewIssuedDoc({ document_name: '', document_number: '', revision_number: '', issue_date: '', remarks: '' });
+    setNewIssuedDoc({ document_name: '', issued_for: '', document_number: '', revision_number: '', issue_date: '', remarks: '' });
     setTimeout(() => newIssuedDescRef.current?.focus(), 10);
   };
 
@@ -2514,22 +2765,111 @@ function EditProjectForm() {
   };
 
   // Project Schedule helpers (add/update/remove)
-  const addSchedule = () => {
-    if (!newSchedule.activity_description || !newSchedule.activity_description.trim()) return;
-    const defaultSr = newSchedule.sr_no && String(newSchedule.sr_no).trim() !== '' ? newSchedule.sr_no : String(projectSchedule.length + 1);
+  const computeScheduleWeeksFromDates = useCallback((startIso, endIso) => {
+    const span = getWeekSpanForProjectRange(form.start_date, form.end_date, startIso, endIso);
+    if (!span) return [];
+    const start = Math.max(0, span.startWeek);
+    const end = Math.min(scheduleWeeks.length - 1, span.endWeek);
+    if (end < start) return [];
+    const indices = [];
+    for (let i = start; i <= end; i += 1) indices.push(i);
+    return indices;
+  }, [form.start_date, form.end_date, scheduleWeeks.length]);
+
+  const computeScheduleDatesFromWeeks = useCallback((weekIndices) => {
+    if (!Array.isArray(weekIndices) || weekIndices.length === 0) return { start_date: '', end_date: '' };
+    const valid = weekIndices
+      .map((w) => Number(w))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n < scheduleWeeks.length)
+      .sort((a, b) => a - b);
+    if (valid.length === 0) return { start_date: '', end_date: '' };
+    const first = scheduleWeeks[valid[0]];
+    const last = scheduleWeeks[valid[valid.length - 1]];
+    return {
+      start_date: first?.start ? first.start.toISOString().slice(0, 10) : '',
+      end_date: last?.end ? last.end.toISOString().slice(0, 10) : ''
+    };
+  }, [scheduleWeeks]);
+
+  const addSchedule = (seed = {}) => {
+    const defaultSr = seed.sr_no && String(seed.sr_no).trim() !== '' ? seed.sr_no : String(projectSchedule.length + 1);
+    const legendKey = seed.legend || seed.schedule_legend || '';
+    const disciplineSeed = seed.discipline || '';
+    const disciplineFromLegend = !String(disciplineSeed || '').trim() && legendKey
+      ? (getScheduleLegend(legendKey)?.label || '')
+      : disciplineSeed;
     const sch = {
-      ...newSchedule,
-      id: Date.now(),
-      sr_no: defaultSr
+      id: generateScheduleRowId(),
+      sr_no: defaultSr,
+      activity_description: seed.activity_description || '',
+      discipline: disciplineFromLegend,
+      legend: legendKey,
+      color: seed.color || '',
+      unit_qty: seed.unit_qty || '',
+      start_date: seed.start_date || '',
+      end_date: seed.end_date || '',
+      time_required: seed.time_required || '',
+      status_completed: seed.status_completed || '',
+      remarks: seed.remarks || '',
+      weeks: Array.isArray(seed.weeks) ? seed.weeks : undefined
     };
     setProjectSchedule(prev => [...prev, sch]);
-    setNewSchedule({ sr_no: '', activity_description: '', unit_qty: '', start_date: '', end_date: '', time_required: '', status_completed: '', remarks: '' });
-    setTimeout(() => newScheduleDescRef.current?.focus(), 10);
   };
 
   const updateSchedule = (id, field, value) => {
-    setProjectSchedule(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    setProjectSchedule(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      // Keep weeks <-> dates in sync (for gantt chart editing)
+      if (field === 'start_date' || field === 'end_date') {
+        updated.weeks = computeScheduleWeeksFromDates(updated.start_date, updated.end_date);
+      }
+      return updated;
+    }));
   };
+
+  const toggleScheduleWeek = useCallback((rowId, weekIndex) => {
+    if (!canEditProjectContent) return;
+    const wi = Number(weekIndex);
+    if (!Number.isFinite(wi) || wi < 0 || wi >= scheduleWeeks.length) return;
+
+    setProjectSchedule((prev) => prev.map((row) => {
+      if (row.id !== rowId) return row;
+
+      const existing = Array.isArray(row.weeks) && row.weeks.length > 0
+        ? row.weeks
+        : computeScheduleWeeksFromDates(row.start_date, row.end_date);
+      const set = new Set(existing.map((n) => Number(n)).filter((n) => Number.isFinite(n)));
+
+      const wasMarked = set.has(wi);
+      if (wasMarked) set.delete(wi);
+      else set.add(wi);
+
+      const weeks = Array.from(set.values()).sort((a, b) => a - b);
+      const dates = computeScheduleDatesFromWeeks(weeks);
+
+      const nextRow = {
+        ...row,
+        weeks,
+        // when week-cells are edited, derive dates from the selected range
+        start_date: dates.start_date,
+        end_date: dates.end_date
+      };
+
+      // Apply selected legend when user marks a cell
+      if (!wasMarked && selectedScheduleLegend) {
+        nextRow.legend = selectedScheduleLegend;
+
+        // If discipline is empty, fill it from the selected legend label
+        if (!String(nextRow.discipline || '').trim()) {
+          const legend = getScheduleLegend(selectedScheduleLegend);
+          if (legend?.label) nextRow.discipline = legend.label;
+        }
+      }
+
+      return nextRow;
+    }));
+  }, [canEditProjectContent, scheduleWeeks.length, computeScheduleWeeksFromDates, computeScheduleDatesFromWeeks, selectedScheduleLegend, getScheduleLegend]);
 
   const removeSchedule = (id) => {
     setProjectSchedule(prev => prev.filter(r => r.id !== id));
@@ -3098,12 +3438,14 @@ function EditProjectForm() {
 
       const hasActivitiesPermission = can('activities', PERMISSIONS.READ) || can('activities', PERMISSIONS.ASSIGN);
       if (tab.adminOnly && !isAdminUser) return false;
-      if (tab.adminOrActivities && !isAdminUser && !hasActivitiesPermission) return false;
+      // For project-level views, allow users with project view permission to see these tabs.
+      if (tab.adminOrActivities && !isAdminUser && !hasActivitiesPermission && !canViewProjectContent) return false;
       if (tab.userOnly && isAdminUser) return false;
-      if (tab.requiresUpdate && !canEditProjectContent) return false;
+      // "requiresUpdate" means the tab contains edit controls, but view-only users should still be able to see it.
+      if (tab.requiresUpdate && !canViewProjectContent) return false;
 
       if (tab.projectSectionKey) {
-        if (projectModule?.enabled === false) return false;
+        if (projectModule?.enabled === false && !canViewProjectContent) return false;
         // When project sections are configured, show only explicitly enabled sections.
         if (projectModule && Object.keys(sectionAccess).length > 0) {
           if (sectionAccess?.[tab.projectSectionKey]?.enabled !== true) return false;
@@ -3117,7 +3459,7 @@ function EditProjectForm() {
 
       return true;
     });
-  }, [can, isAdminUser, isSuperAdmin, PERMISSIONS, canEditProjectContent, sessionUser]);
+  }, [can, isAdminUser, isSuperAdmin, PERMISSIONS, canViewProjectContent, sessionUser]);
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
@@ -3287,6 +3629,7 @@ function EditProjectForm() {
     const documentIssuedRows = (documentsIssued || []).map((doc, idx) => [
       idx + 1,
       doc.document_name || '',
+      doc.issued_for || '',
       doc.document_number || '',
       doc.revision_number || '',
       formatExportDate(doc.issue_date),
@@ -3339,7 +3682,7 @@ function EditProjectForm() {
       },
       documents_issued: {
         title: 'Document Issued',
-        columns: ['Sr No', 'Document Name', 'Document Number', 'Revision', 'Issue Date', 'Remarks'],
+        columns: ['Sr No', 'Document Name', 'Issued For', 'Document Number', 'Revision', 'Issue Date', 'Remarks'],
         rows: documentIssuedRows
       },
       query_log: {
@@ -3549,6 +3892,7 @@ function EditProjectForm() {
         const rows = sheetRowsToObjects(issuedWs).map((r) => ({
           id: Date.now() + Math.random(),
           document_name: r.document_name || '',
+          issued_for: r.issued_for || '',
           document_number: r.document_number || '',
           revision_number: r.revision || r.revision_number || '',
           issue_date: toIsoDate(r.issue_date),
@@ -5835,6 +6179,7 @@ function EditProjectForm() {
                         <tr>
                           <th className="text-center py-2 px-2 font-semibold text-gray-700">Sr No</th>
                           <th className="text-left py-2 px-2 font-semibold text-gray-700">Document Name</th>
+                          <th className="text-left py-2 px-2 font-semibold text-gray-700">Issued For</th>
                           <th className="text-left py-2 px-2 font-semibold text-gray-700">Document Number</th>
                           <th className="text-left py-2 px-2 font-semibold text-gray-700">Revision No.</th>
                           <th className="text-left py-2 px-2 font-semibold text-gray-700">Issue Date</th>
@@ -5845,11 +6190,25 @@ function EditProjectForm() {
                       <tbody>
                         <tr className="bg-purple-25/30 border-b-2 border-purple-100">
                           <td className="py-2 px-2 text-center text-gray-400 font-semibold">+</td>
-                          <td className="py-2 px-2"><input ref={newIssuedDescRef} type="text" value={newIssuedDoc.document_name} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_name:e.target.value}))} placeholder="Document Name" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.document_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_number:e.target.value}))} placeholder="Document No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.revision_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Revision" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="date" value={newIssuedDoc.issue_date} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issue_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.remarks} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                          <td className="py-2 px-2">
+                            <select
+                              ref={newIssuedDescRef}
+                              value={newIssuedDoc.document_name}
+                              onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_name:e.target.value}))}
+                              className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] bg-white"
+                              disabled={!canEditProjectContent}
+                            >
+                              <option value="">Select Activity</option>
+                              {projectActivityDocumentNameOptions.map((opt) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.issued_for} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issued_for:e.target.value}))} placeholder="Issued For" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.document_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,document_number:e.target.value}))} placeholder="Document No." className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.revision_number} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,revision_number:e.target.value}))} placeholder="Revision" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                          <td className="py-2 px-2"><input type="date" value={newIssuedDoc.issue_date} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,issue_date:e.target.value}))} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                          <td className="py-2 px-2"><input type="text" value={newIssuedDoc.remarks} onChange={(e)=>setNewIssuedDoc(prev=>({...prev,remarks:e.target.value}))} placeholder="Remarks" className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
                           <td className="py-2 px-2 text-center">
                             <button 
                               type="button" 
@@ -5865,17 +6224,34 @@ function EditProjectForm() {
                         {documentsIssued.map((d, index) => (
                           <tr key={d.id} className="hover:bg-gray-50 transition-colors align-top">
                             <td className="py-2 px-2 text-center">{index + 1}</td>
-                            <td className="py-2 px-2"><input type="text" value={d.document_name || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_name', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                            <td className="py-2 px-2"><input type="text" value={d.document_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                            <td className="py-2 px-2"><input type="text" value={d.revision_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'revision_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                            <td className="py-2 px-2"><input type="date" value={d.issue_date || ''} onChange={(e) => updateIssuedDocument(d.id, 'issue_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
-                            <td className="py-2 px-2"><input type="text" value={d.remarks || ''} onChange={(e) => updateIssuedDocument(d.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" /></td>
+                            <td className="py-2 px-2">
+                              <select
+                                value={d.document_name || ''}
+                                onChange={(e) => updateIssuedDocument(d.id, 'document_name', e.target.value)}
+                                className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] bg-white"
+                                disabled={!canEditProjectContent}
+                              >
+                                <option value="">Select Activity</option>
+                                {d.document_name && !projectActivityDocumentNameOptions.includes(d.document_name) && (
+                                  <option value={d.document_name}>{d.document_name}</option>
+                                )}
+                                {projectActivityDocumentNameOptions.map((opt) => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-2 px-2"><input type="text" value={d.issued_for || ''} onChange={(e) => updateIssuedDocument(d.id, 'issued_for', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                            <td className="py-2 px-2"><input type="text" value={d.document_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'document_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                            <td className="py-2 px-2"><input type="text" value={d.revision_number || ''} onChange={(e) => updateIssuedDocument(d.id, 'revision_number', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                            <td className="py-2 px-2"><input type="date" value={d.issue_date || ''} onChange={(e) => updateIssuedDocument(d.id, 'issue_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
+                            <td className="py-2 px-2"><input type="text" value={d.remarks || ''} onChange={(e) => updateIssuedDocument(d.id, 'remarks', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]" disabled={!canEditProjectContent} /></td>
                             <td className="py-2 px-2 text-center">
                               <button 
                                 type="button" 
                                 onClick={() => removeIssuedDocument(d.id)} 
                                 className="text-red-500 hover:text-red-700 p-1"
                                 title="Remove document"
+                                disabled={!canEditProjectContent}
                               >
                                 <XMarkIcon className="h-4 w-4" />
                               </button>
@@ -5975,118 +6351,169 @@ function EditProjectForm() {
                   <p className="text-xs text-gray-600 mt-1">Add activities/tasks, durations and status</p>
                 </div>
 
-                <div className="px-6 py-5">
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                    <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Activity / Task Description</label>
-                        <select
-                          ref={newScheduleDescRef} 
-                          value={newSchedule.activity_description} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,activity_description:e.target.value}))}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
-                        >
-                          <option value="">Select activity from Activity Master...</option>
-                          {functions.map(func => (
-                            <optgroup key={func.id} label={`📁 ${func.function_name}`}>
-                              {func.activities && func.activities.map(act => (
-                                <Fragment key={act.id}>
-                                  <option value={act.activity_name}>
-                                    📄 {act.activity_name}
-                                  </option>
-                                  {act.subActivities && act.subActivities.map(sub => (
-                                    <option key={sub.id} value={sub.name}>
-                                      ↳ {sub.name}
-                                    </option>
-                                  ))}
-                                </Fragment>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                        <p className="text-xs text-gray-400 mt-1">Select from Activity Master hierarchy</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Unit/Qty</label>
-                        <input 
-                          type="text" 
-                          placeholder="Unit/Qty" 
-                          value={newSchedule.unit_qty} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,unit_qty:e.target.value}))} 
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
-                        <input 
-                          type="date" 
-                          value={newSchedule.start_date} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,start_date:e.target.value}))} 
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Completion Date</label>
-                        <input 
-                          type="date" 
-                          value={newSchedule.end_date} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,end_date:e.target.value}))} 
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Time/Hours Required</label>
-                        <input 
-                          type="text" 
-                          placeholder="Hours" 
-                          value={newSchedule.time_required} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,time_required:e.target.value}))} 
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-                        <select 
-                          value={newSchedule.status_completed} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,status_completed:e.target.value}))} 
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
-                        >
-                          <option value="">Select status</option>
-                          <option value="Yes">Yes</option>
-                          <option value="No">No</option>
-                          <option value="Ongoing">Ongoing</option>
-                        </select>
-                      </div>
-                      <div className="md:col-span-7">
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Remarks</label>
-                        <input 
-                          type="text" 
-                          placeholder="Additional remarks..." 
-                          value={newSchedule.remarks} 
-                          onChange={(e)=>setNewSchedule(prev=>({...prev,remarks:e.target.value}))} 
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" 
-                        />
-                      </div>
+                <div className="px-6 py-5 space-y-4">
+                  {scheduleWeeks.length > 0 ? (
+                    <div className="text-xs text-gray-500">
+                      Timeline: <span className="font-medium text-gray-700">{form.start_date}</span> to{' '}
+                      <span className="font-medium text-gray-700">{form.end_date}</span> ({scheduleWeeks.length} weeks)
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                      Set <span className="font-medium text-gray-700">Project Start Date</span> and <span className="font-medium text-gray-700">Project End Date</span> in Project Details to see the week-wise schedule grid.
+                    </div>
+                  )}
 
-                  <div className="mb-4">
-                    <button 
-                      type="button" 
-                      onClick={addSchedule} 
-                      disabled={!(newSchedule.activity_description && newSchedule.activity_description.trim())} 
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-700">Legend:</span>
+                      {SCHEDULE_LEGENDS.map((l) => {
+                        const active = selectedScheduleLegend === l.key;
+                        return (
+                          <button
+                            key={l.key}
+                            type="button"
+                            onClick={() => setSelectedScheduleLegend(l.key)}
+                            className={`inline-flex items-center gap-2 px-2 py-1 rounded border text-xs transition-colors ${
+                              active ? 'border-[#7F2487] bg-purple-25' : 'border-gray-200 bg-white hover:bg-gray-50'
+                            }`}
+                            title={l.label}
+                          >
+                            <span className={`h-3 w-6 rounded ${l.cellClass}`} />
+                            <span className="text-gray-700">{l.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addSchedule()}
+                      disabled={!canEditProjectContent}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${
-                        newSchedule.activity_description && newSchedule.activity_description.trim() 
-                          ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' 
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        canEditProjectContent ? 'bg-[#7F2487] text-white hover:bg-[#6a1e73]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       }`}
+                      title={canEditProjectContent ? 'Add a new schedule row' : 'You have view-only access'}
                     >
                       <PlusIcon className="h-4 w-4" />
-                      Add Activity
+                      Add Row
                     </button>
                   </div>
 
-                  {projectSchedule.length > 0 && (
+                  {projectSchedule.length > 0 && scheduleWeeks.length > 0 && (
+                    <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                      <div className="min-w-max">
+                        {/* Header */}
+                        <div className="flex border-b border-gray-200 bg-gray-50">
+                          <div className="sticky left-0 z-30 bg-gray-50 border-r border-gray-200">
+                            <div className="grid grid-cols-[320px_180px] h-[48px] items-center px-2 text-[11px] font-semibold text-gray-700">
+                              <div>Activity</div>
+                              <div>Discipline</div>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="grid" style={{ gridTemplateColumns: `repeat(${scheduleWeeks.length}, 56px)` }}>
+                              {scheduleWeeks.map((w) => (
+                                <div key={`date-${w.index}`} className="border-r border-gray-200 h-6 flex items-center justify-center text-[10px] font-semibold text-gray-700">
+                                  {formatWeekHeaderDate(w.start)}
+                                </div>
+                              ))}
+                            </div>
+                            <div className="grid" style={{ gridTemplateColumns: `repeat(${scheduleWeeks.length}, 56px)` }}>
+                              {scheduleWeeks.map((w) => (
+                                <div key={`week-${w.index}`} className="border-r border-gray-200 h-6 flex items-center justify-center text-[10px] font-semibold text-gray-700">
+                                  {w.label}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Rows */}
+                        {projectSchedule.map((s, idx) => {
+                          const srValue = s.sr_no ?? String(idx + 1);
+                          const markedWeeks = new Set(
+                            (Array.isArray(s.weeks) && s.weeks.length > 0
+                              ? s.weeks
+                              : computeScheduleWeeksFromDates(s.start_date, s.end_date)
+                            ).map((n) => Number(n)).filter((n) => Number.isFinite(n))
+                          );
+
+                          return (
+                            <div key={s.id} className="flex border-b border-gray-100 hover:bg-gray-50/60 transition-colors">
+                              <div className="sticky left-0 z-20 bg-white border-r border-gray-200">
+                                <div className="grid grid-cols-[320px_180px] gap-2 items-center px-2 py-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] text-gray-400 w-8 text-center flex-shrink-0">{srValue}</span>
+                                    <input
+                                      type="text"
+                                      value={s.activity_description || ''}
+                                      onChange={(e) => updateSchedule(s.id, 'activity_description', e.target.value)}
+                                      className="w-full text-[11px] px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                                      placeholder="Activity"
+                                      list="project-schedule-activity-options"
+                                      disabled={!canEditProjectContent}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSchedule(s.id)}
+                                      className="text-red-500 hover:text-red-700 p-1 flex-shrink-0"
+                                      title="Remove row"
+                                      disabled={!canEditProjectContent}
+                                    >
+                                      <XMarkIcon className="h-4 w-4" />
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      value={s.discipline || (getScheduleLegend(s.legend)?.label || '')}
+                                      onChange={(e) => updateSchedule(s.id, 'discipline', e.target.value)}
+                                      className="w-full text-[11px] px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                                      placeholder="Discipline"
+                                      list="project-schedule-discipline-options"
+                                      disabled={!canEditProjectContent}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex-1">
+                                <div
+                                  className="grid items-center relative"
+                                  style={{ gridTemplateColumns: `repeat(${scheduleWeeks.length}, 56px)` }}
+                                >
+                                  {scheduleWeeks.map((w) => {
+                                    const isMarked = markedWeeks.has(w.index);
+                                    const legend = getScheduleLegend(s.legend);
+                                    const cellStyle = isMarked && !legend && s.color ? { backgroundColor: s.color } : undefined;
+                                    return (
+                                      <button
+                                        key={w.index}
+                                        type="button"
+                                        onClick={() => toggleScheduleWeek(s.id, w.index)}
+                                        disabled={!canEditProjectContent}
+                                        style={cellStyle}
+                                        className={`h-10 border-r border-gray-100 text-[12px] font-semibold flex items-center justify-center select-none ${
+                                          isMarked
+                                            ? (legend ? `${legend.cellClass} ${legend.textClass}` : (s.color ? 'text-gray-900' : 'bg-gray-200 text-gray-800'))
+                                            : 'bg-white text-gray-500'
+                                        } ${canEditProjectContent ? 'hover:bg-gray-100' : 'cursor-default'}`}
+                                        title={w.rangeLabel}
+                                      >
+                                        {isMarked ? 'x' : ''}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {projectSchedule.length > 0 && scheduleWeeks.length === 0 && (
                     <div className="overflow-x-auto border border-gray-200 rounded-lg">
                       <table className="w-full text-xs border-collapse">
                         <thead>
@@ -6105,29 +6532,14 @@ function EditProjectForm() {
                           {projectSchedule.map(s => (
                             <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                               <td className="py-2 px-3">
-                                <select 
-                                  value={s.activity_description || ''} 
-                                  onChange={(e) => updateSchedule(s.id, 'activity_description', e.target.value)} 
+                                <input
+                                  type="text"
+                                  value={s.activity_description || ''}
+                                  onChange={(e) => updateSchedule(s.id, 'activity_description', e.target.value)}
                                   className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
-                                >
-                                  <option value="">Select activity...</option>
-                                  {functions.map(func => (
-                                    <optgroup key={func.id} label={`📁 ${func.function_name}`}>
-                                      {func.activities && func.activities.map(act => (
-                                        <Fragment key={act.id}>
-                                          <option value={act.activity_name}>
-                                            📄 {act.activity_name}
-                                          </option>
-                                          {act.subActivities && act.subActivities.map(sub => (
-                                            <option key={sub.id} value={sub.name}>
-                                              ↳ {sub.name}
-                                            </option>
-                                          ))}
-                                        </Fragment>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </select>
+                                  placeholder="Activity / task"
+                                  list="project-schedule-activity-options"
+                                />
                               </td>
                               <td className="py-2 px-3"><input type="text" value={s.unit_qty || ''} onChange={(e) => updateSchedule(s.id, 'unit_qty', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
                               <td className="py-2 px-3"><input type="date" value={s.start_date || ''} onChange={(e) => updateSchedule(s.id, 'start_date', e.target.value)} className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent" /></td>
@@ -6154,9 +6566,26 @@ function EditProjectForm() {
 
                   {projectSchedule.length === 0 && (
                     <div className="text-center py-8 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
-                      No schedule items added yet. Use the form above to add activities.
+                      No schedule items yet. Click <span className="font-medium">Add Row</span> to start planning the Gantt chart.
                     </div>
                   )}
+
+                  {/* Suggestions for the Activity/Task field */}
+                  <datalist id="project-schedule-activity-options">
+                    {projectActivityScheduleGroups.flatMap((g) =>
+                      g.options.map((opt) => (
+                        <option key={`${g.discipline}__${opt}`} value={opt} />
+                      ))
+                    )}
+                  </datalist>
+
+                  {/* Discipline suggestions */}
+                  <datalist id="project-schedule-discipline-options">
+                    {projectActivityScheduleGroups.map((g) => (
+                      <option key={g.discipline} value={g.discipline} />
+                    ))}
+                  </datalist>
+
                 </div>
               </section>
             )}
