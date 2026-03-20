@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { getDefaultPermissionsForLevel, mergePermissions } from '@/utils/rbac';
+import { mergePermissions } from '@/utils/rbac';
 import { checkPermission, checkPermissionFromSession, RESOURCES, PERMISSIONS } from '@/utils/permissions';
 
 // Safely parse JSON fields stored in MySQL JSON columns
@@ -197,12 +197,8 @@ async function _fetchUserFromDb(userId, authenticated) {
     const userPermissions = safeParse(row.user_permissions, []);
     const fieldPermissions = safeParse(row.user_field_permissions, {});
     let rolePermissions = safeParse(row.role_permissions, []);
-    // If role has no explicit permissions but has a hierarchy level, derive sensible defaults
-    if ((!rolePermissions || rolePermissions.length === 0) && typeof row.role_hierarchy === 'number') {
-      try {
-        rolePermissions = getDefaultPermissionsForLevel(row.role_hierarchy) || [];
-      } catch {}
-    }
+    // Do not auto-derive default permissions from hierarchy.
+    // Visibility/access should reflect explicitly assigned permissions only.
 
     const mergedPermissions = mergePermissions(rolePermissions, userPermissions);
     const employee = row.employee_record_id
