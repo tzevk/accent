@@ -97,18 +97,18 @@ const INITIAL_FORM = {
 
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
-  { id: 'project_details', label: 'Project Details', projectSectionKey: 'project_details' },
-  { id: 'project_team_tab', label: 'Project Team', requiresUpdate: true, projectSectionKey: 'project_details' },
-  { id: 'input_documents', label: 'Input Documents', requiresUpdate: true, projectSectionKey: 'documents_received' },
   { id: 'scope', label: 'Scope', requiresUpdate: true, projectSectionKey: 'scope' },
-  { id: 'software', label: 'Software', requiresUpdate: true },
-  { id: 'minutes_internal_meet', label: 'Meetings', requiresUpdate: true, projectSectionKey: 'minutes_internal_meet' },
-  { id: 'project_schedule', label: 'Project Schedule', requiresUpdate: true, projectSectionKey: 'project_schedule' },
-  { id: 'project_activity', label: 'Project Activity', adminOrActivities: true, requiresUpdate: true, projectSectionKey: 'project_activity' },
-  { id: 'my_activities', label: 'My Activities', userOnly: true },
-  { id: 'documents_issued', label: 'Documents Issued', requiresUpdate: true, projectSectionKey: 'documents_issued' },
-  { id: 'project_handover', label: 'Project Handover', requiresUpdate: true, projectSectionKey: 'project_handover' },
+  { id: 'project_activity', label: 'Project Activity (Discipline-wise)', adminOrActivities: true, requiresUpdate: true, projectSectionKey: 'project_activity' },
+  { id: 'project_schedule', label: 'Schedule', requiresUpdate: true, projectSectionKey: 'project_schedule' },
+  { id: 'project_team_tab', label: 'Project Team Assign to the Activity', requiresUpdate: true, projectSectionKey: 'project_details' },
+  { id: 'project_handover', label: 'Progress Measurement', requiresUpdate: true, projectSectionKey: 'project_handover' },
+  { id: 'input_documents', label: 'Input Document', requiresUpdate: true, projectSectionKey: 'documents_received' },
+  { id: 'documents_issued', label: 'Deliverables', requiresUpdate: true, projectSectionKey: 'documents_issued' },
+  { id: 'minutes_internal_meet', label: 'Meeting', requiresUpdate: true, projectSectionKey: 'minutes_internal_meet' },
   { id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true, projectSectionKey: 'project_manhours' },
+  { id: 'project_details', label: 'Project Details', projectSectionKey: 'project_details' },
+  { id: 'software', label: 'Software', requiresUpdate: true },
+  { id: 'my_activities', label: 'My Activities', userOnly: true },
   { id: 'query_log', label: 'Query Log', requiresUpdate: true, projectSectionKey: 'query_log' },
   { id: 'assumption', label: 'Assumption', requiresUpdate: true, projectSectionKey: 'assumption' },
   { id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true, projectSectionKey: 'lessons_learnt' },
@@ -233,7 +233,7 @@ function EditProjectForm() {
   const canEditInvoices = isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
   const canEditProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
 
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState('scope');
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
   const [activities, setActivities] = useState([]); // Standalone activities list
   const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
@@ -1261,7 +1261,17 @@ function EditProjectForm() {
       try {
         // Fetch employees list from employee master
         const empRes = await fetch('/api/employee-master/list?limit=2000');
+        if (!empRes.ok) {
+          throw new Error(`HTTP ${empRes.status}: ${empRes.statusText}`);
+        }
         const empJson = await empRes.json();
+        
+        if (!empJson || typeof empJson !== 'object') {
+          console.error('Invalid response format:', empJson);
+          setEmployeesWithRates([]);
+          setEmployeesLoading(false);
+          return;
+        }
         
         if (empJson?.success && Array.isArray(empJson.data)) {
           // First, set employees immediately without rates so UI is responsive
@@ -1333,7 +1343,8 @@ function EditProjectForm() {
             setEmployeesWithRates([...updatedEmployees]);
           }
         } else {
-          console.error('Failed to fetch employees:', empJson);
+          console.error('Failed to fetch employees - invalid response structure:', empJson);
+          setEmployeesWithRates([]);
           setEmployeesLoading(false);
         }
       } catch (error) {
@@ -3072,6 +3083,8 @@ function EditProjectForm() {
     const sectionAccess = projectModule?.sections || {};
 
     return TABS.filter((tab) => {
+      if (isSuperAdmin) return true;
+
       const hasActivitiesPermission = can('activities', PERMISSIONS.READ) || can('activities', PERMISSIONS.ASSIGN);
       if (tab.adminOnly && !isAdminUser) return false;
       if (tab.adminOrActivities && !isAdminUser && !hasActivitiesPermission) return false;
@@ -3093,7 +3106,7 @@ function EditProjectForm() {
 
       return true;
     });
-  }, [can, isAdminUser, PERMISSIONS, canEditProjectContent, sessionUser]);
+  }, [can, isAdminUser, isSuperAdmin, PERMISSIONS, canEditProjectContent, sessionUser]);
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
@@ -4026,7 +4039,7 @@ function EditProjectForm() {
             <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pb-8 space-y-6">
             <fieldset disabled={!canEditProjectContent}>
             {/* Enhanced Project Details Tab */}
-            {(activeTab === 'general' || activeTab === 'project_details') && (
+            {activeTab === 'project_details' && (
               <div className="space-y-5">
                 <section className="rounded-2xl overflow-hidden" style={{
                   background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)',
@@ -6247,10 +6260,14 @@ function EditProjectForm() {
                             </tr>
                           </thead>
                           <tbody>
-                            {projectActivities.map((act, actIdx) => {
-                              const assignedUsers = act.assigned_users || [];
-                              const rowCount = Math.max(assignedUsers.length, 1);
-                              const discipline = act.discipline || act.function_name || '';
+                            {(() => {
+                              const groupedActivities = projectActivities.reduce((acc, act) => {
+                                const disciplineKey = act.discipline || act.function_name || 'Manual / Other';
+                                if (!acc[disciplineKey]) acc[disciplineKey] = [];
+                                acc[disciplineKey].push(act);
+                                return acc;
+                              }, {});
+
                               const disciplineColors = {
                                 0: 'border-l-indigo-400',
                                 1: 'border-l-teal-400',
@@ -6261,47 +6278,78 @@ function EditProjectForm() {
                                 6: 'border-l-emerald-400',
                                 7: 'border-l-orange-400',
                               };
-                              const leftBorderColor = disciplineColors[actIdx % 8];
                               const avatarColors = ['bg-blue-100 text-blue-600', 'bg-emerald-100 text-emerald-600', 'bg-purple-100 text-purple-600', 'bg-rose-100 text-rose-600', 'bg-amber-100 text-amber-600', 'bg-cyan-100 text-cyan-600'];
 
-                              return (
-                                <Fragment key={`${act.id}-${act.type}-${actIdx}`}>
-                                  {Array.from({ length: rowCount }).map((_, uIdx) => {
-                                    const assignment = assignedUsers[uIdx];
-                                    const hasAssignment = !!assignment;
-                                    const odUserId = hasAssignment ? (typeof assignment === 'object' ? assignment.user_id : assignment) : null;
-                                    
-                                    let name = '';
-                                    if (odUserId) {
-                                      const userList = allUsers.length > 0 ? allUsers : userMaster;
-                                      const user = userList.find(u => String(u.id) === String(odUserId));
-                                      const teamMember = !user ? projectTeamMembers.find(m => String(m.id) === String(odUserId)) : null;
-                                      name = user 
-                                        ? (user.full_name || user.employee_name || user.username || user.email || '?') 
-                                        : teamMember 
-                                          ? (teamMember.name || teamMember.full_name || teamMember.email || '?')
-                                          : '?';
-                                    }
+                              let globalActIdx = 0;
 
-                                    const description = hasAssignment && typeof assignment === 'object' ? (assignment.description || '') : '';
-                                    const qtyAssigned = hasAssignment && typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
-                                    const startDate = hasAssignment && typeof assignment === 'object' ? (assignment.start_date || '') : '';
-                                    const dueDate = hasAssignment && typeof assignment === 'object' ? (assignment.due_date || '') : '';
-                                    const status = hasAssignment && typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
-                                    const remarks = hasAssignment && typeof assignment === 'object' ? (assignment.remarks || '') : '';
+                              return Object.entries(groupedActivities).map(([disciplineName, activitiesInDiscipline], disciplineIdx) => {
+                                const disciplinePlanned = activitiesInDiscipline.reduce((sum, a) => sum + getActivityTotalPlanned(a), 0);
+                                const disciplineActual = activitiesInDiscipline.reduce((sum, a) => sum + getActivityTotalActual(a), 0);
 
-                                    const statusStyles = {
-                                      'Completed': 'text-green-700 bg-green-50 border-green-200',
-                                      'In Progress': 'text-blue-700 bg-blue-50 border-blue-200',
-                                      'On Hold': 'text-amber-700 bg-amber-50 border-amber-200',
-                                      'Not Started': 'text-gray-500 bg-gray-50 border-gray-200',
-                                    };
-                                    const isDuePast = dueDate && new Date(dueDate) < new Date() && status !== 'Completed';
-                                    const isFirstRow = uIdx === 0;
-                                    const isLastRow = uIdx === rowCount - 1;
+                                return (
+                                  <Fragment key={`discipline-${disciplineName}-${disciplineIdx}`}>
+                                    <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-y border-blue-200">
+                                      <td colSpan={10} className="py-2 px-3">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-800 border border-blue-200">Discipline</span>
+                                            <span className="text-xs font-semibold text-gray-800">{disciplineName}</span>
+                                            <span className="text-[11px] text-gray-500">({activitiesInDiscipline.length} activities)</span>
+                                          </div>
+                                          <div className="flex items-center gap-3 text-[11px]">
+                                            <span className="text-blue-700 font-medium">Plan: {disciplinePlanned.toFixed(1)}h</span>
+                                            <span className="text-green-700 font-medium">Actual: {disciplineActual.toFixed(1)}h</span>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
 
-                                    return (
-                                      <tr key={`${act.id}-row-${uIdx}`} className={`${isLastRow ? 'border-b-2 border-b-gray-200' : 'border-b border-b-gray-100'} transition-colors ${status === 'Completed' ? 'bg-green-50/20' : status === 'On Hold' ? 'bg-amber-50/20' : 'hover:bg-gray-50/30'} border-l-3 ${leftBorderColor}`}>
+                                    {activitiesInDiscipline.map((act) => {
+                                      const actIdx = globalActIdx;
+                                      globalActIdx += 1;
+                                      const assignedUsers = act.assigned_users || [];
+                                      const rowCount = Math.max(assignedUsers.length, 1);
+                                      const discipline = act.discipline || act.function_name || '';
+                                      const leftBorderColor = disciplineColors[actIdx % 8];
+
+                                      return (
+                                        <Fragment key={`${act.id}-${act.type}-${actIdx}`}>
+                                          {Array.from({ length: rowCount }).map((_, uIdx) => {
+                                            const assignment = assignedUsers[uIdx];
+                                            const hasAssignment = !!assignment;
+                                            const odUserId = hasAssignment ? (typeof assignment === 'object' ? assignment.user_id : assignment) : null;
+                                            
+                                            let name = '';
+                                            if (odUserId) {
+                                              const userList = allUsers.length > 0 ? allUsers : userMaster;
+                                              const user = userList.find(u => String(u.id) === String(odUserId));
+                                              const teamMember = !user ? projectTeamMembers.find(m => String(m.id) === String(odUserId)) : null;
+                                              name = user 
+                                                ? (user.full_name || user.employee_name || user.username || user.email || '?') 
+                                                : teamMember 
+                                                  ? (teamMember.name || teamMember.full_name || teamMember.email || '?')
+                                                  : '?';
+                                            }
+
+                                            const description = hasAssignment && typeof assignment === 'object' ? (assignment.description || '') : '';
+                                            const qtyAssigned = hasAssignment && typeof assignment === 'object' ? (assignment.qty_assigned || '') : '';
+                                            const startDate = hasAssignment && typeof assignment === 'object' ? (assignment.start_date || '') : '';
+                                            const dueDate = hasAssignment && typeof assignment === 'object' ? (assignment.due_date || '') : '';
+                                            const status = hasAssignment && typeof assignment === 'object' ? (assignment.status || 'Not Started') : 'Not Started';
+                                            const remarks = hasAssignment && typeof assignment === 'object' ? (assignment.remarks || '') : '';
+
+                                            const statusStyles = {
+                                              'Completed': 'text-green-700 bg-green-50 border-green-200',
+                                              'In Progress': 'text-blue-700 bg-blue-50 border-blue-200',
+                                              'On Hold': 'text-amber-700 bg-amber-50 border-amber-200',
+                                              'Not Started': 'text-gray-500 bg-gray-50 border-gray-200',
+                                            };
+                                            const isDuePast = dueDate && new Date(dueDate) < new Date() && status !== 'Completed';
+                                            const isFirstRow = uIdx === 0;
+                                            const isLastRow = uIdx === rowCount - 1;
+
+                                            return (
+                                              <tr key={`${act.id}-row-${uIdx}`} className={`${isLastRow ? 'border-b-2 border-b-gray-200' : 'border-b border-b-gray-100'} transition-colors ${status === 'Completed' ? 'bg-green-50/20' : status === 'On Hold' ? 'bg-amber-50/20' : 'hover:bg-gray-50/30'} border-l-3 ${leftBorderColor}`}>
                                         {/* Activity Name */}
                                         {isFirstRow && (
                                           <td className={`py-2 px-3 align-top border-r border-gray-100 ${editingActivityId === act.id ? 'bg-blue-50/40 ring-2 ring-blue-300 ring-inset' : 'bg-indigo-50/20'}`} rowSpan={rowCount}>
@@ -6438,11 +6486,15 @@ function EditProjectForm() {
                                           </div>
                                         </td>
                                       </tr>
-                                    );
-                                  })}
-                                </Fragment>
-                              );
-                            })}
+                                            );
+                                          })}
+                                        </Fragment>
+                                      );
+                                    })}
+                                  </Fragment>
+                                );
+                              });
+                            })()}
                           </tbody>
                         </table>
                       </div>

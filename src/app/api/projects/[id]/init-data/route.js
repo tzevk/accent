@@ -21,6 +21,10 @@ export async function GET(request) {
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    
+    // Allow access to init-data (master/reference data) for any authenticated user
+    // The actual project data fetch will have stricter permission checks
+    // No additional permission check needed - just being authenticated is enough for reference data
 
     db = await dbConnect();
 

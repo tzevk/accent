@@ -1,7 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
 
 /**
  * GET /api/employee-master/list
@@ -23,11 +22,8 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     
-    // Permission check
-    const canReadEmployees = user.is_super_admin || hasPermission(user, 'employees', 'read');
-    if (!canReadEmployees) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
-    }
+    // Allow any authenticated user to access employee-master (dropdown/reference data)
+    // Specific employee operations (view details, edit, etc.) have stricter checks elsewhere
 
     const { searchParams } = new URL(request.url);
     const limit = Math.max(1, Math.min(2000, parseInt(searchParams.get('limit')) || 1000));
@@ -67,6 +63,12 @@ export async function GET(request) {
       
       return response;
       
+    } catch (dbError) {
+      console.error('Database error in employee list:', dbError);
+      return NextResponse.json(
+        { success: false, error: 'Database query failed', data: [] },
+        { status: 500 }
+      );
     } finally {
       if (db && typeof db.release === 'function') {
         try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }

@@ -59,10 +59,11 @@ export default function Projects() {
 function ProjectsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
+  const { user: sessionUser, can, RESOURCES, PERMISSIONS, refreshSession } = useSession();
   const isSuperAdmin = !!sessionUser?.is_super_admin;
   const canViewProjects = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.READ);
   const canEditProjects = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const canOpenProjectEditor = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.READ) || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   const canDeleteProjects = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.DELETE);
   const viewParam = searchParams.get('view');
   const focusParam = searchParams.get('focus');
@@ -141,9 +142,9 @@ function ProjectsInner() {
   }, [projects]);
 
   useEffect(() => {
+    refreshSession?.();
     fetchProjects();
-     
-  }, []);
+  }, [refreshSession]);
 
   useEffect(() => {
     // default the documentation panel to the first project when projects load
@@ -795,7 +796,7 @@ function ProjectsInner() {
                                         <EyeIcon className="h-4 w-4" />
                                       </button>
                                     )}
-                                    {canEditProjects && (
+                                    {canOpenProjectEditor && (
                                       <button
                                         onClick={() => router.push(`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}/edit`)}
                                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
