@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
+import { useSession } from '@/context/SessionContext';
 import {
   CalendarIcon,
   MapPinIcon,
@@ -25,10 +26,41 @@ import DocumentUpload from '@/components/DocumentUpload';
 export default function ProjectViewPage() {
   const params = useParams();
   const id = params?.id;
+  const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('project_details');
+
+  const isSuperAdmin = !!sessionUser?.is_super_admin;
+  const canEditProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+
+  const tabConfig = useMemo(() => ([
+    { id: 'project_details', label: 'Project Details' },
+    { id: 'scope', label: 'Scope', requiresUpdate: true },
+    { id: 'minutes_internal_meet', label: 'Meetings', requiresUpdate: true },
+    { id: 'documents_received', label: 'List of Documents Received', requiresUpdate: true },
+    { id: 'project_schedule', label: 'Project Schedule', requiresUpdate: true },
+    { id: 'project_activity', label: 'Project Activity', requiresUpdate: true },
+    { id: 'documents_issued', label: 'Documents Issued', requiresUpdate: true },
+    { id: 'project_handover', label: 'Project Handover', requiresUpdate: true },
+    { id: 'project_manhours', label: 'Project Manhours', requiresUpdate: true },
+    { id: 'query_log', label: 'Query Log', requiresUpdate: true },
+    { id: 'assumption', label: 'Assumption', requiresUpdate: true },
+    { id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true },
+    { id: 'upload_documents', label: 'Upload Documents', requiresUpdate: true }
+  ]), []);
+
+  const visibleTabs = useMemo(
+    () => tabConfig.filter((tab) => !tab.requiresUpdate || canEditProjectContent),
+    [tabConfig, canEditProjectContent]
+  );
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id || 'project_details');
+    }
+  }, [activeTab, visibleTabs]);
 
   useEffect(() => {
     if (!id) {
@@ -281,12 +313,14 @@ export default function ProjectViewPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <Link
-                  href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
-                  className="px-4 py-2 rounded-md border border-[#7F2487] text-[#7F2487] hover:bg-[#7F2487]/10 transition-colors"
-                >
-                  Edit Project
-                </Link>
+                {canEditProjectContent && (
+                  <Link
+                    href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
+                    className="px-4 py-2 rounded-md border border-[#7F2487] text-[#7F2487] hover:bg-[#7F2487]/10 transition-colors"
+                  >
+                    Edit Project
+                  </Link>
+                )}
                 <Link
                   href="/masters/activities"
                   className="inline-flex items-center gap-1 px-4 py-2 rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors"
@@ -300,21 +334,7 @@ export default function ProjectViewPage() {
             {/* Tabs */}
             <div className="bg-white border border-gray-200 rounded-lg px-6 py-3">
             <div role="tablist" aria-label="Project sections" className="flex flex-wrap gap-2">
-                {[
-                  { id: 'project_details', label: 'Project Details' },
-                  { id: 'scope', label: 'Scope' },
-                  { id: 'minutes_internal_meet', label: 'Meetings' },
-                  { id: 'documents_received', label: 'List of Documents Received' },
-                  { id: 'project_schedule', label: 'Project Schedule' },
-                  { id: 'project_activity', label: 'Project Activity' },
-                  { id: 'documents_issued', label: 'Documents Issued' },
-                  { id: 'project_handover', label: 'Project Handover' },
-                  { id: 'project_manhours', label: 'Project Manhours' },
-                  { id: 'query_log', label: 'Query Log' },
-                  { id: 'assumption', label: 'Assumption' },
-                  { id: 'lessons_learnt', label: 'Lessons Learnt' },
-                  { id: 'upload_documents', label: 'Upload Documents' }
-                ].map((t) => (
+                {visibleTabs.map((t) => (
                   <button
                     id={`tab-${t.id}`}
                     key={t.id}
