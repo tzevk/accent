@@ -1,7 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { RESOURCES, PERMISSIONS, validatePermissions, groupPermissionsByResource } from '@/utils/rbac';
-import { getCurrentUser } from '@/utils/api-permissions';
+import { getCurrentUser, invalidateUserCache } from '@/utils/api-permissions';
 
 // Safe JSON parse helper to avoid runtime crashes on bad DB contents
 function safeParse(json, fallback = []) {
@@ -198,6 +198,9 @@ export async function POST(request) {
         [JSON.stringify(newPermissions), user_id]
       );
 
+      // Force fresh permissions on next request for this user.
+      invalidateUserCache(String(user_id));
+
       console.log('✅ User permissions saved to database:', {
         user_id,
         permissionCount: newPermissions.length,
@@ -246,11 +249,16 @@ export async function POST(request) {
         [JSON.stringify(newPermissions), role_id]
       );
 
-      // Update all users with this role to refresh their effective permissions
-      await db.execute(
-        'UPDATE users SET permissions = permissions WHERE role_id = ?',
+      // Invalidate all users using this role so merged permissions refresh immediately.
+      const [affectedUsers] = await db.execute(
+        'SELECT id FROM users WHERE role_id = ?',
         [role_id]
       );
+      for (const affectedUser of affectedUsers || []) {
+        if (affectedUser?.id !== undefined && affectedUser?.id !== null) {
+          invalidateUserCache(String(affectedUser.id));
+        }
+      }
 
       return NextResponse.json({ 
         success: true, 
@@ -341,6 +349,8 @@ export async function PUT(request) {
               [JSON.stringify(newPermissions), target_id]
             );
 
+            invalidateUserCache(String(target_id));
+
             results.push({ 
               type, 
               target_id, 
@@ -375,6 +385,16 @@ export async function PUT(request) {
               'UPDATE roles_master SET permissions = ? WHERE id = ?',
               [JSON.stringify(newPermissions), target_id]
             );
+
+            const [affectedUsers] = await db.execute(
+              'SELECT id FROM users WHERE role_id = ?',
+              [target_id]
+            );
+            for (const affectedUser of affectedUsers || []) {
+              if (affectedUser?.id !== undefined && affectedUser?.id !== null) {
+                invalidateUserCache(String(affectedUser.id));
+              }
+            }
 
             results.push({ 
               type, 
