@@ -734,6 +734,7 @@ const MODULE_FIELDS = {
         fields: {
           lead_reports: { label: 'Lead Reports', type: 'view' },
           project_reports: { label: 'Project Reports', type: 'view' },
+          project_activities: { label: 'Project Activities Report', type: 'view' },
           employee_reports: { label: 'Employee Reports', type: 'view' },
           financial_reports: { label: 'Financial Reports', type: 'view', sensitive: true },
           attendance_reports: { label: 'Attendance Reports', type: 'view' },

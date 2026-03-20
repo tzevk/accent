@@ -54,6 +54,7 @@ export const PERMISSIONS = {
   CREATE: 'create', 
   UPDATE: 'update',
   DELETE: 'delete',
+  CLOSE: 'close',
   EXPORT: 'export',
   IMPORT: 'import',
   APPROVE: 'approve',
@@ -86,6 +87,7 @@ export const PERMISSION_DESCRIPTIONS = {
     [PERMISSIONS.CREATE]: 'Create new projects',
     [PERMISSIONS.UPDATE]: 'Edit project details and status',
     [PERMISSIONS.DELETE]: 'Delete projects',
+    [PERMISSIONS.CLOSE]: 'Close/complete projects',
     [PERMISSIONS.APPROVE]: 'Approve project proposals and changes',
     [PERMISSIONS.ASSIGN]: 'Assign project team members'
   },

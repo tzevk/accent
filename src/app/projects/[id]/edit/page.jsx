@@ -232,6 +232,7 @@ function EditProjectForm() {
   const canViewInvoices = isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.READ) || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
   const canEditInvoices = isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
   const canEditProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
   const [activeTab, setActiveTab] = useState('scope');
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
@@ -556,7 +557,7 @@ function EditProjectForm() {
           setDocMaster(d.docMaster || []);
 
           // If users were not returned by init-data, fetch them separately
-          if (!d.users || d.users.length === 0) {
+          if ((!d.users || d.users.length === 0) && canReadUsers) {
             console.warn('[init-data] No users returned, fetching from /api/users');
             try {
               const usersRes = await fetchJSON('/api/users?limit=500');
@@ -567,10 +568,30 @@ function EditProjectForm() {
             } catch (ue) {
               console.error('Fallback users fetch failed:', ue);
             }
+          } else if (!d.users || d.users.length === 0) {
+            console.warn('[init-data] Users not returned and users:read not granted; skipping /api/users fallback');
           }
         } else {
           // init-data failed, fetch users separately
-          console.warn('[init-data] Failed, fetching users separately');
+          if (canReadUsers) {
+            console.warn('[init-data] Failed, fetching users separately');
+            try {
+              const usersRes = await fetchJSON('/api/users?limit=500');
+              if (usersRes.success && usersRes.data) {
+                setUserMaster(usersRes.data);
+                setAllUsers(usersRes.data);
+              }
+            } catch (ue) {
+              console.error('Fallback users fetch failed:', ue);
+            }
+          } else {
+            console.warn('[init-data] Failed and users:read not granted; skipping /api/users fallback');
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch init data, falling back to individual calls', error);
+        // Fetch users as fallback
+        if (canReadUsers) {
           try {
             const usersRes = await fetchJSON('/api/users?limit=500');
             if (usersRes.success && usersRes.data) {
@@ -580,18 +601,8 @@ function EditProjectForm() {
           } catch (ue) {
             console.error('Fallback users fetch failed:', ue);
           }
-        }
-      } catch (error) {
-        console.warn('Failed to fetch init data, falling back to individual calls', error);
-        // Fetch users as fallback
-        try {
-          const usersRes = await fetchJSON('/api/users?limit=500');
-          if (usersRes.success && usersRes.data) {
-            setUserMaster(usersRes.data);
-            setAllUsers(usersRes.data);
-          }
-        } catch (ue) {
-          console.error('Fallback users fetch failed:', ue);
+        } else {
+          console.warn('[init-data] Fallback blocked: users:read not granted');
         }
       } finally {
         setLoadingVendors(false);
@@ -601,7 +612,7 @@ function EditProjectForm() {
     if (id && id !== 'undefined') {
       fetchAllInitData();
     }
-  }, [id]);
+  }, [id, canReadUsers]);
 
   // Fetch account heads for expense head dropdown
   useEffect(() => {

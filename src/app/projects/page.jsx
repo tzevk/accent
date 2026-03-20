@@ -65,6 +65,7 @@ function ProjectsInner() {
   const canEditProjects = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   const canOpenProjectEditor = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.READ) || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   const canDeleteProjects = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.DELETE);
+  const canCloseProjects = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.CLOSE);
   const viewParam = searchParams.get('view');
   const focusParam = searchParams.get('focus');
 
@@ -767,7 +768,7 @@ function ProjectsInner() {
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                   <div className="flex items-center justify-end gap-2">
-                                    {canEditProjects && !String(project.status || '').toLowerCase().includes('complet') && (
+                                    {canCloseProjects && !String(project.status || '').toLowerCase().includes('complet') && (
                                       <button
                                         onClick={() => handleCloseProject(project)}
                                         className="p-2 text-green-700 hover:bg-green-50 rounded-lg transition-colors"
@@ -777,7 +778,7 @@ function ProjectsInner() {
                                       </button>
                                     )}
 
-                                    {canEditProjects && String(project.status || '').toLowerCase().includes('complet') && (
+                                    {canCloseProjects && String(project.status || '').toLowerCase().includes('complet') && (
                                       <button
                                         onClick={() => handleActivateProject(project)}
                                         disabled={activatingKey === String(project.project_id ?? project.id ?? project.project_code)}

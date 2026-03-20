@@ -26,6 +26,13 @@ export async function logActivity({
   try {
     db = await dbConnect();
 
+    const normalizedUserId = Number.parseInt(userId, 10);
+    // user_activity_logs.user_id has a FK to users.id, so invalid IDs (0/null/NaN)
+    // must be ignored to avoid breaking request flows.
+    if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0) {
+      return;
+    }
+
     // Extract IP and user agent from request
     let ipAddress = null;
     let userAgent = null;
@@ -45,7 +52,7 @@ export async function logActivity({
        (user_id, action_type, resource_type, resource_id, description, details, ip_address, user_agent, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        userId,
+        normalizedUserId,
         actionType,
         resourceType,
         resourceId,
@@ -58,7 +65,7 @@ export async function logActivity({
     );
 
     // Update work session and daily summary asynchronously (don't block)
-    updateWorkSession(userId, actionType).catch(console.error);
+    updateWorkSession(normalizedUserId, actionType).catch(console.error);
 
   } catch (error) {
     console.error('Error logging activity:', error);

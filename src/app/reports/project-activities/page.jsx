@@ -86,9 +86,30 @@ export default function ProjectActivitiesReport() {
 
   const isSuperAdmin =
     user?.is_super_admin === true || user?.is_super_admin === 1;
+
+  const hasProjectActivitiesFieldPermission = useMemo(() => {
+    if (!user) return false;
+    if (isSuperAdmin) return true;
+
+    let fieldPerms = user.field_permissions;
+    if (typeof fieldPerms === 'string') {
+      try { fieldPerms = JSON.parse(fieldPerms); } catch { fieldPerms = null; }
+    }
+
+    const reportAccessSection = fieldPerms?.modules?.reports?.sections?.report_access;
+    if (!reportAccessSection?.enabled) return false;
+
+    const projectActivitiesPerm = reportAccessSection.fields?.project_activities?.permission;
+    if (projectActivitiesPerm === 'view' || projectActivitiesPerm === 'edit') return true;
+
+    // Backward compatibility for existing saved permissions.
+    const legacyPerm = reportAccessSection.fields?.project_reports?.permission;
+    return legacyPerm === 'view' || legacyPerm === 'edit';
+  }, [user, isSuperAdmin]);
+
   const hasReportsPermission =
     can && can(RESOURCES.REPORTS, PERMISSIONS.READ);
-  const hasAccess = isSuperAdmin || hasReportsPermission;
+  const hasAccess = isSuperAdmin || hasReportsPermission || hasProjectActivitiesFieldPermission;
   // Allow editing of daily entries for super admins or users with report update permission
   const canEditEntries = isSuperAdmin || (can && can(RESOURCES.REPORTS, PERMISSIONS.UPDATE));
 

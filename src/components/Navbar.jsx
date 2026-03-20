@@ -31,8 +31,32 @@ const navigationConfig = [
 
 // Reports menu items
 const reportsMenuConfig = [
-  { name: 'Project Activities', href: '/reports/project-activities', icon: ChartBarIcon, resource: 'reports' },
+  { name: 'Project Activities', href: '/reports/project-activities', icon: ChartBarIcon, resource: 'reports', reportField: 'project_activities' },
 ];
+
+function hasReportFieldAccess(user, fieldKey) {
+  if (!user || !fieldKey) return false;
+  if (user.is_super_admin) return true;
+
+  let fieldPerms = user.field_permissions;
+  if (typeof fieldPerms === 'string') {
+    try { fieldPerms = JSON.parse(fieldPerms); } catch { fieldPerms = null; }
+  }
+
+  const reportAccessSection = fieldPerms?.modules?.reports?.sections?.report_access;
+  if (!reportAccessSection?.enabled) return false;
+
+  const currentPerm = reportAccessSection.fields?.[fieldKey]?.permission;
+  if (currentPerm === 'view' || currentPerm === 'edit') return true;
+
+  // Backward compatibility for older permission key naming.
+  if (fieldKey === 'project_activities') {
+    const legacyPerm = reportAccessSection.fields?.project_reports?.permission;
+    return legacyPerm === 'view' || legacyPerm === 'edit';
+  }
+
+  return false;
+}
 
 // Admin menu items with their resource keys
 const adminMenuConfig = [
@@ -96,7 +120,7 @@ export default function Navbar() {
     
     // Filter based on permissions
     const filteredItems = reportsMenuConfig.filter(item => {
-      return can(item.resource, PERMISSIONS.READ);
+      return can(item.resource, PERMISSIONS.READ) || hasReportFieldAccess(user, item.reportField);
     });
     
     return filteredItems;

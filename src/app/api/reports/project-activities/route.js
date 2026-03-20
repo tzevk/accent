@@ -21,8 +21,25 @@ export async function GET(request) {
 
     const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
     const hasReportsPermission = hasPermission(user, RESOURCES.REPORTS, PERMISSIONS.READ);
+    let hasProjectActivitiesFieldPermission = false;
 
-    if (!isSuperAdmin && !hasReportsPermission) {
+    let fieldPerms = user.field_permissions;
+    if (typeof fieldPerms === 'string') {
+      try { fieldPerms = JSON.parse(fieldPerms); } catch { fieldPerms = null; }
+    }
+
+    const reportAccessSection = fieldPerms?.modules?.reports?.sections?.report_access;
+    if (reportAccessSection?.enabled) {
+      const projectActivitiesPerm = reportAccessSection.fields?.project_activities?.permission;
+      const legacyPerm = reportAccessSection.fields?.project_reports?.permission;
+      hasProjectActivitiesFieldPermission =
+        projectActivitiesPerm === 'view' ||
+        projectActivitiesPerm === 'edit' ||
+        legacyPerm === 'view' ||
+        legacyPerm === 'edit';
+    }
+
+    if (!isSuperAdmin && !hasReportsPermission && !hasProjectActivitiesFieldPermission) {
       return NextResponse.json({
         success: false,
         error: 'You do not have permission to view project activities report'
