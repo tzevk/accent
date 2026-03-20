@@ -233,6 +233,8 @@ function EditProjectForm() {
   const [internalMeetings, setInternalMeetings] = useState([]);
   const [newInternalMeetingTitle, setNewInternalMeetingTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [selectedExportSheet, setSelectedExportSheet] = useState('input_documents');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Sub-Activity dropdown UI state (per-activity)
@@ -3048,6 +3050,360 @@ function EditProjectForm() {
     router.push('/projects');
   };
 
+  const EXPORT_TAB_OPTIONS = [
+    { key: 'input_documents', title: 'Input Documents' },
+    { key: 'scope', title: 'Scope' },
+    { key: 'project_activity', title: 'Project Activity' },
+    { key: 'documents_issued', title: 'Document Issued' },
+    { key: 'query_log', title: 'Query Log' },
+    { key: 'assumption', title: 'Assumption' },
+    { key: 'discussion', title: 'Discussion' }
+  ];
+
+  const formatExportDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toISOString().split('T')[0];
+  };
+
+  const resolveTeamMemberName = (userId) => {
+    if (!userId) return '';
+    const allKnownUsers = [...(allUsers || []), ...(userMaster || []), ...(projectTeamMembers || [])];
+    const found = allKnownUsers.find((u) => String(u.id) === String(userId));
+    return found?.full_name || found?.name || found?.employee_name || found?.username || found?.email || String(userId);
+  };
+
+  const addLogoToSheet = (sheet, imageId) => {
+    if (!imageId) return;
+    sheet.addImage(imageId, {
+      tl: { col: 7, row: 0 },
+      ext: { width: 140, height: 50 }
+    });
+  };
+
+  const applyHeaderStyle = (row) => {
+    row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    row.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    row.height = 22;
+    row.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF7F2487' }
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        right: { style: 'thin', color: { argb: 'FFD1D5DB' } }
+      };
+    });
+  };
+
+  const autoFitColumns = (sheet, columns, rows) => {
+    columns.forEach((header, index) => {
+      const longestDataCell = rows.reduce((max, row) => {
+        const value = row[index];
+        const length = value === null || value === undefined ? 0 : String(value).length;
+        return Math.max(max, length);
+      }, String(header).length);
+      sheet.getColumn(index + 1).width = Math.min(Math.max(longestDataCell + 2, 12), 45);
+    });
+  };
+
+  const buildTabSheet = (workbook, imageId, title, columns, rows) => {
+    const sheet = workbook.addWorksheet(title);
+    addLogoToSheet(sheet, imageId);
+    sheet.getCell('A1').value = title;
+    sheet.getCell('A1').font = { size: 15, bold: true, color: { argb: 'FF111827' } };
+    sheet.getCell('A2').value = `Project: ${form.name || ''}`;
+    sheet.getCell('A2').font = { size: 11, color: { argb: 'FF4B5563' } };
+    sheet.getCell('A3').value = `Project ID: ${form.project_id || id || ''}`;
+    sheet.getCell('A3').font = { size: 11, color: { argb: 'FF4B5563' } };
+
+    const headerRow = sheet.addRow(columns);
+    applyHeaderStyle(headerRow);
+
+    rows.forEach((rowData) => {
+      const row = sheet.addRow(rowData);
+      row.alignment = { vertical: 'top', wrapText: true };
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+        };
+      });
+    });
+
+    sheet.views = [{ state: 'frozen', ySplit: 4 }];
+    autoFitColumns(sheet, columns, rows);
+    return sheet;
+  };
+
+  const getExportSheetPayloads = async () => {
+    let discussions = [];
+    try {
+      const response = await fetch(`/api/projects/${id}/followups`, { credentials: 'include' });
+      const result = await response.json();
+      discussions = result?.success && Array.isArray(result.data) ? result.data : [];
+    } catch {
+      discussions = [];
+    }
+
+    const scopeRows = [
+      ['Scope of Work', form.scope_of_work || form.description || ''],
+      ['Additional Scope', form.additional_scope || ''],
+      ['Deliverables', form.deliverables || form.list_of_deliverables || '']
+    ];
+
+    const inputDocumentRows = (inputDocumentsList || []).map((doc, idx) => [
+      idx + 1,
+      doc.category || '',
+      doc.lotNumber || doc.subLot || '',
+      formatExportDate(doc.date_received),
+      doc.description || '',
+      doc.drawing_number || '',
+      doc.sheet_number || '',
+      doc.revision_number || '',
+      doc.unit_qty || '',
+      doc.document_sent_by || '',
+      doc.remarks || ''
+    ]);
+
+    const projectActivityRows = [];
+    (projectActivities || []).forEach((activity) => {
+      const assignedUsers = Array.isArray(activity.assigned_users) ? activity.assigned_users : [];
+      if (assignedUsers.length === 0) {
+        projectActivityRows.push([
+          activity.discipline || activity.function_name || '',
+          activity.activity_name || activity.name || '',
+          activity.activity_description || '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          'Not Started',
+          ''
+        ]);
+        return;
+      }
+
+      assignedUsers.forEach((assigned) => {
+        const assignment = typeof assigned === 'object' ? assigned : { user_id: assigned };
+        projectActivityRows.push([
+          activity.discipline || activity.function_name || '',
+          activity.activity_name || activity.name || '',
+          activity.activity_description || '',
+          resolveTeamMemberName(assignment.user_id),
+          assignment.description || '',
+          assignment.qty_assigned || '',
+          formatExportDate(assignment.start_date),
+          formatExportDate(assignment.due_date),
+          assignment.status || 'Not Started',
+          assignment.remarks || assignment.notes || ''
+        ]);
+      });
+    });
+
+    const documentIssuedRows = (documentsIssued || []).map((doc, idx) => [
+      idx + 1,
+      doc.document_name || '',
+      doc.document_number || '',
+      doc.revision_number || '',
+      formatExportDate(doc.issue_date),
+      doc.remarks || ''
+    ]);
+
+    const queryLogRows = (queryLog || []).map((row, idx) => [
+      idx + 1,
+      row.query_description || '',
+      formatExportDate(row.query_issued_date),
+      row.reply_from_client || '',
+      formatExportDate(row.reply_received_date),
+      row.query_updated_by || '',
+      row.query_resolved || '',
+      row.remark || ''
+    ]);
+
+    const assumptionRows = (assumptions || []).map((row, idx) => [
+      idx + 1,
+      row.assumption_description || '',
+      row.reason || '',
+      row.assumption_taken_by || '',
+      row.remark || ''
+    ]);
+
+    const discussionRows = (discussions || []).map((row, idx) => [
+      idx + 1,
+      formatExportDate(row.follow_up_date),
+      row.description || '',
+      row.responsible_person || '',
+      row.logged_by || row.created_by || '',
+      row.status || ''
+    ]);
+
+    return {
+      input_documents: {
+        title: 'Input Documents',
+        columns: ['Sr No', 'Category', 'Lot/Sub-lot', 'Date', 'Description', 'Drawing No', 'Sheet No', 'Revision', 'Unit/Qty', 'Sent By', 'Remarks'],
+        rows: inputDocumentRows
+      },
+      scope: {
+        title: 'Scope',
+        columns: ['Field', 'Value'],
+        rows: scopeRows
+      },
+      project_activity: {
+        title: 'Project Activity',
+        columns: ['Discipline', 'Activity', 'Activity Description', 'Team Member', 'Description', 'Qty Assigned', 'Start Date', 'Due Date', 'Status', 'Notes'],
+        rows: projectActivityRows
+      },
+      documents_issued: {
+        title: 'Document Issued',
+        columns: ['Sr No', 'Document Name', 'Document Number', 'Revision', 'Issue Date', 'Remarks'],
+        rows: documentIssuedRows
+      },
+      query_log: {
+        title: 'Query Log',
+        columns: ['Sr No', 'Query Description', 'Issued Date', 'Reply From Client', 'Reply Date', 'Updated By', 'Resolved', 'Remark'],
+        rows: queryLogRows
+      },
+      assumption: {
+        title: 'Assumption',
+        columns: ['Sr No', 'Assumption Description', 'Reason', 'Taken By', 'Remark'],
+        rows: assumptionRows
+      },
+      discussion: {
+        title: 'Discussion',
+        columns: ['Sr No', 'Date', 'Topic', 'Participants', 'Logged By', 'Status'],
+        rows: discussionRows
+      }
+    };
+  };
+
+  const handleExportProjectTabsExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const ExcelJSImport = await import('exceljs');
+      const ExcelJS = ExcelJSImport.default || ExcelJSImport;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Accent Techno Solutions';
+      workbook.created = new Date();
+
+      let logoImageId = null;
+      try {
+        const logoResponse = await fetch('/accent-logo.png');
+        if (logoResponse.ok) {
+          const logoBlob = await logoResponse.blob();
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
+          });
+          if (typeof dataUrl === 'string') {
+            logoImageId = workbook.addImage({
+              base64: dataUrl,
+              extension: 'png'
+            });
+          }
+        }
+      } catch {
+        // Logo is optional for export; continue if fetch/parse fails.
+      }
+
+      const sheetPayloads = await getExportSheetPayloads();
+      EXPORT_TAB_OPTIONS.forEach(({ key }) => {
+        const config = sheetPayloads[key];
+        if (!config) return;
+        buildTabSheet(workbook, logoImageId, config.title, config.columns, config.rows);
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([
+        buffer
+      ], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const safeProjectId = String(form.project_id || id || 'project').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const dateTag = new Date().toISOString().split('T')[0];
+      anchor.href = downloadUrl;
+      anchor.download = `${safeProjectId}_project_tabs_${dateTag}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Excel export failed:', err);
+      alert('Failed to export Excel. Please try again.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleExportSingleSheetExcel = async () => {
+    if (!selectedExportSheet) return;
+    setExportingExcel(true);
+    try {
+      const ExcelJSImport = await import('exceljs');
+      const ExcelJS = ExcelJSImport.default || ExcelJSImport;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Accent Techno Solutions';
+      workbook.created = new Date();
+
+      let logoImageId = null;
+      try {
+        const logoResponse = await fetch('/accent-logo.png');
+        if (logoResponse.ok) {
+          const logoBlob = await logoResponse.blob();
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(logoBlob);
+          });
+          if (typeof dataUrl === 'string') {
+            logoImageId = workbook.addImage({ base64: dataUrl, extension: 'png' });
+          }
+        }
+      } catch {
+        // Logo is optional.
+      }
+
+      const sheetPayloads = await getExportSheetPayloads();
+      const selected = sheetPayloads[selectedExportSheet];
+      if (!selected) {
+        alert('Please select a valid sheet.');
+        return;
+      }
+
+      buildTabSheet(workbook, logoImageId, selected.title, selected.columns, selected.rows);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const safeProjectId = String(form.project_id || id || 'project').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeSheet = String(selected.title).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const dateTag = new Date().toISOString().split('T')[0];
+      anchor.href = downloadUrl;
+      anchor.download = `${safeProjectId}_${safeSheet}_${dateTag}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Single sheet Excel export failed:', err);
+      alert('Failed to export selected sheet. Please try again.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     
@@ -3208,6 +3564,44 @@ function EditProjectForm() {
                 </div>
                 
                 <div className="flex items-center gap-3">
+                  <select
+                    value={selectedExportSheet}
+                    onChange={(e) => setSelectedExportSheet(e.target.value)}
+                    className="px-3 py-2.5 text-sm rounded-xl border border-gray-300 bg-white text-gray-700"
+                    title="Select sheet to export"
+                  >
+                    {EXPORT_TAB_OPTIONS.map((option) => (
+                      <option key={option.key} value={option.key}>{option.title}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleExportSingleSheetExcel}
+                    disabled={exportingExcel}
+                    className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: '1.5px solid rgba(30, 136, 229, 0.28)',
+                      color: '#1E88E5',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)'
+                    }}
+                  >
+                    {exportingExcel ? 'Exporting...' : 'Export Sheet'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportProjectTabsExcel}
+                    disabled={exportingExcel}
+                    className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: '1.5px solid rgba(127, 36, 135, 0.22)',
+                      color: '#7F2487',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)'
+                    }}
+                  >
+                    {exportingExcel ? 'Exporting...' : 'Export Excel'}
+                  </button>
                   <button
                     type="button"
                     onClick={handleCancel}

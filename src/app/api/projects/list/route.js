@@ -1,7 +1,6 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
 
 // Helper to check if user is in project team
 function isUserInProjectTeam(projectTeam, userId, userEmail) {
@@ -54,10 +53,7 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: 'Invalid user session' }, { status: 401 });
     }
     
-    const canReadProjects = user.is_super_admin || hasPermission(user, 'projects', 'read');
-    if (!canReadProjects) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
-    }
+    const isSuperAdmin = !!user.is_super_admin;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
@@ -107,9 +103,8 @@ export async function GET(request) {
         console.warn('Stats query failed:', statsErr?.message);
       }
 
-      // Filter by team membership if not super admin and doesn't have projects read permission
-      const canSeeAllProjects = user.is_super_admin || hasPermission(user, 'projects', 'read');
-      if (!canSeeAllProjects) {
+      // Non-super-admin users should only see projects assigned to them via project_team.
+      if (!isSuperAdmin) {
         projects = projects.filter(project => 
           isUserInProjectTeam(project.project_team, user.id, user.email)
         );
