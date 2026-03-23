@@ -167,13 +167,15 @@ export async function POST(req) {
         is_super_admin: isSuperAdmin,
         user: userData  // Include user data for session pre-population
       })
-      const isProd = process.env.NODE_ENV === 'production'
+      const forwardedProto = req.headers.get('x-forwarded-proto');
+      const proto = forwardedProto || (req.nextUrl?.protocol ? req.nextUrl.protocol.replace(':', '') : 'http');
+      const isSecure = proto === 'https';
       
       // Set cookies as session cookies (cleared when browser closes)
       res.cookies.set('auth', '1', {
         httpOnly: true,
         sameSite: 'lax',
-        secure: isProd,
+        secure: isSecure,
         path: '/',
         priority: 'high'
       })
@@ -182,7 +184,7 @@ export async function POST(req) {
       res.cookies.set('user_id', String(userId), {
         httpOnly: true,
         sameSite: 'lax',
-        secure: isProd,
+        secure: isSecure,
         path: '/',
         priority: 'high'
       })
@@ -191,7 +193,7 @@ export async function POST(req) {
       res.cookies.set('is_super_admin', isSuperAdmin ? '1' : '0', {
         httpOnly: true,
         sameSite: 'lax',
-        secure: isProd,
+        secure: isSecure,
         path: '/',
         priority: 'high'
       })
@@ -208,7 +210,7 @@ export async function POST(req) {
       res.cookies.set('session_permissions', encodedPermissions, {
         httpOnly: true,
         sameSite: 'lax',
-        secure: isProd,
+        secure: isSecure,
         path: '/',
         priority: 'high',
         // Permissions cookie expires in 24 hours - will be refreshed on next login

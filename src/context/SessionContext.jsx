@@ -104,6 +104,16 @@ export function SessionProvider({ children }) {
 
   const fetchSession = useCallback(async (force = false) => {
     const now = Date.now();
+
+    const hasAuthCookies = () => {
+      try {
+        return typeof document !== 'undefined' &&
+          document.cookie.includes('auth=') &&
+          document.cookie.includes('user_id=');
+      } catch {
+        return false;
+      }
+    };
     
     // Check if we need to force fetch (cache was invalidated)
     if (forceNextFetch) {
@@ -143,32 +153,57 @@ export function SessionProvider({ children }) {
       });
       
       if (!res.ok) {
-        // On 401, check if we have cookies as a fallback
-        // This handles the race condition where cookies are set but /api/session hasn't seen them yet
-        const hasCookies = typeof document !== 'undefined' && 
-          document.cookie.includes('auth=') && 
-          document.cookie.includes('user_id=');
-        
-        if (hasCookies) {
+        const status = res.status;
+        const hasCookies = hasAuthCookies();
+
+        // Only treat as a real logout when the server explicitly says 401.
+        // For transient failures (429/500), keep the last known-good session.
+        if (status === 401) {
           // Cookies exist but session API failed - retry once after short delay
-          await new Promise(r => setTimeout(r, 100));
-          const retryRes = await fetch('/api/session', { credentials: 'include' });
-          if (retryRes.ok) {
-            const data = await retryRes.json();
-            sessionCache = { authenticated: data.authenticated || false, user: data.user || null };
-            sessionCacheTime = Date.now();
-            persistToStorage(sessionCache);
-            if (mountedRef.current) {
-              setUser(data.user || null);
-              setAuthenticated(data.authenticated || false);
+          // This handles the race condition where cookies are set but /api/session hasn't seen them yet
+          if (hasCookies) {
+            await new Promise(r => setTimeout(r, 100));
+            const retryRes = await fetch('/api/session', { credentials: 'include' });
+            if (retryRes.ok) {
+              const data = await retryRes.json();
+              sessionCache = { authenticated: data.authenticated || false, user: data.user || null };
+              sessionCacheTime = Date.now();
+              persistToStorage(sessionCache);
+              if (mountedRef.current) {
+                setUser(data.user || null);
+                setAuthenticated(data.authenticated || false);
+              }
+              return sessionCache;
             }
-            return sessionCache;
           }
+
+          sessionCache = { authenticated: false, user: null };
+          sessionCacheTime = now;
+          persistToStorage(sessionCache);
+          if (mountedRef.current) {
+            setUser(null);
+            setAuthenticated(false);
+          }
+          return sessionCache;
         }
-        
-        sessionCache = { authenticated: false, user: null };
-        sessionCacheTime = now;
-        persistToStorage(sessionCache);
+
+        // Non-401 error: keep existing sessionCache if it was authenticated
+        if (sessionCache?.authenticated && sessionCache?.user) {
+          sessionCacheTime = now;
+          if (mountedRef.current) {
+            setUser(sessionCache.user);
+            setAuthenticated(true);
+          }
+          return sessionCache;
+        }
+
+        // If cookies exist, don't wipe storage/cache; just return what we have.
+        if (hasCookies) {
+          return sessionCache;
+        }
+
+        // No cookies and non-401 error: treat as unauthenticated but do not persist a logout
+        // (prevents flicker when the network is down).
         if (mountedRef.current) {
           setUser(null);
           setAuthenticated(false);
@@ -192,9 +227,22 @@ export function SessionProvider({ children }) {
       return sessionCache;
     } catch (error) {
       console.error('Session fetch error:', error);
-      sessionCache = { authenticated: false, user: null };
-      sessionCacheTime = now;
-      persistToStorage(sessionCache);
+      // Network / transient errors should not log the user out.
+      if (sessionCache?.authenticated && sessionCache?.user) {
+        sessionCacheTime = now;
+        if (mountedRef.current) {
+          setUser(sessionCache.user);
+          setAuthenticated(true);
+        }
+        return sessionCache;
+      }
+
+      // If cookies exist, keep current state and let middleware continue to enforce auth.
+      if (hasAuthCookies()) {
+        return sessionCache;
+      }
+
+      // No cookies and no cache: unauthenticated (do not persist a logout on network errors)
       if (mountedRef.current) {
         setUser(null);
         setAuthenticated(false);

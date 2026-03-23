@@ -23,11 +23,13 @@ export async function POST(req) {
   }
 
   const res = NextResponse.json({ success: true, message: 'Logged out successfully' })
-  const isProd = process.env.NODE_ENV === 'production'
+  const forwardedProto = req.headers.get('x-forwarded-proto');
+  const proto = forwardedProto || (req.nextUrl?.protocol ? req.nextUrl.protocol.replace(':', '') : 'http');
+  const isSecure = proto === 'https';
   const baseCookie = {
     httpOnly: true,
     sameSite: 'lax',
-    secure: isProd,
+    secure: isSecure,
     path: '/'
   }
 
