@@ -2435,45 +2435,63 @@ function EditProjectForm() {
     ? availableSoftware.find(s => s.id === selectedSoftware)?.versions || []
     : [];
 
-  // File upload for input documents (images / svg -> via /api/uploads). Other file types can be added later.
+  // File upload for input documents (images / svg -> via /api/uploads). Supports bulk file selection.
   const handleInputDocumentFileUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const b64 = reader.result;
+      const toBase64 = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const uploadedDocs = [];
+      const failedFiles = [];
+
+      for (const file of files) {
         try {
+          const b64 = await toBase64(file);
           const uploadResp = await fetchJSON('/api/uploads', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, b64 })
           });
+
           if (uploadResp.success) {
-            const newDoc = {
-              id: Date.now(),
+            uploadedDocs.push({
+              id: `${Date.now()}-${uploadedDocs.length}`,
               text: file.name,
               name: file.name,
               fileUrl: uploadResp.data.fileUrl,
               thumbUrl: uploadResp.data.thumbUrl,
               addedAt: new Date().toISOString()
-            };
-            const updated = [...inputDocumentsList, newDoc];
-            setInputDocumentsList(updated);
-            setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
+            });
           } else {
-            alert(uploadResp.error || 'Upload failed');
+            failedFiles.push(file.name);
           }
         } catch (err) {
-          console.error('Upload failed', err);
-          alert('Upload failed');
+          console.error('Upload failed for file:', file.name, err);
+          failedFiles.push(file.name);
         }
-      };
-      reader.readAsDataURL(file);
+      }
+
+      if (uploadedDocs.length > 0) {
+        const updated = [...inputDocumentsList, ...uploadedDocs];
+        setInputDocumentsList(updated);
+        setForm(prev => ({ ...prev, input_document: JSON.stringify(updated) }));
+      }
+
+      if (failedFiles.length > 0) {
+        alert(`Some files failed to upload: ${failedFiles.join(', ')}`);
+      }
     } catch (e) {
       console.error('File processing error', e);
+      alert('Upload failed');
     } finally {
-      // reset input so same file can be re-selected
+      // reset input so same files can be re-selected
       event.target.value = '';
     }
   };
@@ -3341,6 +3359,14 @@ function EditProjectForm() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Keep client-side limit aligned with API limit.
+    const MAX_MOM_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_MOM_FILE_SIZE) {
+      alert('File size exceeds 10MB limit for MOM upload');
+      event.target.value = '';
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -3351,9 +3377,16 @@ function EditProjectForm() {
         body: formData
       });
 
-      const result = await res.json();
+      let result;
+      try {
+        result = await res.json();
+      } catch {
+        result = { success: false, error: `Upload failed (${res.status})` };
+      }
+
       if (result.success) {
         const momDoc = {
+          id: result.data.id,
           file_name: result.data.file_name,
           original_name: result.data.original_name,
           file_url: result.data.file_url,
@@ -9208,7 +9241,7 @@ function EditProjectForm() {
                       <label className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 cursor-pointer transition-colors flex items-center gap-1">
                         <PlusIcon className="h-4 w-4" />
                         Upload
-                        <input type="file" accept="image/*,.svg" onChange={handleInputDocumentFileUpload} className="hidden" />
+                        <input type="file" accept="image/*,.svg" multiple onChange={handleInputDocumentFileUpload} className="hidden" />
                       </label>
                     </div>
 

@@ -25,9 +25,7 @@ export async function GET(request) {
 
     // If no user_id provided, get all active users
     if (!userIdParam) {
-      // Get users with activity in last 10 minutes
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      const [activeUsers] = await db.execute(
+      const [allUsers] = await db.execute(
         `SELECT 
           u.id as user_id,
           u.username,
@@ -41,15 +39,14 @@ export async function GET(request) {
         FROM users u
         LEFT JOIN roles_master r ON u.role_id = r.id
         LEFT JOIN user_activity_logs ual ON u.id = ual.user_id
-        WHERE ual.created_at >= ?
+        WHERE u.is_active = TRUE
         GROUP BY u.id
         ORDER BY last_activity DESC`,
-        [tenMinutesAgo]
       );
 
       // Add status and stats if requested
       const usersWithStatus = await Promise.all(
-        activeUsers.map(async (user) => {
+        allUsers.map(async (user) => {
           const status = getStatusFromActivity(user.last_activity);
           
           let stats = null;
