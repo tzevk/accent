@@ -6,6 +6,8 @@ const publicPaths = [
   '/signin',
   '/api/login',
   '/api/logout',
+  '/api/auth',
+  '/api/session',
   '/_next',
   '/favicon.ico',
   '/robots.txt',
@@ -34,6 +36,7 @@ const rateLimitStore = new Map<string, RateLimitEntry>()
 // Rate limit configurations
 const RATE_LIMITS = {
   auth: { windowMs: 15 * 60 * 1000, maxRequests: 10, blockDurationMs: 30 * 60 * 1000 },
+  session: { windowMs: 60 * 1000, maxRequests: 120, blockDurationMs: 60 * 1000 },
   dashboard: { windowMs: 60 * 1000, maxRequests: 60, blockDurationMs: 60 * 1000 },
   api: { windowMs: 60 * 1000, maxRequests: 120, blockDurationMs: 60 * 1000 },
   heavy: { windowMs: 60 * 1000, maxRequests: 10, blockDurationMs: 2 * 60 * 1000 },
@@ -42,6 +45,12 @@ const RATE_LIMITS = {
 function getClientIP(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
+  const cfConnecting = req.headers.get('cf-connecting-ip')
+  if (cfConnecting) return cfConnecting.trim()
+  const trueClientIp = req.headers.get('true-client-ip')
+  if (trueClientIp) return trueClientIp.trim()
+  const clientIp = req.headers.get('x-client-ip')
+  if (clientIp) return clientIp.trim()
   const realIP = req.headers.get('x-real-ip')
   if (realIP) return realIP
   const vercelIP = req.headers.get('x-vercel-forwarded-for')
@@ -53,6 +62,9 @@ function getRateLimitCategory(pathname: string): keyof typeof RATE_LIMITS {
   if (pathname.startsWith('/api/login') || pathname.startsWith('/api/logout') || pathname.startsWith('/api/auth')) {
     return 'auth'
   }
+  if (pathname.startsWith('/api/session')) {
+    return 'session'
+  }
   if (pathname.includes('dashboard-stats') || pathname.includes('manhours-stats') || pathname.startsWith('/api/analytics')) {
     return 'dashboard'
   }
@@ -62,17 +74,22 @@ function getRateLimitCategory(pathname: string): keyof typeof RATE_LIMITS {
   return 'api'
 }
 
-function checkRateLimit(req: NextRequest): { limited: boolean; remaining: number; resetIn: number } | null {
+function checkRateLimit(req: NextRequest): { limited: boolean; remaining: number; resetIn: number; limit: number; category: keyof typeof RATE_LIMITS } | null {
   const pathname = req.nextUrl.pathname
   
   // Only rate limit API routes
   if (!pathname.startsWith('/api')) return null
+
+  // Don't rate limit preflight requests
+  if (req.method === 'OPTIONS') return null
   
   const ip = getClientIP(req)
   const category = getRateLimitCategory(pathname)
   const config = RATE_LIMITS[category]
+  const userId = req.cookies.get('user_id')?.value
+  const keyIdentity = userId ? `${ip}:${userId}` : ip
   
-  const key = `${ip}:${category}`
+  const key = `${keyIdentity}:${category}`
   const now = Date.now()
   
   let entry = rateLimitStore.get(key)
@@ -80,7 +97,7 @@ function checkRateLimit(req: NextRequest): { limited: boolean; remaining: number
   // Check if blocked
   if (entry?.blockedUntil && entry.blockedUntil > now) {
     const resetIn = Math.ceil((entry.blockedUntil - now) / 1000)
-    return { limited: true, remaining: 0, resetIn }
+    return { limited: true, remaining: 0, resetIn, limit: config.maxRequests, category }
   }
   
   // Initialize or reset window
@@ -95,13 +112,15 @@ function checkRateLimit(req: NextRequest): { limited: boolean; remaining: number
   if (entry.count > config.maxRequests) {
     entry.blockedUntil = now + config.blockDurationMs
     console.warn(`[RateLimit] IP ${ip} blocked for ${category} - ${entry.count} requests`)
-    return { limited: true, remaining: 0, resetIn: Math.ceil(config.blockDurationMs / 1000) }
+    return { limited: true, remaining: 0, resetIn: Math.ceil(config.blockDurationMs / 1000), limit: config.maxRequests, category }
   }
   
   return {
     limited: false,
     remaining: config.maxRequests - entry.count,
-    resetIn: Math.ceil((entry.windowStart + config.windowMs - now) / 1000)
+    resetIn: Math.ceil((entry.windowStart + config.windowMs - now) / 1000),
+    limit: config.maxRequests,
+    category
   }
 }
 
@@ -113,7 +132,8 @@ function cleanupRateLimitStore() {
   lastCleanup = now
   
   for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.windowStart + 300000 < now && (!entry.blockedUntil || entry.blockedUntil < now)) {
+    const maxWindowMs = Math.max(...Object.values(RATE_LIMITS).map((config) => config.windowMs))
+    if (entry.windowStart + maxWindowMs * 2 < now && (!entry.blockedUntil || entry.blockedUntil < now)) {
       rateLimitStore.delete(key)
     }
   }
@@ -151,7 +171,7 @@ export function middleware(req: NextRequest) {
         status: 429,
         headers: {
           'Retry-After': String(rateLimitResult.resetIn),
-          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Limit': String(rateLimitResult.limit),
           'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': String(rateLimitResult.resetIn)
         }
@@ -205,6 +225,7 @@ export function middleware(req: NextRequest) {
   
   // Add rate limit headers for API routes
   if (rateLimitResult && pathname.startsWith('/api')) {
+    response.headers.set('X-RateLimit-Limit', String(rateLimitResult.limit))
     response.headers.set('X-RateLimit-Remaining', String(rateLimitResult.remaining))
     response.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetIn))
   }

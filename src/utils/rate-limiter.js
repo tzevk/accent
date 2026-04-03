@@ -16,6 +16,12 @@ export const RATE_LIMITS = {
     maxRequests: 10,          // 10 attempts per window
     blockDurationMs: 30 * 60 * 1000 // Block for 30 minutes after exceeding
   },
+  // Session endpoint - frequent but legitimate reads during app bootstrap
+  session: {
+    windowMs: 60 * 1000,
+    maxRequests: 120,
+    blockDurationMs: 60 * 1000
+  },
   // Dashboard/stats endpoints - moderate limits
   dashboard: {
     windowMs: 60 * 1000,      // 1 minute
@@ -91,6 +97,15 @@ export function getClientIP(request) {
   if (forwarded) {
     return forwarded.split(',')[0].trim();
   }
+
+  const cfConnecting = request.headers.get?.('cf-connecting-ip');
+  if (cfConnecting) return cfConnecting.trim();
+
+  const trueClientIp = request.headers.get?.('true-client-ip');
+  if (trueClientIp) return trueClientIp.trim();
+
+  const clientIp = request.headers.get?.('x-client-ip');
+  if (clientIp) return clientIp.trim();
   
   const realIP = request.headers.get?.('x-real-ip');
   if (realIP) return realIP;
@@ -111,6 +126,10 @@ export function getRateLimitCategory(pathname) {
       pathname.startsWith('/api/logout') ||
       pathname.startsWith('/api/auth')) {
     return 'auth';
+  }
+
+  if (pathname.startsWith('/api/session')) {
+    return 'session';
   }
   
   if (pathname.includes('dashboard-stats') || 

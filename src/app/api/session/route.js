@@ -11,12 +11,12 @@ export async function GET(req) {
     const hasUserId = !!req?.cookies?.get?.('user_id')?.value;
 
     if (!hasSession || !hasUserId) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      return NextResponse.json({ authenticated: false });
     }
 
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      return NextResponse.json({ authenticated: false });
     }
 
     return NextResponse.json({ authenticated: true, user });
