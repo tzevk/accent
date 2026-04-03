@@ -590,7 +590,9 @@ export async function PUT(request, context) {
           await db.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS \`${col}\` TEXT`);
           invalidateCache('projects');
           existingCols = await getTableColumns(db, 'projects');
-        } catch (e) { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       } else {
         // Column exists - ensure it's TEXT not VARCHAR
         try {
@@ -606,6 +608,42 @@ export async function PUT(request, context) {
         } catch (e) { console.warn(`Failed to upgrade ${col} to TEXT:`, e.message); }
       }
     }
+
+    // Keep the input document fields wide enough for the legacy JSON payload and the structured list.
+    const longTextCols = ['input_document', 'input_documents_list'];
+    for (const col of longTextCols) {
+      if (!existingCols.has(col)) {
+        try {
+          await db.execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS \`${col}\` LONGTEXT`);
+          invalidateCache('projects');
+          existingCols = await getTableColumns(db, 'projects');
+        } catch {
+          /* ignore */
+        }
+        continue;
+      }
+
+      try {
+        const [colInfo] = await db.execute(
+          `SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'projects' AND COLUMN_NAME = ? AND TABLE_SCHEMA = DATABASE()`,
+          [col]
+        );
+        const dataType = String(colInfo?.[0]?.DATA_TYPE || '').toLowerCase();
+        if (dataType && dataType !== 'longtext') {
+          await db.execute(`ALTER TABLE projects MODIFY COLUMN \`${col}\` LONGTEXT`);
+          invalidateCache('projects');
+          existingCols = await getTableColumns(db, 'projects');
+        }
+      } catch (e) {
+        console.warn(`Failed to upgrade ${col} to LONGTEXT:`, e.message || e);
+      }
+    }
+
+    const normalizeLongText = (value) => {
+      if (value === undefined || value === null || value === '') return null;
+      if (typeof value === 'string') return value;
+      return JSON.stringify(value);
+    };
 
     const fieldValues = [
       ['name', name],
@@ -657,7 +695,7 @@ export async function PUT(request, context) {
       ['client_feedback', client_feedback],
       ['actual_profit_loss', normalizeDecimal(actual_profit_loss)],
       ['project_schedule', project_schedule],
-      ['input_document', input_document],
+      ['input_document', normalizeLongText(input_document)],
       ['list_of_deliverables', list_of_deliverables],
       ['kickoff_meeting', kickoff_meeting],
       ['in_house_meeting', in_house_meeting],
@@ -694,7 +732,7 @@ export async function PUT(request, context) {
     const projectActivitiesList = data.project_activities_list ? (typeof data.project_activities_list === 'string' ? data.project_activities_list : JSON.stringify(data.project_activities_list)) : undefined;
     const planningActivitiesList = data.planning_activities_list ? (typeof data.planning_activities_list === 'string' ? data.planning_activities_list : JSON.stringify(data.planning_activities_list)) : undefined;
     const documentsList = data.documents_list ? (typeof data.documents_list === 'string' ? data.documents_list : JSON.stringify(data.documents_list)) : undefined;
-    const inputDocumentsList = data.input_documents_list || undefined;
+    const inputDocumentsList = data.input_documents_list === undefined ? undefined : normalizeLongText(data.input_documents_list);
     const kickoffMeetingsList = data.kickoff_meetings_list || undefined;
     const internalMeetingsList = data.internal_meetings_list || undefined;
     const documentsReceivedList = data.documents_received_list || undefined;

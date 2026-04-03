@@ -165,7 +165,7 @@ async function initProjectsTable(db) {
       assigned_to VARCHAR(255),
       assignments JSON,
       project_schedule TEXT,
-      input_document TEXT,
+      input_document LONGTEXT,
       list_of_deliverables TEXT,
       kickoff_meeting TEXT,
       in_house_meeting TEXT,
