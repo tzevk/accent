@@ -88,20 +88,22 @@ export async function GET(request) {
   <style>
     @page {
       size: A4 portrait;
-      margin: 0 5mm;
+      margin: 5mm;
     }
     @media print {
       body { 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact;
         margin: 0;
-        padding: 0 5mm;
+        padding: 0;
+        display: flex;
+        justify-content: center;
       }
       .no-print { display: none !important; }
       .voucher {
-        width: 200mm;
+        width: 17.5cm;
         height: auto;
-        max-width: 200mm;
+        max-width: 17.5cm;
         max-height: none;
         overflow: visible;
         page-break-after: avoid;
@@ -125,22 +127,24 @@ export async function GET(request) {
       background: #fff;
     }
     .voucher {
-      width: 190mm;
+      width: 17.5cm;
       height: auto;
-      min-height: 100mm;
+      min-height: 11cm;
       margin: 0 auto;
       background: #ffffff;
       border: 2px solid #333;
       box-sizing: border-box;
     }
     .header {
-      display: flex;
+      display: grid;
+      grid-template-columns: 7.1cm 1cm 7.5cm;
       border-bottom: 1px solid #333;
     }
     .company-info {
-      flex: 1;
       padding: 10px 12px;
       border-right: 1px solid #333;
+      width: 7.1cm;
+      box-sizing: border-box;
     }
     .company-info .logo-row {
       display: flex;
@@ -159,27 +163,31 @@ export async function GET(request) {
       line-height: 1.4;
     }
     .title-section {
-      flex: 0.4;
-      padding: 8px 4px;
+      width: 1cm;
+      padding: 2mm 1mm;
       text-align: center;
       border-right: 1px solid #333;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-sizing: border-box;
     }
     .title-section h1 {
-      font-size: 10px;
+      font-size: 6px;
+      line-height: 1;
       margin: 0;
+      word-break: break-word;
     }
     .voucher-details {
-      width: 220px;
-      min-width: 220px;
-      max-width: 220px;
+      width: 7.5cm;
+      min-width: 7.5cm;
+      max-width: 7.5cm;
       display: flex;
       flex-direction: column;
       overflow: hidden;
       flex-shrink: 0;
       border-left: 1px solid #333;
+      box-sizing: border-box;
     }
     .voucher-details .row {
       display: flex;
@@ -313,7 +321,7 @@ export async function GET(request) {
       background: #6A1B9A;
     }
     .cut-line {
-      width: 190mm;
+      width: 17.5cm;
       margin: 10px auto;
       border-bottom: 2px dashed #666;
       position: relative;
