@@ -309,7 +309,8 @@ export default function LiveMonitoringPage() {
               {filteredUsers.map((user) => (
                 <div
                   key={user.user_id}
-                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                  onClick={() => router.push(`/admin/live-monitoring/user/${user.user_id}`)}
+                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
                 >
                   {/* User Header */}
                   <div className="flex items-start justify-between mb-3">
@@ -374,13 +375,27 @@ export default function LiveMonitoringPage() {
                     </div>
                   </div>
 
-                  {/* View Details Button */}
-                  <button
-                    onClick={() => router.push(`/admin/activity-logs?user_id=${user.user_id}`)}
-                    className="w-full mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-md transition-colors"
-                  >
-                    View Activity Logs
-                  </button>
+                  {/* Action Buttons */}
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/admin/live-monitoring/user/${user.user_id}`);
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
+                    >
+                      View Dashboard
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/admin/activity-logs?user_id=${user.user_id}`);
+                      }}
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-md transition-colors"
+                    >
+                      Activity Logs
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -126,9 +126,11 @@ export async function GET(request, { params }) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Users can view their own assignments
+    // Users can view their own assignments.
+    // Admin/super-admin users can view others for monitoring.
     const isOwnData = requestedUserId === currentUser.id;
-    if (!isOwnData && !currentUser.is_super_admin) {
+    const isAdminViewer = currentUser.is_super_admin || currentUser.role?.code === 'admin' || currentUser.role?.name === 'Admin';
+    if (!isOwnData && !isAdminViewer) {
       return NextResponse.json({ 
         success: false, 
         error: 'Forbidden' 
