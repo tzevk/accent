@@ -87,7 +87,7 @@ export async function POST(request) {
     );
 
     const extension = ALLOWED_TYPES[file.type] || `.${fileExt}`;
-    const fileName = `mom_${docId}${extension}`;
+    const filenaame = `mom_${docId}${extension}`;
 
     return NextResponse.json({
       success: true,
