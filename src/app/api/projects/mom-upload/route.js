@@ -93,7 +93,7 @@ export async function POST(request) {
       success: true,
       data: {
         id: docId,
-        file_name: fileName,
+        file_name: fileame,
         original_name: file.name,
         file_url: `/api/projects/mom-upload?id=${docId}`,
         file_type: file.type,
