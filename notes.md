@@ -9,6 +9,6 @@ Project > Edit Project
 - Add a Print option
 - Receipt Date Defaults to today -->
 
-Create a Bank Master
+<!-- Create a Bank Master -->
 
 Activity Splits
