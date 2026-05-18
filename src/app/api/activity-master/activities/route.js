@@ -41,9 +41,9 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: { id } }, { status: 201 });
   } catch (error) {
-    console.error('Activity sub POST error:', error);
+    console.error('Activity POST error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to create sub-activity', details: error.message },
+      { success: false, error: 'Failed to create activity', details: error.message },
       { status: 500 }
     );
   } finally {
@@ -58,7 +58,7 @@ export async function PUT(request) {
     const { id, activity_name, function_id } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Activity id is required' }, { status: 400 });
     }
 
     db = await dbConnect();
@@ -70,11 +70,11 @@ export async function PUT(request) {
       [activity_name ?? null, function_id ?? null, id]
     );
 
-    return NextResponse.json({ success: true, message: 'Sub-activity updated' });
+    return NextResponse.json({ success: true, message: 'Activity updated' });
   } catch (error) {
-    console.error('Activity sub PUT error:', error);
+    console.error('Activity PUT error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update sub-activity', details: error.message },
+      { success: false, error: 'Failed to update activity', details: error.message },
       { status: 500 }
     );
   } finally {
@@ -89,17 +89,20 @@ export async function DELETE(request) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Sub-activity id is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Activity id is required' }, { status: 400 });
     }
 
     db = await dbConnect();
-    await db.execute('DELETE FROM sub_activities WHERE id = ?', [id]);
+    
+    // First delete sub-activities, then delete the activity
+    await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
+    await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
 
-    return NextResponse.json({ success: true, message: 'Sub-activity deleted' });
+    return NextResponse.json({ success: true, message: 'Activity deleted' });
   } catch (error) {
-    console.error('Activity sub DELETE error:', error);
+    console.error('Activity DELETE error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete sub-activity', details: error.message },
+      { success: false, error: 'Failed to delete activity', details: error.message },
       { status: 500 }
     );
   } finally {
