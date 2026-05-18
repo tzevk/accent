@@ -54,7 +54,17 @@ export async function GET(request) {
       activities = [];
     }
 
-    // Map functions to activities (without subActivities)
+    let subActivitiesList = [];
+    try {
+      const [subs] = await db.execute(
+        'SELECT id, activity_id, name, default_duration, default_manhours, default_rate, created_at, updated_at FROM sub_activities ORDER BY name'
+      );
+      subActivitiesList = subs;
+    } catch {
+      subActivitiesList = [];
+    }
+
+    // Map functions to activities and subActivities
     const mapped = functions.map((func) => ({
       id: func.id,
       function_name: func.function_name,
@@ -69,7 +79,18 @@ export async function GET(request) {
           activity_name: activity.activity_name,
           default_manhours: parseFloat(activity.default_manhours) || 0,
           created_at: activity.created_at,
-          updated_at: activity.updated_at
+          updated_at: activity.updated_at,
+          subActivities: subActivitiesList
+            .filter((sub) => sub.activity_id === activity.id)
+            .map((sub) => ({
+              id: sub.id,
+              name: sub.name,
+              defaultDuration: parseFloat(sub.default_duration) || 0,
+              defaultManhours: parseFloat(sub.default_manhours) || 0,
+              defaultRate: parseFloat(sub.default_rate) || 0,
+              created_at: sub.created_at,
+              updated_at: sub.updated_at
+            }))
         }))
     }));
 

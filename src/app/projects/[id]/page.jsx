@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchJSON } from '@/utils/http';
+import useSWR from 'swr';
 import { useSession } from '@/context/SessionContext';
 import {
   CalendarIcon,
@@ -20,22 +21,11 @@ import {
   DocumentTextIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline';
-import ProjectActivityTab from '@/components/ProjectActivityTab';
-import DocumentUpload from '@/components/DocumentUpload';
+import dynamic from 'next/dynamic';
+const ProjectActivityTab = dynamic(() => import('@/components/ProjectActivityTab'), { ssr: false, loading: () => <div className="p-8 text-center text-gray-500">Loading...</div> });
+const DocumentUpload = dynamic(() => import('@/components/DocumentUpload'), { ssr: false, loading: () => <div className="p-8 text-center text-gray-500">Loading...</div> });
 
-export default function ProjectViewPage() {
-  const params = useParams();
-  const id = params?.id;
-  const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
-  const [loading, setLoading] = useState(true);
-  const [project, setProject] = useState(null);
-  const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('project_details');
-
-  const isSuperAdmin = !!sessionUser?.is_super_admin;
-  const canEditProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-
-  const tabConfig = useMemo(() => ([
+  const TAB_CONFIG = [
     { id: 'project_details', label: 'Project Details' },
     { id: 'scope', label: 'Scope', requiresUpdate: true },
     { id: 'minutes_internal_meet', label: 'Meetings', requiresUpdate: true },
@@ -49,11 +39,24 @@ export default function ProjectViewPage() {
     { id: 'assumption', label: 'Assumption', requiresUpdate: true },
     { id: 'lessons_learnt', label: 'Lessons Learnt', requiresUpdate: true },
     { id: 'upload_documents', label: 'Upload Documents', requiresUpdate: true }
-  ]), []);
+  ];
+
+export default function ProjectViewPage() {
+  const params = useParams();
+  const id = params?.id;
+  const { user: sessionUser, can, RESOURCES, PERMISSIONS } = useSession();
+  const [activeTab, setActiveTab] = useState('project_details');
+  const { data: projectData, error: fetchError, isLoading: loading } = useSWR(id ? `/api/projects/${id}` : null, fetchJSON);
+  const project = projectData?.success ? projectData.data : null;
+  const error = fetchError || (projectData && !projectData.success ? projectData.error || 'Failed to load project' : null);
+
+  const isSuperAdmin = !!sessionUser?.is_super_admin;
+  const canEditProjectContent = isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+
 
   const visibleTabs = useMemo(
-    () => tabConfig.filter((tab) => !tab.requiresUpdate || canEditProjectContent),
-    [tabConfig, canEditProjectContent]
+    () => TAB_CONFIG.filter((tab) => !tab.requiresUpdate || canEditProjectContent),
+    [canEditProjectContent]
   );
 
   useEffect(() => {
@@ -61,32 +64,6 @@ export default function ProjectViewPage() {
       setActiveTab(visibleTabs[0]?.id || 'project_details');
     }
   }, [activeTab, visibleTabs]);
-
-  useEffect(() => {
-    if (!id) {
-      setLoading(false);
-      setError('Invalid project id');
-      return;
-    }
-
-    const loadProject = async () => {
-      try {
-        const result = await fetchJSON(`/api/projects/${id}`);
-        if (result?.success) {
-          setProject(result.data);
-        } else {
-          setError(result?.error || 'Failed to load project');
-        }
-      } catch (err) {
-        console.error('Project view error', err);
-        setError(err?.message || 'Unable to load project details');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadProject();
-  }, [id]);
 
   const scopeSummary = useMemo(() => {
     if (!project) return [];
@@ -306,39 +283,45 @@ export default function ProjectViewPage() {
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
-            <header className="bg-white border border-gray-200 rounded-lg shadow-sm px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="space-y-2">
-                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#7F2487]/10 text-[#7F2487] text-xs font-semibold uppercase tracking-wide">
-                  <ClipboardDocumentCheckIcon className="h-4 w-4" />
-                  Project Overview
-                </span>
-                <h1 className="text-2xl font-bold text-black">{project.name}</h1>
-                <p className="text-sm text-gray-600 max-w-2xl">
+            <header className="bg-white/80 backdrop-blur-md border border-gray-200/60 rounded-2xl shadow-sm px-8 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#7F2487]/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+              <div className="space-y-3 relative z-10">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#7F2487]/10 text-[#7F2487] text-xs font-bold uppercase tracking-wider">
+                    <ClipboardDocumentCheckIcon className="h-4 w-4 stroke-2" />
+                    Project Overview
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-wider">
+                    {project.status || 'Active'}
+                  </span>
+                </div>
+                <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{project.name}</h1>
+                <p className="text-sm text-gray-500 max-w-2xl leading-relaxed">
                   {project.description || 'No summary provided. Use the edit view to enrich scope details.'}
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-3 text-sm font-medium relative z-10">
                 {canEditProjectContent && (
                   <Link
                     href={`/projects/${project.id ?? project.project_id ?? project.project_code}/edit`}
-                    className="px-4 py-2 rounded-md border border-[#7F2487] text-[#7F2487] hover:bg-[#7F2487]/10 transition-colors"
+                    className="px-5 py-2.5 rounded-lg border border-[#7F2487] text-[#7F2487] bg-white hover:bg-[#7F2487]/5 transition-all shadow-sm flex items-center gap-2"
                   >
                     Edit Project
                   </Link>
                 )}
                 <Link
                   href="/masters/activities"
-                  className="inline-flex items-center gap-1 px-4 py-2 rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                 >
                   Configure Activity Library
-                  <ArrowRightIcon className="h-4 w-4" />
+                  <ArrowRightIcon className="h-4 w-4 stroke-2" />
                 </Link>
               </div>
             </header>
 
             {/* Tabs */}
-            <div className="bg-white border border-gray-200 rounded-lg px-6 py-3">
-            <div role="tablist" aria-label="Project sections" className="flex flex-wrap gap-2">
+            <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-2 py-2 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div role="tablist" aria-label="Project sections" className="flex gap-1 min-w-max">
                 {visibleTabs.map((t) => (
                   <button
                     id={`tab-${t.id}`}
@@ -346,7 +329,11 @@ export default function ProjectViewPage() {
                     role="tab"
                     aria-selected={activeTab === t.id}
                     onClick={() => setActiveTab(t.id)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none ${activeTab === t.id ? 'bg-[#7F2487]/10 text-[#7F2487]' : 'text-gray-600 hover:bg-gray-50'}`}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg focus:outline-none transition-all duration-200 ease-out whitespace-nowrap ${
+                      activeTab === t.id 
+                        ? 'bg-[#7F2487] text-white shadow-md transform scale-100' 
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
                   >
                     {t.label}
                   </button>
@@ -359,11 +346,11 @@ export default function ProjectViewPage() {
                 id="panel-project_details"
                 role="tabpanel"
                 aria-labelledby="tab-project_details"
-                className="bg-white border border-gray-200 rounded-lg shadow-sm"
+                className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
               >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">General Information</h2>
+                <h2 className="text-base font-bold text-gray-900">General Information</h2>
               </div>
               <div className="px-6 py-5 space-y-4">
                 {/* Basic Details (collapsible) */}
@@ -375,14 +362,14 @@ export default function ProjectViewPage() {
                   >
                     <div className="flex items-center gap-2">
                       <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
-                      <h3 className="text-sm font-semibold text-black">Basic Details</h3>
+                      <h3 className="text-base font-bold text-gray-900">Basic Details</h3>
                     </div>
                     <div className="text-sm text-gray-500">{openSections.basic ? 'Hide' : 'Show'}</div>
                   </button>
                   {openSections.basic && (
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {basicDetailsList.map((item) => (
-                        <div key={item.label} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                        <div key={item.label} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                           <p className="text-xs text-gray-500 uppercase tracking-wide">{item.label}</p>
                           <p className="text-sm font-medium text-black mt-1">{item.value ?? '—'}</p>
                         </div>
@@ -400,19 +387,19 @@ export default function ProjectViewPage() {
                   >
                     <div className="flex items-center gap-2">
                       <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                      <h3 className="text-sm font-semibold text-black">Deliverables</h3>
+                      <h3 className="text-base font-bold text-gray-900">Deliverables</h3>
                     </div>
                     <div className="text-sm text-gray-500">{openSections.deliverables ? 'Hide' : 'Show'}</div>
                   </button>
                   {openSections.deliverables && (
                     <div className="mt-3 space-y-3">
                       {deliverablesField ? (
-                        <div className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                        <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                           <p className="text-sm text-gray-600 whitespace-pre-line">{deliverablesField}</p>
                         </div>
                       ) : meetingDocuments.length > 0 ? (
                         meetingDocuments.map((doc) => (
-                          <div key={doc.title} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                          <div key={doc.title} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                             <h4 className="text-xs font-semibold text-black uppercase tracking-wide">{doc.title}</h4>
                             {doc.type === 'list' ? (
                               <div className="mt-2 space-y-2">
@@ -438,7 +425,7 @@ export default function ProjectViewPage() {
                           </div>
                         ))
                       ) : (
-                        <p className="text-sm text-gray-500">No deliverables captured. Import deliverables from the linked proposal or add them in the edit view.</p>
+                        <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No deliverables captured. Import deliverables from the linked proposal or add them in the edit view.</p>
                       )}
                     </div>
                   )}
@@ -588,34 +575,34 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-commercial"
               hidden={activeTab !== 'commercial'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <TagIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Commercial Information</h2>
+                <h2 className="text-base font-bold text-gray-900">Commercial Information</h2>
               </div>
               <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Project Value</p>
                   <p className="text-sm font-medium text-black mt-1">{project.project_value ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: project.currency || 'INR' }).format(project.project_value) : '—'}</p>
                 </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Currency</p>
                   <p className="text-sm font-medium text-black mt-1">{project.currency || '—'}</p>
                 </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Payment Terms</p>
                   <p className="text-sm font-medium text-black mt-1">{project.payment_terms || '—'}</p>
                 </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Invoicing Status</p>
                   <p className="text-sm font-medium text-black mt-1">{project.invoicing_status || '—'}</p>
                 </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Cost to Company</p>
                   <p className="text-sm font-medium text-black mt-1">{project.cost_to_company ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: project.currency || 'INR' }).format(project.cost_to_company) : '—'}</p>
                 </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                <div className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Profitability Estimate</p>
                   <p className="text-sm font-medium text-black mt-1">{project.profitability_estimate ? `${project.profitability_estimate}%` : '—'}</p>
                 </div>
@@ -628,42 +615,42 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-activities"
               hidden={activeTab !== 'activities'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <ClipboardDocumentCheckIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Project Activities</h2>
+                <h2 className="text-base font-bold text-gray-900">Project Activities</h2>
               </div>
               <div className="px-6 py-5">
                 {parsedProjectActivitiesList && parsedProjectActivitiesList.length > 0 ? (
                   <div className="space-y-3">
                     {parsedProjectActivitiesList.map((act, idx) => (
-                      <div key={idx} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
-                        <h4 className="text-sm font-semibold text-black">{act.activity || act.name || `Activity ${idx+1}`}</h4>
+                      <div key={idx} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
+                        <h4 className="text-base font-bold text-gray-900">{act.activity || act.name || `Activity ${idx+1}`}</h4>
                         {act.description ? <p className="text-sm text-gray-600 mt-2 whitespace-pre-line">{act.description}</p> : null}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No project activities captured. Use the edit view to add activities, disciplines and assignments.</p>
+                  <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No project activities captured. Use the edit view to add activities, disciplines and assignments.</p>
                 )}
               </div>
             </section>
 
             {/* Documents Received Tab (read-only) */}
             {activeTab === 'documents_received' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">List of Documents Received</h2>
+                  <h2 className="text-base font-bold text-gray-900">List of Documents Received</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedDocumentsReceived && parsedDocumentsReceived.length > 0 ? (
                     parsedDocumentsReceived.map((d, i) => (
-                      <div key={d.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={d.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{d.description || d.document_name || `Document ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{d.description || d.document_name || `Document ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Sr. No: {d.sr_no || d.id || i+1}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">
@@ -675,7 +662,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No documents received recorded.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No documents received recorded.</p>
                   )}
                 </div>
               </section>
@@ -683,18 +670,18 @@ export default function ProjectViewPage() {
 
             {/* Documents Issued Tab (read-only) */}
             {activeTab === 'documents_issued' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Documents Issued</h2>
+                  <h2 className="text-base font-bold text-gray-900">Documents Issued</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedDocumentsIssued && parsedDocumentsIssued.length > 0 ? (
                     parsedDocumentsIssued.map((d, i) => (
-                      <div key={d.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={d.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{d.document_name || d.description || `Issued ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{d.document_name || d.description || `Issued ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Doc No: {d.document_number || d.number || '—'} • Rev: {d.revision_number || d.revision || '—'}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">{d.issue_date || d.date || '—'}</div>
@@ -703,7 +690,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No documents issued recorded.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No documents issued recorded.</p>
                   )}
                 </div>
               </section>
@@ -711,18 +698,18 @@ export default function ProjectViewPage() {
 
             {/* Project Handover Tab (read-only) */}
             {activeTab === 'project_handover' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Project Handover</h2>
+                  <h2 className="text-base font-bold text-gray-900">Project Handover</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedProjectHandover && parsedProjectHandover.length > 0 ? (
                     parsedProjectHandover.map((r, i) => (
-                      <div key={r.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={r.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{r.output_by_accent || r.item || `Handover ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{r.output_by_accent || r.item || `Handover ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Sr. No: {r.sr_no || i+1}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">Requirement done: {r.requirement_accomplished || r.done || '—'}</div>
@@ -731,7 +718,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No handover records added.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No handover records added.</p>
                   )}
                 </div>
               </section>
@@ -739,18 +726,18 @@ export default function ProjectViewPage() {
 
             {/* Project Manhours Tab (read-only) */}
             {activeTab === 'project_manhours' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <CalendarIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Project Manhours</h2>
+                  <h2 className="text-base font-bold text-gray-900">Project Manhours</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedProjectManhours && parsedProjectManhours.length > 0 ? (
                     parsedProjectManhours.map((m, i) => (
-                      <div key={m.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={m.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{m.name_of_engineer_designer || m.name || `Member ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{m.name_of_engineer_designer || m.name || `Member ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Month: {m.month || '—'}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">Total: {Object.keys(m).filter(k=>k!== 'id' && k!=='month' && k!=='name_of_engineer_designer' && k!=='remarks').map(k => `${k}: ${m[k]}`).join(', ')}</div>
@@ -759,7 +746,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No manhours recorded.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No manhours recorded.</p>
                   )}
                 </div>
               </section>
@@ -767,18 +754,18 @@ export default function ProjectViewPage() {
 
             {/* Query Log Tab (read-only) */}
             {activeTab === 'query_log' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Query Log</h2>
+                  <h2 className="text-base font-bold text-gray-900">Query Log</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedQueryLog && parsedQueryLog.length > 0 ? (
                     parsedQueryLog.map((q, i) => (
-                      <div key={q.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={q.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{q.query_description || `Query ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{q.query_description || `Query ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Issued: {q.query_issued_date || '—'}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">Resolved: {q.query_resolved || '—'}</div>
@@ -788,7 +775,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No queries logged.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No queries logged.</p>
                   )}
                 </div>
               </section>
@@ -796,18 +783,18 @@ export default function ProjectViewPage() {
 
             {/* Assumption Tab (read-only) */}
             {activeTab === 'assumption' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Assumptions</h2>
+                  <h2 className="text-base font-bold text-gray-900">Assumptions</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedAssumptions && parsedAssumptions.length > 0 ? (
                     parsedAssumptions.map((a, i) => (
-                      <div key={a.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={a.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{a.assumption_description || `Assumption ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{a.assumption_description || `Assumption ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Sr. No: {a.sr_no || i+1}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">Taken By: {a.assumption_taken_by || '—'}</div>
@@ -817,7 +804,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No assumptions recorded.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No assumptions recorded.</p>
                   )}
                 </div>
               </section>
@@ -825,18 +812,18 @@ export default function ProjectViewPage() {
 
             {/* Lessons Learnt Tab (read-only) */}
             {activeTab === 'lessons_learnt' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Lessons Learnt</h2>
+                  <h2 className="text-base font-bold text-gray-900">Lessons Learnt</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedLessonsLearnt && parsedLessonsLearnt.length > 0 ? (
                     parsedLessonsLearnt.map((l, i) => (
-                      <div key={l.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={l.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{l.what_was_new || `Lesson ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{l.what_was_new || `Lesson ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Sr. No: {l.sr_no || i+1}</p>
                           </div>
                         </div>
@@ -847,7 +834,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No lessons recorded.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No lessons recorded.</p>
                   )}
                 </div>
               </section>
@@ -855,18 +842,18 @@ export default function ProjectViewPage() {
 
             {/* Project Schedule (read-only) */}
             {activeTab === 'project_schedule' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <CalendarIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Project Schedule</h2>
+                  <h2 className="text-base font-bold text-gray-900">Project Schedule</h2>
                 </div>
                 <div className="px-6 py-5 space-y-3">
                   {parsedProjectSchedule && parsedProjectSchedule.length > 0 ? (
                     parsedProjectSchedule.map((s, i) => (
-                      <div key={s.id || i} className="border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                      <div key={s.id || i} className="bg-white border border-gray-200/60 shadow-sm rounded-xl px-5 py-4 transition-all hover:shadow-md hover:border-[#7F2487]/30">
                         <div className="flex items-start justify-between">
                           <div>
-                            <h4 className="text-sm font-semibold text-black">{s.activity_description || s.activity || `Schedule ${i+1}`}</h4>
+                            <h4 className="text-base font-bold text-gray-900">{s.activity_description || s.activity || `Schedule ${i+1}`}</h4>
                             <p className="text-xs text-gray-500 mt-1">Sr. No: {s.sr_no || i+1}</p>
                           </div>
                           <div className="text-sm text-gray-600 text-right">{s.start_date || '—'} → {s.end_date || '—'}</div>
@@ -875,7 +862,7 @@ export default function ProjectViewPage() {
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No schedule items captured.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No schedule items captured.</p>
                   )}
                 </div>
               </section>
@@ -890,10 +877,10 @@ export default function ProjectViewPage() {
 
             {/* Upload Documents Tab */}
             {activeTab === 'upload_documents' && (
-              <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                   <DocumentTextIcon className="h-5 w-5 text-[#7F2487]" />
-                  <h2 className="text-sm font-semibold text-black">Upload Documents</h2>
+                  <h2 className="text-base font-bold text-gray-900">Upload Documents</h2>
                 </div>
                 <div className="px-6 py-5">
                   <DocumentUpload entityType="project" entityId={project.id ?? project.project_id} />
@@ -907,11 +894,11 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-team"
               hidden={activeTab !== 'team'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <UserIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Project Team</h2>
+                <h2 className="text-base font-bold text-gray-900">Project Team</h2>
               </div>
               <div className="px-6 py-5 space-y-3 text-sm text-gray-600">
                 <p><span className="font-semibold text-black">Project Manager:</span> {project.project_manager || '—'}</p>
@@ -924,7 +911,7 @@ export default function ProjectViewPage() {
                       <div key={i} className="text-sm text-gray-600">{m.name || m.employee_name || m}</div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No team members added. Use the edit view to assign team members.</p>
+                    <p className="text-sm text-gray-400 bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">No team members added. Use the edit view to assign team members.</p>
                   )}
                 </div>
               </div>
@@ -936,11 +923,11 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-procurement"
               hidden={activeTab !== 'procurement'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <CalendarIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Procurement & Material</h2>
+                <h2 className="text-base font-bold text-gray-900">Procurement & Material</h2>
               </div>
               <div className="px-6 py-5">
                 <div className="space-y-3 text-sm text-gray-600">
@@ -957,11 +944,11 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-construction"
               hidden={activeTab !== 'construction'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <BuildingOffice2Icon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Construction</h2>
+                <h2 className="text-base font-bold text-gray-900">Construction</h2>
               </div>
               <div className="px-6 py-5">
                 <div className="space-y-3 text-sm text-gray-600">
@@ -978,11 +965,11 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-risk"
               hidden={activeTab !== 'risk'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <ClockIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Risk & Issues</h2>
+                <h2 className="text-base font-bold text-gray-900">Risk & Issues</h2>
               </div>
               <div className="px-6 py-5">
                 <div className="space-y-3 text-sm text-gray-600">
@@ -1000,11 +987,11 @@ export default function ProjectViewPage() {
               role="tabpanel"
               aria-labelledby="tab-closeout"
               hidden={activeTab !== 'closeout'}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
                 <CheckCircleIcon className="h-5 w-5 text-[#7F2487]" />
-                <h2 className="text-sm font-semibold text-black">Project Closeout</h2>
+                <h2 className="text-base font-bold text-gray-900">Project Closeout</h2>
               </div>
               <div className="px-6 py-5">
                 <div className="space-y-3 text-sm text-gray-600">
