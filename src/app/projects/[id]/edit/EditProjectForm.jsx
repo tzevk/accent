@@ -4,7 +4,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import {
-  Suspense,
   useEffect,
   useMemo,
   useState,
