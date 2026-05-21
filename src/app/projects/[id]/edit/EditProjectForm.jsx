@@ -42,10 +42,16 @@ import { fetchJSON } from "@/utils/http";
 import { useSession } from "@/context/SessionContext";
 import Image from "next/image";
 import { normalizeDate, formatWeekHeaderDate } from "@/utils/date";
-import { buildProjectWeeks, getWeekSpanForProjectRange } from "@/utils/project-weeks";
+import {
+  buildProjectWeeks,
+  getWeekSpanForProjectRange,
+} from "@/utils/project-weeks";
 import LoadingFallback from "@/components/LoadingFallback";
 import { getExportSheetPayloads } from "./excel/export/buildPayloads";
-import { exportProjectWorkbook, exportSingleSheetWorkbook } from "./excel/export/exportWorkbook";
+import {
+  exportProjectWorkbook,
+  exportSingleSheetWorkbook,
+} from "./excel/export/exportWorkbook";
 import { importProjectWorkbook } from "./excel/import/importWorkbook";
 
 const INITIAL_FORM = {
@@ -270,8 +276,8 @@ export default function EditProjectForm() {
   const isAdminUser = useMemo(() => {
     const hierarchy = Number(
       sessionUser?.role?.hierarchy ??
-      sessionUser?.role_hierarchy ??
-      sessionUser?.role_info?.hierarchy,
+        sessionUser?.role_hierarchy ??
+        sessionUser?.role_info?.hierarchy,
     );
     return (
       !!sessionUser?.is_super_admin ||
@@ -586,8 +592,8 @@ export default function EditProjectForm() {
         pa?.function_name ||
         (pa?.function_id
           ? (functions || []).find(
-            (f) => String(f.id) === String(pa.function_id),
-          )?.function_name
+              (f) => String(f.id) === String(pa.function_id),
+            )?.function_name
           : null) ||
         "Other";
 
@@ -1091,7 +1097,7 @@ export default function EditProjectForm() {
             scope_of_work: project.scope_of_work || "",
             input_document:
               typeof project.input_document === "object" &&
-                project.input_document !== null
+              project.input_document !== null
                 ? JSON.stringify(project.input_document)
                 : project.input_document || "",
             deliverables: project.deliverables || "",
@@ -1159,7 +1165,7 @@ export default function EditProjectForm() {
                   deliverables: proposal.deliverables || prev.deliverables,
                   input_document:
                     typeof proposal.input_document === "object" &&
-                      proposal.input_document !== null
+                    proposal.input_document !== null
                       ? JSON.stringify(proposal.input_document)
                       : proposal.input_document || prev.input_document,
                   list_of_deliverables:
@@ -1874,11 +1880,11 @@ export default function EditProjectForm() {
                       rate =
                         grossSalary > 0
                           ? parseFloat(
-                            (
-                              grossSalary /
-                              (stdWorkingDays * stdHoursPerDay)
-                            ).toFixed(2),
-                          )
+                              (
+                                grossSalary /
+                                (stdWorkingDays * stdHoursPerDay)
+                              ).toFixed(2),
+                            )
                           : 0;
                     }
                   }
@@ -2126,14 +2132,14 @@ export default function EditProjectForm() {
         // Also save to main purchase orders table for display on Purchase Order page
         const vendorAddress = selectedVendor
           ? [
-            selectedVendor.address_street,
-            selectedVendor.address_city,
-            selectedVendor.address_state,
-            selectedVendor.address_country,
-            selectedVendor.address_pin,
-          ]
-            .filter(Boolean)
-            .join(", ")
+              selectedVendor.address_street,
+              selectedVendor.address_city,
+              selectedVendor.address_state,
+              selectedVendor.address_country,
+              selectedVendor.address_pin,
+            ]
+              .filter(Boolean)
+              .join(", ")
           : "";
 
         const mainPORes = await fetch("/api/admin/purchase-orders", {
@@ -2169,7 +2175,7 @@ export default function EditProjectForm() {
           // Project PO saved but main PO failed - still consider partial success
           alert(
             "Purchase Order saved to project. Note: " +
-            (mainPOJson?.message || "Could not sync to main PO list"),
+              (mainPOJson?.message || "Could not sync to main PO list"),
           );
         }
       } else {
@@ -2803,7 +2809,7 @@ export default function EditProjectForm() {
   // Get available software for selected category
   const availableSoftware = selectedSoftwareCategory
     ? softwareCategories.find((c) => c.id === selectedSoftwareCategory)
-      ?.softwares || []
+        ?.softwares || []
     : [];
 
   // Get available versions for selected software
@@ -3577,13 +3583,13 @@ export default function EditProjectForm() {
           });
           const newUsers = isAssigned
             ? currentUsers.filter((u) => {
-              const id = typeof u === "object" ? u.user_id : u;
-              return String(id) !== userIdStr;
-            })
+                const id = typeof u === "object" ? u.user_id : u;
+                return String(id) !== userIdStr;
+              })
             : [
-              ...currentUsers,
-              { user_id: userIdStr, planned_hours: 0, actual_hours: 0 },
-            ];
+                ...currentUsers,
+                { user_id: userIdStr, planned_hours: 0, actual_hours: 0 },
+              ];
           return { ...act, assigned_users: newUsers };
         }
         return act;
@@ -4643,7 +4649,7 @@ export default function EditProjectForm() {
 
             {/* Minimalistic Tab Navigation */}
             <div
-              className="px-6 lg:px-8 xl:px-12 2xl:px-16 sticky z-20"
+              className="px-6 lg:px-8 xl:px-12 2xl:px-16 sticky z-20 mt-20"
               style={{
                 top: "calc(4rem + 5.5rem)",
                 paddingTop: "1rem",
@@ -4697,11 +4703,11 @@ export default function EditProjectForm() {
             </div>
 
             {/* Main Content Area */}
-            <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pb-8 space-y-6">
+            <div className="mt-5 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-8 space-y-6">
               <fieldset disabled={!canEditProjectContent}>
                 {/* Enhanced Project Details Tab */}
                 {activeTab === "project_details" && (
-                  <div className="space-y-5">
+                  <div className="space-y-20">
                     <section
                       className="rounded-2xl overflow-hidden"
                       style={{
@@ -5412,11 +5418,11 @@ export default function EditProjectForm() {
                                         (d) =>
                                           d.id === doc.id
                                             ? {
-                                              ...d,
-                                              date_received: normalizeDate(
-                                                e.target.value,
-                                              ),
-                                            }
+                                                ...d,
+                                                date_received: normalizeDate(
+                                                  e.target.value,
+                                                ),
+                                              }
                                             : d,
                                       );
                                       setInputDocumentsList(updated);
@@ -5437,9 +5443,9 @@ export default function EditProjectForm() {
                                         (d) =>
                                           d.id === doc.id
                                             ? {
-                                              ...d,
-                                              description: e.target.value,
-                                            }
+                                                ...d,
+                                                description: e.target.value,
+                                              }
                                             : d,
                                       );
                                       setInputDocumentsList(updated);
@@ -5460,9 +5466,9 @@ export default function EditProjectForm() {
                                         (d) =>
                                           d.id === doc.id
                                             ? {
-                                              ...d,
-                                              drawing_number: e.target.value,
-                                            }
+                                                ...d,
+                                                drawing_number: e.target.value,
+                                              }
                                             : d,
                                       );
                                       setInputDocumentsList(updated);
@@ -5483,9 +5489,9 @@ export default function EditProjectForm() {
                                         (d) =>
                                           d.id === doc.id
                                             ? {
-                                              ...d,
-                                              sheet_number: e.target.value,
-                                            }
+                                                ...d,
+                                                sheet_number: e.target.value,
+                                              }
                                             : d,
                                       );
                                       setInputDocumentsList(updated);
@@ -5506,9 +5512,9 @@ export default function EditProjectForm() {
                                         (d) =>
                                           d.id === doc.id
                                             ? {
-                                              ...d,
-                                              revision_number: e.target.value,
-                                            }
+                                                ...d,
+                                                revision_number: e.target.value,
+                                              }
                                             : d,
                                       );
                                       setInputDocumentsList(updated);
@@ -5549,10 +5555,10 @@ export default function EditProjectForm() {
                                         (d) =>
                                           d.id === doc.id
                                             ? {
-                                              ...d,
-                                              document_sent_by:
-                                                e.target.value,
-                                            }
+                                                ...d,
+                                                document_sent_by:
+                                                  e.target.value,
+                                              }
                                             : d,
                                       );
                                       setInputDocumentsList(updated);
@@ -5709,12 +5715,13 @@ export default function EditProjectForm() {
                                 !selectedSoftware ||
                                 !selectedSoftwareVersion
                               }
-                              className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${selectedSoftwareCategory &&
+                              className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${
+                                selectedSoftwareCategory &&
                                 selectedSoftware &&
                                 selectedSoftwareVersion
-                                ? "bg-[#7F2487] text-white hover:bg-[#6a1e73]"
-                                : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                }`}
+                                  ? "bg-[#7F2487] text-white hover:bg-[#6a1e73]"
+                                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              }`}
                             >
                               <PlusIcon className="h-3.5 w-3.5" />
                               Add Software
@@ -6911,7 +6918,7 @@ export default function EditProjectForm() {
 
                 {/* Project Manhours Tab */}
                 {activeTab === "project_manhours" && (
-                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mt-16">
+                  <section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                     <div className="px-4 py-4 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                       <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex items-center gap-2">
@@ -7100,19 +7107,19 @@ export default function EditProjectForm() {
                                               prev.map((m) =>
                                                 m.id === empData.id
                                                   ? {
-                                                    ...m,
-                                                    employee_id:
-                                                      selectedEmp.id,
-                                                    employee_name:
-                                                      selectedEmp.name,
-                                                    salary_type: salaryType,
-                                                    rate_company:
-                                                      selectedEmp.rate || 0,
-                                                    rate_accent:
-                                                      m.rate_accent || "",
-                                                    monthly_hours:
-                                                      monthlyHoursData,
-                                                  }
+                                                      ...m,
+                                                      employee_id:
+                                                        selectedEmp.id,
+                                                      employee_name:
+                                                        selectedEmp.name,
+                                                      salary_type: salaryType,
+                                                      rate_company:
+                                                        selectedEmp.rate || 0,
+                                                      rate_accent:
+                                                        m.rate_accent || "",
+                                                      monthly_hours:
+                                                        monthlyHoursData,
+                                                    }
                                                   : m,
                                               ),
                                             );
@@ -7133,14 +7140,15 @@ export default function EditProjectForm() {
                                   </td>
                                   <td className="py-2 px-2 text-center bg-green-50/30">
                                     <span
-                                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${empData.salary_type === "hourly"
-                                        ? "bg-orange-100 text-orange-700"
-                                        : empData.salary_type === "daily"
-                                          ? "bg-green-100 text-green-700"
-                                          : empData.salary_type === "custom"
-                                            ? "bg-yellow-100 text-yellow-700"
-                                            : "bg-blue-100 text-blue-700"
-                                        }`}
+                                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
+                                        empData.salary_type === "hourly"
+                                          ? "bg-orange-100 text-orange-700"
+                                          : empData.salary_type === "daily"
+                                            ? "bg-green-100 text-green-700"
+                                            : empData.salary_type === "custom"
+                                              ? "bg-yellow-100 text-yellow-700"
+                                              : "bg-blue-100 text-blue-700"
+                                      }`}
                                     >
                                       {empData.salary_type || "monthly"}
                                     </span>
@@ -7154,9 +7162,9 @@ export default function EditProjectForm() {
                                           prev.map((m) =>
                                             m.id === empData.id
                                               ? {
-                                                ...m,
-                                                rate_company: e.target.value,
-                                              }
+                                                  ...m,
+                                                  rate_company: e.target.value,
+                                                }
                                               : m,
                                           ),
                                         )
@@ -7176,9 +7184,9 @@ export default function EditProjectForm() {
                                           prev.map((m) =>
                                             m.id === empData.id
                                               ? {
-                                                ...m,
-                                                rate_accent: e.target.value,
-                                              }
+                                                  ...m,
+                                                  rate_accent: e.target.value,
+                                                }
                                               : m,
                                           ),
                                         )
@@ -8811,10 +8819,11 @@ export default function EditProjectForm() {
                                 type="button"
                                 onClick={() => setSelectedScheduleLegend(l.key)}
                                 disabled={!canEditSchedule}
-                                className={`inline-flex items-center gap-2 px-2 py-1 rounded border text-xs transition-colors ${active
-                                  ? "border-[#7F2487] bg-purple-25"
-                                  : "border-gray-200 bg-white"
-                                  } ${canEditSchedule ? "hover:bg-gray-50" : "opacity-60 cursor-not-allowed"}`}
+                                className={`inline-flex items-center gap-2 px-2 py-1 rounded border text-xs transition-colors ${
+                                  active
+                                    ? "border-[#7F2487] bg-purple-25"
+                                    : "border-gray-200 bg-white"
+                                } ${canEditSchedule ? "hover:bg-gray-50" : "opacity-60 cursor-not-allowed"}`}
                                 title={l.label}
                               >
                                 <span
@@ -8830,12 +8839,13 @@ export default function EditProjectForm() {
                           type="button"
                           onClick={() => setScheduleLocked((prev) => !prev)}
                           disabled={!canEditProjectContent}
-                          className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors border ${canEditProjectContent
-                            ? scheduleEffectivelyLocked
-                              ? "bg-gray-900 text-white border-gray-900 hover:bg-gray-800"
-                              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                            : "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                            }`}
+                          className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors border ${
+                            canEditProjectContent
+                              ? scheduleEffectivelyLocked
+                                ? "bg-gray-900 text-white border-gray-900 hover:bg-gray-800"
+                                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                              : "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                          }`}
                           title={
                             canEditProjectContent
                               ? scheduleLocked
@@ -8860,10 +8870,11 @@ export default function EditProjectForm() {
                           type="button"
                           onClick={() => addSchedule()}
                           disabled={!canEditSchedule}
-                          className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${canEditSchedule
-                            ? "bg-[#7F2487] text-white hover:bg-[#6a1e73]"
-                            : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                            }`}
+                          className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors ${
+                            canEditSchedule
+                              ? "bg-[#7F2487] text-white hover:bg-[#6a1e73]"
+                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          }`}
                           title={
                             canEditSchedule
                               ? "Add a new schedule row"
@@ -8930,9 +8941,9 @@ export default function EditProjectForm() {
                                   (Array.isArray(s.weeks) && s.weeks.length > 0
                                     ? s.weeks
                                     : computeScheduleWeeksFromDates(
-                                      s.start_date,
-                                      s.end_date,
-                                    )
+                                        s.start_date,
+                                        s.end_date,
+                                      )
                                   )
                                     .map((n) => Number(n))
                                     .filter((n) => Number.isFinite(n)),
@@ -9030,14 +9041,15 @@ export default function EditProjectForm() {
                                               }
                                               disabled={!canEditSchedule}
                                               style={cellStyle}
-                                              className={`h-10 border-r border-gray-100 text-[12px] font-semibold flex items-center justify-center select-none ${isMarked
-                                                ? legend
-                                                  ? `${legend.cellClass} ${legend.textClass}`
-                                                  : s.color
-                                                    ? "text-gray-900"
-                                                    : "bg-gray-200 text-gray-800"
-                                                : "bg-white text-gray-500"
-                                                } ${canEditSchedule ? "hover:bg-gray-100" : "cursor-default"}`}
+                                              className={`h-10 border-r border-gray-100 text-[12px] font-semibold flex items-center justify-center select-none ${
+                                                isMarked
+                                                  ? legend
+                                                    ? `${legend.cellClass} ${legend.textClass}`
+                                                    : s.color
+                                                      ? "text-gray-900"
+                                                      : "bg-gray-200 text-gray-800"
+                                                  : "bg-white text-gray-500"
+                                              } ${canEditSchedule ? "hover:bg-gray-100" : "cursor-default"}`}
                                               title={w.rangeLabel}
                                             >
                                               {isMarked ? "x" : ""}
@@ -9320,10 +9332,11 @@ export default function EditProjectForm() {
                           <button
                             type="button"
                             onClick={toggleActivitySelector}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all shadow-sm ${showActivitySelector
-                              ? "bg-gray-100 text-gray-700 border border-gray-300"
-                              : "bg-blue-600 text-white hover:bg-blue-700"
-                              }`}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all shadow-sm ${
+                              showActivitySelector
+                                ? "bg-gray-100 text-gray-700 border border-gray-300"
+                                : "bg-blue-600 text-white hover:bg-blue-700"
+                            }`}
                           >
                             {showActivitySelector ? (
                               <>
@@ -9396,13 +9409,13 @@ export default function EditProjectForm() {
                                 filteredActs.every(
                                   (act) =>
                                     selectedActivitiesForAdd[
-                                    `${func.id}|${act.id}`
+                                      `${func.id}|${act.id}`
                                     ],
                                 );
                               const someSelected = filteredActs.some(
                                 (act) =>
                                   selectedActivitiesForAdd[
-                                  `${func.id}|${act.id}`
+                                    `${func.id}|${act.id}`
                                   ],
                               );
                               return (
@@ -9454,12 +9467,12 @@ export default function EditProjectForm() {
                                           projectActivities.some(
                                             (pa) =>
                                               String(pa.id) ===
-                                              String(activity.id) &&
+                                                String(activity.id) &&
                                               pa.type === "activity",
                                           );
                                         const isSelected =
                                           selectedActivitiesForAdd[
-                                          `${func.id}|${activity.id}`
+                                            `${func.id}|${activity.id}`
                                           ];
                                         return (
                                           <label
@@ -9720,63 +9733,63 @@ export default function EditProjectForm() {
                                                     );
                                                     const teamMember = !user
                                                       ? projectTeamMembers.find(
-                                                        (m) =>
-                                                          String(m.id) ===
-                                                          String(odUserId),
-                                                      )
+                                                          (m) =>
+                                                            String(m.id) ===
+                                                            String(odUserId),
+                                                        )
                                                       : null;
                                                     name = user
                                                       ? user.full_name ||
-                                                      user.employee_name ||
-                                                      user.username ||
-                                                      user.email ||
-                                                      "?"
+                                                        user.employee_name ||
+                                                        user.username ||
+                                                        user.email ||
+                                                        "?"
                                                       : teamMember
                                                         ? teamMember.name ||
-                                                        teamMember.full_name ||
-                                                        teamMember.email ||
-                                                        "?"
+                                                          teamMember.full_name ||
+                                                          teamMember.email ||
+                                                          "?"
                                                         : "?";
                                                   }
 
                                                   const description =
                                                     hasAssignment &&
-                                                      typeof assignment ===
+                                                    typeof assignment ===
                                                       "object"
                                                       ? assignment.description ||
-                                                      ""
+                                                        ""
                                                       : "";
                                                   const qtyAssigned =
                                                     hasAssignment &&
-                                                      typeof assignment ===
+                                                    typeof assignment ===
                                                       "object"
                                                       ? assignment.qty_assigned ||
-                                                      ""
+                                                        ""
                                                       : "";
                                                   const startDate =
                                                     hasAssignment &&
-                                                      typeof assignment ===
+                                                    typeof assignment ===
                                                       "object"
                                                       ? assignment.start_date ||
-                                                      ""
+                                                        ""
                                                       : "";
                                                   const dueDate =
                                                     hasAssignment &&
-                                                      typeof assignment ===
+                                                    typeof assignment ===
                                                       "object"
                                                       ? assignment.due_date ||
-                                                      ""
+                                                        ""
                                                       : "";
                                                   const status =
                                                     hasAssignment &&
-                                                      typeof assignment ===
+                                                    typeof assignment ===
                                                       "object"
                                                       ? assignment.status ||
-                                                      "Not Started"
+                                                        "Not Started"
                                                       : "Not Started";
                                                   const remarks =
                                                     hasAssignment &&
-                                                      typeof assignment ===
+                                                    typeof assignment ===
                                                       "object"
                                                       ? assignment.remarks || ""
                                                       : "";
@@ -9794,7 +9807,7 @@ export default function EditProjectForm() {
                                                   const isDuePast =
                                                     dueDate &&
                                                     new Date(dueDate) <
-                                                    new Date() &&
+                                                      new Date() &&
                                                     status !== "Completed";
                                                   const isFirstRow = uIdx === 0;
                                                   const isLastRow =
@@ -9813,7 +9826,7 @@ export default function EditProjectForm() {
                                                         >
                                                           <div className="flex flex-col gap-1">
                                                             {editingActivityId ===
-                                                              act.id ? (
+                                                            act.id ? (
                                                               <input
                                                                 type="text"
                                                                 value={
@@ -9837,9 +9850,9 @@ export default function EditProjectForm() {
                                                                 ) => {
                                                                   if (
                                                                     e.key ===
-                                                                    "Enter" ||
+                                                                      "Enter" ||
                                                                     e.key ===
-                                                                    "Escape"
+                                                                      "Escape"
                                                                   )
                                                                     setEditingActivityId(
                                                                       null,
@@ -9868,7 +9881,7 @@ export default function EditProjectForm() {
                                                           rowSpan={rowCount}
                                                         >
                                                           {editingActivityId ===
-                                                            act.id ? (
+                                                          act.id ? (
                                                             <textarea
                                                               value={
                                                                 act.activity_description ||
@@ -10124,29 +10137,29 @@ export default function EditProjectForm() {
                                                                       rect.bottom;
                                                                     const openUpward =
                                                                       spaceBelow <
-                                                                      dropdownHeight &&
+                                                                        dropdownHeight &&
                                                                       rect.top >
-                                                                      dropdownHeight;
+                                                                        dropdownHeight;
                                                                     return (
                                                                       <div
                                                                         className="fixed z-[99999] w-56 bg-white border border-gray-200 rounded-lg shadow-2xl"
                                                                         style={{
                                                                           ...(openUpward
                                                                             ? {
-                                                                              bottom:
-                                                                                window.innerHeight -
-                                                                                rect.top +
-                                                                                4,
-                                                                            }
+                                                                                bottom:
+                                                                                  window.innerHeight -
+                                                                                  rect.top +
+                                                                                  4,
+                                                                              }
                                                                             : {
-                                                                              top:
-                                                                                rect.bottom +
-                                                                                4,
-                                                                            }),
+                                                                                top:
+                                                                                  rect.bottom +
+                                                                                  4,
+                                                                              }),
                                                                           left: Math.max(
                                                                             8,
                                                                             rect.right -
-                                                                            224,
+                                                                              224,
                                                                           ),
                                                                         }}
                                                                         onClick={(
@@ -10224,18 +10237,18 @@ export default function EditProjectForm() {
                                                                           )
                                                                             .length ===
                                                                             0 && (
-                                                                              <div className="px-3 py-2 text-xs text-gray-400 text-center">
-                                                                                All
-                                                                                assigned
-                                                                              </div>
-                                                                            )}
+                                                                            <div className="px-3 py-2 text-xs text-gray-400 text-center">
+                                                                              All
+                                                                              assigned
+                                                                            </div>
+                                                                          )}
                                                                         </div>
                                                                       </div>
                                                                     );
                                                                   })()}
                                                               </div>
                                                               {editingActivityId ===
-                                                                act.id ? (
+                                                              act.id ? (
                                                                 <button
                                                                   type="button"
                                                                   onClick={() =>
@@ -10391,8 +10404,8 @@ export default function EditProjectForm() {
                               <p className="text-sm text-gray-900">
                                 {quotationData.quotation_date
                                   ? new Date(
-                                    quotationData.quotation_date,
-                                  ).toLocaleDateString("en-IN")
+                                      quotationData.quotation_date,
+                                    ).toLocaleDateString("en-IN")
                                   : "—"}
                               </p>
                             </div>
@@ -10795,173 +10808,173 @@ export default function EditProjectForm() {
                       {invoices.filter(
                         (inv) => inv.tab_type === "purchase_order",
                       ).length > 0 && (
-                          <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                            <table className="w-full text-xs border-collapse">
-                              <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                                <tr>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Sr. No.
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Company Name
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    City
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    PO No.
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    PO Date
-                                  </th>
-                                  <th className="px-3 py-2 text-right font-semibold text-gray-700">
-                                    PO Amount (₹)
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Project No.
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Remarks
-                                  </th>
-                                  <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                                    Action
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {invoices
-                                  .filter(
-                                    (inv) => inv.tab_type === "purchase_order",
-                                  )
-                                  .map((inv, idx) => (
-                                    <tr
-                                      key={inv.id || idx}
-                                      className="hover:bg-gray-50"
-                                    >
-                                      <td className="px-3 py-2 text-center text-gray-600 font-semibold">
-                                        {idx + 1}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.company_name || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.city || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700 font-medium">
-                                        {inv.invoice_number || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.invoice_date
-                                          ? new Date(
+                        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                          <table className="w-full text-xs border-collapse">
+                            <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Sr. No.
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Company Name
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  City
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  PO No.
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  PO Date
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-700">
+                                  PO Amount (₹)
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Project No.
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Remarks
+                                </th>
+                                <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                                  Action
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {invoices
+                                .filter(
+                                  (inv) => inv.tab_type === "purchase_order",
+                                )
+                                .map((inv, idx) => (
+                                  <tr
+                                    key={inv.id || idx}
+                                    className="hover:bg-gray-50"
+                                  >
+                                    <td className="px-3 py-2 text-center text-gray-600 font-semibold">
+                                      {idx + 1}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.company_name || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.city || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700 font-medium">
+                                      {inv.invoice_number || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.invoice_date
+                                        ? new Date(
                                             inv.invoice_date,
                                           ).toLocaleDateString("en-IN")
-                                          : "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-semibold text-gray-800">
-                                        ₹
-                                        {parseFloat(
-                                          inv.invoice_amount || 0,
-                                        ).toLocaleString("en-IN", {
-                                          minimumFractionDigits: 2,
-                                        })}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.project_number || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.remarks || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleEditInvoice(inv)}
-                                            disabled={!canEditPurchaseOrders}
-                                            className="text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50"
-                                            title="Edit PO"
-                                          >
-                                            <PencilIcon className="h-3.5 w-3.5" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleDeleteInvoice(inv.id || idx)
-                                            }
-                                            disabled={!canEditPurchaseOrders}
-                                            className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-red-50"
-                                            title="Delete PO"
-                                          >
-                                            <TrashIcon className="h-3.5 w-3.5" />
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
+                                        : "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                      ₹
+                                      {parseFloat(
+                                        inv.invoice_amount || 0,
+                                      ).toLocaleString("en-IN", {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.project_number || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.remarks || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditInvoice(inv)}
+                                          disabled={!canEditPurchaseOrders}
+                                          className="text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50"
+                                          title="Edit PO"
+                                        >
+                                          <PencilIcon className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleDeleteInvoice(inv.id || idx)
+                                          }
+                                          disabled={!canEditPurchaseOrders}
+                                          className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-red-50"
+                                          title="Delete PO"
+                                        >
+                                          <TrashIcon className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
 
                       {/* Empty State */}
                       {invoices.filter(
                         (inv) => inv.tab_type === "purchase_order",
                       ).length === 0 && (
-                          <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
-                            <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500 text-sm mb-2">
-                              No purchase orders added yet
-                            </p>
-                            <p className="text-gray-400 text-xs">
-                              Fill in the form above and click &ldquo;Add
-                              PO&rdquo; to create your first purchase order
-                            </p>
-                          </div>
-                        )}
+                        <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                          <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500 text-sm mb-2">
+                            No purchase orders added yet
+                          </p>
+                          <p className="text-gray-400 text-xs">
+                            Fill in the form above and click &ldquo;Add
+                            PO&rdquo; to create your first purchase order
+                          </p>
+                        </div>
+                      )}
 
                       {/* Summary Card */}
                       {invoices.filter(
                         (inv) => inv.tab_type === "purchase_order",
                       ).length > 0 && (
-                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-                            <div className="grid grid-cols-2 gap-4 text-center">
-                              <div>
-                                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
-                                  Total Purchase Orders
-                                </p>
-                                <p className="text-lg font-bold text-blue-700">
-                                  {
-                                    invoices.filter(
-                                      (inv) => inv.tab_type === "purchase_order",
-                                    ).length
-                                  }
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
-                                  Total PO Amount
-                                </p>
-                                <p className="text-lg font-bold text-purple-700">
-                                  ₹
-                                  {parseFloat(
-                                    invoices
-                                      .filter(
-                                        (inv) =>
-                                          inv.tab_type === "purchase_order",
-                                      )
-                                      .reduce(
-                                        (sum, inv) =>
-                                          sum +
-                                          (parseFloat(inv.invoice_amount) || 0),
-                                        0,
-                                      ),
-                                  ).toLocaleString("en-IN", {
-                                    minimumFractionDigits: 2,
-                                  })}
-                                </p>
-                              </div>
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                          <div className="grid grid-cols-2 gap-4 text-center">
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+                                Total Purchase Orders
+                              </p>
+                              <p className="text-lg font-bold text-blue-700">
+                                {
+                                  invoices.filter(
+                                    (inv) => inv.tab_type === "purchase_order",
+                                  ).length
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+                                Total PO Amount
+                              </p>
+                              <p className="text-lg font-bold text-purple-700">
+                                ₹
+                                {parseFloat(
+                                  invoices
+                                    .filter(
+                                      (inv) =>
+                                        inv.tab_type === "purchase_order",
+                                    )
+                                    .reduce(
+                                      (sum, inv) =>
+                                        sum +
+                                        (parseFloat(inv.invoice_amount) || 0),
+                                      0,
+                                    ),
+                                ).toLocaleString("en-IN", {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </p>
                             </div>
                           </div>
-                        )}
+                        </div>
+                      )}
                     </div>
                   </section>
                 )}
@@ -11316,148 +11329,148 @@ export default function EditProjectForm() {
                       {invoices.filter(
                         (inv) => inv.tab_type !== "purchase_order",
                       ).length > 0 && (
-                          <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                            <table className="w-full text-xs border-collapse">
-                              <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
-                                <tr>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Sr. No.
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Company Name
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    City
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Invoice No.
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Invoice Date
-                                  </th>
-                                  <th className="px-3 py-2 text-right font-semibold text-gray-700">
-                                    Invoice Amount
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Project No
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Expenses Head
-                                  </th>
-                                  <th className="px-3 py-2 text-right font-semibold text-gray-700">
-                                    Payment
-                                  </th>
-                                  <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                                    Overdue Days
-                                  </th>
-                                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
-                                    Remarks
-                                  </th>
-                                  <th className="px-3 py-2 text-center font-semibold text-gray-700">
-                                    Action
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {invoices
-                                  .filter(
-                                    (inv) => inv.tab_type !== "purchase_order",
-                                  )
-                                  .map((inv, idx) => (
-                                    <tr
-                                      key={inv.id || idx}
-                                      className="hover:bg-gray-50"
-                                    >
-                                      <td className="px-3 py-2 text-center text-gray-600 font-semibold">
-                                        {idx + 1}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.company_name || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.city || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700 font-medium">
-                                        {inv.invoice_number || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.invoice_date
-                                          ? new Date(
+                        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                          <table className="w-full text-xs border-collapse">
+                            <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Sr. No.
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Company Name
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  City
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Invoice No.
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Invoice Date
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-700">
+                                  Invoice Amount
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Project No
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Expenses Head
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold text-gray-700">
+                                  Payment
+                                </th>
+                                <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                                  Overdue Days
+                                </th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                                  Remarks
+                                </th>
+                                <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                                  Action
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {invoices
+                                .filter(
+                                  (inv) => inv.tab_type !== "purchase_order",
+                                )
+                                .map((inv, idx) => (
+                                  <tr
+                                    key={inv.id || idx}
+                                    className="hover:bg-gray-50"
+                                  >
+                                    <td className="px-3 py-2 text-center text-gray-600 font-semibold">
+                                      {idx + 1}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.company_name || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.city || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700 font-medium">
+                                      {inv.invoice_number || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.invoice_date
+                                        ? new Date(
                                             inv.invoice_date,
                                           ).toLocaleDateString("en-IN")
-                                          : "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-semibold text-gray-800">
-                                        ₹
-                                        {parseFloat(
-                                          inv.invoice_amount || 0,
-                                        ).toLocaleString("en-IN", {
-                                          minimumFractionDigits: 2,
-                                        })}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.project_number || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.expenses_head || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-semibold text-gray-800">
-                                        {inv.payment
-                                          ? `₹${parseFloat(inv.payment || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
-                                          : "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-center text-gray-700">
-                                        {inv.payment_overdue_days || "0"}
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-700">
-                                        {inv.remarks || "-"}
-                                      </td>
-                                      <td className="px-3 py-2 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleEditInvoice(inv)}
-                                            disabled={!canEditInvoices}
-                                            className="text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50"
-                                            title="Edit invoice"
-                                          >
-                                            <PencilIcon className="h-3.5 w-3.5" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleDeleteInvoice(inv.id || idx)
-                                            }
-                                            disabled={!canEditInvoices}
-                                            className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-red-50"
-                                            title="Delete invoice"
-                                          >
-                                            <TrashIcon className="h-3.5 w-3.5" />
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
+                                        : "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                      ₹
+                                      {parseFloat(
+                                        inv.invoice_amount || 0,
+                                      ).toLocaleString("en-IN", {
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.project_number || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.expenses_head || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                                      {inv.payment
+                                        ? `₹${parseFloat(inv.payment || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
+                                        : "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-center text-gray-700">
+                                      {inv.payment_overdue_days || "0"}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {inv.remarks || "-"}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditInvoice(inv)}
+                                          disabled={!canEditInvoices}
+                                          className="text-blue-600 hover:text-blue-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-blue-50"
+                                          title="Edit invoice"
+                                        >
+                                          <PencilIcon className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleDeleteInvoice(inv.id || idx)
+                                          }
+                                          disabled={!canEditInvoices}
+                                          className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed p-1 rounded hover:bg-red-50"
+                                          title="Delete invoice"
+                                        >
+                                          <TrashIcon className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
 
                       {/* Empty State */}
                       {invoices.filter(
                         (inv) => inv.tab_type !== "purchase_order",
                       ).length === 0 && (
-                          <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
-                            <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500 text-sm mb-2">
-                              No invoices added yet
-                            </p>
-                            <p className="text-gray-400 text-xs">
-                              Fill in the form above and click &ldquo;Add
-                              Invoice&rdquo; to create your first invoice
-                            </p>
-                          </div>
-                        )}
+                        <div className="text-center py-12 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                          <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500 text-sm mb-2">
+                            No invoices added yet
+                          </p>
+                          <p className="text-gray-400 text-xs">
+                            Fill in the form above and click &ldquo;Add
+                            Invoice&rdquo; to create your first invoice
+                          </p>
+                        </div>
+                      )}
 
                       {/* Summary Card */}
                       {(() => {
@@ -11501,15 +11514,15 @@ export default function EditProjectForm() {
                                   <p className="text-lg font-bold text-orange-700">
                                     {invoiceOnly.length > 0
                                       ? (
-                                        invoiceOnly.reduce(
-                                          (sum, inv) =>
-                                            sum +
-                                            (parseFloat(
-                                              inv.payment_overdue_days,
-                                            ) || 0),
-                                          0,
-                                        ) / invoiceOnly.length
-                                      ).toFixed(0)
+                                          invoiceOnly.reduce(
+                                            (sum, inv) =>
+                                              sum +
+                                              (parseFloat(
+                                                inv.payment_overdue_days,
+                                              ) || 0),
+                                            0,
+                                          ) / invoiceOnly.length
+                                        ).toFixed(0)
                                       : "0"}
                                   </p>
                                 </div>
@@ -11891,15 +11904,15 @@ export default function EditProjectForm() {
 
                                             const qtyAssigned =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.qty_assigned ||
-                                                ""
+                                                  ""
                                                 : "";
                                             const dailyEntries =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.daily_entries ||
-                                                []
+                                                  []
                                                 : [];
                                             const totalQtyDone =
                                               dailyEntries.reduce(
@@ -11917,29 +11930,29 @@ export default function EditProjectForm() {
                                               );
                                             const plannedHrs =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.planned_hours ||
-                                                ""
+                                                  ""
                                                 : "";
                                             const myDescription =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.description || ""
                                                 : "";
                                             const dueDate =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.due_date || ""
                                                 : "";
                                             const status =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.status ||
-                                                "Not Started"
+                                                  "Not Started"
                                                 : "Not Started";
                                             const remarks =
                                               myAssignment &&
-                                                typeof myAssignment === "object"
+                                              typeof myAssignment === "object"
                                                 ? myAssignment.remarks || ""
                                                 : "";
                                             const balancedQty =
@@ -12058,16 +12071,17 @@ export default function EditProjectForm() {
                                                           e.target.value,
                                                         )
                                                       }
-                                                      className={`w-full px-2 py-1 text-xs font-medium rounded-md border focus:ring-2 focus:outline-none transition-shadow ${status === "Completed"
-                                                        ? "text-emerald-700 bg-emerald-50 border-emerald-200 focus:ring-emerald-200"
-                                                        : status ===
-                                                          "In Progress"
-                                                          ? "text-blue-700 bg-blue-50 border-blue-200 focus:ring-blue-200"
+                                                      className={`w-full px-2 py-1 text-xs font-medium rounded-md border focus:ring-2 focus:outline-none transition-shadow ${
+                                                        status === "Completed"
+                                                          ? "text-emerald-700 bg-emerald-50 border-emerald-200 focus:ring-emerald-200"
                                                           : status ===
-                                                            "On Hold"
-                                                            ? "text-amber-700 bg-amber-50 border-amber-200 focus:ring-amber-200"
-                                                            : "text-slate-600 bg-slate-50 border-slate-200 focus:ring-slate-200"
-                                                        }`}
+                                                              "In Progress"
+                                                            ? "text-blue-700 bg-blue-50 border-blue-200 focus:ring-blue-200"
+                                                            : status ===
+                                                                "On Hold"
+                                                              ? "text-amber-700 bg-amber-50 border-amber-200 focus:ring-amber-200"
+                                                              : "text-slate-600 bg-slate-50 border-slate-200 focus:ring-slate-200"
+                                                      }`}
                                                     >
                                                       <option value="Not Started">
                                                         Not Started
@@ -12183,16 +12197,16 @@ export default function EditProjectForm() {
                                                           <span className="inline-flex items-center px-2 py-0.5 text-[11px] text-slate-600 bg-emerald-50 rounded font-medium">
                                                             {entry.date
                                                               ? new Date(
-                                                                entry.date +
-                                                                "T00:00:00",
-                                                              ).toLocaleDateString(
-                                                                "en-GB",
-                                                                {
-                                                                  day: "2-digit",
-                                                                  month:
-                                                                    "short",
-                                                                },
-                                                              )
+                                                                  entry.date +
+                                                                    "T00:00:00",
+                                                                ).toLocaleDateString(
+                                                                  "en-GB",
+                                                                  {
+                                                                    day: "2-digit",
+                                                                    month:
+                                                                      "short",
+                                                                  },
+                                                                )
                                                               : "–"}
                                                           </span>
                                                         </td>
@@ -12272,14 +12286,15 @@ export default function EditProjectForm() {
                                                         {/* Qty - Balance */}
                                                         <td className="py-2.5 px-2 text-center bg-purple-100/20">
                                                           <span
-                                                            className={`inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-semibold rounded ${remainingQtyAfterThisEntry >
+                                                            className={`inline-flex items-center justify-center w-12 px-2 py-0.5 text-[11px] font-semibold rounded ${
+                                                              remainingQtyAfterThisEntry >
                                                               0
-                                                              ? "text-orange-600 bg-orange-50"
-                                                              : remainingQtyAfterThisEntry ===
-                                                                0
-                                                                ? "text-emerald-600 bg-emerald-50"
-                                                                : "text-red-600 bg-red-50"
-                                                              }`}
+                                                                ? "text-orange-600 bg-orange-50"
+                                                                : remainingQtyAfterThisEntry ===
+                                                                    0
+                                                                  ? "text-emerald-600 bg-emerald-50"
+                                                                  : "text-red-600 bg-red-50"
+                                                            }`}
                                                           >
                                                             {qtyAssigned
                                                               ? remainingQtyAfterThisEntry
@@ -12660,60 +12675,60 @@ export default function EditProjectForm() {
                       {(form.scope_of_work ||
                         form.description ||
                         form.additional_scope) && (
-                          <div className="bg-gradient-to-br from-purple-50/50 to-blue-50/30 rounded-xl p-5 border border-purple-200">
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className="inline-flex items-center justify-center w-6 h-6 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
-                                📋
-                              </span>
-                              <label className="text-sm font-bold text-gray-800">
-                                Complete Scope Overview
-                              </label>
-                            </div>
-                            <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm space-y-4">
-                              {(form.scope_of_work || form.description) && (
-                                <div>
-                                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">
-                                    Original Scope
-                                  </p>
-                                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                    {form.scope_of_work || form.description}
-                                  </p>
-                                </div>
-                              )}
-                              {form.additional_scope && (
-                                <div
-                                  className={
-                                    form.scope_of_work || form.description
-                                      ? "pt-3 border-t border-gray-200"
-                                      : ""
-                                  }
-                                >
-                                  <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">
-                                    Additional Scope Items
-                                  </p>
-                                  <ul className="space-y-1.5">
-                                    {form.additional_scope
-                                      .split("\n")
-                                      .filter((item) => item.trim())
-                                      .map((item, idx) => (
-                                        <li
-                                          key={idx}
-                                          className="flex items-start gap-2 text-sm text-gray-700"
-                                        >
-                                          <span className="text-amber-500 mt-0.5">
-                                            •
-                                          </span>
-                                          <span>
-                                            {item.replace(/^[•\-\*]\s*/, "")}
-                                          </span>
-                                        </li>
-                                      ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
+                        <div className="bg-gradient-to-br from-purple-50/50 to-blue-50/30 rounded-xl p-5 border border-purple-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="inline-flex items-center justify-center w-6 h-6 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                              📋
+                            </span>
+                            <label className="text-sm font-bold text-gray-800">
+                              Complete Scope Overview
+                            </label>
                           </div>
-                        )}
+                          <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm space-y-4">
+                            {(form.scope_of_work || form.description) && (
+                              <div>
+                                <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">
+                                  Original Scope
+                                </p>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                  {form.scope_of_work || form.description}
+                                </p>
+                              </div>
+                            )}
+                            {form.additional_scope && (
+                              <div
+                                className={
+                                  form.scope_of_work || form.description
+                                    ? "pt-3 border-t border-gray-200"
+                                    : ""
+                                }
+                              >
+                                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">
+                                  Additional Scope Items
+                                </p>
+                                <ul className="space-y-1.5">
+                                  {form.additional_scope
+                                    .split("\n")
+                                    .filter((item) => item.trim())
+                                    .map((item, idx) => (
+                                      <li
+                                        key={idx}
+                                        className="flex items-start gap-2 text-sm text-gray-700"
+                                      >
+                                        <span className="text-amber-500 mt-0.5">
+                                          •
+                                        </span>
+                                        <span>
+                                          {item.replace(/^[•\-\*]\s*/, "")}
+                                        </span>
+                                      </li>
+                                    ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Quick Tips */}
                       <div className="bg-blue-50/50 rounded-lg p-4 border border-blue-100">
@@ -12977,10 +12992,10 @@ export default function EditProjectForm() {
                                       subActivitySearch[activityKey] || "";
                                     const filteredSubActivities = query
                                       ? activitySubActivities.filter((sa) =>
-                                        sa.name
-                                          .toLowerCase()
-                                          .includes(query.toLowerCase()),
-                                      )
+                                          sa.name
+                                            .toLowerCase()
+                                            .includes(query.toLowerCase()),
+                                        )
                                       : activitySubActivities;
                                     const selectedSubActivities =
                                       projectActivities.filter(
@@ -13036,12 +13051,12 @@ export default function EditProjectForm() {
                                                   setProjectActivities((prev) =>
                                                     prev.map((pa) =>
                                                       pa.id === activity.id &&
-                                                        pa.type === "activity"
+                                                      pa.type === "activity"
                                                         ? {
-                                                          ...pa,
-                                                          description:
-                                                            e.target.value,
-                                                        }
+                                                            ...pa,
+                                                            description:
+                                                              e.target.value,
+                                                          }
                                                         : pa,
                                                     ),
                                                   );
@@ -13073,7 +13088,7 @@ export default function EditProjectForm() {
                                                   className="w-full text-left px-3 py-1.5 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:ring-2 focus:ring-[#7F2487]"
                                                 >
                                                   {selectedSubActivities.length >
-                                                    0
+                                                  0
                                                     ? `${selectedSubActivities.length} selected`
                                                     : "Select sub-activities"}
                                                 </button>
@@ -13114,7 +13129,7 @@ export default function EditProjectForm() {
                                                     </div>
                                                     <div className="max-h-48 overflow-auto pr-1">
                                                       {filteredSubActivities.length ===
-                                                        0 ? (
+                                                      0 ? (
                                                         <div className="text-xs text-gray-500 p-2">
                                                           No matching
                                                           sub-activities
@@ -13126,9 +13141,9 @@ export default function EditProjectForm() {
                                                               projectActivities.some(
                                                                 (pa) =>
                                                                   pa.id ===
-                                                                  subActivity.id &&
+                                                                    subActivity.id &&
                                                                   pa.type ===
-                                                                  "subactivity",
+                                                                    "subactivity",
                                                               );
                                                             return (
                                                               <label
@@ -13163,49 +13178,49 @@ export default function EditProjectForm() {
                                                     </div>
                                                     {selectedSubActivities.length >
                                                       0 && (
-                                                        <div className="mt-2 flex items-center justify-between gap-2">
-                                                          <div className="flex flex-wrap gap-1">
-                                                            {selectedSubActivities
-                                                              .slice(0, 3)
-                                                              .map((sa) => (
-                                                                <span
-                                                                  key={sa.id}
-                                                                  className="text-[10px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded"
-                                                                >
-                                                                  {sa.name}
-                                                                </span>
-                                                              ))}
-                                                            {selectedSubActivities.length >
-                                                              3 && (
-                                                                <span className="text-[10px] text-gray-500">
-                                                                  +
-                                                                  {selectedSubActivities.length -
-                                                                    3}{" "}
-                                                                  more
-                                                                </span>
-                                                              )}
-                                                          </div>
-                                                          <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                              setProjectActivities(
-                                                                projectActivities.filter(
-                                                                  (pa) =>
-                                                                    !(
-                                                                      pa.type ===
-                                                                      "subactivity" &&
-                                                                      pa.activity_id ===
-                                                                      activity.id
-                                                                    ),
-                                                                ),
-                                                              )
-                                                            }
-                                                            className="text-[10px] text-red-700 hover:underline"
-                                                          >
-                                                            Clear
-                                                          </button>
+                                                      <div className="mt-2 flex items-center justify-between gap-2">
+                                                        <div className="flex flex-wrap gap-1">
+                                                          {selectedSubActivities
+                                                            .slice(0, 3)
+                                                            .map((sa) => (
+                                                              <span
+                                                                key={sa.id}
+                                                                className="text-[10px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded"
+                                                              >
+                                                                {sa.name}
+                                                              </span>
+                                                            ))}
+                                                          {selectedSubActivities.length >
+                                                            3 && (
+                                                            <span className="text-[10px] text-gray-500">
+                                                              +
+                                                              {selectedSubActivities.length -
+                                                                3}{" "}
+                                                              more
+                                                            </span>
+                                                          )}
                                                         </div>
-                                                      )}
+                                                        <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                            setProjectActivities(
+                                                              projectActivities.filter(
+                                                                (pa) =>
+                                                                  !(
+                                                                    pa.type ===
+                                                                      "subactivity" &&
+                                                                    pa.activity_id ===
+                                                                      activity.id
+                                                                  ),
+                                                              ),
+                                                            )
+                                                          }
+                                                          className="text-[10px] text-red-700 hover:underline"
+                                                        >
+                                                          Clear
+                                                        </button>
+                                                      </div>
+                                                    )}
                                                   </div>
                                                 )}
                                               </div>
@@ -13643,7 +13658,7 @@ export default function EditProjectForm() {
                                               pa.type === "activity" &&
                                               (!member.discipline ||
                                                 String(pa.function_id) ===
-                                                String(member.discipline)),
+                                                  String(member.discipline)),
                                           )
                                           .map((pa) => (
                                             <option
@@ -13675,7 +13690,7 @@ export default function EditProjectForm() {
                                             (pa) =>
                                               pa.type === "subactivity" &&
                                               String(pa.activity_id) ===
-                                              String(member.activity_id),
+                                                String(member.activity_id),
                                           )
                                           .map((pa) => (
                                             <option
@@ -14819,13 +14834,13 @@ function ProjectFollowupsForm({
                   <td className="px-3 py-2.5 text-gray-900">
                     {item.follow_up_date
                       ? new Date(item.follow_up_date).toLocaleDateString(
-                        "en-IN",
-                        {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        },
-                      )
+                          "en-IN",
+                          {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          },
+                        )
                       : "—"}
                   </td>
                   <td className="px-3 py-2.5 text-gray-700">
