@@ -40,6 +40,7 @@ describe('PurchaseOrderTab', () => {
                 setEditingInvoiceId={vi.fn()}
                 setInvoiceData={vi.fn()}
                 form={{}}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 invoices={mockInvoices as any}
                 handleEditInvoice={vi.fn()}
                 handleDeleteInvoice={vi.fn()}
@@ -94,6 +95,7 @@ describe('PurchaseOrderTab', () => {
                 setEditingInvoiceId={vi.fn()}
                 setInvoiceData={vi.fn()}
                 form={{}}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 invoices={mockInvoices as any}
                 handleEditInvoice={vi.fn()}
                 handleDeleteInvoice={handleDeleteInvoice}
