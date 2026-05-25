@@ -3,13 +3,17 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import ProjectActivityTab from '@/app/projects/[id]/edit/tabs/ProjectActivityTab'
 
+vi.mock('@/utils/http', () => ({
+    fetchJSON: vi.fn().mockResolvedValue({ success: true, data: [] })
+}))
+
 describe('ProjectActivityTab', () => {
     const mockProjectActivities = [
         {
             id: 1,
             type: 'activity',
             activity_name: 'Piping Design',
-            activity_description: 'Design tasks',
+            sub_activity_name: 'Piping Layout Design',
             discipline: 'Piping',
             assigned_users: []
         }
@@ -51,7 +55,7 @@ describe('ProjectActivityTab', () => {
         )
 
         expect(screen.getByText('Piping Design')).toBeInTheDocument()
-        expect(screen.getByText('Design tasks')).toBeInTheDocument()
+        expect(screen.getByText('Piping Layout Design')).toBeInTheDocument()
     })
 
     it('triggers removeScopeActivity when delete icon is clicked', async () => {
