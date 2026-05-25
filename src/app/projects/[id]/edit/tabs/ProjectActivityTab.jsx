@@ -400,12 +400,6 @@ export default function ProjectActivityTab({
                     >
                       Team Member
                     </th>
-                    {/* <th
-                      className="text-left py-2.5 px-3 font-semibold text-gray-600 bg-gray-50/50 text-[11px] uppercase tracking-wider"
-                      style={{ width: "10%" }}
-                    >
-                      Description
-                    </th> */}
                     <th
                       className="text-center py-2.5 px-2 font-semibold text-purple-600 bg-purple-50/40 text-[11px] uppercase tracking-wider"
                       style={{ width: "6%" }}
@@ -484,7 +478,7 @@ export default function ProjectActivityTab({
                           >
                             <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-y border-blue-200">
                               <td
-                                colSpan={10}
+                                colSpan={9}
                                 className="py-2 px-3"
                               >
                                 <div className="flex items-center justify-between">
@@ -809,25 +803,7 @@ export default function ProjectActivityTab({
                                             </span>
                                           )}
                                         </td>
-                                        {/* Description */}
-                                        <td className="py-2 px-3 bg-gray-50/10 text-gray-700">
-                                          {hasAssignment ? (
-                                            <input
-                                              type="text"
-                                              value={description}
-                                              onChange={(e) =>
-                                                updateUserManhours(
-                                                  act.id,
-                                                  odUserId,
-                                                  "description",
-                                                  e.target.value,
-                                                )
-                                              }
-                                              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:border-blue-400 focus:outline-none bg-white text-gray-700"
-                                              placeholder="Description..."
-                                            />
-                                          ) : null}
-                                        </td>
+
                                         {/* Unit Qty */}
                                         <td className="py-2 px-2 text-center bg-purple-50/10">
                                           {hasAssignment ? (
