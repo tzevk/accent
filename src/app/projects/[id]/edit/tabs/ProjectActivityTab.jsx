@@ -1,4 +1,5 @@
-import { Fragment } from "react";
+import { Fragment, useState, useEffect } from "react";
+import { fetchJSON } from "@/utils/http";
 import {
   ClipboardDocumentListIcon,
   ClockIcon,
@@ -39,6 +40,66 @@ export default function ProjectActivityTab({
   isUserAssigned,
   removeScopeActivity,
 }) {
+  const [masterDisciplines, setMasterDisciplines] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchActivities = async () => {
+      try {
+        const res = await fetchJSON("/api/activity-master");
+        if (res.success && res.data && active) {
+          setMasterDisciplines(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch activity master:", err);
+      }
+    };
+    fetchActivities();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleDoneEditing = async (act) => {
+    setEditingActivityId(null);
+
+    const matchingActivity = masterDisciplines
+      ?.flatMap((d) => d.activities || [])
+      ?.find(
+        (a) =>
+          String(a.id) === String(act.id) ||
+          a.activity_name?.toLowerCase() ===
+          (act.activity_name || act.name)?.toLowerCase()
+      );
+    const subActivities = matchingActivity?.subActivities || [];
+
+    const exists = subActivities.some(
+      (sub) =>
+        sub.name?.trim().toLowerCase() ===
+        act.sub_activity_name?.trim().toLowerCase()
+    );
+
+    if (act.sub_activity_name?.trim() && !exists && matchingActivity?.id) {
+      try {
+        const res = await fetchJSON("/api/activity-master/subactivities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            activity_id: matchingActivity.id,
+            name: act.sub_activity_name.trim(),
+          }),
+        });
+        if (res.success) {
+          const refreshRes = await fetchJSON("/api/activity-master");
+          if (refreshRes.success && refreshRes.data) {
+            setMasterDisciplines(refreshRes.data);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to add sub-activity to master database:", err);
+      }
+    }
+  };
   const disciplineColors = {
     0: "border-l-indigo-400",
     1: "border-l-teal-400",
@@ -128,11 +189,10 @@ export default function ProjectActivityTab({
             <button
               type="button"
               onClick={toggleActivitySelector}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all shadow-sm ${
-                showActivitySelector
-                  ? "bg-gray-100 text-gray-700 border border-gray-300"
-                  : "bg-blue-600 text-white hover:bg-blue-700"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all shadow-sm ${showActivitySelector
+                ? "bg-gray-100 text-gray-700 border border-gray-300"
+                : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
             >
               {showActivitySelector ? (
                 <>
@@ -205,13 +265,13 @@ export default function ProjectActivityTab({
                   filteredActs.every(
                     (act) =>
                       selectedActivitiesForAdd[
-                        `${func.id}|${act.id}`
+                      `${func.id}|${act.id}`
                       ],
                   );
                 const someSelected = filteredActs.some(
                   (act) =>
                     selectedActivitiesForAdd[
-                      `${func.id}|${act.id}`
+                    `${func.id}|${act.id}`
                     ],
                 );
                 return (
@@ -263,12 +323,12 @@ export default function ProjectActivityTab({
                             projectActivities.some(
                               (pa) =>
                                 String(pa.id) ===
-                                  String(activity.id) &&
+                                String(activity.id) &&
                                 pa.type === "activity",
                             );
                           const isSelected =
                             selectedActivitiesForAdd[
-                              `${func.id}|${activity.id}`
+                            `${func.id}|${activity.id}`
                             ];
                           return (
                             <label
@@ -332,7 +392,7 @@ export default function ProjectActivityTab({
                       className="text-left py-2.5 px-3 font-semibold text-slate-600 bg-slate-50/50 text-[11px] uppercase tracking-wider"
                       style={{ width: "22%" }}
                     >
-                      Activity Description
+                      Sub-Activity Name
                     </th>
                     <th
                       className="text-left py-2.5 px-3 font-semibold text-emerald-600 bg-emerald-50/50 text-[11px] uppercase tracking-wider"
@@ -340,12 +400,12 @@ export default function ProjectActivityTab({
                     >
                       Team Member
                     </th>
-                    <th
+                    {/* <th
                       className="text-left py-2.5 px-3 font-semibold text-gray-600 bg-gray-50/50 text-[11px] uppercase tracking-wider"
                       style={{ width: "10%" }}
                     >
                       Description
-                    </th>
+                    </th> */}
                     <th
                       className="text-center py-2.5 px-2 font-semibold text-purple-600 bg-purple-50/40 text-[11px] uppercase tracking-wider"
                       style={{ width: "6%" }}
@@ -466,6 +526,15 @@ export default function ProjectActivityTab({
                             {activitiesInDiscipline.map((act) => {
                               const actIdx = globalActIdx;
                               globalActIdx += 1;
+                              const matchingActivity = masterDisciplines
+                                ?.flatMap((d) => d.activities || [])
+                                ?.find(
+                                  (a) =>
+                                    String(a.id) === String(act.id) ||
+                                    a.activity_name?.toLowerCase() ===
+                                    (act.activity_name || act.name)?.toLowerCase(),
+                                );
+                              const subActivities = matchingActivity?.subActivities || [];
                               const assignedUsers =
                                 act.assigned_users || [];
                               const rowCount = Math.max(
@@ -510,63 +579,63 @@ export default function ProjectActivityTab({
                                       );
                                       const teamMember = !user
                                         ? projectTeamMembers.find(
-                                            (m) =>
-                                              String(m.id) ===
-                                              String(odUserId),
-                                          )
+                                          (m) =>
+                                            String(m.id) ===
+                                            String(odUserId),
+                                        )
                                         : null;
                                       name = user
                                         ? user.full_name ||
-                                          user.employee_name ||
-                                          user.username ||
-                                          user.email ||
-                                          "?"
+                                        user.employee_name ||
+                                        user.username ||
+                                        user.email ||
+                                        "?"
                                         : teamMember
                                           ? teamMember.name ||
-                                            teamMember.full_name ||
-                                            teamMember.email ||
-                                            "?"
+                                          teamMember.full_name ||
+                                          teamMember.email ||
+                                          "?"
                                           : "?";
                                     }
 
                                     const description =
                                       hasAssignment &&
-                                      typeof assignment ===
+                                        typeof assignment ===
                                         "object"
                                         ? assignment.description ||
-                                          ""
+                                        ""
                                         : "";
                                     const qtyAssigned =
                                       hasAssignment &&
-                                      typeof assignment ===
+                                        typeof assignment ===
                                         "object"
                                         ? assignment.qty_assigned ||
-                                          ""
+                                        ""
                                         : "";
                                     const startDate =
                                       hasAssignment &&
-                                      typeof assignment ===
+                                        typeof assignment ===
                                         "object"
                                         ? assignment.start_date ||
-                                          ""
+                                        ""
                                         : "";
                                     const dueDate =
                                       hasAssignment &&
-                                      typeof assignment ===
+                                        typeof assignment ===
                                         "object"
                                         ? assignment.due_date ||
-                                          ""
+                                        ""
                                         : "";
                                     const status =
                                       hasAssignment &&
-                                      typeof assignment ===
+                                        typeof assignment ===
                                         "object"
                                         ? assignment.status ||
-                                          "Not Started"
+                                        "Not Started"
                                         : "Not Started";
                                     const remarks =
                                       hasAssignment &&
-                                      typeof assignment ===
+                                        typeof assignment ===
                                         "object"
                                         ? assignment.remarks || ""
                                         : "";
@@ -584,7 +653,7 @@ export default function ProjectActivityTab({
                                     const isDuePast =
                                       dueDate &&
                                       new Date(dueDate) <
-                                        new Date() &&
+                                      new Date() &&
                                       status !== "Completed";
                                     const isFirstRow = uIdx === 0;
                                     const isLastRow =
@@ -603,7 +672,7 @@ export default function ProjectActivityTab({
                                           >
                                             <div className="flex flex-col gap-1">
                                               {editingActivityId ===
-                                              act.id ? (
+                                                act.id ? (
                                                 <input
                                                   type="text"
                                                   value={
@@ -627,13 +696,11 @@ export default function ProjectActivityTab({
                                                   ) => {
                                                     if (
                                                       e.key ===
-                                                        "Enter" ||
+                                                      "Enter" ||
                                                       e.key ===
-                                                        "Escape"
+                                                      "Escape"
                                                     )
-                                                      setEditingActivityId(
-                                                        null,
-                                                      );
+                                                      handleDoneEditing(act);
                                                   }}
                                                 />
                                               ) : (
@@ -651,37 +718,57 @@ export default function ProjectActivityTab({
                                             </div>
                                           </td>
                                         )}
-                                        {/* Activity Description */}
+                                        {/* Sub-Activity Name */}
                                         {isFirstRow && (
                                           <td
                                             className={`py-2 px-3 align-top border-r border-gray-100 ${editingActivityId === act.id ? "bg-blue-50/40" : "bg-slate-50/20"}`}
                                             rowSpan={rowCount}
                                           >
                                             {editingActivityId ===
-                                            act.id ? (
-                                              <textarea
-                                                value={
-                                                  act.activity_description ||
-                                                  ""
-                                                }
-                                                onChange={(e) =>
-                                                  updateScopeActivity(
-                                                    act.id,
-                                                    "activity_description",
-                                                    e.target
-                                                      .value,
-                                                  )
-                                                }
-                                                className="w-full px-1.5 py-1 text-xs border border-blue-400 bg-white rounded focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-700 resize-none"
-                                                placeholder="Activity description..."
-                                                rows={Math.max(
-                                                  2,
-                                                  rowCount,
-                                                )}
-                                              />
+                                              act.id ? (
+                                              <>
+                                                <input
+                                                  type="text"
+                                                  list={`subactivities-${act.id}`}
+                                                  value={
+                                                    act.sub_activity_name ||
+                                                    ""
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateScopeActivity(
+                                                      act.id,
+                                                      "sub_activity_name",
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  onKeyDown={(e) => {
+                                                    if (
+                                                      e.key ===
+                                                      "Enter" ||
+                                                      e.key ===
+                                                      "Escape"
+                                                    )
+                                                      handleDoneEditing(act);
+                                                  }}
+                                                  className="w-full px-1.5 py-1 text-xs border border-blue-400 bg-white rounded focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-800"
+                                                  placeholder="Select or enter sub-activity..."
+                                                />
+                                                <datalist
+                                                  id={`subactivities-${act.id}`}
+                                                >
+                                                  {subActivities.map(
+                                                    (sub) => (
+                                                      <option
+                                                        key={sub.id}
+                                                        value={sub.name}
+                                                      />
+                                                    ),
+                                                  )}
+                                                </datalist>
+                                              </>
                                             ) : (
-                                              <span className="px-1.5 py-1 text-xs text-gray-700 whitespace-pre-wrap">
-                                                {act.activity_description ||
+                                              <span className="px-1.5 py-1 text-xs text-gray-700">
+                                                {act.sub_activity_name ||
                                                   "—"}
                                               </span>
                                             )}
@@ -909,29 +996,29 @@ export default function ProjectActivityTab({
                                                         rect.bottom;
                                                       const openUpward =
                                                         spaceBelow <
-                                                          dropdownHeight &&
+                                                        dropdownHeight &&
                                                         rect.top >
-                                                          dropdownHeight;
+                                                        dropdownHeight;
                                                       return (
                                                         <div
                                                           className="fixed z-[99999] w-56 bg-white border border-gray-200 rounded-lg shadow-2xl"
                                                           style={{
                                                             ...(openUpward
                                                               ? {
-                                                                  bottom:
-                                                                    window.innerHeight -
-                                                                    rect.top +
-                                                                    4,
-                                                                }
+                                                                bottom:
+                                                                  window.innerHeight -
+                                                                  rect.top +
+                                                                  4,
+                                                              }
                                                               : {
-                                                                  top:
-                                                                    rect.bottom +
-                                                                    4,
-                                                                }),
+                                                                top:
+                                                                  rect.bottom +
+                                                                  4,
+                                                              }),
                                                             left: Math.max(
                                                               8,
                                                               rect.right -
-                                                                224,
+                                                              224,
                                                             ),
                                                           }}
                                                           onClick={(
@@ -1009,24 +1096,22 @@ export default function ProjectActivityTab({
                                                             )
                                                               .length ===
                                                               0 && (
-                                                              <div className="px-3 py-2 text-xs text-gray-400 text-center">
-                                                                All
-                                                                assigned
-                                                              </div>
-                                                            )}
+                                                                <div className="px-3 py-2 text-xs text-gray-400 text-center">
+                                                                  All
+                                                                  assigned
+                                                                </div>
+                                                              )}
                                                           </div>
                                                         </div>
                                                       );
                                                     })()}
                                                 </div>
                                                 {editingActivityId ===
-                                                act.id ? (
+                                                  act.id ? (
                                                   <button
                                                     type="button"
                                                     onClick={() =>
-                                                      setEditingActivityId(
-                                                        null,
-                                                      )
+                                                      handleDoneEditing(act)
                                                     }
                                                     className="p-1 rounded bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
                                                     title="Done editing"
