@@ -48,4 +48,5 @@ next-env.d.ts
 /Explanations/
 notes.md
 repomix-output.xml
+test-connection.js
 
