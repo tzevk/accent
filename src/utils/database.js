@@ -22,14 +22,6 @@ export async function dbConnect() {
   const connectionLimit = Number(process.env.DB_CONNECTION_LIMIT || 5);
   const maxRetries = Number(process.env.DB_CONNECT_RETRIES || 3);
 
-  console.log("DB DEBUG", {
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    passwordLength: process.env.DB_PASSWORD?.length,
-    password: process.env.DB_PASSWORD, // TEMPORARY ONLY
-  });
-
   // Initialize pool once
   if (!pool) {
     let attempt = 0;
