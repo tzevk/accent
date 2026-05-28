@@ -299,10 +299,21 @@ export default function Leads() {
       (company) => company.id.toString() === selectedCompanyId
     );
 
+    if (!selectedCompany) {
+      setFormData((prev) => ({ ...prev, company_id: '', company_name: '' }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       company_id: selectedCompanyId,
-      company_name: selectedCompany ? selectedCompany.company_name : '',
+      company_name: selectedCompany.company_name,
+      contact_name: selectedCompany.contact_person || prev.contact_name,
+      designation: selectedCompany.designation || prev.designation,
+      city: selectedCompany.city || prev.city,
+      phone:
+        selectedCompany.phone || selectedCompany.mobile_number || prev.phone,
+      inquiry_email: selectedCompany.email || prev.inquiry_email,
     }));
   };
 

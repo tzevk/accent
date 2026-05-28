@@ -1,10 +1,14 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowLeftIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 
 const STATUS_OPTIONS = [
   'NEW',
@@ -59,6 +63,72 @@ function NewLeadForm() {
   const router = useRouter();
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
+
+  const [companySearch, setCompanySearch] = useState('');
+  const [companyResults, setCompanyResults] = useState([]);
+  const [companySearching, setCompanySearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const dropdownRef = useRef(null);
+  const searchDebounce = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!companySearch.trim()) {
+      setCompanyResults([]);
+      setShowDropdown(false);
+      return;
+    }
+    clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(async () => {
+      setCompanySearching(true);
+      try {
+        const res = await fetch(
+          `/api/companies?search=${encodeURIComponent(companySearch)}&limit=10&page=1`
+        );
+        const data = await res.json();
+        if (data.success) {
+          setCompanyResults(data.data || []);
+          setShowDropdown(true);
+        }
+      } catch {
+        // silent
+      } finally {
+        setCompanySearching(false);
+      }
+    }, 300);
+  }, [companySearch]);
+
+  const handleCompanySelect = (company) => {
+    setSelectedCompany(company);
+    setCompanySearch(company.company_name);
+    setShowDropdown(false);
+    setFormData((prev) => ({
+      ...prev,
+      company_name: company.company_name,
+      contact_name: prev.contact_name || company.contact_person || '',
+      contact_email: prev.contact_email || company.email || '',
+      phone: prev.phone || company.phone || company.mobile_number || '',
+      designation: prev.designation || company.designation || '',
+      city: prev.city || company.city || '',
+    }));
+  };
+
+  const clearCompany = () => {
+    setSelectedCompany(null);
+    setCompanySearch('');
+    setCompanyResults([]);
+    setFormData((prev) => ({ ...prev, company_name: '' }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -141,18 +211,76 @@ function NewLeadForm() {
                   </div>
 
                   {/* Company Name */}
-                  <div>
+                  <div className="relative" ref={dropdownRef}>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Company Name *
                     </label>
-                    <input
-                      type="text"
-                      name="company_name"
-                      value={formData.company_name}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={companySearch}
+                        onChange={(e) => {
+                          setCompanySearch(e.target.value);
+                          if (selectedCompany) setSelectedCompany(null);
+                          setFormData((prev) => ({
+                            ...prev,
+                            company_name: e.target.value,
+                          }));
+                        }}
+                        onFocus={() =>
+                          companyResults.length > 0 && setShowDropdown(true)
+                        }
+                        required
+                        className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        placeholder="Search company master..."
+                      />
+                      {companySearch && (
+                        <button
+                          type="button"
+                          onClick={clearCompany}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {selectedCompany && (
+                      <p className="mt-1 text-xs text-purple-600 font-medium">
+                        ✓ Filled from company master (
+                        {selectedCompany.company_id})
+                      </p>
+                    )}
+                    {showDropdown && (
+                      <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                        {companySearching ? (
+                          <li className="px-4 py-3 text-sm text-gray-500">
+                            Searching...
+                          </li>
+                        ) : companyResults.length === 0 ? (
+                          <li className="px-4 py-3 text-sm text-gray-500">
+                            No companies found
+                          </li>
+                        ) : (
+                          companyResults.map((c) => (
+                            <li
+                              key={c.id}
+                              onMouseDown={() => handleCompanySelect(c)}
+                              className="px-4 py-2.5 cursor-pointer hover:bg-purple-50 text-sm"
+                            >
+                              <div className="font-medium text-gray-900">
+                                {c.company_name}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5 flex gap-2">
+                                <span>{c.company_id}</span>
+                                {c.city && <span>· {c.city}</span>}
+                                {c.industry && <span>· {c.industry}</span>}
+                              </div>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    )}
                   </div>
 
                   {/* Contact Name */}
