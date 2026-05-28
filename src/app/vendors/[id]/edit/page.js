@@ -4,10 +4,7 @@ import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
-import { 
-  ArrowLeftIcon,
-  CheckIcon
-} from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 export default function EditVendor({ params }) {
   const [vendor, setVendor] = useState(null);
@@ -15,7 +12,7 @@ export default function EditVendor({ params }) {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
   const router = useRouter();
-  
+
   const [formData, setFormData] = useState({
     vendor_id: '',
     vendor_name: '',
@@ -51,15 +48,15 @@ export default function EditVendor({ params }) {
     remarks: '',
     contract_attachments: '',
     certificate_attachments: '',
-    profile_attachments: ''
+    profile_attachments: '',
   });
 
   useEffect(() => {
     const fetchVendor = async () => {
       try {
         const vendorId = await params;
-  const result = await fetchJSON(`/api/vendors/${vendorId.id}`);
-        
+        const result = await fetchJSON(`/api/vendors/${vendorId.id}`);
+
         if (result.success) {
           const vendorData = result.data;
           setVendor(vendorData);
@@ -98,7 +95,7 @@ export default function EditVendor({ params }) {
             remarks: vendorData.remarks || '',
             contract_attachments: vendorData.contract_attachments || '',
             certificate_attachments: vendorData.certificate_attachments || '',
-            profile_attachments: vendorData.profile_attachments || ''
+            profile_attachments: vendorData.profile_attachments || '',
           });
         } else {
           console.error('Error fetching vendor:', result.error);
@@ -119,9 +116,9 @@ export default function EditVendor({ params }) {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -137,7 +134,7 @@ export default function EditVendor({ params }) {
         },
         body: JSON.stringify(formData),
       });
-      
+
       if (result.success) {
         alert('Vendor updated successfully!');
         router.push('/vendors');
@@ -153,7 +150,11 @@ export default function EditVendor({ params }) {
   };
 
   const handleCancel = () => {
-    if (window.confirm('Are you sure you want to cancel? Unsaved changes will be lost.')) {
+    if (
+      window.confirm(
+        'Are you sure you want to cancel? Unsaved changes will be lost.'
+      )
+    ) {
       router.push('/vendors');
     }
   };
@@ -164,7 +165,7 @@ export default function EditVendor({ params }) {
     { id: 'registration', name: 'Registration & Compliance' },
     { id: 'financial', name: 'Financial Information' },
     { id: 'performance', name: 'Performance & History' },
-    { id: 'attachments', name: 'Attachments' }
+    { id: 'attachments', name: 'Attachments' },
   ];
 
   if (loading) {
@@ -187,8 +188,12 @@ export default function EditVendor({ params }) {
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold text-gray-900">Vendor not found</h2>
-            <p className="mt-2 text-gray-600">The vendor you&apos;re trying to edit doesn&apos;t exist.</p>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Vendor not found
+            </h2>
+            <p className="mt-2 text-gray-600">
+              The vendor you&apos;re trying to edit doesn&apos;t exist.
+            </p>
             <button
               onClick={() => router.push('/vendors')}
               className="mt-4 bg-accent-primary text-white px-4 py-2 rounded-md hover:bg-accent-primary/90"
@@ -216,7 +221,9 @@ export default function EditVendor({ params }) {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Edit Vendor</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Edit Vendor
+                </h1>
                 <p className="text-gray-600">{vendor.vendor_name}</p>
               </div>
             </div>
@@ -255,7 +262,9 @@ export default function EditVendor({ params }) {
               {/* Basic Information Tab */}
               {activeTab === 'basic' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Basic Information
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -269,7 +278,9 @@ export default function EditVendor({ params }) {
                         placeholder="Auto-generated if empty"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                       />
-                      <p className="text-xs text-gray-500 mt-0.5">Format: XXX-MM-YYYY (auto-generated)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Format: XXX-MM-YYYY (auto-generated)
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -299,7 +310,9 @@ export default function EditVendor({ params }) {
                         <option value="Subcontractor">Subcontractor</option>
                         <option value="Consultant">Consultant</option>
                         <option value="OEM">OEM</option>
-                        <option value="Service Provider">Service Provider</option>
+                        <option value="Service Provider">
+                          Service Provider
+                        </option>
                         <option value="Manufacturer">Manufacturer</option>
                         <option value="Other">Other</option>
                       </select>
@@ -346,7 +359,9 @@ export default function EditVendor({ params }) {
               {/* Contact Information Tab */}
               {activeTab === 'contact' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Contact Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Contact Information
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -476,7 +491,9 @@ export default function EditVendor({ params }) {
               {/* Registration & Compliance Tab */}
               {activeTab === 'registration' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Registration & Compliance</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Registration & Compliance
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -547,7 +564,9 @@ export default function EditVendor({ params }) {
               {/* Financial Information Tab */}
               {activeTab === 'financial' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Financial Information
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -636,7 +655,9 @@ export default function EditVendor({ params }) {
               {/* Performance & History Tab */}
               {activeTab === 'performance' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Performance & History</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Performance & History
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -734,7 +755,9 @@ export default function EditVendor({ params }) {
               {/* Attachments Tab */}
               {activeTab === 'attachments' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Attachments</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Attachments
+                  </h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">

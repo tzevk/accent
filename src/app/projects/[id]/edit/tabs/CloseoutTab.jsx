@@ -1,17 +1,15 @@
 const DOCUMENTATION_STATUS_OPTIONS = [
-  "Not Started",
-  "Drafted",
-  "Reviewed",
-  "Finalized",
+  'Not Started',
+  'Drafted',
+  'Reviewed',
+  'Finalized',
 ];
 
 export default function CloseoutTab({ form, handleChange }) {
   return (
     <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-sm font-semibold text-black">
-          Project Closeout
-        </h2>
+        <h2 className="text-sm font-semibold text-black">Project Closeout</h2>
       </div>
       <div className="px-6 py-5 space-y-4">
         <div>

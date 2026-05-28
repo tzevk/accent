@@ -11,29 +11,35 @@ export async function GET(request, { params }) {
   try {
     const { id } = await params;
     const requestedUserId = parseInt(id);
-    
+
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     // Users can view their own attendance
     const isOwnData = requestedUserId === currentUser.id;
     if (!isOwnData && !currentUser.is_super_admin) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Forbidden' 
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden',
+        },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
-    
+
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-    
+
     // Try to get attendance data from attendance table if it exists
     let attendanceData = {
       inTime: null,
@@ -41,7 +47,10 @@ export async function GET(request, { params }) {
       idleTime: 0,
       loginTime: null,
       logoutTime: null,
-      currentMonth: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+      currentMonth: now.toLocaleString('default', {
+        month: 'long',
+        year: 'numeric',
+      }),
       daysInMonth: daysInMonth,
       daysPresent: 0,
       weeklyOff: 0,
@@ -50,19 +59,22 @@ export async function GET(request, { params }) {
       leaves: {
         total: 21, // Default annual leave
         used: 0,
-        balance: 21
-      }
+        balance: 21,
+      },
     };
 
     try {
       // Check if attendance table exists and get today's record
-      const [todayAttendance] = await db.execute(`
+      const [todayAttendance] = await db.execute(
+        `
         SELECT in_time, out_time 
         FROM attendance 
         WHERE user_id = ? AND DATE(date) = CURDATE()
         LIMIT 1
-      `, [requestedUserId]);
-      
+      `,
+        [requestedUserId]
+      );
+
       if (todayAttendance.length > 0) {
         attendanceData.inTime = todayAttendance[0].in_time;
         attendanceData.outTime = todayAttendance[0].out_time;
@@ -82,7 +94,8 @@ export async function GET(request, { params }) {
       }
 
       // Get monthly attendance summary
-      const [monthlyAttendance] = await db.execute(`
+      const [monthlyAttendance] = await db.execute(
+        `
         SELECT 
           COUNT(DISTINCT DATE(date)) as days_present,
           COUNT(DISTINCT CASE WHEN status = 'weekly_off' THEN DATE(date) END) as weekly_off,
@@ -91,7 +104,9 @@ export async function GET(request, { params }) {
         WHERE user_id = ? 
         AND MONTH(date) = ? 
         AND YEAR(date) = ?
-      `, [requestedUserId, currentMonth, currentYear]);
+      `,
+        [requestedUserId, currentMonth, currentYear]
+      );
 
       if (monthlyAttendance.length > 0) {
         attendanceData.daysPresent = monthlyAttendance[0].days_present || 0;
@@ -102,7 +117,8 @@ export async function GET(request, { params }) {
       // Calculate overtime hours for the month
       // Overtime = total hours worked beyond 8h per day, summed across all days
       try {
-        const [overtimeRows] = await db.execute(`
+        const [overtimeRows] = await db.execute(
+          `
           SELECT 
             COALESCE(SUM(
               GREATEST(
@@ -116,10 +132,14 @@ export async function GET(request, { params }) {
           AND YEAR(date) = ?
           AND in_time IS NOT NULL 
           AND out_time IS NOT NULL
-        `, [requestedUserId, currentMonth, currentYear]);
+        `,
+          [requestedUserId, currentMonth, currentYear]
+        );
 
         if (overtimeRows.length > 0) {
-          attendanceData.overtimeHours = Math.round((parseFloat(overtimeRows[0].overtime_hours) || 0) * 10) / 10;
+          attendanceData.overtimeHours =
+            Math.round((parseFloat(overtimeRows[0].overtime_hours) || 0) * 10) /
+            10;
         }
       } catch (otErr) {
         console.log('Overtime calculation skipped:', otErr.message);
@@ -127,21 +147,26 @@ export async function GET(request, { params }) {
     } catch {
       // Attendance table might not exist, use activity logs to estimate
       console.log('Attendance table not found, using activity logs');
-      
+
       try {
         // Check if user_activity_logs table exists
-        const [tables] = await db.execute(`SHOW TABLES LIKE 'user_activity_logs'`);
-        
+        const [tables] = await db.execute(
+          `SHOW TABLES LIKE 'user_activity_logs'`
+        );
+
         if (tables.length > 0) {
           // Count distinct days with activity as proxy for presence
-          const [activityDays] = await db.execute(`
+          const [activityDays] = await db.execute(
+            `
             SELECT COUNT(DISTINCT DATE(created_at)) as days_active
             FROM user_activity_logs 
             WHERE user_id = ? 
             AND MONTH(created_at) = ? 
             AND YEAR(created_at) = ?
-          `, [requestedUserId, currentMonth, currentYear]);
-          
+          `,
+            [requestedUserId, currentMonth, currentYear]
+          );
+
           if (activityDays.length > 0) {
             attendanceData.daysPresent = activityDays[0].days_active || 0;
           }
@@ -197,22 +222,28 @@ export async function GET(request, { params }) {
     // Try to get leave data (still using same db connection)
     try {
       // First check if employee_leaves table exists
-      const [leaveTable] = await db.execute(`SHOW TABLES LIKE 'employee_leaves'`);
-      
+      const [leaveTable] = await db.execute(
+        `SHOW TABLES LIKE 'employee_leaves'`
+      );
+
       if (leaveTable.length > 0) {
-        const [leaveData] = await db.execute(`
+        const [leaveData] = await db.execute(
+          `
           SELECT 
             COALESCE(SUM(total_leaves), 24) as total_leaves,
             COALESCE(SUM(used_leaves), 0) as used_leaves
           FROM employee_leaves 
           WHERE employee_id = (SELECT employee_id FROM users WHERE id = ?)
           AND year = ?
-        `, [requestedUserId, currentYear]);
+        `,
+          [requestedUserId, currentYear]
+        );
 
         if (leaveData.length > 0 && leaveData[0].total_leaves) {
           attendanceData.leaves.total = leaveData[0].total_leaves;
           attendanceData.leaves.used = leaveData[0].used_leaves;
-          attendanceData.leaves.balance = leaveData[0].total_leaves - leaveData[0].used_leaves;
+          attendanceData.leaves.balance =
+            leaveData[0].total_leaves - leaveData[0].used_leaves;
         }
       }
     } catch (leaveError) {
@@ -220,21 +251,27 @@ export async function GET(request, { params }) {
       console.log('Leave table not found, using defaults:', leaveError.message);
     }
 
-    const response = NextResponse.json({ 
-      success: true, 
-      data: attendanceData 
+    const response = NextResponse.json({
+      success: true,
+      data: attendanceData,
     });
-    
+
     // Cache for 30 seconds - attendance data updates infrequently
-    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
-    
+    response.headers.set(
+      'Cache-Control',
+      'private, max-age=30, stale-while-revalidate=60'
+    );
+
     return response;
   } catch (error) {
     console.error('Error fetching attendance:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch attendance data' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch attendance data',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

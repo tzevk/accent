@@ -1,25 +1,25 @@
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import Sidebar from "@/components/Sidebar";
-import AuthGate from "@/components/AuthGate";
-import ActivityTracker from "@/components/ActivityTracker";
-import AutoRefresh from "@/components/AutoRefresh";
-import { SessionProvider } from "@/context/SessionContext";
-import { SpellCheckProvider } from "@/hooks/useSpellCheck";
+import { Geist, Geist_Mono } from 'next/font/google';
+import './globals.css';
+import Sidebar from '@/components/Sidebar';
+import AuthGate from '@/components/AuthGate';
+import ActivityTracker from '@/components/ActivityTracker';
+import AutoRefresh from '@/components/AutoRefresh';
+import { SessionProvider } from '@/context/SessionContext';
+import { SpellCheckProvider } from '@/hooks/useSpellCheck';
 
 const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
 });
 
 export const metadata = {
-  title: "Accent - Project Management",
-  description: "Manage projects, leads, and teams efficiently",
+  title: 'Accent - Project Management',
+  description: 'Manage projects, leads, and teams efficiently',
 };
 
 export default function RootLayout({ children }) {

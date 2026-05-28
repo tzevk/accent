@@ -14,7 +14,7 @@ export async function POST(request) {
     }
 
     db = await dbConnect();
-    
+
     // Query to fetch user with username and password
     const [rows] = await db.execute(
       'SELECT username, password_hash FROM users WHERE username = ? AND password_hash = ?',
@@ -32,7 +32,6 @@ export async function POST(request) {
         { status: 401 }
       );
     }
-
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

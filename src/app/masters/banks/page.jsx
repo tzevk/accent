@@ -4,7 +4,7 @@ import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
+import {
   PlusIcon,
   EyeIcon,
   PencilIcon,
@@ -15,7 +15,7 @@ import {
   ArrowRightIcon,
   BuildingLibraryIcon,
   CheckIcon,
-  XMarkIcon
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 export default function BankMaster() {
@@ -26,9 +26,9 @@ export default function BankMaster() {
   const [activeTab, setActiveTab] = useState('list');
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  
+
   const searchDebounceRef = useRef(null);
-  
+
   const [formData, setFormData] = useState({
     BankCode: '',
     BankName: '',
@@ -36,22 +36,24 @@ export default function BankMaster() {
     SWIFT_Code: '',
     LEI_Code: '',
     HeadOfficeAddress: '',
-    IsActive: true
+    IsActive: true,
   });
 
   const fetchBanks = async (searchValue) => {
     try {
       setLoading(true);
-      const search = typeof searchValue !== 'undefined' ? searchValue : debouncedSearchTerm;
+      const search =
+        typeof searchValue !== 'undefined' ? searchValue : debouncedSearchTerm;
       const response = await fetch(`/api/masters/banks`);
       const result = await response.json();
-      
+
       if (result.success) {
         let filtered = result.data || [];
         if (search) {
-          filtered = filtered.filter(b => 
-            b.BankName.toLowerCase().includes(search.toLowerCase()) || 
-            b.BankCode.toLowerCase().includes(search.toLowerCase())
+          filtered = filtered.filter(
+            (b) =>
+              b.BankName.toLowerCase().includes(search.toLowerCase()) ||
+              b.BankCode.toLowerCase().includes(search.toLowerCase())
           );
         }
         setBanks(filtered);
@@ -83,9 +85,9 @@ export default function BankMaster() {
 
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({ 
-      ...prev, 
-      [name]: type === 'checkbox' ? checked : value 
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
     }));
   };
 
@@ -94,10 +96,10 @@ export default function BankMaster() {
     setSubmitting(true);
 
     try {
-      const url = editingId 
-        ? `/api/masters/banks?id=${editingId}` 
+      const url = editingId
+        ? `/api/masters/banks?id=${editingId}`
         : '/api/masters/banks';
-      
+
       const response = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,9 +107,11 @@ export default function BankMaster() {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
-        alert(editingId ? 'Bank updated successfully!' : 'Bank added successfully!');
+        alert(
+          editingId ? 'Bank updated successfully!' : 'Bank added successfully!'
+        );
         resetForm();
         fetchBanks();
         setActiveTab('list');
@@ -130,7 +134,7 @@ export default function BankMaster() {
       SWIFT_Code: bank.SWIFT_Code || '',
       LEI_Code: bank.LEI_Code || '',
       HeadOfficeAddress: bank.HeadOfficeAddress || '',
-      IsActive: bank.IsActive !== false
+      IsActive: bank.IsActive !== false,
     });
     setEditingId(bank.BankID);
     setActiveTab('add');
@@ -140,9 +144,11 @@ export default function BankMaster() {
     if (!confirm(`Are you sure you want to delete "${bankName}"?`)) return;
 
     try {
-      const response = await fetch(`/api/masters/banks?id=${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/masters/banks?id=${id}`, {
+        method: 'DELETE',
+      });
       const result = await response.json();
-      
+
       if (result.success) {
         alert('Bank deleted successfully!');
         fetchBanks();
@@ -157,7 +163,13 @@ export default function BankMaster() {
 
   const resetForm = () => {
     setFormData({
-      BankCode: '', BankName: '', IFSC_Prefix: '', SWIFT_Code: '', LEI_Code: '', HeadOfficeAddress: '', IsActive: true
+      BankCode: '',
+      BankName: '',
+      IFSC_Prefix: '',
+      SWIFT_Code: '',
+      LEI_Code: '',
+      HeadOfficeAddress: '',
+      IsActive: true,
     });
     setEditingId(null);
   };
@@ -179,14 +191,14 @@ export default function BankMaster() {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center">
             <BanknotesIcon className="h-8 w-8 text-green-500" />
             <div className="ml-4">
               <p className="text-sm font-medium text-black">Active Banks</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {banks.filter(b => b.IsActive !== false).length}
+                {banks.filter((b) => b.IsActive !== false).length}
               </p>
             </div>
           </div>
@@ -206,7 +218,8 @@ export default function BankMaster() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                    if (searchDebounceRef.current)
+                      clearTimeout(searchDebounceRef.current);
                     setDebouncedSearchTerm(searchTerm.trim());
                     fetchBanks(searchTerm.trim());
                   }
@@ -228,7 +241,9 @@ export default function BankMaster() {
         ) : banks.length === 0 ? (
           <div className="p-8 text-center">
             <BuildingLibraryIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No banks found</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No banks found
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
               Get started by adding a new bank.
             </p>
@@ -238,16 +253,25 @@ export default function BankMaster() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Sr</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Bank Details</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Routing Details</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-black uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Sr
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Bank Details
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Routing Details
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-black uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {banks.map((bank, index) => (
-                  
                   <tr key={bank.BankID} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {index + 1}
@@ -258,20 +282,36 @@ export default function BankMaster() {
                           {bank.BankName?.substring(0, 2).toUpperCase() || 'BK'}
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{bank.BankName}</div>
-                          <div className="text-sm text-gray-500">Code: {bank.BankCode}</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {bank.BankName}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Code: {bank.BankCode}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">IFSC Prefix: {bank.IFSC_Prefix || '-'}</div>
-                      <div className="text-sm text-gray-500">SWIFT: {bank.SWIFT_Code || '-'}</div>
-                      {bank.LEI_Code && <div className="text-xs text-gray-400">LEI: {bank.LEI_Code}</div>}
+                      <div className="text-sm text-gray-900">
+                        IFSC Prefix: {bank.IFSC_Prefix || '-'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        SWIFT: {bank.SWIFT_Code || '-'}
+                      </div>
+                      {bank.LEI_Code && (
+                        <div className="text-xs text-gray-400">
+                          LEI: {bank.LEI_Code}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        bank.IsActive !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          bank.IsActive !== false
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
                         {bank.IsActive !== false ? 'Active' : 'Inactive'}
                       </span>
                     </td>
@@ -285,7 +325,9 @@ export default function BankMaster() {
                           <PencilIcon className="h-5 w-5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(bank.BankID, bank.BankName)}
+                          onClick={() =>
+                            handleDelete(bank.BankID, bank.BankName)
+                          }
                           className="p-1 text-gray-400 hover:text-red-600 rounded-full transition-colors"
                           title="Delete Bank"
                         >
@@ -307,12 +349,17 @@ export default function BankMaster() {
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{editingId ? 'Edit Bank' : 'Add New Bank'}</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {editingId ? 'Edit Bank' : 'Add New Bank'}
+          </h3>
           <p className="text-sm text-gray-600 mt-1">Enter bank details</p>
         </div>
         <div className="flex space-x-3">
           <button
-            onClick={() => { setActiveTab('list'); resetForm(); }}
+            onClick={() => {
+              setActiveTab('list');
+              resetForm();
+            }}
             className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex items-center space-x-2"
           >
             <XMarkIcon className="h-4 w-4" />
@@ -334,7 +381,9 @@ export default function BankMaster() {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bank Code <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bank Code <span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 name="BankCode"
@@ -347,7 +396,9 @@ export default function BankMaster() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bank Name <span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 name="BankName"
@@ -359,7 +410,9 @@ export default function BankMaster() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Prefix</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                IFSC Prefix
+              </label>
               <input
                 type="text"
                 name="IFSC_Prefix"
@@ -369,10 +422,14 @@ export default function BankMaster() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent uppercase"
                 placeholder="e.g., HDFC"
               />
-              <p className="mt-1 text-xs text-gray-500">First 4 characters of the IFSC code</p>
+              <p className="mt-1 text-xs text-gray-500">
+                First 4 characters of the IFSC code
+              </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">SWIFT Code</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                SWIFT Code
+              </label>
               <input
                 type="text"
                 name="SWIFT_Code"
@@ -384,7 +441,9 @@ export default function BankMaster() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">LEI Code</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                LEI Code
+              </label>
               <input
                 type="text"
                 name="LEI_Code"
@@ -393,12 +452,16 @@ export default function BankMaster() {
                 maxLength="20"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#64126D] focus:border-transparent uppercase"
               />
-              <p className="mt-1 text-xs text-gray-500">Legal Entity Identifier for regulatory compliance</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Legal Entity Identifier for regulatory compliance
+              </p>
             </div>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Head Office Address</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Head Office Address
+            </label>
             <textarea
               name="HeadOfficeAddress"
               value={formData.HeadOfficeAddress}
@@ -418,7 +481,10 @@ export default function BankMaster() {
               onChange={handleFormChange}
               className="h-4 w-4 text-[#64126D] focus:ring-[#64126D] border-gray-300 rounded"
             />
-            <label htmlFor="IsActive" className="ml-2 block text-sm text-gray-900">
+            <label
+              htmlFor="IsActive"
+              className="ml-2 block text-sm text-gray-900"
+            >
               Active Bank
             </label>
           </div>
@@ -442,7 +508,10 @@ export default function BankMaster() {
             {activeTab === 'list' && (
               <div className="mt-4 sm:mt-0 flex gap-3">
                 <button
-                  onClick={() => { setActiveTab('add'); resetForm(); }}
+                  onClick={() => {
+                    setActiveTab('add');
+                    resetForm();
+                  }}
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-[#64126D] to-[#86288F] hover:from-[#86288F] hover:to-[#64126D] shadow-sm transition-all"
                 >
                   <PlusIcon className="h-5 w-5 mr-2 -ml-1" />

@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function AssumptionTab({
   newAssumptionDescRef,
@@ -26,9 +26,7 @@ export default function AssumptionTab({
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          <h2 className="text-sm font-bold text-gray-900">
-            Assumptions
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Assumptions</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Record project assumptions and rationale
@@ -62,9 +60,7 @@ export default function AssumptionTab({
             </thead>
             <tbody className="divide-y divide-gray-100">
               <tr className="bg-purple-25/30">
-                <td className="py-2 px-2 text-center text-gray-400">
-                  +
-                </td>
+                <td className="py-2 px-2 text-center text-gray-400">+</td>
                 <td className="py-2 px-2">
                   <input
                     ref={newAssumptionDescRef}
@@ -132,7 +128,7 @@ export default function AssumptionTab({
                         newAssumption.assumption_description.trim()
                       )
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newAssumption.assumption_description && newAssumption.assumption_description.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newAssumption.assumption_description && newAssumption.assumption_description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add assumption"
                   >
                     Add
@@ -144,18 +140,16 @@ export default function AssumptionTab({
                   key={a.id}
                   className="hover:bg-gray-50 transition-colors align-top"
                 >
-                  <td className="py-2 px-2 text-center">
-                    {index + 1}
-                  </td>
+                  <td className="py-2 px-2 text-center">{index + 1}</td>
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={a.assumption_description || ""}
+                      value={a.assumption_description || ''}
                       onChange={(e) =>
                         updateAssumptionRow(
                           a.id,
-                          "assumption_description",
-                          e.target.value,
+                          'assumption_description',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -164,12 +158,22 @@ export default function AssumptionTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={a.reason || ""}
+                      value={a.reason || ''}
+                      onChange={(e) =>
+                        updateAssumptionRow(a.id, 'reason', e.target.value)
+                      }
+                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                    />
+                  </td>
+                  <td className="py-2 px-2">
+                    <input
+                      type="text"
+                      value={a.assumption_taken_by || ''}
                       onChange={(e) =>
                         updateAssumptionRow(
                           a.id,
-                          "reason",
-                          e.target.value,
+                          'assumption_taken_by',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -178,27 +182,9 @@ export default function AssumptionTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={a.assumption_taken_by || ""}
+                      value={a.remark || ''}
                       onChange={(e) =>
-                        updateAssumptionRow(
-                          a.id,
-                          "assumption_taken_by",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                    />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input
-                      type="text"
-                      value={a.remark || ""}
-                      onChange={(e) =>
-                        updateAssumptionRow(
-                          a.id,
-                          "remark",
-                          e.target.value,
-                        )
+                        updateAssumptionRow(a.id, 'remark', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     />

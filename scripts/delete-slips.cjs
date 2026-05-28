@@ -8,7 +8,7 @@ require('dotenv').config({ path: '.env.local' });
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    connectionLimit: 2
+    connectionLimit: 2,
   });
   const db = await pool.getConnection();
 

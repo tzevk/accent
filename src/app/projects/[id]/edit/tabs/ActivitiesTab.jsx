@@ -1,5 +1,5 @@
-import { Fragment } from "react";
-import { CheckCircleIcon } from "@heroicons/react/24/outline";
+import { Fragment } from 'react';
+import { CheckCircleIcon } from '@heroicons/react/24/outline';
 
 export default function ActivitiesTab({
   projectActivities = [],
@@ -18,7 +18,8 @@ export default function ActivitiesTab({
           Project Activities from Master
         </h2>
         <p className="text-xs text-gray-500">
-          Select activities and choose sub-activities using the dropdown text box
+          Select activities and choose sub-activities using the dropdown text
+          box
         </p>
       </div>
       <div className="px-6 py-5">
@@ -45,25 +46,25 @@ export default function ActivitiesTab({
                 <tr className="bg-gray-100 border-b-2 border-gray-300">
                   <th
                     className="text-left py-3 px-4 font-semibold"
-                    style={{ width: "20%" }}
+                    style={{ width: '20%' }}
                   >
                     Discipline
                   </th>
                   <th
                     className="text-left py-3 px-4 font-semibold"
-                    style={{ width: "25%" }}
+                    style={{ width: '25%' }}
                   >
                     Activity
                   </th>
                   <th
                     className="text-left py-3 px-4 font-semibold"
-                    style={{ width: "30%" }}
+                    style={{ width: '30%' }}
                   >
                     Description
                   </th>
                   <th
                     className="text-left py-3 px-4 font-semibold"
-                    style={{ width: "25%" }}
+                    style={{ width: '25%' }}
                   >
                     Sub-Activity
                   </th>
@@ -96,19 +97,19 @@ export default function ActivitiesTab({
                     const activitySubActivities = activity.subActivities || [];
                     const hasSubActivities = activitySubActivities.length > 0;
                     const isActivitySelected = projectActivities.some(
-                      (pa) => pa.id === activity.id && pa.type === "activity",
+                      (pa) => pa.id === activity.id && pa.type === 'activity'
                     );
                     const open = !!openSubActivityDropdowns[activityKey];
-                    const query = subActivitySearch[activityKey] || "";
+                    const query = subActivitySearch[activityKey] || '';
                     const filteredSubActivities = query
                       ? activitySubActivities.filter((sa) =>
-                          sa.name.toLowerCase().includes(query.toLowerCase()),
+                          sa.name.toLowerCase().includes(query.toLowerCase())
                         )
                       : activitySubActivities;
                     const selectedSubActivities = projectActivities.filter(
                       (pa) =>
-                        pa.type === "subactivity" &&
-                        pa.activity_id === activity.id,
+                        pa.type === 'subactivity' &&
+                        pa.activity_id === activity.id
                     );
 
                     return (
@@ -132,7 +133,7 @@ export default function ActivitiesTab({
                                   onChange={() =>
                                     toggleProjectActivity(
                                       activity.id,
-                                      "activity",
+                                      'activity'
                                     )
                                   }
                                   className="w-4 h-4 text-[#7F2487] rounded focus:ring-[#7F2487]"
@@ -151,20 +152,20 @@ export default function ActivitiesTab({
                                   projectActivities.find(
                                     (pa) =>
                                       pa.id === activity.id &&
-                                      pa.type === "activity",
-                                  )?.description || ""
+                                      pa.type === 'activity'
+                                  )?.description || ''
                                 }
                                 onChange={(e) => {
                                   setProjectActivities((prev) =>
                                     prev.map((pa) =>
                                       pa.id === activity.id &&
-                                      pa.type === "activity"
+                                      pa.type === 'activity'
                                         ? {
                                             ...pa,
                                             description: e.target.value,
                                           }
-                                        : pa,
-                                    ),
+                                        : pa
+                                    )
                                   );
                                 }}
                                 placeholder="Enter description..."
@@ -190,7 +191,7 @@ export default function ActivitiesTab({
                                 >
                                   {selectedSubActivities.length > 0
                                     ? `${selectedSubActivities.length} selected`
-                                    : "Select sub-activities"}
+                                    : 'Select sub-activities'}
                                 </button>
 
                                 {/* Dropdown Panel */}
@@ -212,10 +213,12 @@ export default function ActivitiesTab({
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          setOpenSubActivityDropdowns((prev) => ({
-                                            ...prev,
-                                            [activityKey]: false,
-                                          }))
+                                          setOpenSubActivityDropdowns(
+                                            (prev) => ({
+                                              ...prev,
+                                              [activityKey]: false,
+                                            })
+                                          )
                                         }
                                         className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
                                       >
@@ -230,11 +233,12 @@ export default function ActivitiesTab({
                                       ) : (
                                         filteredSubActivities.map(
                                           (subActivity) => {
-                                            const isSubActivitySelected = projectActivities.some(
-                                              (pa) =>
-                                                pa.id === subActivity.id &&
-                                                pa.type === "subactivity",
-                                            );
+                                            const isSubActivitySelected =
+                                              projectActivities.some(
+                                                (pa) =>
+                                                  pa.id === subActivity.id &&
+                                                  pa.type === 'subactivity'
+                                              );
                                             return (
                                               <label
                                                 key={subActivity.id}
@@ -242,11 +246,13 @@ export default function ActivitiesTab({
                                               >
                                                 <input
                                                   type="checkbox"
-                                                  checked={isSubActivitySelected}
+                                                  checked={
+                                                    isSubActivitySelected
+                                                  }
                                                   onChange={() =>
                                                     toggleProjectActivity(
                                                       subActivity.id,
-                                                      "subactivity",
+                                                      'subactivity'
                                                     )
                                                   }
                                                   className="w-3.5 h-3.5 text-[#7F2487] rounded focus:ring-[#7F2487]"
@@ -256,7 +262,7 @@ export default function ActivitiesTab({
                                                 </span>
                                               </label>
                                             );
-                                          },
+                                          }
                                         )
                                       )}
                                     </div>
@@ -275,7 +281,9 @@ export default function ActivitiesTab({
                                             ))}
                                           {selectedSubActivities.length > 3 && (
                                             <span className="text-[10px] text-gray-500">
-                                              +{selectedSubActivities.length - 3} more
+                                              +
+                                              {selectedSubActivities.length - 3}{' '}
+                                              more
                                             </span>
                                           )}
                                         </div>
@@ -286,10 +294,11 @@ export default function ActivitiesTab({
                                               projectActivities.filter(
                                                 (pa) =>
                                                   !(
-                                                    pa.type === "subactivity" &&
-                                                    pa.activity_id === activity.id
-                                                  ),
-                                              ),
+                                                    pa.type === 'subactivity' &&
+                                                    pa.activity_id ===
+                                                      activity.id
+                                                  )
+                                              )
                                             )
                                           }
                                           className="text-[10px] text-red-700 hover:underline"

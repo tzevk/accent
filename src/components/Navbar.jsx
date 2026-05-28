@@ -16,22 +16,43 @@ import {
   UserCircleIcon,
   ChevronDownIcon,
   ShieldCheckIcon,
-  ChartBarIcon
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { clearSessionCache } from '@/context/SessionContext';
 
 // Base navigation items with their resource keys
 const navigationConfig = [
-  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon, resource: 'dashboard' },
+  {
+    name: 'Dashboard',
+    href: '/dashboard',
+    icon: HomeIcon,
+    resource: 'dashboard',
+  },
   { name: 'Leads', href: '/leads', icon: UserGroupIcon, resource: 'leads' },
-  { name: 'Proposals', href: '/proposals', icon: DocumentTextIcon, resource: 'proposals' },
-  { name: 'Projects', href: '/projects', icon: BriefcaseIcon, resource: 'projects' },
+  {
+    name: 'Proposals',
+    href: '/proposals',
+    icon: DocumentTextIcon,
+    resource: 'proposals',
+  },
+  {
+    name: 'Projects',
+    href: '/projects',
+    icon: BriefcaseIcon,
+    resource: 'projects',
+  },
 ];
 
 // Reports menu items
 const reportsMenuConfig = [
-  { name: 'Project Activities', href: '/reports/project-activities', icon: ChartBarIcon, resource: 'reports', reportField: 'project_activities' },
+  {
+    name: 'Project Activities',
+    href: '/reports/project-activities',
+    icon: ChartBarIcon,
+    resource: 'reports',
+    reportField: 'project_activities',
+  },
 ];
 
 function hasReportFieldAccess(user, fieldKey) {
@@ -40,10 +61,15 @@ function hasReportFieldAccess(user, fieldKey) {
 
   let fieldPerms = user.field_permissions;
   if (typeof fieldPerms === 'string') {
-    try { fieldPerms = JSON.parse(fieldPerms); } catch { fieldPerms = null; }
+    try {
+      fieldPerms = JSON.parse(fieldPerms);
+    } catch {
+      fieldPerms = null;
+    }
   }
 
-  const reportAccessSection = fieldPerms?.modules?.reports?.sections?.report_access;
+  const reportAccessSection =
+    fieldPerms?.modules?.reports?.sections?.report_access;
   if (!reportAccessSection?.enabled) return false;
 
   const currentPerm = reportAccessSection.fields?.[fieldKey]?.permission;
@@ -65,10 +91,22 @@ const adminMenuConfig = [
   { name: 'Invoice', href: '/admin/invoice', resource: 'admin' },
   { name: 'Payment Entry', href: '/admin/payment-entry', resource: 'admin' },
   { name: 'Cash Voucher', href: '/admin/cash-voucher', resource: 'admin' },
-  { name: 'Material Requisition', href: '/admin/material-requisition', resource: 'admin' },
-  { name: 'Salary Sheet (Excel)', href: '/admin/salary-sheet', resource: 'admin' },
+  {
+    name: 'Material Requisition',
+    href: '/admin/material-requisition',
+    resource: 'admin',
+  },
+  {
+    name: 'Salary Sheet (Excel)',
+    href: '/admin/salary-sheet',
+    resource: 'admin',
+  },
   { name: 'Salary Slip (PDF)', href: '/admin/salary-slip', resource: 'admin' },
-  { name: 'Live Monitoring', href: '/admin/live-monitoring', resource: 'admin' },
+  {
+    name: 'Live Monitoring',
+    href: '/admin/live-monitoring',
+    resource: 'admin',
+  },
   { name: 'Admin Logs', href: '/admin/activity-logs', resource: 'admin' },
   { name: 'All Todos', href: '/admin/todos', resource: 'admin' },
 ];
@@ -84,8 +122,15 @@ export default function Navbar() {
   const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
-  const { loading: userLoading, user, can, RESOURCES, PERMISSIONS } = useSessionRBAC();
-  const displayName = user?.full_name || user?.username || (userLoading ? '' : 'Account');
+  const {
+    loading: userLoading,
+    user,
+    can,
+    RESOURCES,
+    PERMISSIONS,
+  } = useSessionRBAC();
+  const displayName =
+    user?.full_name || user?.username || (userLoading ? '' : 'Account');
   const displayEmail = user?.email || '';
 
   // Filter navigation items based on user permissions
@@ -93,8 +138,8 @@ export default function Navbar() {
     if (userLoading && !user) return []; // Hide nav while loading (prevents flash)
     if (!user) return [];
     if (user.is_super_admin) return navigationConfig; // Super admin sees all
-    
-    return navigationConfig.filter(item => {
+
+    return navigationConfig.filter((item) => {
       return can(item.resource, PERMISSIONS.READ);
     });
   }, [user, userLoading, can, PERMISSIONS]);
@@ -103,7 +148,7 @@ export default function Navbar() {
   const adminMenuItems = useMemo(() => {
     if (userLoading || !user) return []; // Hide admin while loading
     if (user.is_super_admin) return adminMenuConfig; // Super admin sees all
-    
+
     // Show admin menu only if user has admin permission
     if (can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read')) {
       return adminMenuConfig;
@@ -118,12 +163,15 @@ export default function Navbar() {
   const reportsMenuItems = useMemo(() => {
     if (userLoading || !user) return []; // Hide reports while loading
     if (user.is_super_admin) return reportsMenuConfig; // Super admin sees all
-    
+
     // Filter based on permissions
-    const filteredItems = reportsMenuConfig.filter(item => {
-      return can(item.resource, PERMISSIONS.READ) || hasReportFieldAccess(user, item.reportField);
+    const filteredItems = reportsMenuConfig.filter((item) => {
+      return (
+        can(item.resource, PERMISSIONS.READ) ||
+        hasReportFieldAccess(user, item.reportField)
+      );
     });
-    
+
     return filteredItems;
   }, [user, userLoading, can, PERMISSIONS]);
 
@@ -179,7 +227,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav 
+      <nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 anim-fade-in ${
           scrolled ? 'shadow-xl backdrop-blur-lg' : 'shadow-lg'
         }`}
@@ -192,14 +240,17 @@ export default function Navbar() {
               ? 'linear-gradient(135deg, rgba(100, 18, 109, 0.95) 0%, rgba(134, 40, 143, 0.95) 100%)'
               : 'linear-gradient(135deg, #64126D 0%, #86288F 100%)',
             filter: isWindows ? 'saturate(1.08) brightness(1.06)' : undefined,
-            transition: 'filter 200ms ease, background 200ms ease'
+            transition: 'filter 200ms ease, background 200ms ease',
           }}
         />
         <div className="px-4 sm:px-6 lg:px-8 xl:px-10">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <div className="flex items-center">
-              <Link href="/dashboard" className="flex-shrink-0 flex items-center group">
+              <Link
+                href="/dashboard"
+                className="flex-shrink-0 flex items-center group"
+              >
                 <Image
                   src={accentLogo}
                   alt="Accent Techno Solutions logo"
@@ -215,7 +266,7 @@ export default function Navbar() {
               {navigation.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
-                
+
                 return (
                   <Link
                     key={item.name}
@@ -226,9 +277,9 @@ export default function Navbar() {
                         : 'text-white/90 hover:text-white'
                     }`}
                     style={{
-                      background: isActive 
-                        ? 'rgba(255, 255, 255, 0.2)' 
-                        : 'transparent'
+                      background: isActive
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'transparent',
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive) {
@@ -241,12 +292,14 @@ export default function Navbar() {
                       }
                     }}
                   >
-                    <Icon className={`h-5 w-5 transition-transform duration-200 ${
-                      isActive ? '' : 'group-hover:scale-110'
-                    }`} />
+                    <Icon
+                      className={`h-5 w-5 transition-transform duration-200 ${
+                        isActive ? '' : 'group-hover:scale-110'
+                      }`}
+                    />
                     <span className="font-medium">{item.name}</span>
                     {isActive && (
-                      <div 
+                      <div
                         className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 rounded-full"
                         style={{ backgroundColor: '#FFFFFF' }}
                       />
@@ -254,139 +307,154 @@ export default function Navbar() {
                   </Link>
                 );
               })}
-              
+
               {/* Reports Dropdown - Only show if user has reports permissions */}
               {showReportsMenu && (
-              <div className="relative reports-dropdown">
-                <button
-                  onClick={() => setIsReportsMenuOpen(!isReportsMenuOpen)}
-                  className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
-                    pathname.startsWith('/reports')
-                      ? 'text-white shadow-lg'
-                      : 'text-white/90 hover:text-white'
-                  }`}
-                  style={{
-                    background: pathname.startsWith('/reports')
-                      ? 'rgba(255, 255, 255, 0.2)'
-                      : isReportsMenuOpen
-                        ? 'rgba(255, 255, 255, 0.1)'
-                        : 'transparent'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!pathname.startsWith('/reports')) {
-                      e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!pathname.startsWith('/reports') && !isReportsMenuOpen) {
-                      e.target.style.background = 'transparent';
-                    }
-                  }}
-                >
-                  <ChartBarIcon className={`h-5 w-5 transition-transform duration-200 ${
-                    pathname.startsWith('/reports') ? '' : 'group-hover:scale-110'
-                  }`} />
-                  <span className="font-medium">Reports</span>
-                  <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${
-                    isReportsMenuOpen ? 'rotate-180' : ''
-                  }`} />
-                  {pathname.startsWith('/reports') && (
-                    <div
-                      className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 rounded-full"
-                      style={{ backgroundColor: '#FFFFFF' }}
+                <div className="relative reports-dropdown">
+                  <button
+                    onClick={() => setIsReportsMenuOpen(!isReportsMenuOpen)}
+                    className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
+                      pathname.startsWith('/reports')
+                        ? 'text-white shadow-lg'
+                        : 'text-white/90 hover:text-white'
+                    }`}
+                    style={{
+                      background: pathname.startsWith('/reports')
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : isReportsMenuOpen
+                          ? 'rgba(255, 255, 255, 0.1)'
+                          : 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!pathname.startsWith('/reports')) {
+                        e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (
+                        !pathname.startsWith('/reports') &&
+                        !isReportsMenuOpen
+                      ) {
+                        e.target.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <ChartBarIcon
+                      className={`h-5 w-5 transition-transform duration-200 ${
+                        pathname.startsWith('/reports')
+                          ? ''
+                          : 'group-hover:scale-110'
+                      }`}
                     />
-                  )}
-                </button>
+                    <span className="font-medium">Reports</span>
+                    <ChevronDownIcon
+                      className={`h-4 w-4 transition-transform duration-200 ${
+                        isReportsMenuOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                    {pathname.startsWith('/reports') && (
+                      <div
+                        className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 rounded-full"
+                        style={{ backgroundColor: '#FFFFFF' }}
+                      />
+                    )}
+                  </button>
 
-                {/* Reports Dropdown Menu */}
-                {isReportsMenuOpen && (
-                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
-                    {reportsMenuItems.map((item) => {
-                      const Icon = item.icon;
-                      return (
+                  {/* Reports Dropdown Menu */}
+                  {isReportsMenuOpen && (
+                    <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
+                      {reportsMenuItems.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <Link
+                            key={item.name}
+                            href={item.href}
+                            onClick={() => setIsReportsMenuOpen(false)}
+                            className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+                              pathname === item.href
+                                ? 'text-purple-700 bg-purple-50 font-medium'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                            {item.name}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Admin Dropdown - Only show if user has admin permissions */}
+              {showAdminMenu && (
+                <div className="relative admin-dropdown">
+                  <button
+                    onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
+                    className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
+                      pathname.startsWith('/admin')
+                        ? 'text-white shadow-lg'
+                        : 'text-white/90 hover:text-white'
+                    }`}
+                    style={{
+                      background: pathname.startsWith('/admin')
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : isAdminMenuOpen
+                          ? 'rgba(255, 255, 255, 0.1)'
+                          : 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!pathname.startsWith('/admin')) {
+                        e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!pathname.startsWith('/admin') && !isAdminMenuOpen) {
+                        e.target.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <ShieldCheckIcon
+                      className={`h-5 w-5 transition-transform duration-200 ${
+                        pathname.startsWith('/admin')
+                          ? ''
+                          : 'group-hover:scale-110'
+                      }`}
+                    />
+                    <span className="font-medium">Admin</span>
+                    <ChevronDownIcon
+                      className={`h-4 w-4 transition-transform duration-200 ${
+                        isAdminMenuOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                    {pathname.startsWith('/admin') && (
+                      <div
+                        className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 rounded-full"
+                        style={{ backgroundColor: '#FFFFFF' }}
+                      />
+                    )}
+                  </button>
+
+                  {/* Admin Dropdown Menu */}
+                  {isAdminMenuOpen && (
+                    <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
+                      {adminMenuItems.map((item) => (
                         <Link
                           key={item.name}
                           href={item.href}
-                          onClick={() => setIsReportsMenuOpen(false)}
-                          className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+                          onClick={() => setIsAdminMenuOpen(false)}
+                          className={`flex items-center px-4 py-2 text-sm transition-colors ${
                             pathname === item.href
                               ? 'text-purple-700 bg-purple-50 font-medium'
                               : 'text-gray-700 hover:bg-gray-50'
                           }`}
                         >
-                          <Icon className="h-4 w-4" />
                           {item.name}
                         </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              )}
-
-              {/* Admin Dropdown - Only show if user has admin permissions */}
-              {showAdminMenu && (
-              <div className="relative admin-dropdown">
-                <button
-                  onClick={() => setIsAdminMenuOpen(!isAdminMenuOpen)}
-                  className={`group flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 relative overflow-hidden active:scale-[.98] ${
-                    pathname.startsWith('/admin')
-                      ? 'text-white shadow-lg'
-                      : 'text-white/90 hover:text-white'
-                  }`}
-                  style={{
-                    background: pathname.startsWith('/admin')
-                      ? 'rgba(255, 255, 255, 0.2)'
-                      : isAdminMenuOpen
-                        ? 'rgba(255, 255, 255, 0.1)'
-                        : 'transparent'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!pathname.startsWith('/admin')) {
-                      e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!pathname.startsWith('/admin') && !isAdminMenuOpen) {
-                      e.target.style.background = 'transparent';
-                    }
-                  }}
-                >
-                  <ShieldCheckIcon className={`h-5 w-5 transition-transform duration-200 ${
-                    pathname.startsWith('/admin') ? '' : 'group-hover:scale-110'
-                  }`} />
-                  <span className="font-medium">Admin</span>
-                  <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${
-                    isAdminMenuOpen ? 'rotate-180' : ''
-                  }`} />
-                  {pathname.startsWith('/admin') && (
-                    <div
-                      className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 rounded-full"
-                      style={{ backgroundColor: '#FFFFFF' }}
-                    />
+                      ))}
+                    </div>
                   )}
-                </button>
-
-                {/* Admin Dropdown Menu */}
-                {isAdminMenuOpen && (
-                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 anim-drop">
-                    {adminMenuItems.map((item) => (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        onClick={() => setIsAdminMenuOpen(false)}
-                        className={`flex items-center px-4 py-2 text-sm transition-colors ${
-                          pathname === item.href
-                            ? 'text-purple-700 bg-purple-50 font-medium'
-                            : 'text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        {item.name}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </div>
               )}
             </div>
 
@@ -403,7 +471,9 @@ export default function Navbar() {
                       <span className="text-sm font-medium">{displayName}</span>
                     )}
                     {displayEmail && (
-                      <span className="text-xs text-white/60">{displayEmail}</span>
+                      <span className="text-xs text-white/60">
+                        {displayEmail}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -434,18 +504,18 @@ export default function Navbar() {
 
         {/* Mobile Navigation Menu */}
         {isMobileMenuOpen && (
-          <div 
+          <div
             className="md:hidden border-t border-white/20 anim-slide-up"
             style={{
               background: `linear-gradient(135deg, #64126D 0%, #86288F 100%)`,
-              filter: isWindows ? 'saturate(1.06) brightness(1.05)' : undefined
+              filter: isWindows ? 'saturate(1.06) brightness(1.05)' : undefined,
             }}
           >
             <div className="px-4 py-4 space-y-2">
               {navigation.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
-                
+
                 return (
                   <Link
                     key={item.name}
@@ -461,11 +531,13 @@ export default function Navbar() {
                   </Link>
                 );
               })}
-              
+
               {/* Reports Section on Mobile */}
               {showReportsMenu && (
                 <div className="pt-2 mt-2 border-t border-white/10">
-                  <p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">Reports</p>
+                  <p className="px-4 py-2 text-xs font-semibold text-white/60 uppercase tracking-wider">
+                    Reports
+                  </p>
                   {reportsMenuItems.map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
@@ -486,13 +558,15 @@ export default function Navbar() {
                   })}
                 </div>
               )}
-              
+
               {/* Mobile Profile Section */}
               <div className="pt-4 mt-4 border-t border-white/20">
                 <div className="flex items-center space-x-3 px-4 py-2 text-white/90">
                   <UserCircleIcon className="h-6 w-6" />
                   <div>
-                    <p className="text-sm font-medium text-white">{displayName}</p>
+                    <p className="text-sm font-medium text-white">
+                      {displayName}
+                    </p>
                     {displayEmail && (
                       <p className="text-xs text-white/70">{displayEmail}</p>
                     )}
@@ -513,7 +587,7 @@ export default function Navbar() {
 
       {/* Overlay for mobile menu */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden anim-fade-in"
           onClick={() => setIsMobileMenuOpen(false)}
         />

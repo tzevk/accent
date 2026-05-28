@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
-import { 
-  generatePayrollSlip, 
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
+import {
+  generatePayrollSlip,
   generatePayrollSlipsBatch,
   generateMonthlyPayroll,
-  calculateEmployeePayroll 
+  calculateEmployeePayroll,
 } from '@/utils/payroll-calculator';
 
 /**
  * POST - Generate payroll slip(s)
- * 
+ *
  * Body options:
  * 1. Generate for single employee: { employee_id: 123, month: '2025-12-01' }
  * 2. Generate for all employees: { month: '2025-12-01', all: true }
@@ -17,20 +21,33 @@ import {
  */
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.CREATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PAYROLL,
+    PERMISSIONS.CREATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   try {
     const body = await request.json();
-    const { employee_id, employee_ids, month, all, preview, salary_type, include_bonus, bonus_employee_ids } = body;
-    
+    const {
+      employee_id,
+      employee_ids,
+      month,
+      all,
+      preview,
+      salary_type,
+      include_bonus,
+      bonus_employee_ids,
+    } = body;
+
     if (!month) {
       return NextResponse.json(
         { success: false, error: 'Month is required (format: YYYY-MM-01)' },
         { status: 400 }
       );
     }
-    
+
     // Validate month format
     const monthDate = new Date(month);
     if (isNaN(monthDate.getTime())) {
@@ -39,73 +56,105 @@ export async function POST(request) {
         { status: 400 }
       );
     }
-    
+
     // Preview mode - calculate without saving
     if (preview && employee_id) {
-      const payroll = await calculateEmployeePayroll(employee_id, month, { include_bonus: !!include_bonus });
-      
+      const payroll = await calculateEmployeePayroll(employee_id, month, {
+        include_bonus: !!include_bonus,
+      });
+
       return NextResponse.json({
         success: true,
         preview: true,
-        data: payroll
+        data: payroll,
       });
     }
-    
+
     // Generate for all employees
     if (all) {
-      const bonusIds = Array.isArray(bonus_employee_ids) ? bonus_employee_ids : null;
-      const results = await generateMonthlyPayroll(month, salary_type || null, !!include_bonus, bonusIds);
-      
+      const bonusIds = Array.isArray(bonus_employee_ids)
+        ? bonus_employee_ids
+        : null;
+      const results = await generateMonthlyPayroll(
+        month,
+        salary_type || null,
+        !!include_bonus,
+        bonusIds
+      );
+
       return NextResponse.json({
         success: true,
         message: `Payroll generation completed for ${month}`,
-        results
+        results,
       });
     }
-    
+
     // Generate for multiple employees (batch-optimized)
-    if (employee_ids && Array.isArray(employee_ids) && employee_ids.length > 0) {
-      const bonusIds = Array.isArray(bonus_employee_ids) ? bonus_employee_ids : null;
-      const results = await generatePayrollSlipsBatch(employee_ids, month, !!include_bonus, bonusIds);
-      
+    if (
+      employee_ids &&
+      Array.isArray(employee_ids) &&
+      employee_ids.length > 0
+    ) {
+      const bonusIds = Array.isArray(bonus_employee_ids)
+        ? bonus_employee_ids
+        : null;
+      const results = await generatePayrollSlipsBatch(
+        employee_ids,
+        month,
+        !!include_bonus,
+        bonusIds
+      );
+
       return NextResponse.json({
         success: true,
         message: `Payroll generation completed for ${employee_ids.length} employees`,
-        results
+        results,
       });
     }
-    
+
     // Generate for single employee
     if (employee_id) {
       try {
-        const slip = await generatePayrollSlip(employee_id, month, { include_bonus: !!include_bonus });
-        
-        return NextResponse.json({
-          success: true,
-          message: 'Payroll slip generated successfully',
-          data: slip
-        }, { status: 201 });
+        const slip = await generatePayrollSlip(employee_id, month, {
+          include_bonus: !!include_bonus,
+        });
+
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Payroll slip generated successfully',
+            data: slip,
+          },
+          { status: 201 }
+        );
       } catch (genError) {
         // Check if it's a "no salary profile" error
         if (genError.message.includes('No active salary profile')) {
-          return NextResponse.json({
-            success: false,
-            error: genError.message,
-            suggestion: 'Please set up a salary structure for this employee before generating payroll.'
-          }, { status: 400 });
+          return NextResponse.json(
+            {
+              success: false,
+              error: genError.message,
+              suggestion:
+                'Please set up a salary structure for this employee before generating payroll.',
+            },
+            { status: 400 }
+          );
         }
         throw genError;
       }
     }
-    
+
     return NextResponse.json(
-      { success: false, error: 'Either employee_id, employee_ids array, or all=true must be provided' },
+      {
+        success: false,
+        error:
+          'Either employee_id, employee_ids array, or all=true must be provided',
+      },
       { status: 400 }
     );
-    
   } catch (error) {
     console.error('POST /api/payroll/generate error:', error);
-    
+
     // Handle duplicate entry error
     if (error.message.includes('already exists')) {
       return NextResponse.json(
@@ -113,9 +162,13 @@ export async function POST(request) {
         { status: 409 }
       );
     }
-    
+
     return NextResponse.json(
-      { success: false, error: 'Failed to generate payroll', details: error.message },
+      {
+        success: false,
+        error: 'Failed to generate payroll',
+        details: error.message,
+      },
       { status: 500 }
     );
   }

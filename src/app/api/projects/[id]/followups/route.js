@@ -1,18 +1,29 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET follow-ups for a specific project
 export async function GET(request, { params }) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROJECTS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
   try {
     const { id } = await params;
-    
+
     if (!id) {
-      return Response.json({ success: false, error: 'Project ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Project ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -44,12 +55,16 @@ export async function GET(request, { params }) {
         INDEX idx_status (status)
       )
     `);
-    
+
     // Add logged_by column if it doesn't exist
-    await db.execute(`
+    await db
+      .execute(
+        `
       ALTER TABLE project_followups 
       ADD COLUMN IF NOT EXISTS logged_by VARCHAR(255) AFTER notes
-    `).catch(() => {});
+    `
+      )
+      .catch(() => {});
 
     // Get follow-ups for this project
     const [rows] = await db.execute(
@@ -62,7 +77,10 @@ export async function GET(request, { params }) {
     return Response.json({ success: true, data: rows });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to fetch follow-ups' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to fetch follow-ups' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -74,9 +92,12 @@ export async function POST(request, { params }) {
   try {
     const { id } = await params;
     const data = await request.json();
-    
+
     if (!id) {
-      return Response.json({ success: false, error: 'Project ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Project ID is required' },
+        { status: 400 }
+      );
     }
 
     const {
@@ -94,11 +115,17 @@ export async function POST(request, { params }) {
       blockers,
       notes,
       logged_by,
-      created_by
+      created_by,
     } = data;
 
     if (!follow_up_date || !description) {
-      return Response.json({ success: false, error: 'Follow-up date and description are required' }, { status: 400 });
+      return Response.json(
+        {
+          success: false,
+          error: 'Follow-up date and description are required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -124,18 +151,21 @@ export async function POST(request, { params }) {
         blockers || null,
         notes || null,
         logged_by || null,
-        created_by || null
+        created_by || null,
       ]
     );
 
-    return Response.json({ 
-      success: true, 
+    return Response.json({
+      success: true,
       message: 'Follow-up created successfully',
-      id: result.insertId 
+      id: result.insertId,
     });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to create follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to create follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -147,29 +177,46 @@ export async function PUT(request, { params }) {
   try {
     const { id: projectId } = await params;
     const data = await request.json();
-    
+
     if (!projectId) {
-      return Response.json({ success: false, error: 'Project ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Project ID is required' },
+        { status: 400 }
+      );
     }
 
     const { id: followupId, ...updateFields } = data;
 
     if (!followupId) {
-      return Response.json({ success: false, error: 'Follow-up ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Follow-up ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
 
     // Build dynamic update query
     const allowedFields = [
-      'follow_up_date', 'follow_up_type', 'description', 'status', 'priority',
-      'milestone', 'responsible_person', 'action_items', 'outcome', 
-      'next_action', 'next_follow_up_date', 'blockers', 'notes', 'logged_by'
+      'follow_up_date',
+      'follow_up_type',
+      'description',
+      'status',
+      'priority',
+      'milestone',
+      'responsible_person',
+      'action_items',
+      'outcome',
+      'next_action',
+      'next_follow_up_date',
+      'blockers',
+      'notes',
+      'logged_by',
     ];
-    
+
     const updates = [];
     const values = [];
-    
+
     for (const field of allowedFields) {
       if (updateFields[field] !== undefined) {
         updates.push(`${field} = ?`);
@@ -178,7 +225,10 @@ export async function PUT(request, { params }) {
     }
 
     if (updates.length === 0) {
-      return Response.json({ success: false, error: 'No fields to update' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'No fields to update' },
+        { status: 400 }
+      );
     }
 
     values.push(followupId, projectId);
@@ -188,10 +238,16 @@ export async function PUT(request, { params }) {
       values
     );
 
-    return Response.json({ success: true, message: 'Follow-up updated successfully' });
+    return Response.json({
+      success: true,
+      message: 'Follow-up updated successfully',
+    });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to update follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to update follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }
@@ -204,13 +260,19 @@ export async function DELETE(request, { params }) {
     const { id: projectId } = await params;
     const { searchParams } = new URL(request.url);
     const followupId = searchParams.get('followup_id');
-    
+
     if (!projectId) {
-      return Response.json({ success: false, error: 'Project ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Project ID is required' },
+        { status: 400 }
+      );
     }
 
     if (!followupId) {
-      return Response.json({ success: false, error: 'Follow-up ID is required' }, { status: 400 });
+      return Response.json(
+        { success: false, error: 'Follow-up ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -220,10 +282,16 @@ export async function DELETE(request, { params }) {
       [followupId, projectId]
     );
 
-    return Response.json({ success: true, message: 'Follow-up deleted successfully' });
+    return Response.json({
+      success: true,
+      message: 'Follow-up deleted successfully',
+    });
   } catch (error) {
     console.error('Database error:', error);
-    return Response.json({ success: false, error: 'Failed to delete follow-up' }, { status: 500 });
+    return Response.json(
+      { success: false, error: 'Failed to delete follow-up' },
+      { status: 500 }
+    );
   } finally {
     if (db) await db.end();
   }

@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch account transactions
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -59,19 +67,30 @@ export async function GET(request) {
     const total = countResult?.[0]?.total || 0;
 
     // Get paginated results
-    query += ' ORDER BY transaction_date DESC, created_at DESC LIMIT ? OFFSET ?';
+    query +=
+      ' ORDER BY transaction_date DESC, created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const [transactions] = await connection.execute(query, params);
 
     // Parse JSON attachments for each transaction
-    const parsedTransactions = transactions.map(txn => ({
+    const parsedTransactions = transactions.map((txn) => ({
       ...txn,
-      attachments: typeof txn.attachments === 'string' ? JSON.parse(txn.attachments) : txn.attachments
+      attachments:
+        typeof txn.attachments === 'string'
+          ? JSON.parse(txn.attachments)
+          : txn.attachments,
     }));
 
     // Get stats
-    let stats = { total: 0, income: 0, expense: 0, pending: 0, totalIncome: 0, totalExpense: 0 };
+    let stats = {
+      total: 0,
+      income: 0,
+      expense: 0,
+      pending: 0,
+      totalIncome: 0,
+      totalExpense: 0,
+    };
     try {
       const [statsResult] = await connection.execute(`
         SELECT 
@@ -95,15 +114,18 @@ export async function GET(request) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       },
-      stats
+      stats,
     });
-
   } catch (error) {
     console.error('Error fetching transactions:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to fetch transactions', error: error.message },
+      {
+        success: false,
+        message: 'Failed to fetch transactions',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {

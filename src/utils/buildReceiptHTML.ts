@@ -1,4 +1,4 @@
-import { numberToWords } from "./numberToWords";
+import { numberToWords } from './numberToWords';
 
 // Trigger rebuild
 
@@ -21,7 +21,7 @@ export interface ReceiptData {
 }
 
 const formatAmount = (amount: number): string => {
-  return amount.toLocaleString("en-IN", {
+  return amount.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -56,9 +56,9 @@ export const buildReceiptHTML = (data: ReceiptData): string => {
 			<span>Rupees ${amountWords} Only</span> from 
 			<span>${data.company_name}</span>. 
 			This payment is applied toward Invoice No. 
-			<span>${data.invoice_no ?? "-"}</span> (Dated <span>${data.invoice_date ?? "-"}</span>). 
-			The transaction was successfully processed on <span>${data.payment_date ?? "-"}</span> 
-			under Transaction ID <span>${data.transaction_id ?? "-"}</span>.
+			<span>${data.invoice_no ?? '-'}</span> (Dated <span>${data.invoice_date ?? '-'}</span>). 
+			The transaction was successfully processed on <span>${data.payment_date ?? '-'}</span> 
+			under Transaction ID <span>${data.transaction_id ?? '-'}</span>.
 		</div>
 
 		<div class="amount">

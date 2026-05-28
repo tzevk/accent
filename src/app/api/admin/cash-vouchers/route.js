@@ -8,7 +8,7 @@ import { getCurrentUser } from '@/utils/api-permissions';
  */
 export async function GET(request) {
   let db;
-  
+
   try {
     // Auth check
     let user;
@@ -16,16 +16,25 @@ export async function GET(request) {
       user = await getCurrentUser(request);
     } catch (authErr) {
       console.error('Auth check failed:', authErr?.message);
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Only admin can access
     if (!user.is_super_admin && user.role?.code !== 'admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -36,7 +45,7 @@ export async function GET(request) {
     const offset = (page - 1) * limit;
 
     db = await dbConnect();
-    
+
     // Ensure table exists with updated schema
     await db.execute(`
       CREATE TABLE IF NOT EXISTS cash_vouchers (
@@ -63,35 +72,56 @@ export async function GET(request) {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Add missing columns if table already exists
     try {
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS paid_to VARCHAR(255)');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15,2) DEFAULT 0');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS amount_in_words TEXT');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS line_items JSON');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS prepared_by VARCHAR(255)');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS checked_by VARCHAR(255)');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS approved_by_name VARCHAR(255)');
-      await db.execute('ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS receiver_signature VARCHAR(255)');
-    } catch (e) { /* columns may already exist */ }
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS paid_to VARCHAR(255)'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS total_amount DECIMAL(15,2) DEFAULT 0'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS amount_in_words TEXT'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS line_items JSON'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS prepared_by VARCHAR(255)'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS checked_by VARCHAR(255)'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS approved_by_name VARCHAR(255)'
+      );
+      await db.execute(
+        'ALTER TABLE cash_vouchers ADD COLUMN IF NOT EXISTS receiver_signature VARCHAR(255)'
+      );
+    } catch (e) {
+      /* columns may already exist */
+    }
 
     // Build query conditions
     let conditions = [];
     let params = [];
-    
+
     if (type && type !== 'all') {
       conditions.push('voucher_type = ?');
       params.push(type);
     }
-    
+
     if (status && status !== 'all') {
       conditions.push('status = ?');
       params.push(status);
     }
-    
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Get vouchers with pagination
     const [vouchers] = await db.execute(
@@ -116,8 +146,14 @@ export async function GET(request) {
         SUM(CASE WHEN status IN ('approved', 'paid') THEN amount ELSE 0 END) as total_amount
       FROM cash_vouchers
     `);
-    
-    const stats = statsResult[0] || { total: 0, pending: 0, approved: 0, rejected: 0, total_amount: 0 };
+
+    const stats = statsResult[0] || {
+      total: 0,
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      total_amount: 0,
+    };
 
     return NextResponse.json({
       success: true,
@@ -126,26 +162,33 @@ export async function GET(request) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       },
       stats: {
         total: Number(stats.total) || 0,
         pending: Number(stats.pending) || 0,
         approved: Number(stats.approved) || 0,
         rejected: Number(stats.rejected) || 0,
-        total_amount: Number(stats.total_amount) || 0
-      }
+        total_amount: Number(stats.total_amount) || 0,
+      },
     });
-    
   } catch (error) {
     console.error('Cash vouchers list error:', error?.message, error?.stack);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch cash vouchers', details: error?.message },
+      {
+        success: false,
+        error: 'Failed to fetch cash vouchers',
+        details: error?.message,
+      },
       { status: 500 }
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }
@@ -156,37 +199,47 @@ export async function GET(request) {
  */
 export async function POST(request) {
   let db;
-  
+
   try {
     let user;
     try {
       user = await getCurrentUser(request);
     } catch (authErr) {
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     if (!user.is_super_admin && user.role?.code !== 'admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     const data = await request.json();
-    
+
     db = await dbConnect();
-    
+
     // Generate voucher number if not provided
     let voucherNumber = data.voucher_number;
     if (!voucherNumber) {
       const [lastVoucher] = await db.execute(
         `SELECT voucher_number FROM cash_vouchers ORDER BY id DESC LIMIT 1`
       );
-      
+
       voucherNumber = 'CV-0001';
       if (lastVoucher.length > 0 && lastVoucher[0].voucher_number) {
-        const lastNum = parseInt(lastVoucher[0].voucher_number.replace('CV-', '')) || 0;
+        const lastNum =
+          parseInt(lastVoucher[0].voucher_number.replace('CV-', '')) || 0;
         voucherNumber = `CV-${String(lastNum + 1).padStart(4, '0')}`;
       }
     }
@@ -214,7 +267,7 @@ export async function POST(request) {
         data.receiver_signature || '',
         data.status || 'pending',
         data.notes || '',
-        user.id
+        user.id,
       ]
     );
 
@@ -222,20 +275,27 @@ export async function POST(request) {
       success: true,
       data: {
         id: result.insertId,
-        voucher_number: voucherNumber
+        voucher_number: voucherNumber,
       },
-      message: 'Cash voucher created successfully'
+      message: 'Cash voucher created successfully',
     });
-    
   } catch (error) {
     console.error('Create cash voucher error:', error?.message);
     return NextResponse.json(
-      { success: false, error: 'Failed to create cash voucher', details: error?.message },
+      {
+        success: false,
+        error: 'Failed to create cash voucher',
+        details: error?.message,
+      },
       { status: 500 }
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }
@@ -246,55 +306,77 @@ export async function POST(request) {
  */
 export async function DELETE(request) {
   let db;
-  
+
   try {
     let user;
     try {
       user = await getCurrentUser(request);
     } catch (authErr) {
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     if (!user.is_super_admin && user.role?.code !== 'admin') {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
+
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Voucher ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Voucher ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
-    
+
     const [result] = await db.execute(
       'DELETE FROM cash_vouchers WHERE id = ?',
       [id]
     );
 
     if (result.affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'Voucher not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Voucher not found' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Cash voucher deleted successfully'
+      message: 'Cash voucher deleted successfully',
     });
-    
   } catch (error) {
     console.error('Delete cash voucher error:', error?.message);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete cash voucher', details: error?.message },
+      {
+        success: false,
+        error: 'Failed to delete cash voucher',
+        details: error?.message,
+      },
       { status: 500 }
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }

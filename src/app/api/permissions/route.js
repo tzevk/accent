@@ -1,6 +1,11 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { RESOURCES, PERMISSIONS, validatePermissions, groupPermissionsByResource } from '@/utils/rbac';
+import {
+  RESOURCES,
+  PERMISSIONS,
+  validatePermissions,
+  groupPermissionsByResource,
+} from '@/utils/rbac';
 import { getCurrentUser, invalidateUserCache } from '@/utils/api-permissions';
 
 // Safe JSON parse helper to avoid runtime crashes on bad DB contents
@@ -25,14 +30,20 @@ export async function GET(request) {
     if (needsRBAC) {
       const user = await getCurrentUser(request);
       if (!user) {
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized' },
+          { status: 401 }
+        );
       }
-      
+
       if (!user.is_super_admin) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Forbidden: Only administrators can view permissions' 
-        }, { status: 403 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: Only administrators can view permissions',
+          },
+          { status: 403 }
+        );
       }
     }
     const userId = searchParams.get('user_id');
@@ -48,8 +59,8 @@ export async function GET(request) {
         permissions: PERMISSIONS,
         user_permissions: null,
         role_permissions: null,
-        effective_permissions: null
-      }
+        effective_permissions: null,
+      },
     };
 
     // Get user-specific permissions
@@ -66,25 +77,27 @@ export async function GET(request) {
 
       if (userRows.length > 0) {
         const user = userRows[0];
-  const userPermissions = safeParse(user.user_permissions, []);
-  const rolePermissions = safeParse(user.role_permissions, []);
-        
+        const userPermissions = safeParse(user.user_permissions, []);
+        const rolePermissions = safeParse(user.role_permissions, []);
+
         response.data.user_permissions = {
           direct: userPermissions,
-          grouped: groupPermissionsByResource(userPermissions)
+          grouped: groupPermissionsByResource(userPermissions),
         };
-        
+
         response.data.role_permissions = {
           direct: rolePermissions,
           grouped: groupPermissionsByResource(rolePermissions),
-          role_name: user.role_name
+          role_name: user.role_name,
         };
 
         // Calculate effective permissions (role + user overrides)
-        const effectivePermissions = [...new Set([...rolePermissions, ...userPermissions])];
+        const effectivePermissions = [
+          ...new Set([...rolePermissions, ...userPermissions]),
+        ];
         response.data.effective_permissions = {
           direct: effectivePermissions,
-          grouped: groupPermissionsByResource(effectivePermissions)
+          grouped: groupPermissionsByResource(effectivePermissions),
         };
 
         response.data.is_super_admin = user.is_super_admin;
@@ -100,24 +113,26 @@ export async function GET(request) {
 
       if (roleRows.length > 0) {
         const role = roleRows[0];
-  const rolePermissions = safeParse(role.permissions, []);
-        
+        const rolePermissions = safeParse(role.permissions, []);
+
         response.data.role_permissions = {
           direct: rolePermissions,
           grouped: groupPermissionsByResource(rolePermissions),
-          role_name: role.role_name
+          role_name: role.role_name,
         };
       }
     }
 
     return NextResponse.json(response);
-
   } catch (error) {
     console.error('Error fetching permissions:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch permissions' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch permissions',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -130,34 +145,46 @@ export async function POST(request) {
     // Only super admins can modify permissions
     const user = await getCurrentUser(request);
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     if (!user.is_super_admin) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Forbidden: Only administrators can manage permissions' 
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Only administrators can manage permissions',
+        },
+        { status: 403 }
+      );
     }
 
     const data = await request.json();
     const { user_id, role_id, permissions, type, action } = data; // action: 'grant', 'revoke', 'replace'
 
     if (!permissions || !Array.isArray(permissions)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Permissions array is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Permissions array is required',
+        },
+        { status: 400 }
+      );
     }
 
     // Validate permissions
     const validation = validatePermissions(permissions);
     if (validation.invalid.length > 0) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Invalid permissions found',
-        invalid_permissions: validation.invalid
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid permissions found',
+          invalid_permissions: validation.invalid,
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -170,22 +197,28 @@ export async function POST(request) {
       );
 
       if (existingUser.length === 0) {
-
-        return NextResponse.json({ 
-          success: false, 
-          error: 'User not found' 
-        }, { status: 404 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'User not found',
+          },
+          { status: 404 }
+        );
       }
 
-  let currentPermissions = safeParse(existingUser[0].permissions, []);
+      let currentPermissions = safeParse(existingUser[0].permissions, []);
       let newPermissions;
 
       switch (action) {
         case 'grant':
-          newPermissions = [...new Set([...currentPermissions, ...permissions])];
+          newPermissions = [
+            ...new Set([...currentPermissions, ...permissions]),
+          ];
           break;
         case 'revoke':
-          newPermissions = currentPermissions.filter(p => !permissions.includes(p));
+          newPermissions = currentPermissions.filter(
+            (p) => !permissions.includes(p)
+          );
           break;
         case 'replace':
         default:
@@ -193,10 +226,10 @@ export async function POST(request) {
           break;
       }
 
-      await db.execute(
-        'UPDATE users SET permissions = ? WHERE id = ?',
-        [JSON.stringify(newPermissions), user_id]
-      );
+      await db.execute('UPDATE users SET permissions = ? WHERE id = ?', [
+        JSON.stringify(newPermissions),
+        user_id,
+      ]);
 
       // Force fresh permissions on next request for this user.
       invalidateUserCache(String(user_id));
@@ -204,15 +237,14 @@ export async function POST(request) {
       console.log('✅ User permissions saved to database:', {
         user_id,
         permissionCount: newPermissions.length,
-        permissions: newPermissions
+        permissions: newPermissions,
       });
 
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'User permissions updated successfully',
-        data: { permissions: newPermissions }
+        data: { permissions: newPermissions },
       });
-
     } else if (type === 'role' && role_id) {
       // Update role permissions
       const [existingRole] = await db.execute(
@@ -221,22 +253,28 @@ export async function POST(request) {
       );
 
       if (existingRole.length === 0) {
-
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Role not found' 
-        }, { status: 404 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Role not found',
+          },
+          { status: 404 }
+        );
       }
 
-  let currentPermissions = safeParse(existingRole[0].permissions, []);
+      let currentPermissions = safeParse(existingRole[0].permissions, []);
       let newPermissions;
 
       switch (action) {
         case 'grant':
-          newPermissions = [...new Set([...currentPermissions, ...permissions])];
+          newPermissions = [
+            ...new Set([...currentPermissions, ...permissions]),
+          ];
           break;
         case 'revoke':
-          newPermissions = currentPermissions.filter(p => !permissions.includes(p));
+          newPermissions = currentPermissions.filter(
+            (p) => !permissions.includes(p)
+          );
           break;
         case 'replace':
         default:
@@ -244,10 +282,10 @@ export async function POST(request) {
           break;
       }
 
-      await db.execute(
-        'UPDATE roles_master SET permissions = ? WHERE id = ?',
-        [JSON.stringify(newPermissions), role_id]
-      );
+      await db.execute('UPDATE roles_master SET permissions = ? WHERE id = ?', [
+        JSON.stringify(newPermissions),
+        role_id,
+      ]);
 
       // Invalidate all users using this role so merged permissions refresh immediately.
       const [affectedUsers] = await db.execute(
@@ -260,26 +298,30 @@ export async function POST(request) {
         }
       }
 
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'Role permissions updated successfully',
-        data: { permissions: newPermissions }
+        data: { permissions: newPermissions },
       });
-
     } else {
-
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Either user_id or role_id must be provided with appropriate type' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Either user_id or role_id must be provided with appropriate type',
+        },
+        { status: 400 }
+      );
     }
-
   } catch (error) {
     console.error('Error updating permissions:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error?.message || 'Failed to update permissions' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: error?.message || 'Failed to update permissions',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -292,24 +334,33 @@ export async function PUT(request) {
     // Only super admins can perform bulk permission operations
     const user = await getCurrentUser(request);
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     if (!user.is_super_admin) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Forbidden: Only administrators can manage permissions' 
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden: Only administrators can manage permissions',
+        },
+        { status: 403 }
+      );
     }
 
     const data = await request.json();
     const { operations } = data; // Array of permission operations
 
     if (!operations || !Array.isArray(operations)) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Operations array is required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Operations array is required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -329,34 +380,40 @@ export async function PUT(request) {
           );
 
           if (user.length > 0) {
-            let currentPermissions = user[0].permissions ? JSON.parse(user[0].permissions) : [];
+            let currentPermissions = user[0].permissions
+              ? JSON.parse(user[0].permissions)
+              : [];
             let newPermissions;
 
             switch (action) {
               case 'grant':
-                newPermissions = [...new Set([...currentPermissions, ...permissions])];
+                newPermissions = [
+                  ...new Set([...currentPermissions, ...permissions]),
+                ];
                 break;
               case 'revoke':
-                newPermissions = currentPermissions.filter(p => !permissions.includes(p));
+                newPermissions = currentPermissions.filter(
+                  (p) => !permissions.includes(p)
+                );
                 break;
               case 'replace':
                 newPermissions = permissions;
                 break;
             }
 
-            await db.execute(
-              'UPDATE users SET permissions = ? WHERE id = ?',
-              [JSON.stringify(newPermissions), target_id]
-            );
+            await db.execute('UPDATE users SET permissions = ? WHERE id = ?', [
+              JSON.stringify(newPermissions),
+              target_id,
+            ]);
 
             invalidateUserCache(String(target_id));
 
-            results.push({ 
-              type, 
-              target_id, 
-              action, 
-              success: true, 
-              permissions: newPermissions 
+            results.push({
+              type,
+              target_id,
+              action,
+              success: true,
+              permissions: newPermissions,
             });
           }
         } else if (type === 'role') {
@@ -366,15 +423,21 @@ export async function PUT(request) {
           );
 
           if (role.length > 0) {
-            let currentPermissions = role[0].permissions ? JSON.parse(role[0].permissions) : [];
+            let currentPermissions = role[0].permissions
+              ? JSON.parse(role[0].permissions)
+              : [];
             let newPermissions;
 
             switch (action) {
               case 'grant':
-                newPermissions = [...new Set([...currentPermissions, ...permissions])];
+                newPermissions = [
+                  ...new Set([...currentPermissions, ...permissions]),
+                ];
                 break;
               case 'revoke':
-                newPermissions = currentPermissions.filter(p => !permissions.includes(p));
+                newPermissions = currentPermissions.filter(
+                  (p) => !permissions.includes(p)
+                );
                 break;
               case 'replace':
                 newPermissions = permissions;
@@ -396,12 +459,12 @@ export async function PUT(request) {
               }
             }
 
-            results.push({ 
-              type, 
-              target_id, 
-              action, 
-              success: true, 
-              permissions: newPermissions 
+            results.push({
+              type,
+              target_id,
+              action,
+              success: true,
+              permissions: newPermissions,
             });
           }
         }
@@ -409,24 +472,26 @@ export async function PUT(request) {
 
       await db.execute('COMMIT');
 
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'Bulk permission operations completed',
-        data: { results }
+        data: { results },
       });
-
     } catch (error) {
       await db.execute('ROLLBACK');
       throw error;
     } finally {
       if (db) db.release();
     }
-
   } catch (error) {
     console.error('Error in bulk permission operations:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error?.message || 'Failed to complete bulk permission operations' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error?.message || 'Failed to complete bulk permission operations',
+      },
+      { status: 500 }
+    );
   }
 }

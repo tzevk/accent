@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function DocumentsIssuedTab({
   newIssuedDescRef,
@@ -28,9 +28,7 @@ export default function DocumentsIssuedTab({
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          <h2 className="text-sm font-bold text-gray-900">
-            Documents Issued
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Documents Issued</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Track documents issued to client
@@ -87,13 +85,11 @@ export default function DocumentsIssuedTab({
                     disabled={!canEditProjectContent}
                   >
                     <option value="">Select Activity</option>
-                    {projectActivityDocumentNameOptions.map(
-                      (opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ),
-                    )}
+                    {projectActivityDocumentNameOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td className="py-2 px-2">
@@ -180,7 +176,7 @@ export default function DocumentsIssuedTab({
                         newIssuedDoc.document_name.trim()
                       )
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newIssuedDoc.document_name && newIssuedDoc.document_name.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add document"
                   >
                     Add
@@ -192,17 +188,15 @@ export default function DocumentsIssuedTab({
                   key={d.id}
                   className="hover:bg-gray-50 transition-colors align-top"
                 >
-                  <td className="py-2 px-2 text-center">
-                    {index + 1}
-                  </td>
+                  <td className="py-2 px-2 text-center">{index + 1}</td>
                   <td className="py-2 px-2">
                     <select
-                      value={d.document_name || ""}
+                      value={d.document_name || ''}
                       onChange={(e) =>
                         updateIssuedDocument(
                           d.id,
-                          "document_name",
-                          e.target.value,
+                          'document_name',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487] bg-white"
@@ -211,30 +205,39 @@ export default function DocumentsIssuedTab({
                       <option value="">Select Activity</option>
                       {d.document_name &&
                         !projectActivityDocumentNameOptions.includes(
-                          d.document_name,
+                          d.document_name
                         ) && (
                           <option value={d.document_name}>
                             {d.document_name}
                           </option>
                         )}
-                      {projectActivityDocumentNameOptions.map(
-                        (opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ),
-                      )}
+                      {projectActivityDocumentNameOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.issued_for || ""}
+                      value={d.issued_for || ''}
+                      onChange={(e) =>
+                        updateIssuedDocument(d.id, 'issued_for', e.target.value)
+                      }
+                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
+                      disabled={!canEditProjectContent}
+                    />
+                  </td>
+                  <td className="py-2 px-2">
+                    <input
+                      type="text"
+                      value={d.document_number || ''}
                       onChange={(e) =>
                         updateIssuedDocument(
                           d.id,
-                          "issued_for",
-                          e.target.value,
+                          'document_number',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -244,27 +247,12 @@ export default function DocumentsIssuedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.document_number || ""}
+                      value={d.revision_number || ''}
                       onChange={(e) =>
                         updateIssuedDocument(
                           d.id,
-                          "document_number",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
-                      disabled={!canEditProjectContent}
-                    />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input
-                      type="text"
-                      value={d.revision_number || ""}
-                      onChange={(e) =>
-                        updateIssuedDocument(
-                          d.id,
-                          "revision_number",
-                          e.target.value,
+                          'revision_number',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -274,13 +262,9 @@ export default function DocumentsIssuedTab({
                   <td className="py-2 px-2">
                     <input
                       type="date"
-                      value={d.issue_date || ""}
+                      value={d.issue_date || ''}
                       onChange={(e) =>
-                        updateIssuedDocument(
-                          d.id,
-                          "issue_date",
-                          e.target.value,
-                        )
+                        updateIssuedDocument(d.id, 'issue_date', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                       disabled={!canEditProjectContent}
@@ -289,13 +273,9 @@ export default function DocumentsIssuedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.remarks || ""}
+                      value={d.remarks || ''}
                       onChange={(e) =>
-                        updateIssuedDocument(
-                          d.id,
-                          "remarks",
-                          e.target.value,
-                        )
+                        updateIssuedDocument(d.id, 'remarks', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                       disabled={!canEditProjectContent}

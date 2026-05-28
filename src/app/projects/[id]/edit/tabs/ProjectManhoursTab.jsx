@@ -1,4 +1,4 @@
-import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function ProjectManhoursTab({
   projectManhours,
@@ -41,11 +41,11 @@ export default function ProjectManhoursTab({
                   ...prev,
                   {
                     id: Date.now(),
-                    employee_id: "",
-                    employee_name: "",
-                    salary_type: "",
-                    rate_company: "",
-                    rate_accent: "",
+                    employee_id: '',
+                    employee_name: '',
+                    salary_type: '',
+                    rate_company: '',
+                    rate_accent: '',
                     monthly_hours: {},
                   },
                 ]);
@@ -59,7 +59,7 @@ export default function ProjectManhoursTab({
         </div>
         <div className="mt-2 text-[10px] text-gray-400">
           {employeesLoading
-            ? "Loading employees..."
+            ? 'Loading employees...'
             : `${employeesWithRates.length} employees available • ${projectManhours.length} added`}
         </div>
       </div>
@@ -71,89 +71,85 @@ export default function ProjectManhoursTab({
               <tr className="bg-gradient-to-r from-purple-50 to-gray-50">
                 <th
                   className="text-left py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 sticky left-0 bg-purple-50 z-10"
-                  style={{ minWidth: "140px" }}
+                  style={{ minWidth: '140px' }}
                 >
                   Employee
                 </th>
                 <th
                   className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-50"
-                  style={{ minWidth: "80px" }}
+                  style={{ minWidth: '80px' }}
                 >
                   Salary Type
                 </th>
                 <th
                   className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
-                  style={{ minWidth: "90px" }}
+                  style={{ minWidth: '90px' }}
                 >
                   RT/HR (Company)
                 </th>
                 <th
                   className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-50"
-                  style={{ minWidth: "90px" }}
+                  style={{ minWidth: '90px' }}
                 >
                   RT/HR (Accent)
                 </th>
                 {[
-                  "Jan",
-                  "Feb",
-                  "Mar",
-                  "Apr",
-                  "May",
-                  "Jun",
-                  "Jul",
-                  "Aug",
-                  "Sep",
-                  "Oct",
-                  "Nov",
-                  "Dec",
+                  'Jan',
+                  'Feb',
+                  'Mar',
+                  'Apr',
+                  'May',
+                  'Jun',
+                  'Jul',
+                  'Aug',
+                  'Sep',
+                  'Oct',
+                  'Nov',
+                  'Dec',
                 ].map((month) => (
                   <th
                     key={month}
                     className="text-center py-2 px-1 font-semibold text-gray-700 border-b border-gray-200 bg-amber-50/50"
-                    style={{ minWidth: "50px" }}
+                    style={{ minWidth: '50px' }}
                   >
                     {month}
                   </th>
                 ))}
                 <th
                   className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-purple-100"
-                  style={{ minWidth: "70px" }}
+                  style={{ minWidth: '70px' }}
                 >
                   Total Hrs
                 </th>
                 <th
                   className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-green-100"
-                  style={{ minWidth: "100px" }}
+                  style={{ minWidth: '100px' }}
                 >
                   Company Cost
                 </th>
                 <th
                   className="text-center py-2 px-2 font-semibold text-gray-700 border-b border-gray-200 bg-blue-100"
-                  style={{ minWidth: "100px" }}
+                  style={{ minWidth: '100px' }}
                 >
                   Accent Cost
                 </th>
                 <th
                   className="text-center py-2 px-2 border-b border-gray-200"
-                  style={{ width: "40px" }}
+                  style={{ width: '40px' }}
                 ></th>
               </tr>
             </thead>
             <tbody>
               {projectManhours.map((empData, idx) => {
                 const monthlyHours = empData.monthly_hours || {};
-                const totalHrs = Object.values(
-                  monthlyHours,
-                ).reduce(
+                const totalHrs = Object.values(monthlyHours).reduce(
                   (sum, h) => sum + (parseFloat(h) || 0),
-                  0,
+                  0
                 );
                 const companyCost =
-                  totalHrs *
-                  (parseFloat(empData.rate_company) || 0);
+                  totalHrs * (parseFloat(empData.rate_company) || 0);
                 const accentCost =
-                  totalHrs *
-                  (parseFloat(empData.rate_accent) || 0);
+                  totalHrs * (parseFloat(empData.rate_accent) || 0);
 
                 return (
                   <tr
@@ -166,30 +162,23 @@ export default function ProjectManhoursTab({
                           {idx + 1}.
                         </span>
                         <select
-                          value={empData.employee_id || ""}
+                          value={empData.employee_id || ''}
                           onChange={async (e) => {
-                            const selectedEmp =
-                              employeesWithRates.find(
-                                (emp) =>
-                                  emp.id ===
-                                  parseInt(e.target.value),
-                              );
+                            const selectedEmp = employeesWithRates.find(
+                              (emp) => emp.id === parseInt(e.target.value)
+                            );
                             if (selectedEmp) {
                               const salaryType =
-                                selectedEmp.salary_type ||
-                                "monthly";
+                                selectedEmp.salary_type || 'monthly';
                               let monthlyHoursData =
                                 empData.monthly_hours || {};
 
                               // If monthly salary type, fetch attendance hours
-                              if (salaryType === "monthly") {
+                              if (salaryType === 'monthly') {
                                 const attendanceHours =
-                                  await fetchAttendanceHours(
-                                    selectedEmp.id,
-                                  );
+                                  await fetchAttendanceHours(selectedEmp.id);
                                 if (attendanceHours) {
-                                  monthlyHoursData =
-                                    attendanceHours;
+                                  monthlyHoursData = attendanceHours;
                                 }
                               }
 
@@ -198,28 +187,21 @@ export default function ProjectManhoursTab({
                                   m.id === empData.id
                                     ? {
                                         ...m,
-                                        employee_id:
-                                          selectedEmp.id,
-                                        employee_name:
-                                          selectedEmp.name,
+                                        employee_id: selectedEmp.id,
+                                        employee_name: selectedEmp.name,
                                         salary_type: salaryType,
-                                        rate_company:
-                                          selectedEmp.rate || 0,
-                                        rate_accent:
-                                          m.rate_accent || "",
-                                        monthly_hours:
-                                          monthlyHoursData,
+                                        rate_company: selectedEmp.rate || 0,
+                                        rate_accent: m.rate_accent || '',
+                                        monthly_hours: monthlyHoursData,
                                       }
-                                    : m,
-                                ),
+                                    : m
+                                )
                               );
                             }
                           }}
                           className="text-xs px-1 py-0.5 border border-gray-200 rounded focus:ring-1 focus:ring-purple-400 bg-transparent max-w-[120px] truncate"
                         >
-                          <option value="">
-                            Select Employee
-                          </option>
+                          <option value="">Select Employee</option>
                           {employeesWithRates.map((emp) => (
                             <option key={emp.id} value={emp.id}>
                               {emp.name}
@@ -231,22 +213,22 @@ export default function ProjectManhoursTab({
                     <td className="py-2 px-2 text-center bg-green-50/30">
                       <span
                         className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${
-                          empData.salary_type === "hourly"
-                            ? "bg-orange-100 text-orange-700"
-                            : empData.salary_type === "daily"
-                              ? "bg-green-100 text-green-700"
-                              : empData.salary_type === "custom"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-blue-100 text-blue-700"
+                          empData.salary_type === 'hourly'
+                            ? 'bg-orange-100 text-orange-700'
+                            : empData.salary_type === 'daily'
+                              ? 'bg-green-100 text-green-700'
+                              : empData.salary_type === 'custom'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-blue-100 text-blue-700'
                         }`}
                       >
-                        {empData.salary_type || "monthly"}
+                        {empData.salary_type || 'monthly'}
                       </span>
                     </td>
                     <td className="py-2 px-1 text-center bg-blue-50/30">
                       <input
                         type="number"
-                        value={empData.rate_company || ""}
+                        value={empData.rate_company || ''}
                         onChange={(e) =>
                           setProjectManhours((prev) =>
                             prev.map((m) =>
@@ -255,8 +237,8 @@ export default function ProjectManhoursTab({
                                     ...m,
                                     rate_company: e.target.value,
                                   }
-                                : m,
-                            ),
+                                : m
+                            )
                           )
                         }
                         className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400"
@@ -268,7 +250,7 @@ export default function ProjectManhoursTab({
                     <td className="py-2 px-1 text-center bg-blue-50/30">
                       <input
                         type="number"
-                        value={empData.rate_accent || ""}
+                        value={empData.rate_accent || ''}
                         onChange={(e) =>
                           setProjectManhours((prev) =>
                             prev.map((m) =>
@@ -277,8 +259,8 @@ export default function ProjectManhoursTab({
                                     ...m,
                                     rate_accent: e.target.value,
                                   }
-                                : m,
-                            ),
+                                : m
+                            )
                           )
                         }
                         className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400"
@@ -288,18 +270,18 @@ export default function ProjectManhoursTab({
                       />
                     </td>
                     {[
-                      "jan",
-                      "feb",
-                      "mar",
-                      "apr",
-                      "may",
-                      "jun",
-                      "jul",
-                      "aug",
-                      "sep",
-                      "oct",
-                      "nov",
-                      "dec",
+                      'jan',
+                      'feb',
+                      'mar',
+                      'apr',
+                      'may',
+                      'jun',
+                      'jul',
+                      'aug',
+                      'sep',
+                      'oct',
+                      'nov',
+                      'dec',
                     ].map((month) => (
                       <td
                         key={month}
@@ -307,7 +289,7 @@ export default function ProjectManhoursTab({
                       >
                         <input
                           type="number"
-                          value={monthlyHours[month] || ""}
+                          value={monthlyHours[month] || ''}
                           onChange={(e) =>
                             setProjectManhours((prev) =>
                               prev.map((m) => {
@@ -321,17 +303,17 @@ export default function ProjectManhoursTab({
                                   };
                                 }
                                 return m;
-                              }),
+                              })
                             )
                           }
-                          className={`w-full text-[10px] px-0.5 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-amber-400 ${empData.salary_type === "monthly" ? "bg-blue-50/50" : ""}`}
+                          className={`w-full text-[10px] px-0.5 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-amber-400 ${empData.salary_type === 'monthly' ? 'bg-blue-50/50' : ''}`}
                           placeholder="–"
                           min="0"
                           step="0.5"
                           title={
-                            empData.salary_type === "monthly"
-                              ? "Auto-fetched from Attendance (editable)"
-                              : ""
+                            empData.salary_type === 'monthly'
+                              ? 'Auto-fetched from Attendance (editable)'
+                              : ''
                           }
                         />
                       </td>
@@ -341,14 +323,14 @@ export default function ProjectManhoursTab({
                     </td>
                     <td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
                       ₹
-                      {companyCost.toLocaleString("en-IN", {
+                      {companyCost.toLocaleString('en-IN', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </td>
                     <td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
                       ₹
-                      {accentCost.toLocaleString("en-IN", {
+                      {accentCost.toLocaleString('en-IN', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -358,9 +340,7 @@ export default function ProjectManhoursTab({
                         type="button"
                         onClick={() =>
                           setProjectManhours((prev) =>
-                            prev.filter(
-                              (m) => m.id !== empData.id,
-                            ),
+                            prev.filter((m) => m.id !== empData.id)
                           )
                         }
                         className="text-red-400 hover:text-red-600"
@@ -381,34 +361,30 @@ export default function ProjectManhoursTab({
                 <td className="py-2 px-2 bg-blue-100/50"></td>
                 <td className="py-2 px-2 bg-blue-100/50"></td>
                 {[
-                  "jan",
-                  "feb",
-                  "mar",
-                  "apr",
-                  "may",
-                  "jun",
-                  "jul",
-                  "aug",
-                  "sep",
-                  "oct",
-                  "nov",
-                  "dec",
+                  'jan',
+                  'feb',
+                  'mar',
+                  'apr',
+                  'may',
+                  'jun',
+                  'jul',
+                  'aug',
+                  'sep',
+                  'oct',
+                  'nov',
+                  'dec',
                 ].map((month) => {
                   const monthTotal = projectManhours.reduce(
                     (sum, emp) =>
-                      sum +
-                      (parseFloat(emp.monthly_hours?.[month]) ||
-                        0),
-                    0,
+                      sum + (parseFloat(emp.monthly_hours?.[month]) || 0),
+                    0
                   );
                   return (
                     <td
                       key={month}
                       className="py-2 px-1 text-center text-gray-700 bg-amber-100/50"
                     >
-                      {monthTotal > 0
-                        ? monthTotal.toFixed(1)
-                        : "–"}
+                      {monthTotal > 0 ? monthTotal.toFixed(1) : '–'}
                     </td>
                   );
                 })}
@@ -417,13 +393,11 @@ export default function ProjectManhoursTab({
                     .reduce(
                       (sum, emp) =>
                         sum +
-                        Object.values(
-                          emp.monthly_hours || {},
-                        ).reduce(
+                        Object.values(emp.monthly_hours || {}).reduce(
                           (s, h) => s + (parseFloat(h) || 0),
-                          0,
+                          0
                         ),
-                      0,
+                      0
                     )
                     .toFixed(1)}
                 </td>
@@ -431,18 +405,13 @@ export default function ProjectManhoursTab({
                   ₹
                   {projectManhours
                     .reduce((sum, emp) => {
-                      const hrs = Object.values(
-                        emp.monthly_hours || {},
-                      ).reduce(
+                      const hrs = Object.values(emp.monthly_hours || {}).reduce(
                         (s, h) => s + (parseFloat(h) || 0),
-                        0,
+                        0
                       );
-                      return (
-                        sum +
-                        hrs * (parseFloat(emp.rate_company) || 0)
-                      );
+                      return sum + hrs * (parseFloat(emp.rate_company) || 0);
                     }, 0)
-                    .toLocaleString("en-IN", {
+                    .toLocaleString('en-IN', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
@@ -451,18 +420,13 @@ export default function ProjectManhoursTab({
                   ₹
                   {projectManhours
                     .reduce((sum, emp) => {
-                      const hrs = Object.values(
-                        emp.monthly_hours || {},
-                      ).reduce(
+                      const hrs = Object.values(emp.monthly_hours || {}).reduce(
                         (s, h) => s + (parseFloat(h) || 0),
-                        0,
+                        0
                       );
-                      return (
-                        sum +
-                        hrs * (parseFloat(emp.rate_accent) || 0)
-                      );
+                      return sum + hrs * (parseFloat(emp.rate_accent) || 0);
                     }, 0)
-                    .toLocaleString("en-IN", {
+                    .toLocaleString('en-IN', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}

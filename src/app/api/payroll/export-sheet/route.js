@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import ExcelJS from 'exceljs';
 
 /** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
-const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const safeNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 /** Safely convert to string, stripping null/undefined */
 const safeStr = (v) => (v == null ? '' : String(v));
 
@@ -15,7 +22,11 @@ const safeStr = (v) => (v == null ? '' : String(v));
  *  - salary_type: Filter by salary type (monthly, hourly, daily, contract, lumpsum, custom)
  */
 export async function GET(request) {
-  const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PAYROLL,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -31,7 +42,15 @@ export async function GET(request) {
       );
     }
 
-    const validSalaryTypes = ['monthly', 'hourly', 'daily', 'contract', 'lumpsum', 'custom', 'payroll'];
+    const validSalaryTypes = [
+      'monthly',
+      'hourly',
+      'daily',
+      'contract',
+      'lumpsum',
+      'custom',
+      'payroll',
+    ];
     db = await dbConnect();
 
     let query = `SELECT 
@@ -79,7 +98,11 @@ export async function GET(request) {
 
     if (slips.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No payroll slips found for this month. Please generate payroll first.' },
+        {
+          success: false,
+          error:
+            'No payroll slips found for this month. Please generate payroll first.',
+        },
         { status: 404 }
       );
     }
@@ -89,13 +112,16 @@ export async function GET(request) {
     const monthNum = parseInt(mn, 10);
     const yearNum = parseInt(yr, 10);
     const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
-    const weeklyOffDaysInMonth = Array.from({ length: daysInMonth }, (_, index) => {
-      const date = new Date(yearNum, monthNum - 1, index + 1);
-      return date.getDay() === 0 ? 1 : 0;
-    }).reduce((sum, day) => sum + day, 0);
+    const weeklyOffDaysInMonth = Array.from(
+      { length: daysInMonth },
+      (_, index) => {
+        const date = new Date(yearNum, monthNum - 1, index + 1);
+        return date.getDay() === 0 ? 1 : 0;
+      }
+    ).reduce((sum, day) => sum + day, 0);
 
     // Get days_present per employee from attendance table
-    const employeeIds = slips.map(s => s.employee_id);
+    const employeeIds = slips.map((s) => s.employee_id);
     const attendanceMap = {};
     const lwpMap = {};
     if (employeeIds.length > 0) {
@@ -153,9 +179,8 @@ export async function GET(request) {
       );
       if (daRows.length > 0) {
         const daRow = daRows[0];
-        scheduledDA = daRow.value_type === 'percentage'
-          ? 0
-          : (parseFloat(daRow.value) || 0);
+        scheduledDA =
+          daRow.value_type === 'percentage' ? 0 : parseFloat(daRow.value) || 0;
       }
     } catch (daErr) {
       console.log('DA schedule fetch for export skipped:', daErr.message);
@@ -179,8 +204,12 @@ export async function GET(request) {
         for (const row of salaryRows) {
           if (!loanAdvanceMap[row.employee_id]) {
             loanAdvanceMap[row.employee_id] = {
-              loan: row.loan_active ? (parseFloat(row.loan_amount_per_month) || 0) : 0,
-              advance: row.advance_active ? (parseFloat(row.advance_amount) || 0) : 0
+              loan: row.loan_active
+                ? parseFloat(row.loan_amount_per_month) || 0
+                : 0,
+              advance: row.advance_active
+                ? parseFloat(row.advance_amount) || 0
+                : 0,
             };
           }
         }
@@ -237,7 +266,12 @@ export async function GET(request) {
     // (accessing non-master cells creates extra <c> elements in OOXML that Excel flags as corrupt)
     const quarterCol = Math.floor(totalCols / 4);
     const companyEndCol = Math.max(quarterCol - 1, 1);
-    const row4Border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    const row4Border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' },
+    };
 
     sheet.mergeCells(`A4:${getColLetter(companyEndCol)}4`);
     const companyCell = sheet.getCell('A4');
@@ -253,12 +287,18 @@ export async function GET(request) {
 
     const dopStartCol = quarterCol + 1;
     const dopEndCol = quarterCol * 2;
-    sheet.mergeCells(`${getColLetter(dopStartCol)}4:${getColLetter(dopEndCol)}4`);
+    sheet.mergeCells(
+      `${getColLetter(dopStartCol)}4:${getColLetter(dopEndCol)}4`
+    );
     const dopCell = sheet.getCell(`${getColLetter(dopStartCol)}4`);
     dopCell.value = 'DATE OF PAYMENT';
     dopCell.font = { bold: true, size: 11 };
     dopCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    dopCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    dopCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' },
+    };
     dopCell.border = row4Border;
 
     const fmStartCol = dopEndCol + 1;
@@ -268,17 +308,38 @@ export async function GET(request) {
     fmCell.value = 'FOR THE MONTH OF';
     fmCell.font = { bold: true, size: 11 };
     fmCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    fmCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    fmCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' },
+    };
     fmCell.border = row4Border;
 
     const mvStartCol = fmEndCol + 1;
     sheet.mergeCells(`${getColLetter(mvStartCol)}4:${lastCol}4`);
     const mvCell = sheet.getCell(`${getColLetter(mvStartCol)}4`);
-    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     mvCell.value = `${monthNames[monthNum - 1]}-${yr.slice(2)}`;
     mvCell.font = { bold: true, size: 11 };
     mvCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    mvCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    mvCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' },
+    };
     mvCell.border = row4Border;
 
     // Row 5: Empty separator
@@ -286,19 +347,43 @@ export async function GET(request) {
 
     // Shared style objects (reuse references for speed)
     const thinBorder = { style: 'thin' };
-    const borderAll = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
-    const borderTotals = { top: { style: 'double' }, left: thinBorder, bottom: thinBorder, right: thinBorder };
-    const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+    const borderAll = {
+      top: thinBorder,
+      left: thinBorder,
+      bottom: thinBorder,
+      right: thinBorder,
+    };
+    const borderTotals = {
+      top: { style: 'double' },
+      left: thinBorder,
+      bottom: thinBorder,
+      right: thinBorder,
+    };
+    const headerFill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFD9E1F2' },
+    };
     const alignMiddle = { vertical: 'middle' };
     const alignRightMiddle = { horizontal: 'right', vertical: 'middle' };
-    const alignCenterMiddle = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    const alignCenterMiddle = {
+      horizontal: 'center',
+      vertical: 'middle',
+      wrapText: true,
+    };
     const numFmt = '#,##0.00';
     const headerFont = { bold: true, size: 10 };
     const boldFont = { bold: true };
 
     if (isContractExport) {
       // ── Contract sheet: simple layout ──
-      const contractHeaders = ['Full Name', 'Position', 'Contract Amount', 'TDS Deduction (10%)', 'In-Hand CTC'];
+      const contractHeaders = [
+        'Full Name',
+        'Position',
+        'Contract Amount',
+        'TDS Deduction (10%)',
+        'In-Hand CTC',
+      ];
 
       const contractHeaderRow = sheet.getRow(6);
       contractHeaderRow.height = 24;
@@ -312,7 +397,9 @@ export async function GET(request) {
       });
 
       // Pre-compute totals
-      let sumContract = 0, sumTds = 0, sumInHand = 0;
+      let sumContract = 0,
+        sumTds = 0,
+        sumInHand = 0;
 
       slips.forEach((slip, index) => {
         const contractAmount = safeNum(slip.gross || slip.total_earnings);
@@ -323,7 +410,13 @@ export async function GET(request) {
         sumInHand += inHandCTC;
 
         const row = sheet.getRow(7 + index);
-        row.values = [safeStr(slip.full_name), safeStr(slip.position), contractAmount, tds, inHandCTC];
+        row.values = [
+          safeStr(slip.full_name),
+          safeStr(slip.position),
+          contractAmount,
+          tds,
+          inHandCTC,
+        ];
         for (let c = 1; c <= 5; c++) {
           const cell = row.getCell(c);
           cell.border = borderAll;
@@ -346,8 +439,9 @@ export async function GET(request) {
         }
       }
 
-      [25, 20, 18, 18, 18].forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
-
+      [25, 20, 18, 18, 18].forEach((w, i) => {
+        sheet.getColumn(i + 1).width = w;
+      });
     } else {
       // ── Payroll - Extensive salary breakdown ──
       const headers = [
@@ -409,11 +503,26 @@ export async function GET(request) {
         cell.border = borderAll;
       });
       // Highlight header cells for key columns
-      headerRow.getCell(26).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // GROSS
-      headerRow.getCell(35).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // DEDUCTIONS
-      headerRow.getCell(36).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEB9C' } }; // NET
+      headerRow.getCell(26).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFC6EFCE' },
+      }; // GROSS
+      headerRow.getCell(35).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFC7CE' },
+      }; // DEDUCTIONS
+      headerRow.getCell(36).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFEB9C' },
+      }; // NET
 
-      const alignCenterVertMiddle = { horizontal: 'center', vertical: 'middle' };
+      const alignCenterVertMiddle = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       const colCount = headers.length;
 
       // Pre-compute totals accumulators (columns 8..36, index 7..35)
@@ -425,8 +534,12 @@ export async function GET(request) {
         // All numeric values use safeNum() to guarantee finite numbers (never NaN/Infinity/strings)
         const tds = safeNum(slip.tds);
         const totalDays = daysInMonth;
-        const standardWorkingDays = safeNum(slip.standard_working_days) || totalDays;
-        const lopDays = lwpMap[slip.employee_id] != null ? safeNum(lwpMap[slip.employee_id]) : safeNum(slip.lop_days);
+        const standardWorkingDays =
+          safeNum(slip.standard_working_days) || totalDays;
+        const lopDays =
+          lwpMap[slip.employee_id] != null
+            ? safeNum(lwpMap[slip.employee_id])
+            : safeNum(slip.lop_days);
         const absentDays = Math.max(lopDays, safeNum(slip.days_absent));
         const daysLeave = safeNum(slip.days_leave);
         const weeklyOff = weeklyOffDaysInMonth;
@@ -434,9 +547,13 @@ export async function GET(request) {
         const payableDays = Math.max(0, totalDays - lopDays);
         // Only apply pro-rata when there are actual absent/LOP days
         const isAbsent = absentDays > 0;
-        const prorataFactor = isAbsent && standardWorkingDays > 0
-          ? Math.min(1, (standardWorkingDays - absentDays) / standardWorkingDays)
-          : 1;
+        const prorataFactor =
+          isAbsent && standardWorkingDays > 0
+            ? Math.min(
+                1,
+                (standardWorkingDays - absentDays) / standardWorkingDays
+              )
+            : 1;
 
         const structureBasicPlusDa = safeNum(slip.structure_basic_salary);
         const profileBasic = safeNum(slip.profile_basic);
@@ -449,9 +566,11 @@ export async function GET(request) {
               ? profileBasic
               : profileBasicPlusDa > 0
                 ? profileBasicPlusDa
-                : (safeNum(slip.basic) || (safeNum(slip.profile_basic) + safeNum(slip.profile_da)))
+                : safeNum(slip.basic) ||
+                  safeNum(slip.profile_basic) + safeNum(slip.profile_da)
         );
-        const daFull = scheduledDA > 0 ? scheduledDA : safeNum(slip.da_used || slip.da);
+        const daFull =
+          scheduledDA > 0 ? scheduledDA : safeNum(slip.da_used || slip.da);
         const basicFull = Math.max(0, basicPlusDaFull - daFull);
         const basicPlusDa = basicFull + daFull;
         const hraFull = safeNum(slip.hra);
@@ -473,22 +592,47 @@ export async function GET(request) {
         const bonus = bonusFull * prorataFactor;
         const otRate = otRateFull * prorataFactor;
         // Gross = total earnings using fetched Basic + DA from salary structure/profile
-        const gross = basicPlusDa + hra + conveyance + callAllowance + otherAllowances + paidHoliday + bonus + otRate + incentive;
-        
+        const gross =
+          basicPlusDa +
+          hra +
+          conveyance +
+          callAllowance +
+          otherAllowances +
+          paidHoliday +
+          bonus +
+          otRate +
+          incentive;
+
         // Pro-rate percentage-based deductions only if person is absent
-        const pfEmployee = isAbsent ? safeNum(slip.pf_employee) * prorataFactor : safeNum(slip.pf_employee);
-        const esicEmployee = isAbsent ? safeNum(slip.esic_employee) * prorataFactor : safeNum(slip.esic_employee);
+        const pfEmployee = isAbsent
+          ? safeNum(slip.pf_employee) * prorataFactor
+          : safeNum(slip.pf_employee);
+        const esicEmployee = isAbsent
+          ? safeNum(slip.esic_employee) * prorataFactor
+          : safeNum(slip.esic_employee);
         // PT is always 300 in February, but also pro-rate if absent
         const originalPt = safeNum(slip.pt);
-        const pt = isAbsent ? ((monthNum === 2) ? 300 * prorataFactor : originalPt * prorataFactor) : ((monthNum === 2) ? 300 : originalPt);
-        const empLoanAdvance = loanAdvanceMap[slip.employee_id] || { loan: 0, advance: 0 };
+        const pt = isAbsent
+          ? monthNum === 2
+            ? 300 * prorataFactor
+            : originalPt * prorataFactor
+          : monthNum === 2
+            ? 300
+            : originalPt;
+        const empLoanAdvance = loanAdvanceMap[slip.employee_id] || {
+          loan: 0,
+          advance: 0,
+        };
         const loan = empLoanAdvance.loan || safeNum(slip.loan);
         const advance = empLoanAdvance.advance || safeNum(slip.advance);
-        const retention = isAbsent ? safeNum(slip.retention) * prorataFactor : safeNum(slip.retention);
+        const retention = isAbsent
+          ? safeNum(slip.retention) * prorataFactor
+          : safeNum(slip.retention);
         // MLWF: deduct only in June and December, but keep configured value in profile.
-        const mlwf = (monthNum === 6 || monthNum === 12) ? safeNum(slip.mlwf) : 0;
+        const mlwf = monthNum === 6 || monthNum === 12 ? safeNum(slip.mlwf) : 0;
         // Recalculate total_deductions from pro-rated components
-        const baseDeductions = pfEmployee + esicEmployee + pt + mlwf + retention;
+        const baseDeductions =
+          pfEmployee + esicEmployee + pt + mlwf + retention;
         const totalDeductions = baseDeductions + loan + advance;
         const netPay = gross - totalDeductions;
         const otHours = safeNum(slip.overtime_hours);
@@ -496,26 +640,72 @@ export async function GET(request) {
         const row = sheet.getRow(7 + idx);
         // ExcelJS contiguous array: index 0 → column 1, index 1 → column 2, etc.
         row.values = [
-          idx + 1, safeStr(slip.employee_code), safeStr(slip.full_name),
-          safeStr(slip.position), safeStr(slip.uan),
-          safeStr(slip.pf_no), safeStr(slip.esi_no) || '--',
-          totalDays, daysPresent, payableDays, lopDays, daysLeave, 6, 0, otHours,
-          basic, da, hra, conveyance, callAllowance, otherAllowances,
-          paidHoliday, bonus, otRate, incentive, gross,
-          pfEmployee, esicEmployee, pt, loan, advance, tds, retention, mlwf,
-          totalDeductions, netPay,
+          idx + 1,
+          safeStr(slip.employee_code),
+          safeStr(slip.full_name),
+          safeStr(slip.position),
+          safeStr(slip.uan),
+          safeStr(slip.pf_no),
+          safeStr(slip.esi_no) || '--',
+          totalDays,
+          daysPresent,
+          payableDays,
+          lopDays,
+          daysLeave,
+          6,
+          0,
+          otHours,
+          basic,
+          da,
+          hra,
+          conveyance,
+          callAllowance,
+          otherAllowances,
+          paidHoliday,
+          bonus,
+          otRate,
+          incentive,
+          gross,
+          pfEmployee,
+          esicEmployee,
+          pt,
+          loan,
+          advance,
+          tds,
+          retention,
+          mlwf,
+          totalDeductions,
+          netPay,
         ];
 
         // Accumulate totals for numeric columns (8..36 = index 7..35)
-        totals[7] += totalDays; totals[8] += daysPresent; totals[9] += payableDays;
-        totals[10] += lopDays; totals[11] += daysLeave; totals[12] += 4; totals[14] += otHours;
-        totals[15] += basic; totals[16] += da; totals[17] += hra;
-        totals[18] += conveyance; totals[19] += callAllowance; totals[20] += otherAllowances;
-        totals[21] += paidHoliday; totals[22] += bonus; totals[23] += otRate;
-        totals[24] += incentive; totals[25] += gross;
-        totals[26] += pfEmployee; totals[27] += esicEmployee; totals[28] += pt;
-        totals[29] += loan; totals[30] += advance; totals[31] += tds;
-        totals[32] += retention; totals[33] += mlwf; totals[34] += totalDeductions;
+        totals[7] += totalDays;
+        totals[8] += daysPresent;
+        totals[9] += payableDays;
+        totals[10] += lopDays;
+        totals[11] += daysLeave;
+        totals[12] += 4;
+        totals[14] += otHours;
+        totals[15] += basic;
+        totals[16] += da;
+        totals[17] += hra;
+        totals[18] += conveyance;
+        totals[19] += callAllowance;
+        totals[20] += otherAllowances;
+        totals[21] += paidHoliday;
+        totals[22] += bonus;
+        totals[23] += otRate;
+        totals[24] += incentive;
+        totals[25] += gross;
+        totals[26] += pfEmployee;
+        totals[27] += esicEmployee;
+        totals[28] += pt;
+        totals[29] += loan;
+        totals[30] += advance;
+        totals[31] += tds;
+        totals[32] += retention;
+        totals[33] += mlwf;
+        totals[34] += totalDeductions;
         totals[35] += netPay;
 
         // Apply styles per cell
@@ -553,8 +743,12 @@ export async function GET(request) {
       }
 
       // Column widths
-      [6,12,22,16,15,20,15,10,10,10,10,8,8,10,8,12,10,10,16,14,14,14,10,8,10,14,14,10,14,10,10,10,12,10,14,14]
-        .forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+      [
+        6, 12, 22, 16, 15, 20, 15, 10, 10, 10, 10, 8, 8, 10, 8, 12, 10, 10, 16,
+        14, 14, 14, 10, 8, 10, 14, 14, 10, 14, 10, 10, 10, 12, 10, 14, 14,
+      ].forEach((w, i) => {
+        sheet.getColumn(i + 1).width = w;
+      });
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -567,16 +761,20 @@ export async function GET(request) {
     return new Response(uint8, {
       status: 200,
       headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
       },
     });
-
   } catch (error) {
     console.error('GET /api/payroll/export-sheet error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to export salary sheet', details: error.message },
+      {
+        success: false,
+        error: 'Failed to export salary sheet',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {

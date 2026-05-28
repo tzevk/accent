@@ -1,12 +1,16 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { getCurrentUser, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  getCurrentUser,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 
 /**
  * GET /api/users/[id]/dashboard
  * Fetch comprehensive dashboard statistics for a user
- * 
+ *
  * Returns:
  * - Activity statistics by status
  * - Upcoming deadlines (next 7 days)
@@ -19,27 +23,34 @@ export async function GET(request, { params }) {
   try {
     const { id } = await params;
     const requestedUserId = parseInt(id);
-    
+
     // Get current user
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     // Users can ALWAYS view their own dashboard
     const isOwnDashboard = requestedUserId === currentUser.id;
-    
+
     // For viewing OTHER users' dashboards, require admin or specific permission
     if (!isOwnDashboard) {
-      const canViewOthers = currentUser.is_super_admin || 
-                            hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
-      
+      const canViewOthers =
+        currentUser.is_super_admin ||
+        hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
+
       if (!canViewOthers) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Forbidden: You can only view your own dashboard' 
-        }, { status: 403 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Forbidden: You can only view your own dashboard',
+          },
+          { status: 403 }
+        );
       }
     }
 
@@ -55,10 +66,11 @@ export async function GET(request, { params }) {
         activeProjectsResult,
         recentUpdatesResult,
         workloadSummaryResult,
-        priorityBreakdownResult
+        priorityBreakdownResult,
       ] = await Promise.all([
         // 1. Activity statistics by status
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             status,
             priority,
@@ -71,20 +83,26 @@ export async function GET(request, { params }) {
           ORDER BY 
             FIELD(status, 'Not Started', 'In Progress', 'On Hold', 'Completed', 'Cancelled'),
             FIELD(priority, 'Critical', 'High', 'Medium', 'Low')
-        `, [requestedUserId]),
+        `,
+          [requestedUserId]
+        ),
 
         // 2. Status summary (simplified)
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             status,
             COUNT(*) as count
           FROM user_activity_assignments
           WHERE user_id = ?
           GROUP BY status
-        `, [requestedUserId]),
+        `,
+          [requestedUserId]
+        ),
 
         // 3. Upcoming deadlines (next 7 days)
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             uaa.*,
             p.project_title,
@@ -98,10 +116,13 @@ export async function GET(request, { params }) {
           AND uaa.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
           ORDER BY uaa.due_date ASC, uaa.priority DESC
           LIMIT 10
-        `, [requestedUserId]),
+        `,
+          [requestedUserId]
+        ),
 
         // 4. Overdue activities
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             uaa.*,
             p.project_title,
@@ -113,10 +134,13 @@ export async function GET(request, { params }) {
           AND uaa.status NOT IN ('Completed', 'Cancelled')
           AND uaa.due_date < CURDATE()
           ORDER BY uaa.due_date ASC
-        `, [requestedUserId]),
+        `,
+          [requestedUserId]
+        ),
 
         // 5. Active projects with activity counts
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             p.project_id,
             p.name as project_title,
@@ -135,10 +159,14 @@ export async function GET(request, { params }) {
           AND p.status IN ('NEW', 'planning', 'in-progress', 'Ongoing')
           GROUP BY p.project_id, p.name, p.client_name, p.status, p.project_code
           ORDER BY overdue DESC, p.start_date DESC
-        `, [requestedUserId]),
+        `,
+          [requestedUserId]
+        ),
 
         // 6. Recent activity updates (last 10)
-        db.execute(`
+        db
+          .execute(
+            `
           SELECT 
             au.*,
             uaa.activity_name,
@@ -153,10 +181,14 @@ export async function GET(request, { params }) {
           WHERE uaa.user_id = ?
           ORDER BY au.created_at DESC
           LIMIT 10
-        `, [requestedUserId]).catch(() => [[]]), // May not have this table
+        `,
+            [requestedUserId]
+          )
+          .catch(() => [[]]), // May not have this table
 
         // 7. Workload summary
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             COUNT(*) as total_active_activities,
             SUM(estimated_hours) as total_estimated_hours,
@@ -166,10 +198,13 @@ export async function GET(request, { params }) {
           FROM user_activity_assignments
           WHERE user_id = ?
           AND status NOT IN ('Completed', 'Cancelled')
-        `, [requestedUserId]),
+        `,
+          [requestedUserId]
+        ),
 
         // 8. Priority breakdown
-        db.execute(`
+        db.execute(
+          `
           SELECT 
             priority,
             COUNT(*) as count,
@@ -178,7 +213,9 @@ export async function GET(request, { params }) {
           WHERE user_id = ?
           GROUP BY priority
           ORDER BY FIELD(priority, 'Critical', 'High', 'Medium', 'Low')
-        `, [requestedUserId])
+        `,
+          [requestedUserId]
+        ),
       ]);
 
       // Destructure results
@@ -207,7 +244,7 @@ export async function GET(request, { params }) {
             on_hold: statusCounts.on_hold || 0,
             completed: statusCounts.completed || 0,
             cancelled: statusCounts.cancelled || 0,
-            total: Object.values(statusCounts).reduce((a, b) => a + b, 0)
+            total: Object.values(statusCounts).reduce((a, b) => a + b, 0),
           },
           upcoming_deadlines: upcomingDeadlines,
           overdue_activities: overdueActivities,
@@ -219,21 +256,22 @@ export async function GET(request, { params }) {
             total_estimated_hours: 0,
             total_actual_hours: 0,
             in_progress_hours: 0,
-            avg_progress: 0
+            avg_progress: 0,
           },
-          priority_breakdown: priorityBreakdown
-        }
+          priority_breakdown: priorityBreakdown,
+        },
       });
-      
     } finally {
       db.release();
     }
-
   } catch (error) {
     console.error('GET user dashboard error:', error);
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to fetch dashboard data'
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch dashboard data',
+      },
+      { status: 500 }
+    );
   }
 }

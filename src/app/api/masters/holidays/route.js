@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch holidays
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -55,7 +63,7 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       data: holidays,
-      count: holidays.length
+      count: holidays.length,
     });
   } catch (error) {
     console.error('Error fetching holidays:', error);
@@ -71,7 +79,11 @@ export async function GET(request) {
 // POST - Add new holiday
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.CREATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.CREATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -113,20 +125,23 @@ export async function POST(request) {
         type || 'national',
         is_optional || false,
         description || null,
-        is_active !== false
+        is_active !== false,
       ]
     );
 
     return NextResponse.json({
       success: true,
       message: 'Holiday added successfully',
-      id: result.insertId
+      id: result.insertId,
     });
   } catch (error) {
     console.error('Error adding holiday:', error);
     if (error.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { success: false, error: 'A holiday with this name already exists on this date' },
+        {
+          success: false,
+          error: 'A holiday with this name already exists on this date',
+        },
         { status: 400 }
       );
     }
@@ -142,7 +157,11 @@ export async function POST(request) {
 // PUT - Update holiday
 export async function PUT(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.UPDATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -170,7 +189,7 @@ export async function PUT(request) {
         is_optional || false,
         description || null,
         is_active !== false,
-        id
+        id,
       ]
     );
 
@@ -183,7 +202,7 @@ export async function PUT(request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Holiday updated successfully'
+      message: 'Holiday updated successfully',
     });
   } catch (error) {
     console.error('Error updating holiday:', error);
@@ -199,7 +218,11 @@ export async function PUT(request) {
 // DELETE - Delete holiday
 export async function DELETE(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.DELETE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.DELETE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -230,7 +253,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Holiday deleted successfully'
+      message: 'Holiday deleted successfully',
     });
   } catch (error) {
     console.error('Error deleting holiday:', error);

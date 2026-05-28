@@ -11,7 +11,7 @@ import {
   ChartBarIcon,
   ArrowPathIcon,
   FunnelIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 
 export default function LiveMonitoringPage() {
@@ -27,12 +27,12 @@ export default function LiveMonitoringPage() {
   // Fetch users on mount and set up auto-refresh
   useEffect(() => {
     fetchUsers();
-    
+
     if (autoRefresh) {
       const interval = setInterval(() => {
         fetchUsers();
       }, 10000); // Refresh every 10 seconds
-      
+
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
@@ -62,15 +62,16 @@ export default function LiveMonitoringPage() {
 
     // Apply status filter
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(u => u.status === statusFilter);
+      filtered = filtered.filter((u) => u.status === statusFilter);
     }
 
     // Apply search
     if (searchTerm) {
-      filtered = filtered.filter(u => 
-        u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (u) =>
+          u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          u.email?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -80,9 +81,14 @@ export default function LiveMonitoringPage() {
         const statusOrder = { online: 0, idle: 1, offline: 2 };
         return statusOrder[a.status] - statusOrder[b.status];
       } else if (sortBy === 'name') {
-        return (a.full_name || a.username).localeCompare(b.full_name || b.username);
+        return (a.full_name || a.username).localeCompare(
+          b.full_name || b.username
+        );
       } else if (sortBy === 'screen_time') {
-        return (b.total_screen_time_minutes || 0) - (a.total_screen_time_minutes || 0);
+        return (
+          (b.total_screen_time_minutes || 0) -
+          (a.total_screen_time_minutes || 0)
+        );
       }
       return 0;
     });
@@ -95,13 +101,18 @@ export default function LiveMonitoringPage() {
   // Calculate statistics
   const stats = {
     total: users.length,
-    online: users.filter(u => u.status === 'online').length,
-    idle: users.filter(u => u.status === 'idle').length,
-    offline: users.filter(u => u.status === 'offline').length,
-    totalScreenTime: users.reduce((sum, u) => sum + (u.total_screen_time_minutes || 0), 0),
-    avgProductivity: users.length > 0 
-      ? users.reduce((sum, u) => sum + (u.productivity_score || 0), 0) / users.length 
-      : 0
+    online: users.filter((u) => u.status === 'online').length,
+    idle: users.filter((u) => u.status === 'idle').length,
+    offline: users.filter((u) => u.status === 'offline').length,
+    totalScreenTime: users.reduce(
+      (sum, u) => sum + (u.total_screen_time_minutes || 0),
+      0
+    ),
+    avgProductivity:
+      users.length > 0
+        ? users.reduce((sum, u) => sum + (u.productivity_score || 0), 0) /
+          users.length
+        : 0,
   };
 
   // Format time
@@ -117,7 +128,7 @@ export default function LiveMonitoringPage() {
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) return `${hours}h ${mins}m`;
     if (mins > 0) return `${mins}m ${secs}s`;
     return `${secs}s`;
@@ -167,7 +178,7 @@ export default function LiveMonitoringPage() {
   return (
     <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
           <div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-24 pb-8 max-w-[1800px] mx-auto w-full">
@@ -179,7 +190,9 @@ export default function LiveMonitoringPage() {
                     <UserGroupIcon className="w-8 h-8 text-blue-600" />
                     Live User Monitoring
                   </h1>
-                  <p className="text-gray-600 mt-1">Real-time view of all user activities</p>
+                  <p className="text-gray-600 mt-1">
+                    Real-time view of all user activities
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -208,7 +221,9 @@ export default function LiveMonitoringPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Total Users</p>
-                    <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {stats.total}
+                    </p>
                   </div>
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                     <UserGroupIcon className="w-6 h-6 text-blue-600" />
@@ -220,8 +235,12 @@ export default function LiveMonitoringPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Online Now</p>
-                    <p className="text-3xl font-bold text-green-600">{stats.online}</p>
-                    <p className="text-xs text-gray-500 mt-1">{stats.idle} idle, {stats.offline} offline</p>
+                    <p className="text-3xl font-bold text-green-600">
+                      {stats.online}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {stats.idle} idle, {stats.offline} offline
+                    </p>
                   </div>
                   <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                     <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
@@ -233,7 +252,9 @@ export default function LiveMonitoringPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Total Screen Time</p>
-                    <p className="text-3xl font-bold text-purple-600">{formatTime(stats.totalScreenTime)}</p>
+                    <p className="text-3xl font-bold text-purple-600">
+                      {formatTime(stats.totalScreenTime)}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">Today</p>
                   </div>
                   <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -246,7 +267,9 @@ export default function LiveMonitoringPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Avg Productivity</p>
-                    <p className="text-3xl font-bold text-orange-600">{stats.avgProductivity.toFixed(0)}%</p>
+                    <p className="text-3xl font-bold text-orange-600">
+                      {stats.avgProductivity.toFixed(0)}%
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">Team average</p>
                   </div>
                   <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
@@ -309,36 +332,50 @@ export default function LiveMonitoringPage() {
               {filteredUsers.map((user) => (
                 <div
                   key={user.user_id}
-                  onClick={() => router.push(`/admin/live-monitoring/user/${user.user_id}`)}
+                  onClick={() =>
+                    router.push(`/admin/live-monitoring/user/${user.user_id}`)
+                  }
                   className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
                 >
                   {/* User Header */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-lg relative">
-                        {user.full_name 
-                          ? user.full_name.split(' ').map(n => n[0]).join('')
+                        {user.full_name
+                          ? user.full_name
+                              .split(' ')
+                              .map((n) => n[0])
+                              .join('')
                           : user.username[0].toUpperCase()}
                         {user.status === 'online' && (
                           <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full animate-pulse"></span>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">{user.full_name || user.username}</h3>
-                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        <h3 className="font-semibold text-gray-900 truncate">
+                          {user.full_name || user.username}
+                        </h3>
+                        <p className="text-xs text-gray-500 truncate">
+                          {user.email}
+                        </p>
                       </div>
                     </div>
                   </div>
 
                   {/* Status Badge */}
                   <div className="mb-3">
-                    <StatusBadgeWithBg status={user.status} lastActivity={user.last_activity} />
+                    <StatusBadgeWithBg
+                      status={user.status}
+                      lastActivity={user.last_activity}
+                    />
                   </div>
 
                   {/* Current Activity */}
                   {user.current_page && user.status === 'online' && (
                     <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                      <p className="text-xs text-blue-600 font-medium mb-1">Currently viewing</p>
+                      <p className="text-xs text-blue-600 font-medium mb-1">
+                        Currently viewing
+                      </p>
                       <p className="text-xs text-gray-700 truncate">
                         {user.current_page.replace(/^\//, '') || 'Dashboard'}
                       </p>
@@ -349,7 +386,9 @@ export default function LiveMonitoringPage() {
                   {user.session_duration && user.status === 'online' && (
                     <div className="mb-3">
                       <p className="text-xs text-gray-500">Session duration</p>
-                      <p className="text-sm font-semibold text-gray-900">{formatDuration(user.session_duration)}</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {formatDuration(user.session_duration)}
+                      </p>
                     </div>
                   )}
 
@@ -357,19 +396,27 @@ export default function LiveMonitoringPage() {
                   <div className="border-t border-gray-100 pt-3 space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500">Screen Time</span>
-                      <span className="font-semibold text-gray-900">{formatTime(user.total_screen_time_minutes)}</span>
+                      <span className="font-semibold text-gray-900">
+                        {formatTime(user.total_screen_time_minutes)}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500">Activities</span>
-                      <span className="font-semibold text-gray-900">{user.activities_count || 0}</span>
+                      <span className="font-semibold text-gray-900">
+                        {user.activities_count || 0}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500">Productivity</span>
-                      <span className={`font-semibold ${
-                        user.productivity_score >= 80 ? 'text-green-600' :
-                        user.productivity_score >= 60 ? 'text-yellow-600' :
-                        'text-orange-600'
-                      }`}>
+                      <span
+                        className={`font-semibold ${
+                          user.productivity_score >= 80
+                            ? 'text-green-600'
+                            : user.productivity_score >= 60
+                              ? 'text-yellow-600'
+                              : 'text-orange-600'
+                        }`}
+                      >
                         {user.productivity_score?.toFixed(0) || 0}%
                       </span>
                     </div>
@@ -380,7 +427,9 @@ export default function LiveMonitoringPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        router.push(`/admin/live-monitoring/user/${user.user_id}`);
+                        router.push(
+                          `/admin/live-monitoring/user/${user.user_id}`
+                        );
                       }}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-md transition-colors"
                     >
@@ -389,7 +438,9 @@ export default function LiveMonitoringPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        router.push(`/admin/activity-logs?user_id=${user.user_id}`);
+                        router.push(
+                          `/admin/activity-logs?user_id=${user.user_id}`
+                        );
                       }}
                       className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-md transition-colors"
                     >
@@ -404,13 +455,15 @@ export default function LiveMonitoringPage() {
             {filteredUsers.length === 0 && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
                 <UserGroupIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-1">No users found</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">
+                  No users found
+                </h3>
                 <p className="text-sm text-gray-500">
-                  {searchTerm 
-                    ? 'Try adjusting your search or filters' 
+                  {searchTerm
+                    ? 'Try adjusting your search or filters'
                     : statusFilter !== 'all'
-                    ? `No ${statusFilter} users at the moment`
-                    : 'No users available'}
+                      ? `No ${statusFilter} users at the moment`
+                      : 'No users available'}
                 </p>
               </div>
             )}

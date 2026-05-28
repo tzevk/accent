@@ -19,12 +19,16 @@ export async function parseJSONSafe(response) {
 export async function fetchJSON(url, options) {
   // Lightweight in-memory cache for GET requests to reduce repeated identical fetches
   // Usage: fetchJSON('/api/xyz', { cacheTTL: 5000 }) // TTL in ms
-  const isGet = !options || (options && (!options.method || options.method.toUpperCase() === 'GET'));
-  const cacheTTL = options && typeof options.cacheTTL === 'number' ? options.cacheTTL : 0; // ms
+  const isGet =
+    !options ||
+    (options && (!options.method || options.method.toUpperCase() === 'GET'));
+  const cacheTTL =
+    options && typeof options.cacheTTL === 'number' ? options.cacheTTL : 0; // ms
 
   if (!globalThis.__fetchJSON_cache) globalThis.__fetchJSON_cache = new Map();
   const cache = globalThis.__fetchJSON_cache;
-  const cacheKey = url + (options && options.cacheKey ? `|${options.cacheKey}` : '');
+  const cacheKey =
+    url + (options && options.cacheKey ? `|${options.cacheKey}` : '');
 
   if (isGet && cacheTTL > 0) {
     const entry = cache.get(cacheKey);
@@ -36,7 +40,8 @@ export async function fetchJSON(url, options) {
   const res = await fetch(url, options);
   const data = await parseJSONSafe(res);
   if (!res.ok || data?.success === false) {
-    const errMsg = data?.error || data?.message || `Request failed (${res.status})`;
+    const errMsg =
+      data?.error || data?.message || `Request failed (${res.status})`;
     const details = data?.details;
     throw new Error(details ? `${errMsg}: ${details}` : errMsg);
   }

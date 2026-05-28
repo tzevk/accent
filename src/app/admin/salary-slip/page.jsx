@@ -15,7 +15,7 @@ import {
   FunnelIcon,
   MagnifyingGlassIcon,
   PrinterIcon,
-  DocumentDuplicateIcon
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 
 export default function SalarySlipPage() {
@@ -38,7 +38,7 @@ export default function SalarySlipPage() {
   const salaryTypes = [
     { value: 'payroll', label: 'Payroll Employees' },
     { value: 'contract', label: 'Contract Employees' },
-    { value: 'all', label: 'All Employees' }
+    { value: 'all', label: 'All Employees' },
   ];
 
   useEffect(() => {
@@ -51,11 +51,14 @@ export default function SalarySlipPage() {
       setFilteredSlips(slips);
     } else {
       const query = searchQuery.toLowerCase();
-      setFilteredSlips(slips.filter(s => 
-        s.employee_name?.toLowerCase().includes(query) ||
-        s.employee_code?.toLowerCase().includes(query) ||
-        s.department?.toLowerCase().includes(query)
-      ));
+      setFilteredSlips(
+        slips.filter(
+          (s) =>
+            s.employee_name?.toLowerCase().includes(query) ||
+            s.employee_code?.toLowerCase().includes(query) ||
+            s.department?.toLowerCase().includes(query)
+        )
+      );
     }
   }, [searchQuery, slips]);
 
@@ -86,15 +89,15 @@ export default function SalarySlipPage() {
     try {
       setExporting(true);
       setError('');
-      
+
       const url = `/api/payroll/bulk-pdf?month=${month}&employee_id=${slip.employee_id}`;
       const res = await fetch(url);
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Export failed');
       }
-      
+
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -104,7 +107,7 @@ export default function SalarySlipPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(downloadUrl);
-      
+
       setSuccess(`PDF generated for ${slip.employee_name}`);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -118,19 +121,19 @@ export default function SalarySlipPage() {
     try {
       setExporting(true);
       setError('');
-      
+
       let url = `/api/payroll/bulk-pdf?month=${month}`;
       if (salaryType !== 'all') {
         url += `&salary_type=${salaryType}`;
       }
-      
+
       const res = await fetch(url);
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Export failed');
       }
-      
+
       const blob = await res.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -140,7 +143,7 @@ export default function SalarySlipPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(downloadUrl);
-      
+
       setSuccess(`PDF generated for all ${slips.length} employees`);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -176,14 +179,14 @@ export default function SalarySlipPage() {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(amount || 0);
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className="mb-6">
@@ -194,23 +197,29 @@ export default function SalarySlipPage() {
             <ArrowLeftIcon className="w-4 h-4 mr-1" />
             Back
           </button>
-          
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 <DocumentIcon className="w-7 h-7 text-blue-600" />
                 Salary Slips
               </h1>
-              <p className="text-sm text-gray-500 mt-0.5">Download individual or bulk salary slip PDFs</p>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Download individual or bulk salary slip PDFs
+              </p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <button
                 onClick={exportBulkPDF}
                 disabled={exporting || slips.length === 0}
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-medium"
               >
-                {exporting ? <InlineSpinner className="w-4 h-4 mr-2" /> : <DocumentDuplicateIcon className="w-4 h-4 mr-2" />}
+                {exporting ? (
+                  <InlineSpinner className="w-4 h-4 mr-2" />
+                ) : (
+                  <DocumentDuplicateIcon className="w-4 h-4 mr-2" />
+                )}
                 Download All PDFs
               </button>
             </div>
@@ -224,7 +233,7 @@ export default function SalarySlipPage() {
             <span className="text-sm">{error}</span>
           </div>
         )}
-        
+
         {success && (
           <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
             <CheckCircleIcon className="w-5 h-5 flex-shrink-0" />
@@ -237,7 +246,9 @@ export default function SalarySlipPage() {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <CalendarIcon className="w-5 h-5 text-gray-400" />
-              <label className="text-sm font-medium text-gray-700">Month:</label>
+              <label className="text-sm font-medium text-gray-700">
+                Month:
+              </label>
               <input
                 type="month"
                 value={month.substring(0, 7)}
@@ -245,7 +256,7 @@ export default function SalarySlipPage() {
                 className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
-            
+
             <div className="flex items-center gap-2">
               <FunnelIcon className="w-5 h-5 text-gray-400" />
               <label className="text-sm font-medium text-gray-700">Type:</label>
@@ -254,12 +265,14 @@ export default function SalarySlipPage() {
                 onChange={(e) => setSalaryType(e.target.value)}
                 className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                {salaryTypes.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {salaryTypes.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>
-            
+
             <div className="flex-1 min-w-[200px]">
               <div className="relative">
                 <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -280,14 +293,16 @@ export default function SalarySlipPage() {
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <InlineSpinner className="w-8 h-8" />
-              <span className="ml-3 text-gray-500">Loading salary slips...</span>
+              <span className="ml-3 text-gray-500">
+                Loading salary slips...
+              </span>
             </div>
           ) : filteredSlips.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <DocumentIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
               <p className="font-medium">No salary slips found</p>
               <p className="text-sm mt-1">
-                {slips.length === 0 
+                {slips.length === 0
                   ? `Generate payroll for ${formatMonthDisplay(month)} to see slips here.`
                   : 'No employees match your search criteria.'}
               </p>
@@ -306,44 +321,66 @@ export default function SalarySlipPage() {
                         <UserIcon className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900 text-sm">{slip.employee_name}</h3>
-                        <p className="text-xs text-gray-500">{slip.employee_code}</p>
+                        <h3 className="font-semibold text-gray-900 text-sm">
+                          {slip.employee_name}
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          {slip.employee_code}
+                        </p>
                       </div>
                     </div>
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                      slip.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
-                      slip.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                      slip.payment_status === 'hold' ? 'bg-red-100 text-red-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
+                    <span
+                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                        slip.payment_status === 'paid'
+                          ? 'bg-green-100 text-green-700'
+                          : slip.payment_status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : slip.payment_status === 'hold'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
                       {slip.payment_status || 'pending'}
                     </span>
                   </div>
-                  
+
                   {/* Slip Details */}
                   <div className="space-y-2 mb-4">
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Department</span>
-                      <span className="text-gray-700">{slip.department || '-'}</span>
+                      <span className="text-gray-700">
+                        {slip.department || '-'}
+                      </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Working Days</span>
-                      <span className="text-gray-700">{slip.standard_working_days || 0} / {slip.payable_days || slip.standard_working_days || 0}</span>
+                      <span className="text-gray-700">
+                        {slip.standard_working_days || 0} /{' '}
+                        {slip.payable_days || slip.standard_working_days || 0}
+                      </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Gross Salary</span>
-                      <span className="text-gray-900 font-medium">{formatCurrency(slip.gross)}</span>
+                      <span className="text-gray-900 font-medium">
+                        {formatCurrency(slip.gross)}
+                      </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Deductions</span>
-                      <span className="text-red-600">{formatCurrency(slip.total_deductions)}</span>
+                      <span className="text-red-600">
+                        {formatCurrency(slip.total_deductions)}
+                      </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-gray-200">
-                      <span className="text-sm font-medium text-gray-700">Net Pay</span>
-                      <span className="text-sm font-bold text-green-700">{formatCurrency(slip.net_pay)}</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        Net Pay
+                      </span>
+                      <span className="text-sm font-bold text-green-700">
+                        {formatCurrency(slip.net_pay)}
+                      </span>
                     </div>
                   </div>
-                  
+
                   {/* Actions */}
                   <div className="flex gap-2">
                     <button
@@ -373,19 +410,37 @@ export default function SalarySlipPage() {
           <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="text-sm text-gray-600">
-                Showing <span className="font-semibold text-gray-900">{filteredSlips.length}</span> of <span className="font-semibold text-gray-900">{slips.length}</span> employees
+                Showing{' '}
+                <span className="font-semibold text-gray-900">
+                  {filteredSlips.length}
+                </span>{' '}
+                of{' '}
+                <span className="font-semibold text-gray-900">
+                  {slips.length}
+                </span>{' '}
+                employees
               </div>
               <div className="flex items-center gap-6 text-sm">
                 <div>
                   <span className="text-gray-500">Total Gross:</span>
                   <span className="ml-2 font-semibold text-gray-900">
-                    {formatCurrency(filteredSlips.reduce((s, r) => s + (Number(r.gross) || 0), 0))}
+                    {formatCurrency(
+                      filteredSlips.reduce(
+                        (s, r) => s + (Number(r.gross) || 0),
+                        0
+                      )
+                    )}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-500">Total Net:</span>
                   <span className="ml-2 font-semibold text-green-700">
-                    {formatCurrency(filteredSlips.reduce((s, r) => s + (Number(r.net_pay) || 0), 0))}
+                    {formatCurrency(
+                      filteredSlips.reduce(
+                        (s, r) => s + (Number(r.net_pay) || 0),
+                        0
+                      )
+                    )}
                   </span>
                 </div>
               </div>
@@ -401,86 +456,351 @@ export default function SalarySlipPage() {
             <div className="p-4">
               {/* Modal Header */}
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-bold text-gray-900">Salary Slip Preview</h2>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Salary Slip Preview
+                </h2>
                 <button
                   onClick={() => setPreviewSlip(null)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
 
-              <div className="border-2 rounded overflow-hidden" style={{borderColor: '#64126D'}}>
+              <div
+                className="border-2 rounded overflow-hidden"
+                style={{ borderColor: '#64126D' }}
+              >
                 {/* Company Header Banner */}
-                <div className="flex items-center" style={{background: 'linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%)', padding: '14px 20px'}}>
+                <div
+                  className="flex items-center"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, #64126D 0%, #86288F 50%, #86288F 100%)',
+                    padding: '14px 20px',
+                  }}
+                >
                   <div className="w-[80px] mr-4 bg-white rounded-md p-1.5">
-                    <img src="/accent-logo.png" alt="Accent Logo" className="w-full h-auto" />
+                    <img
+                      src="/accent-logo.png"
+                      alt="Accent Logo"
+                      className="w-full h-auto"
+                    />
                   </div>
                   <div className="flex-1 text-center">
-                    <h1 className="text-[20px] font-extrabold text-white tracking-wide">ACCENT TECHNO SOLUTIONS PVT LTD</h1>
-                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),</p>
-                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">MUMBAI,MAHARASHTRA - 400055</p>
-                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">Mobile: 9324670725</p>
+                    <h1 className="text-[20px] font-extrabold text-white tracking-wide">
+                      ACCENT TECHNO SOLUTIONS PVT LTD
+                    </h1>
+                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">
+                      17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),
+                    </p>
+                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">
+                      MUMBAI,MAHARASHTRA - 400055
+                    </p>
+                    <p className="text-[10px] text-purple-200 font-medium leading-relaxed">
+                      Mobile: 9324670725
+                    </p>
                   </div>
                 </div>
 
                 {/* Month Title Bar */}
-                <div className="px-3 py-1.5 font-bold text-center text-xs tracking-wide" style={{background: 'linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5)', color: '#64126D', borderBottom: '2px solid #64126D'}}>
-                  SALARY SLIP FOR THE MONTH OF {formatMonthDisplay(previewSlip.month).toUpperCase()}
+                <div
+                  className="px-3 py-1.5 font-bold text-center text-xs tracking-wide"
+                  style={{
+                    background:
+                      'linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5)',
+                    color: '#64126D',
+                    borderBottom: '2px solid #64126D',
+                  }}
+                >
+                  SALARY SLIP FOR THE MONTH OF{' '}
+                  {formatMonthDisplay(previewSlip.month).toUpperCase()}
                 </div>
 
                 {/* Employee Info Table */}
                 <table className="w-full border-collapse text-[11px]">
                   <colgroup>
-                    <col style={{width: '12%'}} />
-                    <col style={{width: '15%'}} />
-                    <col style={{width: '12%'}} />
-                    <col style={{width: '13%'}} />
-                    <col style={{width: '13%'}} />
-                    <col style={{width: '13%'}} />
-                    <col style={{width: '11%'}} />
-                    <col style={{width: '11%'}} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '13%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '11%' }} />
                   </colgroup>
                   <tbody>
                     <tr>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>NAME :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.employee_name || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>DESIGNATION :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.designation || previewSlip.position || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>TOTAL DAYS :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.standard_working_days || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>TOTAL PAID LEAVES :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pl_total || 21}</td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        NAME :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.employee_name || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        DESIGNATION :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.designation || previewSlip.position || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        TOTAL DAYS :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.standard_working_days || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        TOTAL PAID LEAVES :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.pl_total || 21}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>DEPARTMENT :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.department || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>DATE OF JOINING :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.joining_date ? new Date(previewSlip.joining_date).toLocaleDateString('en-IN') : ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PRESENT DAYS :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.payable_days || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PL USED :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pl_used || 0}</td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        DEPARTMENT :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.department || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        DATE OF JOINING :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.joining_date
+                          ? new Date(
+                              previewSlip.joining_date
+                            ).toLocaleDateString('en-IN')
+                          : ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        PRESENT DAYS :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.payable_days || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        PL USED :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.pl_used || 0}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PF NUMBER :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pf_number || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>ESIC NUMBER :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.esic_number || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>ABSENT DAYS :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.standard_working_days && previewSlip.payable_days ? (parseFloat(previewSlip.standard_working_days) - parseFloat(previewSlip.payable_days)).toFixed(1) : (previewSlip.lop_days || '0.0')}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>BALANCE :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pl_balance ?? (21 - (previewSlip.pl_used || 0))}</td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        PF NUMBER :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.pf_number || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        ESIC NUMBER :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.esic_number || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        ABSENT DAYS :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.standard_working_days &&
+                        previewSlip.payable_days
+                          ? (
+                              parseFloat(previewSlip.standard_working_days) -
+                              parseFloat(previewSlip.payable_days)
+                            ).toFixed(1)
+                          : previewSlip.lop_days || '0.0'}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        BALANCE :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.pl_balance ??
+                          21 - (previewSlip.pl_used || 0)}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>UAN NUMBER :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.uan_number || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PAN NO :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}}>{previewSlip.pan_number || ''}</td>
-                      <td className="px-2 py-1.5 font-bold text-[10px]" style={{border: '1px solid #d8b4fe', background: '#faf5ff', color: '#64126D'}}>PAYMENT MODE :</td>
-                      <td className="px-2 py-1.5 bg-white" style={{border: '1px solid #d8b4fe'}} colSpan={3}>{previewSlip.payment_mode || ''}</td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        UAN NUMBER :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.uan_number || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        PAN NO :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                      >
+                        {previewSlip.pan_number || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1.5 font-bold text-[10px]"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          background: '#faf5ff',
+                          color: '#64126D',
+                        }}
+                      >
+                        PAYMENT MODE :
+                      </td>
+                      <td
+                        className="px-2 py-1.5 bg-white"
+                        style={{ border: '1px solid #d8b4fe' }}
+                        colSpan={3}
+                      >
+                        {previewSlip.payment_mode || ''}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -488,112 +808,609 @@ export default function SalarySlipPage() {
                 {/* Earnings & Deductions Table */}
                 <table className="w-full border-collapse text-[11px]">
                   <colgroup>
-                    <col style={{width: '25%'}} />
-                    <col style={{width: '12.5%'}} />
-                    <col style={{width: '12.5%'}} />
-                    <col style={{width: '25%'}} />
-                    <col style={{width: '25%'}} />
+                    <col style={{ width: '25%' }} />
+                    <col style={{ width: '12.5%' }} />
+                    <col style={{ width: '12.5%' }} />
+                    <col style={{ width: '25%' }} />
+                    <col style={{ width: '25%' }} />
                   </colgroup>
                   <thead>
-                    <tr style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}>
-                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>DESCRIPTION</th>
-                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>GROSS</th>
-                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>EARNING</th>
-                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>DESCRIPTION</th>
-                      <th className="px-2 py-1.5 text-white text-[11px] tracking-wide" style={{border: '1px solid #a855f7'}}>AMOUNT</th>
+                    <tr
+                      style={{
+                        background: 'linear-gradient(135deg, #64126D, #86288F)',
+                      }}
+                    >
+                      <th
+                        className="px-2 py-1.5 text-white text-[11px] tracking-wide"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        DESCRIPTION
+                      </th>
+                      <th
+                        className="px-2 py-1.5 text-white text-[11px] tracking-wide"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        GROSS
+                      </th>
+                      <th
+                        className="px-2 py-1.5 text-white text-[11px] tracking-wide"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        EARNING
+                      </th>
+                      <th
+                        className="px-2 py-1.5 text-white text-[11px] tracking-wide"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        DESCRIPTION
+                      </th>
+                      <th
+                        className="px-2 py-1.5 text-white text-[11px] tracking-wide"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        AMOUNT
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>BASIC</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.basic || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.basic || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>PROVIDENT FUND</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.pf_employee || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        BASIC
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.basic || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.basic || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        PROVIDENT FUND
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        {previewSlip.pf_employee || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>DA</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.da || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.da || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>ESIC</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.esic_employee || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        DA
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.da || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.da || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        ESIC
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        {previewSlip.esic_employee || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>HRA</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.hra || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.hra || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>PROFESSIONAL TAX</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.pt || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        HRA
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.hra || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.hra || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        PROFESSIONAL TAX
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        {previewSlip.pt || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>CONVEYANCE ALLOWANCE</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.conveyance || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.conveyance || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>LOAN</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.loan || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        CONVEYANCE ALLOWANCE
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.conveyance || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.conveyance || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        LOAN
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        {previewSlip.loan || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>CALL ALLOWANCE</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.call_allowance || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.call_allowance || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>ADVANCE</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.advance || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        CALL ALLOWANCE
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.call_allowance || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.call_allowance || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        ADVANCE
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        {previewSlip.advance || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>OTHER ALLOWANCE</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.other_allowances || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.other_allowances || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>TAX DEDUCTED AT SOURCE</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.tds || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        OTHER ALLOWANCE
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.other_allowances || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.other_allowances || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        TAX DEDUCTED AT SOURCE
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        {previewSlip.tds || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>PAID HOLIDAY AMOUNT</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.paid_holiday || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.paid_holiday || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>RETENTION AMOUNT</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}>{previewSlip.retention || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        PAID HOLIDAY AMOUNT
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.paid_holiday || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.paid_holiday || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        RETENTION AMOUNT
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      >
+                        {previewSlip.retention || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>BONUS</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.bonus || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.bonus || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>MLWF</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}>{previewSlip.mlwf || ''}</td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        BONUS
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.bonus || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.bonus || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        MLWF
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      >
+                        {previewSlip.mlwf || ''}
+                      </td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>OT AMOUNT</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.ot_rate || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#f0fdf4'}}>{previewSlip.ot_rate || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}></td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fef2f2'}}></td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        OT AMOUNT
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.ot_rate || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#f0fdf4',
+                        }}
+                      >
+                        {previewSlip.ot_rate || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      ></td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fef2f2',
+                        }}
+                      ></td>
                     </tr>
                     <tr>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>INCENTIVE</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.incentive || ''}</td>
-                      <td className="px-2 py-1 text-right font-mono" style={{border: '1px solid #e9d5ff', background: '#ecfdf5'}}>{previewSlip.incentive || ''}</td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}></td>
-                      <td className="px-2 py-1" style={{border: '1px solid #e9d5ff', background: '#fff1f2'}}></td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        INCENTIVE
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.incentive || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1 text-right font-mono"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#ecfdf5',
+                        }}
+                      >
+                        {previewSlip.incentive || ''}
+                      </td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      ></td>
+                      <td
+                        className="px-2 py-1"
+                        style={{
+                          border: '1px solid #e9d5ff',
+                          background: '#fff1f2',
+                        }}
+                      ></td>
                     </tr>
                     {/* Totals Row */}
-                    <tr className="font-bold" style={{background: 'linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec)'}}>
-                      <td className="px-2 py-1.5" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D'}}>GROSS EARNING</td>
-                      <td className="px-2 py-1.5 text-right font-mono" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D'}}></td>
-                      <td className="px-2 py-1.5 text-right font-mono" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D', color: '#15803d'}}>{previewSlip.total_earnings || previewSlip.gross || '0.00'}</td>
-                      <td className="px-2 py-1.5" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D'}}>TOTAL DEDUCTION</td>
-                      <td className="px-2 py-1.5 text-right font-mono" style={{border: '1px solid #d8b4fe', borderTop: '2px solid #64126D', color: '#b91c1c'}}>{previewSlip.total_deductions || '0.00'}</td>
+                    <tr
+                      className="font-bold"
+                      style={{
+                        background:
+                          'linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec)',
+                      }}
+                    >
+                      <td
+                        className="px-2 py-1.5"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          borderTop: '2px solid #64126D',
+                        }}
+                      >
+                        GROSS EARNING
+                      </td>
+                      <td
+                        className="px-2 py-1.5 text-right font-mono"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          borderTop: '2px solid #64126D',
+                        }}
+                      ></td>
+                      <td
+                        className="px-2 py-1.5 text-right font-mono"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          borderTop: '2px solid #64126D',
+                          color: '#15803d',
+                        }}
+                      >
+                        {previewSlip.total_earnings ||
+                          previewSlip.gross ||
+                          '0.00'}
+                      </td>
+                      <td
+                        className="px-2 py-1.5"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          borderTop: '2px solid #64126D',
+                        }}
+                      >
+                        TOTAL DEDUCTION
+                      </td>
+                      <td
+                        className="px-2 py-1.5 text-right font-mono"
+                        style={{
+                          border: '1px solid #d8b4fe',
+                          borderTop: '2px solid #64126D',
+                          color: '#b91c1c',
+                        }}
+                      >
+                        {previewSlip.total_deductions || '0.00'}
+                      </td>
                     </tr>
                     {/* Net Salary Row */}
-                    <tr style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}>
-                      <td className="px-2 py-2 text-white" style={{border: '1px solid #a855f7'}} colSpan={3}></td>
-                      <td className="px-2 py-2 text-white font-extrabold text-[12px] tracking-wide" style={{border: '1px solid #a855f7'}}>NET SALARY PAYABLE</td>
-                      <td className="px-2 py-2 text-right text-white font-extrabold text-[13px] font-mono" style={{border: '1px solid #a855f7'}}>{previewSlip.net_pay || '0.00'}</td>
+                    <tr
+                      style={{
+                        background: 'linear-gradient(135deg, #64126D, #86288F)',
+                      }}
+                    >
+                      <td
+                        className="px-2 py-2 text-white"
+                        style={{ border: '1px solid #a855f7' }}
+                        colSpan={3}
+                      ></td>
+                      <td
+                        className="px-2 py-2 text-white font-extrabold text-[12px] tracking-wide"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        NET SALARY PAYABLE
+                      </td>
+                      <td
+                        className="px-2 py-2 text-right text-white font-extrabold text-[13px] font-mono"
+                        style={{ border: '1px solid #a855f7' }}
+                      >
+                        {previewSlip.net_pay || '0.00'}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* Footer */}
-                <div className="text-center text-[10px] font-medium pt-2 pb-2" style={{background: '#f3e5f5', color: '#64126D', borderTop: '2px solid #64126D'}}>
-                  <p>NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN&apos;T REQUIRE SIGNATURE</p>
+                <div
+                  className="text-center text-[10px] font-medium pt-2 pb-2"
+                  style={{
+                    background: '#f3e5f5',
+                    color: '#64126D',
+                    borderTop: '2px solid #64126D',
+                  }}
+                >
+                  <p>
+                    NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE
+                    DOESN&apos;T REQUIRE SIGNATURE
+                  </p>
                 </div>
               </div>
 
@@ -612,7 +1429,9 @@ export default function SalarySlipPage() {
                   }}
                   disabled={exporting}
                   className="flex-1 inline-flex items-center justify-center px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors font-medium"
-                  style={{background: 'linear-gradient(135deg, #64126D, #86288F)'}}
+                  style={{
+                    background: 'linear-gradient(135deg, #64126D, #86288F)',
+                  }}
                 >
                   <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
                   Download PDF

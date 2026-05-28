@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import Navbar from "@/components/Navbar";
+import { useState, useEffect } from 'react';
+import Navbar from '@/components/Navbar';
 
 export default function LoadingFallback() {
   const [elapsed, setElapsed] = useState(0);
@@ -71,23 +71,23 @@ export default function LoadingFallback() {
           animation: spin 1s linear infinite;
         }
         .loading-dots::after {
-          content: "";
+          content: '';
           animation: dots 1.5s steps(4, end) infinite;
         }
         @keyframes dots {
           0%,
           20% {
-            content: "";
+            content: '';
           }
           40% {
-            content: ".";
+            content: '.';
           }
           60% {
-            content: "..";
+            content: '..';
           }
           80%,
           100% {
-            content: "...";
+            content: '...';
           }
         }
       `}</style>

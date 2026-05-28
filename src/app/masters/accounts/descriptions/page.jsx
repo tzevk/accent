@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import AccessGuard from '@/components/AccessGuard';
-import { 
-  PlusIcon, 
-  TrashIcon, 
-  PencilIcon, 
+import {
+  PlusIcon,
+  TrashIcon,
+  PencilIcon,
   CheckIcon,
   XMarkIcon,
   MagnifyingGlassIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 
 export default function DescriptionMasterPage() {
@@ -19,13 +19,13 @@ export default function DescriptionMasterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  
+
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     description_name: '',
-    is_active: true
+    is_active: true,
   });
 
   // Fetch descriptions
@@ -50,9 +50,11 @@ export default function DescriptionMasterPage() {
   }, []);
 
   // Filter descriptions
-  const filteredDescriptions = descriptions.filter(desc => {
+  const filteredDescriptions = descriptions.filter((desc) => {
     if (!searchTerm) return true;
-    return desc.description_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    return desc.description_name
+      ?.toLowerCase()
+      .includes(searchTerm.toLowerCase());
   });
 
   // Show messages
@@ -70,7 +72,7 @@ export default function DescriptionMasterPage() {
   const resetForm = () => {
     setFormData({
       description_name: '',
-      is_active: true
+      is_active: true,
     });
     setEditingId(null);
     setShowForm(false);
@@ -79,27 +81,31 @@ export default function DescriptionMasterPage() {
   // Handle submit
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.description_name.trim()) {
       showError('Description name is required');
       return;
     }
 
     try {
-      const url = editingId 
-        ? `/api/masters/descriptions?id=${editingId}` 
+      const url = editingId
+        ? `/api/masters/descriptions?id=${editingId}`
         : '/api/masters/descriptions';
-      
+
       const res = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        showSuccess(editingId ? 'Description updated successfully' : 'Description created successfully');
+        showSuccess(
+          editingId
+            ? 'Description updated successfully'
+            : 'Description created successfully'
+        );
         resetForm();
         fetchDescriptions();
       } else {
@@ -115,7 +121,7 @@ export default function DescriptionMasterPage() {
   const handleEdit = (desc) => {
     setFormData({
       description_name: desc.description_name || '',
-      is_active: desc.is_active !== false
+      is_active: desc.is_active !== false,
     });
     setEditingId(desc.id);
     setShowForm(true);
@@ -127,7 +133,7 @@ export default function DescriptionMasterPage() {
 
     try {
       const res = await fetch(`/api/masters/descriptions?id=${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       const data = await res.json();
@@ -148,7 +154,7 @@ export default function DescriptionMasterPage() {
     <AccessGuard resource="activities" permission="read">
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        
+
         <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -157,7 +163,9 @@ export default function DescriptionMasterPage() {
                 <DocumentTextIcon className="h-7 w-7 text-purple-600" />
                 Description Master
               </h1>
-              <p className="text-sm text-gray-500 mt-1">Manage descriptions for cash voucher line items</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Manage descriptions for cash voucher line items
+              </p>
             </div>
             <button
               onClick={() => setShowForm(true)}
@@ -188,7 +196,10 @@ export default function DescriptionMasterPage() {
                   <h2 className="text-lg font-semibold text-gray-900">
                     {editingId ? 'Edit Description' : 'Add New Description'}
                   </h2>
-                  <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    onClick={resetForm}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <XMarkIcon className="h-5 w-5" />
                   </button>
                 </div>
@@ -201,7 +212,12 @@ export default function DescriptionMasterPage() {
                     <input
                       type="text"
                       value={formData.description_name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description_name: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          description_name: e.target.value,
+                        }))
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                       placeholder="e.g., Travelling Expenses, Office Supplies"
                       required
@@ -213,10 +229,18 @@ export default function DescriptionMasterPage() {
                       type="checkbox"
                       id="is_active"
                       checked={formData.is_active}
-                      onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          is_active: e.target.checked,
+                        }))
+                      }
                       className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                     />
-                    <label htmlFor="is_active" className="text-sm text-gray-700">
+                    <label
+                      htmlFor="is_active"
+                      className="text-sm text-gray-700"
+                    >
                       Active
                     </label>
                   </div>
@@ -261,22 +285,36 @@ export default function DescriptionMasterPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">#</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={4}
+                      className="px-6 py-8 text-center text-gray-500"
+                    >
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
                     </td>
                   </tr>
                 ) : filteredDescriptions.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                    <td
+                      colSpan={4}
+                      className="px-6 py-8 text-center text-gray-500"
+                    >
                       No descriptions found
                     </td>
                   </tr>
@@ -290,11 +328,13 @@ export default function DescriptionMasterPage() {
                         {desc.description_name}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          desc.is_active !== false 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            desc.is_active !== false
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
                           {desc.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
                       </td>

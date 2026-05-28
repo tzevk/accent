@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
@@ -14,7 +18,11 @@ function escapeHtml(str) {
 
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let pool;
@@ -25,29 +33,51 @@ export async function GET(request) {
 
     let rows;
     if (id) {
-      const [r] = await pool.execute('SELECT * FROM proposals WHERE id = ? LIMIT 1', [id]);
+      const [r] = await pool.execute(
+        'SELECT * FROM proposals WHERE id = ? LIMIT 1',
+        [id]
+      );
       rows = r;
     } else {
-      const [r] = await pool.execute('SELECT * FROM proposals ORDER BY created_at DESC');
+      const [r] = await pool.execute(
+        'SELECT * FROM proposals ORDER BY created_at DESC'
+      );
       rows = r;
     }
 
     const fs = await import('fs');
     const path = await import('path');
-    const templateCandidate = path.join(process.cwd(), 'public', 'templates', 'proposal_format.docx');
-    const templateFallback = path.join(process.cwd(), 'public', 'proposal_format.docx');
-    const templatePath = fs.existsSync(templateCandidate) ? templateCandidate : templateFallback;
+    const templateCandidate = path.join(
+      process.cwd(),
+      'public',
+      'templates',
+      'proposal_format.docx'
+    );
+    const templateFallback = path.join(
+      process.cwd(),
+      'public',
+      'proposal_format.docx'
+    );
+    const templatePath = fs.existsSync(templateCandidate)
+      ? templateCandidate
+      : templateFallback;
     const useTemplate = id && fs.existsSync(templatePath);
 
     // ----------------- DOCX TEMPLATE EXPORT -----------------
     if (useTemplate) {
       try {
-        const PizZip = (await import('pizzip')).default || (await import('pizzip'));
-        const Docxtemplater = (await import('docxtemplater')).default || (await import('docxtemplater'));
+        const PizZip =
+          (await import('pizzip')).default || (await import('pizzip'));
+        const Docxtemplater =
+          (await import('docxtemplater')).default ||
+          (await import('docxtemplater'));
 
         const content = fs.readFileSync(templatePath);
         const zip = new PizZip(content);
-        const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+        });
 
         const p = (rows && rows[0]) || {};
         const data = {};
@@ -56,7 +86,10 @@ export async function GET(request) {
         Object.keys(p).forEach((k) => {
           const v = p[k];
           if (v === null || v === undefined) return (data[k] = '');
-          if (typeof v === 'object') return (data[k] = Array.isArray(v) ? v : JSON.stringify(v, null, 2));
+          if (typeof v === 'object')
+            return (data[k] = Array.isArray(v)
+              ? v
+              : JSON.stringify(v, null, 2));
           const s = String(v);
           if (s.trim().startsWith('{') || s.trim().startsWith('[')) {
             try {
@@ -77,18 +110,33 @@ export async function GET(request) {
         data.client_name = data.client_name || data.client || '';
         data.description = data.description || data.project_description || '';
 
-  // additional aliases for annexure fields requested by UI
-  data.scope_of_work = data.scope_of_work || data.scope || data.description || '';
-  data.input_document = data.input_document || data.input_documents || data.inputDocument || '';
-  data.deliverables = data.deliverables || data.list_of_deliverables || data.list_of_deliverables_plain || '';
-  data.software = data.software || '';
-  data.duration = data.duration || data.timeline || '';
-  data.site_visit = data.site_visit || data.siteVisit || '';
-  data.quotation_validity = data.quotation_validity || data.quotationValidity || '';
-  data.mode_of_delivery = data.mode_of_delivery || data.modeOfDelivery || '';
-  data.revision = data.revision || '';
-  data.exclusions = data.exclusions || '';
-  data.billing = data.billing || data.billing_and_payment || data.billingAndPayment || '';
+        // additional aliases for annexure fields requested by UI
+        data.scope_of_work =
+          data.scope_of_work || data.scope || data.description || '';
+        data.input_document =
+          data.input_document ||
+          data.input_documents ||
+          data.inputDocument ||
+          '';
+        data.deliverables =
+          data.deliverables ||
+          data.list_of_deliverables ||
+          data.list_of_deliverables_plain ||
+          '';
+        data.software = data.software || '';
+        data.duration = data.duration || data.timeline || '';
+        data.site_visit = data.site_visit || data.siteVisit || '';
+        data.quotation_validity =
+          data.quotation_validity || data.quotationValidity || '';
+        data.mode_of_delivery =
+          data.mode_of_delivery || data.modeOfDelivery || '';
+        data.revision = data.revision || '';
+        data.exclusions = data.exclusions || '';
+        data.billing =
+          data.billing ||
+          data.billing_and_payment ||
+          data.billingAndPayment ||
+          '';
 
         // formatting helpers
         const toDate = (v) => {
@@ -98,7 +146,10 @@ export async function GET(request) {
         };
         const created = toDate(p.created_at || data.created_at);
         data.created_at_formatted = created
-          ? created.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+          ? created.toLocaleString('en-IN', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })
           : data.created_at || '';
         data.created_at_date = created
           ? created.toLocaleDateString('en-IN', { dateStyle: 'medium' })
@@ -108,7 +159,9 @@ export async function GET(request) {
         const currency = p.currency || data.currency || '';
         const formatNumber = (n) => {
           try {
-            return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(n));
+            return new Intl.NumberFormat('en-IN', {
+              maximumFractionDigits: 2,
+            }).format(Number(n));
           } catch {
             return String(n);
           }
@@ -116,7 +169,10 @@ export async function GET(request) {
         const formatCurrency = (n, cur) => {
           try {
             if (cur)
-              return new Intl.NumberFormat('en-IN', { style: 'currency', currency: cur }).format(Number(n));
+              return new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: cur,
+              }).format(Number(n));
             return formatNumber(n);
           } catch {
             return String(n);
@@ -140,12 +196,21 @@ export async function GET(request) {
                 /* not JSON */
               }
             }
-            return s.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+            return s
+              .split(/\r?\n/)
+              .map((x) => x.trim())
+              .filter(Boolean);
           }
           return [String(v)];
         };
 
-        ['disciplines', 'activities', 'list_of_deliverables', 'deliverables', 'documents_list'].forEach((k) => {
+        [
+          'disciplines',
+          'activities',
+          'list_of_deliverables',
+          'deliverables',
+          'documents_list',
+        ].forEach((k) => {
           const arr = makeArray(p[k] ?? data[k]);
           data[k] = arr;
           data[`${k}_plain`] = arr.join('\n');
@@ -157,16 +222,21 @@ export async function GET(request) {
         const buf = doc.getZip().generate({ type: 'nodebuffer' });
 
         const headers = {
-          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Type':
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           'Content-Disposition': `attachment; filename="proposal-${data.proposal_id || data.id || Date.now()}.docx"`,
         };
         return new NextResponse(buf, { headers });
       } catch (e) {
-        console.error('Docx template render failed, attempting XML injection', e);
+        console.error(
+          'Docx template render failed, attempting XML injection',
+          e
+        );
 
         // fallback: insert values manually
         try {
-          const PizZip = (await import('pizzip')).default || (await import('pizzip'));
+          const PizZip =
+            (await import('pizzip')).default || (await import('pizzip'));
           const content2 = fs.readFileSync(templatePath);
           const zip2 = new PizZip(content2);
           const docXmlPath = 'word/document.xml';
@@ -184,9 +254,9 @@ export async function GET(request) {
             `</w:p><w:p><w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
 
           const headingMap = {
-            'Proposal': 'proposal_title',
+            Proposal: 'proposal_title',
             'Proposal Title': 'proposal_title',
-            'Client': 'client_name',
+            Client: 'client_name',
             'Client Name': 'client_name',
             'Scope of Work:': 'description',
             'Deliverables:': 'list_of_deliverables_bulleted',
@@ -204,15 +274,15 @@ export async function GET(request) {
             'Input Document:': 'input_document',
             'Input Document': 'input_document',
             'Software:': 'software',
-            'Software': 'software',
+            Software: 'software',
             'Site Visit:': 'site_visit',
             'Site Visit': 'site_visit',
             'Revision:': 'revision',
-            'Revision': 'revision',
+            Revision: 'revision',
             'Exclusions:': 'exclusions',
-            'Exclusions': 'exclusions',
+            Exclusions: 'exclusions',
             'Billing:': 'billing',
-            'Billing': 'billing',
+            Billing: 'billing',
             'Deliverables:': 'deliverables',
           });
 
@@ -225,13 +295,16 @@ export async function GET(request) {
             const paraClose = docXml.indexOf('</w:p>', idx);
             if (paraClose === -1) return;
             docXml =
-              docXml.slice(0, paraClose + 6) + insertParagraph(val) + docXml.slice(paraClose + 6);
+              docXml.slice(0, paraClose + 6) +
+              insertParagraph(val) +
+              docXml.slice(paraClose + 6);
           });
 
           zip2.file(docXmlPath, docXml);
           const modifiedBuf = zip2.generate({ type: 'nodebuffer' });
           const headers = {
-            'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Type':
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'Content-Disposition': `attachment; filename="proposal-${data.proposal_id || Date.now()}.docx"`,
           };
           return new NextResponse(modifiedBuf, { headers });
@@ -254,8 +327,12 @@ export async function GET(request) {
         const val = p[f];
         let out = '';
         if (val === null || val === undefined) out = '';
-        else if (typeof val === 'object') out = escapeHtml(JSON.stringify(val, null, 2));
-        else if (String(val).trim().startsWith('{') || String(val).trim().startsWith('[')) {
+        else if (typeof val === 'object')
+          out = escapeHtml(JSON.stringify(val, null, 2));
+        else if (
+          String(val).trim().startsWith('{') ||
+          String(val).trim().startsWith('[')
+        ) {
           try {
             out = escapeHtml(JSON.stringify(JSON.parse(val), null, 2));
           } catch {
@@ -278,6 +355,9 @@ export async function GET(request) {
     return new NextResponse(html, { headers });
   } catch (err) {
     console.error('Proposals export failed', err);
-    return NextResponse.json({ success: false, error: 'Failed to export proposals' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to export proposals' },
+      { status: 500 }
+    );
   }
 }

@@ -1,19 +1,33 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { jsPDF } from 'jspdf';
 
-const safeNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const safeNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 const safeStr = (v) => (v == null ? '' : String(v));
 const fmtAmt = (v) => {
   const n = safeNum(v);
-  return n ? n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '';
+  return n
+    ? n.toLocaleString('en-IN', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      })
+    : '';
 };
 
 function formatMonthLabel(monthStr) {
   if (!monthStr) return '';
   const d = new Date(monthStr);
-  return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }).toUpperCase();
+  return d
+    .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    .toUpperCase();
 }
 
 function formatDate(dateStr) {
@@ -43,11 +57,23 @@ function renderSlip(doc, slip, yStart) {
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
-  doc.text('ACCENT TECHNO SOLUTIONS PVT LTD', pageW / 2, y + 7, { align: 'center' });
+  doc.text('ACCENT TECHNO SOLUTIONS PVT LTD', pageW / 2, y + 7, {
+    align: 'center',
+  });
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
-  doc.text('17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),', pageW / 2, y + 12, { align: 'center' });
-  doc.text('MUMBAI, MAHARASHTRA - 400055  |  Mobile: 9324670725', pageW / 2, y + 16, { align: 'center' });
+  doc.text(
+    '17/130, ANAND NAGAR, NEHRU ROAD, VAKOLA, SANTACRUZ (E),',
+    pageW / 2,
+    y + 12,
+    { align: 'center' }
+  );
+  doc.text(
+    'MUMBAI, MAHARASHTRA - 400055  |  Mobile: 9324670725',
+    pageW / 2,
+    y + 16,
+    { align: 'center' }
+  );
   y += 18;
 
   // ─── Month Title Bar ───
@@ -57,7 +83,12 @@ function renderSlip(doc, slip, yStart) {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
-  doc.text(`SALARY SLIP FOR THE MONTH OF ${formatMonthLabel(slip.month)}`, pageW / 2, y + 5.5, { align: 'center' });
+  doc.text(
+    `SALARY SLIP FOR THE MONTH OF ${formatMonthLabel(slip.month)}`,
+    pageW / 2,
+    y + 5.5,
+    { align: 'center' }
+  );
   y += 8;
 
   // ─── Employee Info Section (4 pairs per row, 8 columns) ───
@@ -77,10 +108,19 @@ function renderSlip(doc, slip, yStart) {
     [
       { label: 'PF NUMBER', value: safeStr(slip.pf_number) },
       { label: 'ESIC NUMBER', value: safeStr(slip.esic_number) },
-      { label: 'ABSENT DAYS', value: slip.standard_working_days && slip.payable_days
-          ? (safeNum(slip.standard_working_days) - safeNum(slip.payable_days)).toFixed(1)
-          : safeStr(slip.lop_days || '0.0') },
-      { label: 'BALANCE', value: safeStr(slip.pl_balance ?? (21 - (slip.pl_used || 0))) },
+      {
+        label: 'ABSENT DAYS',
+        value:
+          slip.standard_working_days && slip.payable_days
+            ? (
+                safeNum(slip.standard_working_days) - safeNum(slip.payable_days)
+              ).toFixed(1)
+            : safeStr(slip.lop_days || '0.0'),
+      },
+      {
+        label: 'BALANCE',
+        value: safeStr(slip.pl_balance ?? 21 - (slip.pl_used || 0)),
+      },
     ],
     [
       { label: 'UAN NUMBER', value: safeStr(slip.uan_number) },
@@ -129,7 +169,7 @@ function renderSlip(doc, slip, yStart) {
   // ─── Main Earnings / Deductions Table ───
   // Use 8 columns that align with the employee info grid above:
   // Col 0: Earn DESCRIPTION (label width pair 1)
-  // Col 1: GROSS           (value width pair 1)  
+  // Col 1: GROSS           (value width pair 1)
   // Col 2: EARNING         (label width pair 2)
   // Col 3: (merged into col 2 for earning value — but we use pair2 value width)
   // For deductions side: Col 4+5 = DESCRIPTION, Col 6+7 = AMOUNT
@@ -139,7 +179,7 @@ function renderSlip(doc, slip, yStart) {
   const headerH = rowH + 1;
 
   // Header row — 8 cells, merged in pairs to show 4 headings:
-  // [DESCRIPTION (cols 0-1)] [GROSS (col 2-3)] [EARNING (col 4)] ... 
+  // [DESCRIPTION (cols 0-1)] [GROSS (col 2-3)] [EARNING (col 4)] ...
   // Actually match the web: DESCRIPTION | Gross | EARNING | DESCRIPTION | DEDUCTION
   // Using 8 equal cols: earn desc=2cols, gross=1col, earning=1col, ded desc=2cols, amount=2cols
   const earnDescW = colW * 2;
@@ -151,11 +191,11 @@ function renderSlip(doc, slip, yStart) {
   // Recompute to fill exactly tableW
   const rawSum = earnDescW + grossW + earningW + dedDescW + dedAmtW;
   const cols = [
-    { header: 'DESCRIPTION', w: earnDescW / rawSum * tableW },
-    { header: 'GROSS', w: grossW / rawSum * tableW },
-    { header: 'EARNING', w: earningW / rawSum * tableW },
-    { header: 'DESCRIPTION', w: dedDescW / rawSum * tableW },
-    { header: 'AMOUNT', w: dedAmtW / rawSum * tableW },
+    { header: 'DESCRIPTION', w: (earnDescW / rawSum) * tableW },
+    { header: 'GROSS', w: (grossW / rawSum) * tableW },
+    { header: 'EARNING', w: (earningW / rawSum) * tableW },
+    { header: 'DESCRIPTION', w: (dedDescW / rawSum) * tableW },
+    { header: 'AMOUNT', w: (dedAmtW / rawSum) * tableW },
   ];
 
   // Header row
@@ -175,16 +215,76 @@ function renderSlip(doc, slip, yStart) {
 
   // Data rows
   const earningsDeductions = [
-    { earn: 'BASIC', eGross: slip.basic, eEarn: slip.basic, ded: 'PROVIDENT FUND', dAmt: slip.pf_employee },
-    { earn: 'DA', eGross: slip.da, eEarn: slip.da, ded: 'ESIC', dAmt: slip.esic_employee },
-    { earn: 'HRA', eGross: slip.hra, eEarn: slip.hra, ded: 'PROFESSIONAL TAX', dAmt: slip.pt },
-    { earn: 'CONVEYANCE ALLOWANCE', eGross: slip.conveyance, eEarn: slip.conveyance, ded: 'LOAN', dAmt: slip.loan },
-    { earn: 'CALL ALLOWANCE', eGross: slip.call_allowance, eEarn: slip.call_allowance, ded: 'ADVANCE', dAmt: slip.advance },
-    { earn: 'OTHER ALLOWANCE', eGross: slip.other_allowances, eEarn: slip.other_allowances, ded: 'TDS', dAmt: slip.tds },
-    { earn: 'PAID HOLIDAY AMOUNT', eGross: slip.paid_holiday, eEarn: slip.paid_holiday, ded: 'RETENTION AMOUNT', dAmt: slip.retention },
-    { earn: 'BONUS', eGross: slip.bonus, eEarn: slip.bonus, ded: 'MLWF', dAmt: slip.mlwf },
-    { earn: 'OT AMOUNT', eGross: slip.ot_rate, eEarn: slip.ot_rate, ded: '', dAmt: '' },
-    { earn: 'INCENTIVE', eGross: slip.incentive, eEarn: slip.incentive, ded: '', dAmt: '' },
+    {
+      earn: 'BASIC',
+      eGross: slip.basic,
+      eEarn: slip.basic,
+      ded: 'PROVIDENT FUND',
+      dAmt: slip.pf_employee,
+    },
+    {
+      earn: 'DA',
+      eGross: slip.da,
+      eEarn: slip.da,
+      ded: 'ESIC',
+      dAmt: slip.esic_employee,
+    },
+    {
+      earn: 'HRA',
+      eGross: slip.hra,
+      eEarn: slip.hra,
+      ded: 'PROFESSIONAL TAX',
+      dAmt: slip.pt,
+    },
+    {
+      earn: 'CONVEYANCE ALLOWANCE',
+      eGross: slip.conveyance,
+      eEarn: slip.conveyance,
+      ded: 'LOAN',
+      dAmt: slip.loan,
+    },
+    {
+      earn: 'CALL ALLOWANCE',
+      eGross: slip.call_allowance,
+      eEarn: slip.call_allowance,
+      ded: 'ADVANCE',
+      dAmt: slip.advance,
+    },
+    {
+      earn: 'OTHER ALLOWANCE',
+      eGross: slip.other_allowances,
+      eEarn: slip.other_allowances,
+      ded: 'TDS',
+      dAmt: slip.tds,
+    },
+    {
+      earn: 'PAID HOLIDAY AMOUNT',
+      eGross: slip.paid_holiday,
+      eEarn: slip.paid_holiday,
+      ded: 'RETENTION AMOUNT',
+      dAmt: slip.retention,
+    },
+    {
+      earn: 'BONUS',
+      eGross: slip.bonus,
+      eEarn: slip.bonus,
+      ded: 'MLWF',
+      dAmt: slip.mlwf,
+    },
+    {
+      earn: 'OT AMOUNT',
+      eGross: slip.ot_rate,
+      eEarn: slip.ot_rate,
+      ded: '',
+      dAmt: '',
+    },
+    {
+      earn: 'INCENTIVE',
+      eGross: slip.incentive,
+      eEarn: slip.incentive,
+      ded: '',
+      dAmt: '',
+    },
   ];
 
   doc.setFont('helvetica', 'normal');
@@ -257,7 +357,12 @@ function renderSlip(doc, slip, yStart) {
   doc.text('NET SALARY PAYABLE', margin + leftW + 2, y + 5.2);
   // Amount cell
   doc.rect(margin + leftW + netLabelW, y, netAmtW, netH, 'FD');
-  doc.text(fmtAmt(slip.net_salary || slip.net_pay), margin + leftW + netLabelW + netAmtW - 2, y + 5.2, { align: 'right' });
+  doc.text(
+    fmtAmt(slip.net_salary || slip.net_pay),
+    margin + leftW + netLabelW + netAmtW - 2,
+    y + 5.2,
+    { align: 'right' }
+  );
   y += netH;
 
   // ─── Footer ───
@@ -266,7 +371,12 @@ function renderSlip(doc, slip, yStart) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(100, 18, 109);
-  doc.text('NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN\'T REQUIRE SIGNATURE', pageW / 2, y + 4.5, { align: 'center' });
+  doc.text(
+    "NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE DOESN'T REQUIRE SIGNATURE",
+    pageW / 2,
+    y + 4.5,
+    { align: 'center' }
+  );
 
   y += 7;
 
@@ -284,7 +394,11 @@ function renderSlip(doc, slip, yStart) {
  * If employee_id is provided, returns single slip; otherwise returns all slips.
  */
 export async function GET(request) {
-  const authResult = await ensurePermission(request, RESOURCES.PAYROLL, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PAYROLL,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -344,7 +458,12 @@ export async function GET(request) {
 
     if (slips.length === 0) {
       return NextResponse.json(
-        { success: false, error: employeeId ? 'No payroll slip found for this employee. Please generate payroll first.' : 'No payroll slips found for this month. Please generate payroll first.' },
+        {
+          success: false,
+          error: employeeId
+            ? 'No payroll slip found for this employee. Please generate payroll first.'
+            : 'No payroll slips found for this month. Please generate payroll first.',
+        },
         { status: 404 }
       );
     }
@@ -366,7 +485,8 @@ export async function GET(request) {
       );
       if (daRows.length > 0) {
         const daRow = daRows[0];
-        scheduledDA = daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
+        scheduledDA =
+          daRow.value_type === 'percentage' ? 0 : safeNum(daRow.value);
       }
     } catch (daErr) {
       console.log('DA fetch in bulk-pdf route skipped:', daErr.message);
@@ -375,18 +495,23 @@ export async function GET(request) {
     const normalizedSlips = slips.map((row) => {
       const basicPlusDaSource = Math.max(
         0,
-        safeNum(row.structure_basic_salary)
-          || safeNum(row.profile_basic)
-          || safeNum(row.profile_basic_plus_da)
-          || safeNum(row.basic)
+        safeNum(row.structure_basic_salary) ||
+          safeNum(row.profile_basic) ||
+          safeNum(row.profile_basic_plus_da) ||
+          safeNum(row.basic)
       );
-      const da = scheduledDA > 0 ? scheduledDA : (safeNum(row.da_used) || safeNum(row.da));
+      const da =
+        scheduledDA > 0 ? scheduledDA : safeNum(row.da_used) || safeNum(row.da);
       const basic = Math.max(0, basicPlusDaSource - da);
       return { ...row, basic, da, basic_plus_da_source: basicPlusDaSource };
     });
 
     // ─── Generate PDF ───
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    });
 
     for (let i = 0; i < normalizedSlips.length; i++) {
       if (i > 0) doc.addPage();
@@ -397,10 +522,11 @@ export async function GET(request) {
 
     const monthLabel = month.substring(0, 7); // YYYY-MM
     // Use employee name for single slip, otherwise use generic name
-    const filename = employeeId && normalizedSlips.length === 1 
-      ? `Salary_Slip_${normalizedSlips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
-      : `Salary_Slips_${monthLabel}.pdf`;
-    
+    const filename =
+      employeeId && normalizedSlips.length === 1
+        ? `Salary_Slip_${normalizedSlips[0].employee_name?.replace(/\s+/g, '_') || employeeId}_${monthLabel}.pdf`
+        : `Salary_Slips_${monthLabel}.pdf`;
+
     return new Response(pdfBuffer, {
       status: 200,
       headers: {
@@ -412,7 +538,11 @@ export async function GET(request) {
   } catch (error) {
     console.error('GET /api/payroll/bulk-pdf error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to generate bulk PDF', details: error.message },
+      {
+        success: false,
+        error: 'Failed to generate bulk PDF',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {

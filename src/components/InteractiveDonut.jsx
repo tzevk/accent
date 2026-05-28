@@ -1,7 +1,14 @@
 'use client';
 
 import { useMemo, memo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 
 function InteractiveDonutBase({
   data = [],
@@ -16,22 +23,36 @@ function InteractiveDonutBase({
   animationEasing = 'ease-out',
   valueFormatter,
 }) {
-  const palette = useMemo(() => colors.length ? colors : ['#FBBF24', '#10B981', '#60A5FA', '#F87171', '#A78BFA'], [colors]);
+  const palette = useMemo(
+    () =>
+      colors.length
+        ? colors
+        : ['#FBBF24', '#10B981', '#60A5FA', '#F87171', '#A78BFA'],
+    [colors]
+  );
 
-  const chartData = useMemo(() => (
-    (data || []).map((d, i) => ({
-      name: d.name || d.label || `Item ${i + 1}`,
-      value: Number(d.value) || 0,
-      fill: d.color || palette[i % palette.length],
-    }))
-  ), [data, palette]);
+  const chartData = useMemo(
+    () =>
+      (data || []).map((d, i) => ({
+        name: d.name || d.label || `Item ${i + 1}`,
+        value: Number(d.value) || 0,
+        fill: d.color || palette[i % palette.length],
+      })),
+    [data, palette]
+  );
 
-  const total = useMemo(() => chartData.reduce((a, d) => a + (Number(d.value) || 0), 0), [chartData]);
+  const total = useMemo(
+    () => chartData.reduce((a, d) => a + (Number(d.value) || 0), 0),
+    [chartData]
+  );
 
   const fmt = typeof valueFormatter === 'function' ? valueFormatter : (v) => v;
 
   return (
-  <div className="relative w-full h-64 will-change-transform" style={{ transform: 'translateZ(0)' }}>
+    <div
+      className="relative w-full h-64 will-change-transform"
+      style={{ transform: 'translateZ(0)' }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
           <Pie
@@ -50,7 +71,14 @@ function InteractiveDonutBase({
               <Cell key={`cell-${index}`} fill={entry.fill} />
             ))}
           </Pie>
-          <Tooltip formatter={(value, name) => [fmt(value), name]} contentStyle={{ borderRadius: 12, borderColor: '#E5E7EB', boxShadow: '0 8px 20px rgba(0,0,0,0.08)' }} />
+          <Tooltip
+            formatter={(value, name) => [fmt(value), name]}
+            contentStyle={{
+              borderRadius: 12,
+              borderColor: '#E5E7EB',
+              boxShadow: '0 8px 20px rgba(0,0,0,0.08)',
+            }}
+          />
           {showLegend && <Legend verticalAlign="bottom" height={24} />}
         </PieChart>
       </ResponsiveContainer>
@@ -66,7 +94,9 @@ function InteractiveDonutBase({
       {showTotalBelow && (
         <div className="text-center -mt-6">
           <span className="text-sm text-gray-600">{totalLabel}: </span>
-          <span className="text-sm font-semibold text-[#64126D]">{fmt(total)}</span>
+          <span className="text-sm font-semibold text-[#64126D]">
+            {fmt(total)}
+          </span>
         </div>
       )}
     </div>
@@ -74,13 +104,27 @@ function InteractiveDonutBase({
 }
 
 function areEqual(prev, next) {
-  if (prev.innerRadius !== next.innerRadius || prev.outerRadius !== next.outerRadius) return false;
-  if (prev.showLegend !== next.showLegend || prev.showTotalBelow !== next.showTotalBelow) return false;
+  if (
+    prev.innerRadius !== next.innerRadius ||
+    prev.outerRadius !== next.outerRadius
+  )
+    return false;
+  if (
+    prev.showLegend !== next.showLegend ||
+    prev.showTotalBelow !== next.showTotalBelow
+  )
+    return false;
   const a = prev.data || [];
   const b = next.data || [];
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (a[i].value !== b[i].value || a[i].name !== b[i].name || a[i].label !== b[i].label || a[i].color !== b[i].color) return false;
+    if (
+      a[i].value !== b[i].value ||
+      a[i].name !== b[i].name ||
+      a[i].label !== b[i].label ||
+      a[i].color !== b[i].color
+    )
+      return false;
   }
   return true;
 }

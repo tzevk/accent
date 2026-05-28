@@ -1,5 +1,9 @@
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // ✅ Helper: Format date for MySQL (supports multiple formats)
 function formatDateForMySQL(dateString) {
@@ -77,7 +81,11 @@ function normalizeText(text, maxLength = 255) {
 // ✅ Main POST route
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.LEADS, PERMISSIONS.CREATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.LEADS,
+    PERMISSIONS.CREATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -95,7 +103,10 @@ export async function POST(request) {
     const fileName = file.name.toLowerCase();
     if (!fileName.endsWith('.csv')) {
       return Response.json(
-        { success: false, error: 'Invalid file type. Please upload a CSV file.' },
+        {
+          success: false,
+          error: 'Invalid file type. Please upload a CSV file.',
+        },
         { status: 400 }
       );
     }
@@ -120,17 +131,23 @@ async function importLeadsFromCSV(file) {
 
     if (lines.length < 2) {
       return Response.json(
-        { success: false, error: 'CSV must have headers and at least one data row' },
+        {
+          success: false,
+          error: 'CSV must have headers and at least one data row',
+        },
         { status: 400 }
       );
     }
 
     const headers = lines[0].split(',').map((h) => h.trim().replace(/"/g, ''));
     // Basic header validation: ensure company name exists
-    const lowerHeaders = headers.map(h => h.toLowerCase());
-    if (!lowerHeaders.some(h => h.includes('company'))) {
+    const lowerHeaders = headers.map((h) => h.toLowerCase());
+    if (!lowerHeaders.some((h) => h.includes('company'))) {
       return Response.json(
-        { success: false, error: 'CSV must include a Company / company_name header' },
+        {
+          success: false,
+          error: 'CSV must include a Company / company_name header',
+        },
         { status: 400 }
       );
     }
@@ -146,7 +163,9 @@ async function importLeadsFromCSV(file) {
       const values = line.split(',').map((v) => v.trim().replace(/"/g, ''));
       // Prevent mismatched columns: values length should match headers length
       if (values.length !== headers.length) {
-        errors.push(`Row ${i + 1}: column count mismatch (expected ${headers.length} columns, got ${values.length})`);
+        errors.push(
+          `Row ${i + 1}: column count mismatch (expected ${headers.length} columns, got ${values.length})`
+        );
         continue;
       }
       try {
@@ -158,7 +177,10 @@ async function importLeadsFromCSV(file) {
 
           if (lowerHeader.includes('company')) {
             leadData.company_name = normalizeText(value, 255);
-          } else if (lowerHeader.includes('contact') && lowerHeader.includes('name')) {
+          } else if (
+            lowerHeader.includes('contact') &&
+            lowerHeader.includes('name')
+          ) {
             leadData.contact_name = normalizeText(value, 255);
           } else if (lowerHeader.includes('email')) {
             leadData.contact_email = normalizeText(value, 255);
@@ -166,9 +188,15 @@ async function importLeadsFromCSV(file) {
             leadData.phone = normalizePhone(value);
           } else if (lowerHeader.includes('city')) {
             leadData.city = normalizeText(value, 100);
-          } else if (lowerHeader.includes('project') || lowerHeader.includes('description')) {
+          } else if (
+            lowerHeader.includes('project') ||
+            lowerHeader.includes('description')
+          ) {
             leadData.project_description = normalizeText(value, 1000);
-          } else if (lowerHeader.includes('enquiry') && lowerHeader.includes('type')) {
+          } else if (
+            lowerHeader.includes('enquiry') &&
+            lowerHeader.includes('type')
+          ) {
             leadData.enquiry_type = normalizeText(value, 100);
           } else if (lowerHeader.includes('status')) {
             leadData.enquiry_status = normalizeText(value, 100);

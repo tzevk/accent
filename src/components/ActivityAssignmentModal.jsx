@@ -2,10 +2,21 @@
 
 import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, PlusIcon, TrashIcon, UserIcon, ClockIcon } from '@heroicons/react/24/outline';
+import {
+  XMarkIcon,
+  PlusIcon,
+  TrashIcon,
+  UserIcon,
+  ClockIcon,
+} from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
 
-export default function ActivityAssignmentModal({ isOpen, onClose, projectId, onSuccess }) {
+export default function ActivityAssignmentModal({
+  isOpen,
+  onClose,
+  projectId,
+  onSuccess,
+}) {
   const [users, setUsers] = useState([]);
   const [disciplines, setDisciplines] = useState([]); // All disciplines with their activities
   const [assignments, setAssignments] = useState([]);
@@ -19,19 +30,25 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
     activity_description: '',
     due_date: '',
     priority: 'MEDIUM',
-    estimated_hours: ''
+    estimated_hours: '',
   });
 
   // Priority options
   const PRIORITY_OPTIONS = [
     { value: 'LOW', label: 'Low', color: 'bg-green-100 text-green-800' },
-    { value: 'MEDIUM', label: 'Medium', color: 'bg-yellow-100 text-yellow-800' },
+    {
+      value: 'MEDIUM',
+      label: 'Medium',
+      color: 'bg-yellow-100 text-yellow-800',
+    },
     { value: 'HIGH', label: 'High', color: 'bg-orange-100 text-orange-800' },
-    { value: 'URGENT', label: 'Urgent', color: 'bg-red-100 text-red-800' }
+    { value: 'URGENT', label: 'Urgent', color: 'bg-red-100 text-red-800' },
   ];
 
   // Get activities for selected discipline
-  const selectedDiscipline = disciplines.find(d => String(d.id) === String(selectedDisciplineId));
+  const selectedDiscipline = disciplines.find(
+    (d) => String(d.id) === String(selectedDisciplineId)
+  );
   const availableActivities = selectedDiscipline?.activities || [];
 
   // Load users and existing assignments when modal opens
@@ -58,7 +75,9 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
       }
 
       // Load existing assignments
-      const assignRes = await fetchJSON(`/api/projects/${projectId}/assign-activities`);
+      const assignRes = await fetchJSON(
+        `/api/projects/${projectId}/assign-activities`
+      );
       if (assignRes.success && assignRes.data) {
         setAssignments(assignRes.data);
       }
@@ -85,16 +104,16 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
       due_date: newAssignment.due_date,
       priority: newAssignment.priority,
       estimated_hours: parseFloat(newAssignment.estimated_hours) || 0,
-      status: 'NOT_STARTED'
+      status: 'NOT_STARTED',
     };
 
     setSaving(true);
-    
+
     // Save assignment immediately
     fetchJSON(`/api/projects/${projectId}/assign-activities`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activities: [assignment] })
+      body: JSON.stringify({ activities: [assignment] }),
     })
       .then((result) => {
         if (result.success) {
@@ -109,7 +128,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
             activity_description: '',
             due_date: '',
             priority: 'MEDIUM',
-            estimated_hours: ''
+            estimated_hours: '',
           });
           if (onSuccess) onSuccess();
         } else {
@@ -129,9 +148,12 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
     if (!confirm('Are you sure you want to remove this assignment?')) return;
 
     try {
-      const result = await fetchJSON(`/api/projects/${projectId}/assign-activities?id=${assignmentId}`, {
-        method: 'DELETE'
-      });
+      const result = await fetchJSON(
+        `/api/projects/${projectId}/assign-activities?id=${assignmentId}`,
+        {
+          method: 'DELETE',
+        }
+      );
 
       if (result.success) {
         loadData();
@@ -146,13 +168,18 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
   };
 
   const getUserName = (userId) => {
-    const user = users.find(u => u.id === userId);
-    return user ? (user.full_name || user.username) : 'Unknown';
+    const user = users.find((u) => u.id === userId);
+    return user ? user.full_name || user.username : 'Unknown';
   };
 
   const getPriorityBadge = (priority) => {
-    const p = PRIORITY_OPTIONS.find(o => o.value === priority) || PRIORITY_OPTIONS[1];
-    return <span className={`px-2 py-0.5 text-xs rounded ${p.color}`}>{p.label}</span>;
+    const p =
+      PRIORITY_OPTIONS.find((o) => o.value === priority) || PRIORITY_OPTIONS[1];
+    return (
+      <span className={`px-2 py-0.5 text-xs rounded ${p.color}`}>
+        {p.label}
+      </span>
+    );
   };
 
   return (
@@ -217,7 +244,12 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                           </label>
                           <select
                             value={newAssignment.user_id}
-                            onChange={(e) => setNewAssignment({ ...newAssignment, user_id: e.target.value })}
+                            onChange={(e) =>
+                              setNewAssignment({
+                                ...newAssignment,
+                                user_id: e.target.value,
+                              })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           >
                             <option value="">Select team member</option>
@@ -242,7 +274,7 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                                 ...newAssignment,
                                 activity_id: '',
                                 activity_name: '',
-                                activity_description: ''
+                                activity_description: '',
                               });
                             }}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
@@ -250,7 +282,8 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                             <option value="">Select discipline</option>
                             {disciplines.map((disc) => (
                               <option key={disc.id} value={disc.id}>
-                                {disc.function_name} ({disc.activities?.length || 0} activities)
+                                {disc.function_name} (
+                                {disc.activities?.length || 0} activities)
                               </option>
                             ))}
                           </select>
@@ -263,22 +296,32 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                           <select
                             value={newAssignment.activity_id}
                             onChange={(e) => {
-                              const selected = availableActivities.find(a => String(a.id) === String(e.target.value));
+                              const selected = availableActivities.find(
+                                (a) => String(a.id) === String(e.target.value)
+                              );
                               setNewAssignment({
                                 ...newAssignment,
                                 activity_id: e.target.value,
                                 activity_name: selected?.activity_name || '',
                                 activity_description: '',
-                                estimated_hours: selected?.default_manhours || ''
+                                estimated_hours:
+                                  selected?.default_manhours || '',
                               });
                             }}
                             disabled={!selectedDisciplineId}
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                           >
-                            <option value="">{selectedDisciplineId ? 'Select activity' : 'Select discipline first'}</option>
+                            <option value="">
+                              {selectedDisciplineId
+                                ? 'Select activity'
+                                : 'Select discipline first'}
+                            </option>
                             {availableActivities.map((activity) => (
                               <option key={activity.id} value={activity.id}>
-                                {activity.activity_name} {activity.default_manhours ? `(${activity.default_manhours}h)` : ''}
+                                {activity.activity_name}{' '}
+                                {activity.default_manhours
+                                  ? `(${activity.default_manhours}h)`
+                                  : ''}
                               </option>
                             ))}
                           </select>
@@ -291,7 +334,12 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                           <input
                             type="date"
                             value={newAssignment.due_date}
-                            onChange={(e) => setNewAssignment({ ...newAssignment, due_date: e.target.value })}
+                            onChange={(e) =>
+                              setNewAssignment({
+                                ...newAssignment,
+                                due_date: e.target.value,
+                              })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           />
                         </div>
@@ -302,7 +350,12 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                           </label>
                           <select
                             value={newAssignment.priority}
-                            onChange={(e) => setNewAssignment({ ...newAssignment, priority: e.target.value })}
+                            onChange={(e) =>
+                              setNewAssignment({
+                                ...newAssignment,
+                                priority: e.target.value,
+                              })
+                            }
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           >
                             {PRIORITY_OPTIONS.map((p) => (
@@ -322,7 +375,12 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                             step="0.5"
                             min="0"
                             value={newAssignment.estimated_hours}
-                            onChange={(e) => setNewAssignment({ ...newAssignment, estimated_hours: e.target.value })}
+                            onChange={(e) =>
+                              setNewAssignment({
+                                ...newAssignment,
+                                estimated_hours: e.target.value,
+                              })
+                            }
                             placeholder="0"
                             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-[#7F2487] focus:border-transparent"
                           />
@@ -333,7 +391,11 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                         <button
                           type="button"
                           onClick={handleAddAssignment}
-                          disabled={saving || !newAssignment.user_id || !newAssignment.activity_name}
+                          disabled={
+                            saving ||
+                            !newAssignment.user_id ||
+                            !newAssignment.activity_name
+                          }
                           className="px-4 py-2 bg-[#7F2487] text-white text-sm font-medium rounded-md hover:bg-[#6a1e73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                         >
                           <PlusIcon className="h-4 w-4" />
@@ -351,7 +413,8 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
 
                       {assignments.length === 0 ? (
                         <div className="text-center py-8 text-sm text-gray-500">
-                          No activities assigned yet. Add your first assignment above.
+                          No activities assigned yet. Add your first assignment
+                          above.
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -364,13 +427,20 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                               return acc;
                             }, {})
                           ).map(([userId, userAssignments]) => (
-                            <div key={userId} className="border border-gray-200 rounded-lg overflow-hidden">
+                            <div
+                              key={userId}
+                              className="border border-gray-200 rounded-lg overflow-hidden"
+                            >
                               <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
                                 <h4 className="text-sm font-semibold text-[#7F2487] flex items-center gap-2">
                                   <UserIcon className="h-4 w-4" />
                                   {getUserName(parseInt(userId))}
                                   <span className="text-xs font-normal text-gray-600">
-                                    ({userAssignments.length} {userAssignments.length === 1 ? 'activity' : 'activities'})
+                                    ({userAssignments.length}{' '}
+                                    {userAssignments.length === 1
+                                      ? 'activity'
+                                      : 'activities'}
+                                    )
                                   </span>
                                 </h4>
                               </div>
@@ -400,16 +470,23 @@ export default function ActivityAssignmentModal({ isOpen, onClose, projectId, on
                                           {assign.due_date && (
                                             <span className="flex items-center gap-1">
                                               <ClockIcon className="h-3 w-3" />
-                                              Due: {new Date(assign.due_date).toLocaleDateString()}
+                                              Due:{' '}
+                                              {new Date(
+                                                assign.due_date
+                                              ).toLocaleDateString()}
                                             </span>
                                           )}
                                           {assign.estimated_hours > 0 && (
-                                            <span>Est. {assign.estimated_hours}h</span>
+                                            <span>
+                                              Est. {assign.estimated_hours}h
+                                            </span>
                                           )}
                                         </div>
                                       </div>
                                       <button
-                                        onClick={() => handleRemoveAssignment(assign.id)}
+                                        onClick={() =>
+                                          handleRemoveAssignment(assign.id)
+                                        }
                                         className="flex-shrink-0 text-red-500 hover:text-red-700 transition-colors p-1"
                                         title="Remove assignment"
                                       >

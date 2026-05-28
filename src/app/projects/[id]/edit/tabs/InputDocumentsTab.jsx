@@ -1,5 +1,5 @@
-import { DocumentIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { normalizeDate } from "@/utils/date";
+import { DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { normalizeDate } from '@/utils/date';
 
 export default function InputDocumentsTab({
   newInputDocument,
@@ -16,9 +16,7 @@ export default function InputDocumentsTab({
       <div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
         <div className="flex items-center gap-2">
           <DocumentIcon className="h-4 w-4 text-[#7F2487]" />
-          <h2 className="text-sm font-bold text-gray-900">
-            Input Documents
-          </h2>
+          <h2 className="text-sm font-bold text-gray-900">Input Documents</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
           Manage project input documents and references
@@ -95,21 +93,19 @@ export default function InputDocumentsTab({
                   <input
                     type="text"
                     value={
-                      newInputDocument.category === "lot"
-                        ? newInputDocument.lotNumber || ""
-                        : newInputDocument.category === "sublot"
-                          ? newInputDocument.subLot || ""
-                          : ""
+                      newInputDocument.category === 'lot'
+                        ? newInputDocument.lotNumber || ''
+                        : newInputDocument.category === 'sublot'
+                          ? newInputDocument.subLot || ''
+                          : ''
                     }
                     onChange={(e) => {
-                      if (newInputDocument.category === "lot") {
+                      if (newInputDocument.category === 'lot') {
                         setNewInputDocument((prev) => ({
                           ...prev,
                           lotNumber: e.target.value,
                         }));
-                      } else if (
-                        newInputDocument.category === "sublot"
-                      ) {
+                      } else if (newInputDocument.category === 'sublot') {
                         setNewInputDocument((prev) => ({
                           ...prev,
                           subLot: e.target.value,
@@ -117,11 +113,11 @@ export default function InputDocumentsTab({
                       }
                     }}
                     placeholder={
-                      newInputDocument.category === "lot"
-                        ? "LOT-001"
-                        : newInputDocument.category === "sublot"
-                          ? "SL-001"
-                          : "N/A"
+                      newInputDocument.category === 'lot'
+                        ? 'LOT-001'
+                        : newInputDocument.category === 'sublot'
+                          ? 'SL-001'
+                          : 'N/A'
                     }
                     className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
                   />
@@ -129,15 +125,11 @@ export default function InputDocumentsTab({
                 <td className="py-2 px-2">
                   <input
                     type="date"
-                    value={normalizeDate(
-                      newInputDocument.date_received,
-                    )}
+                    value={normalizeDate(newInputDocument.date_received)}
                     onChange={(e) =>
                       setNewInputDocument((prev) => ({
                         ...prev,
-                        date_received: normalizeDate(
-                          e.target.value,
-                        ),
+                        date_received: normalizeDate(e.target.value),
                       }))
                     }
                     className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -252,7 +244,7 @@ export default function InputDocumentsTab({
                         newInputDocument.description.trim()
                       )
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newInputDocument.description && newInputDocument.description.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newInputDocument.description && newInputDocument.description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add document"
                   >
                     Add
@@ -269,13 +261,12 @@ export default function InputDocumentsTab({
                   </td>
                   <td className="py-2 px-2">
                     <select
-                      value={doc.category || "others"}
+                      value={doc.category || 'others'}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? { ...d, category: e.target.value }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? { ...d, category: e.target.value }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -295,30 +286,28 @@ export default function InputDocumentsTab({
                     <input
                       type="text"
                       value={
-                        doc.category === "lot"
-                          ? doc.lotNumber || ""
-                          : doc.category === "sublot"
-                            ? doc.subLot || ""
-                            : ""
+                        doc.category === 'lot'
+                          ? doc.lotNumber || ''
+                          : doc.category === 'sublot'
+                            ? doc.subLot || ''
+                            : ''
                       }
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) => {
-                            if (d.id === doc.id) {
-                              if (doc.category === "lot")
-                                return {
-                                  ...d,
-                                  lotNumber: e.target.value,
-                                };
-                              if (doc.category === "sublot")
-                                return {
-                                  ...d,
-                                  subLot: e.target.value,
-                                };
-                            }
-                            return d;
-                          },
-                        );
+                        const updated = inputDocumentsList.map((d) => {
+                          if (d.id === doc.id) {
+                            if (doc.category === 'lot')
+                              return {
+                                ...d,
+                                lotNumber: e.target.value,
+                              };
+                            if (doc.category === 'sublot')
+                              return {
+                                ...d,
+                                subLot: e.target.value,
+                              };
+                          }
+                          return d;
+                        });
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
                           ...prev,
@@ -326,11 +315,11 @@ export default function InputDocumentsTab({
                         }));
                       }}
                       placeholder={
-                        doc.category === "lot"
-                          ? "LOT-001"
-                          : doc.category === "sublot"
-                            ? "SL-001"
-                            : "N/A"
+                        doc.category === 'lot'
+                          ? 'LOT-001'
+                          : doc.category === 'sublot'
+                            ? 'SL-001'
+                            : 'N/A'
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     />
@@ -340,16 +329,13 @@ export default function InputDocumentsTab({
                       type="date"
                       value={normalizeDate(doc.date_received)}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? {
-                                  ...d,
-                                  date_received: normalizeDate(
-                                    e.target.value,
-                                  ),
-                                }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? {
+                                ...d,
+                                date_received: normalizeDate(e.target.value),
+                              }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -363,16 +349,15 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.description || ""}
+                      value={doc.description || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? {
-                                  ...d,
-                                  description: e.target.value,
-                                }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? {
+                                ...d,
+                                description: e.target.value,
+                              }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -386,16 +371,15 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.drawing_number || ""}
+                      value={doc.drawing_number || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? {
-                                  ...d,
-                                  drawing_number: e.target.value,
-                                }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? {
+                                ...d,
+                                drawing_number: e.target.value,
+                              }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -409,16 +393,15 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.sheet_number || ""}
+                      value={doc.sheet_number || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? {
-                                  ...d,
-                                  sheet_number: e.target.value,
-                                }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? {
+                                ...d,
+                                sheet_number: e.target.value,
+                              }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -432,16 +415,15 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.revision_number || ""}
+                      value={doc.revision_number || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? {
-                                  ...d,
-                                  revision_number: e.target.value,
-                                }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? {
+                                ...d,
+                                revision_number: e.target.value,
+                              }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -455,13 +437,12 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.unit_qty || ""}
+                      value={doc.unit_qty || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? { ...d, unit_qty: e.target.value }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? { ...d, unit_qty: e.target.value }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -475,17 +456,15 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.document_sent_by || ""}
+                      value={doc.document_sent_by || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? {
-                                  ...d,
-                                  document_sent_by:
-                                    e.target.value,
-                                }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? {
+                                ...d,
+                                document_sent_by: e.target.value,
+                              }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({
@@ -499,13 +478,12 @@ export default function InputDocumentsTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={doc.remarks || ""}
+                      value={doc.remarks || ''}
                       onChange={(e) => {
-                        const updated = inputDocumentsList.map(
-                          (d) =>
-                            d.id === doc.id
-                              ? { ...d, remarks: e.target.value }
-                              : d,
+                        const updated = inputDocumentsList.map((d) =>
+                          d.id === doc.id
+                            ? { ...d, remarks: e.target.value }
+                            : d
                         );
                         setInputDocumentsList(updated);
                         setForm((prev) => ({

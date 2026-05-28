@@ -6,10 +6,10 @@ function generateInvoiceNumber(count) {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, '0'); // 01-12
   const year = String(now.getFullYear()).slice(-2); // Last 2 digits of year
-  
+
   // Number starts from 228 (after 227), so add 227 to count
   const sequenceNumber = count + 228;
-  
+
   return `ATS/I/${month}-${year}/${sequenceNumber}`;
 }
 
@@ -39,17 +39,21 @@ async function ensureTableExists(connection) {
   `);
   // Safely add new columns to existing tables
   const migrations = [
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS company_name VARCHAR(255)",
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS city VARCHAR(100)",
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)",
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS expenses_head VARCHAR(255)",
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment DECIMAL(15,2)",
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS purchase_description TEXT",
-    "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment_overdue_days INT DEFAULT 0",
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS company_name VARCHAR(255)',
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS city VARCHAR(100)',
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS project_number VARCHAR(100)',
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS expenses_head VARCHAR(255)',
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment DECIMAL(15,2)',
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS purchase_description TEXT',
+    'ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS payment_overdue_days INT DEFAULT 0',
     "ALTER TABLE project_invoices ADD COLUMN IF NOT EXISTS tab_type VARCHAR(50) DEFAULT 'invoice'",
   ];
   for (const sql of migrations) {
-    try { await connection.execute(sql); } catch (_) { /* column may already exist */ }
+    try {
+      await connection.execute(sql);
+    } catch (_) {
+      /* column may already exist */
+    }
   }
 }
 
@@ -58,9 +62,12 @@ export async function GET(request, { params }) {
   let connection;
   try {
     const { id } = await params;
-    
+
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Project ID required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Project ID required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
@@ -78,15 +85,17 @@ export async function GET(request, { params }) {
     const count = countResult[0]?.count || 0;
     const nextInvoiceNumber = generateInvoiceNumber(count);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       invoices: invoices || [],
-      nextInvoiceNumber
+      nextInvoiceNumber,
     });
-
   } catch (error) {
     console.error('Error fetching invoices:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -98,9 +107,12 @@ export async function POST(request, { params }) {
   try {
     const { id } = await params;
     const data = await request.json();
-    
+
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Project ID required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Project ID required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
@@ -118,7 +130,7 @@ export async function POST(request, { params }) {
       purchase_description,
       payment_overdue_days,
       remarks,
-      tab_type
+      tab_type,
     } = data;
 
     // Insert new invoice
@@ -140,19 +152,21 @@ export async function POST(request, { params }) {
         purchase_description || null,
         payment_overdue_days || 0,
         remarks || null,
-        tab_type || 'invoice'
+        tab_type || 'invoice',
       ]
     );
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Invoice created successfully',
-      invoiceId: result.insertId
+      invoiceId: result.insertId,
     });
-
   } catch (error) {
     console.error('Error creating invoice:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -164,9 +178,12 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const data = await request.json();
-    
+
     if (!id || !data.invoiceId) {
-      return NextResponse.json({ success: false, error: 'Project ID and Invoice ID required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Project ID and Invoice ID required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
@@ -185,7 +202,7 @@ export async function PUT(request, { params }) {
       purchase_description,
       payment_overdue_days,
       remarks,
-      tab_type
+      tab_type,
     } = data;
 
     await connection.execute(
@@ -208,18 +225,20 @@ export async function PUT(request, { params }) {
         remarks || null,
         tab_type || 'invoice',
         invoiceId,
-        id
+        id,
       ]
     );
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Invoice updated successfully'
+    return NextResponse.json({
+      success: true,
+      message: 'Invoice updated successfully',
     });
-
   } catch (error) {
     console.error('Error updating invoice:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -232,26 +251,31 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const invoiceId = searchParams.get('invoiceId');
-    
+
     if (!id || !invoiceId) {
-      return NextResponse.json({ success: false, error: 'Project ID and Invoice ID required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Project ID and Invoice ID required' },
+        { status: 400 }
+      );
     }
 
     connection = await dbConnect();
-    
+
     await connection.execute(
       `DELETE FROM project_invoices WHERE id = ? AND project_id = ?`,
       [invoiceId, id]
     );
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Invoice deleted successfully'
+    return NextResponse.json({
+      success: true,
+      message: 'Invoice deleted successfully',
     });
-
   } catch (error) {
     console.error('Error deleting invoice:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }

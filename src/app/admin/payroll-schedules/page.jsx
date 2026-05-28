@@ -22,7 +22,7 @@ export default function PayrollSchedulesPage() {
     min_salary: '',
     max_salary: '',
     is_active: true,
-    remarks: ''
+    remarks: '',
   });
 
   const componentCategories = {
@@ -30,55 +30,126 @@ export default function PayrollSchedulesPage() {
       label: 'Allowances',
       icon: '💰',
       components: [
-        { value: 'da', label: 'Dearness Allowance (DA)', type: 'fixed', suffix: '₹' },
-        { value: 'hra_percent', label: 'HRA %', type: 'percentage', suffix: '%' },
-        { value: 'conveyance_percent', label: 'Conveyance %', type: 'percentage', suffix: '%' },
-        { value: 'call_allowance_percent', label: 'Call Allowance %', type: 'percentage', suffix: '%' },
-      ]
+        {
+          value: 'da',
+          label: 'Dearness Allowance (DA)',
+          type: 'fixed',
+          suffix: '₹',
+        },
+        {
+          value: 'hra_percent',
+          label: 'HRA %',
+          type: 'percentage',
+          suffix: '%',
+        },
+        {
+          value: 'conveyance_percent',
+          label: 'Conveyance %',
+          type: 'percentage',
+          suffix: '%',
+        },
+        {
+          value: 'call_allowance_percent',
+          label: 'Call Allowance %',
+          type: 'percentage',
+          suffix: '%',
+        },
+      ],
     },
     statutory: {
       label: 'Statutory Contributions',
       icon: '⚖️',
       components: [
-        { value: 'pf_employee', label: 'PF Employee', type: 'percentage', suffix: '%' },
-        { value: 'pf_employer', label: 'PF Employer', type: 'percentage', suffix: '%' },
-        { value: 'esic_employee', label: 'ESIC Employee', type: 'percentage', suffix: '%' },
-        { value: 'esic_employer', label: 'ESIC Employer', type: 'percentage', suffix: '%' },
-        { value: 'pt', label: 'Professional Tax', type: 'fixed', suffix: '₹', hasSlab: true },
-        { value: 'mlwf_employee', label: 'MLWF Employee', type: 'fixed', suffix: '₹' },
-        { value: 'mlwf_employer', label: 'MLWF Employer', type: 'fixed', suffix: '₹' },
+        {
+          value: 'pf_employee',
+          label: 'PF Employee',
+          type: 'percentage',
+          suffix: '%',
+        },
+        {
+          value: 'pf_employer',
+          label: 'PF Employer',
+          type: 'percentage',
+          suffix: '%',
+        },
+        {
+          value: 'esic_employee',
+          label: 'ESIC Employee',
+          type: 'percentage',
+          suffix: '%',
+        },
+        {
+          value: 'esic_employer',
+          label: 'ESIC Employer',
+          type: 'percentage',
+          suffix: '%',
+        },
+        {
+          value: 'pt',
+          label: 'Professional Tax',
+          type: 'fixed',
+          suffix: '₹',
+          hasSlab: true,
+        },
+        {
+          value: 'mlwf_employee',
+          label: 'MLWF Employee',
+          type: 'fixed',
+          suffix: '₹',
+        },
+        {
+          value: 'mlwf_employer',
+          label: 'MLWF Employer',
+          type: 'fixed',
+          suffix: '₹',
+        },
         { value: 'retention', label: 'Retention', type: 'fixed', suffix: '₹' },
         { value: 'tds', label: 'TDS', type: 'percentage', suffix: '%' },
-      ]
+      ],
     },
     insurance: {
       label: 'Insurance & Benefits',
       icon: '🛡️',
       components: [
         { value: 'insurance', label: 'Insurance', type: 'fixed', suffix: '₹' },
-        { value: 'personal_accident', label: 'Personal Accident', type: 'fixed', suffix: '₹' },
+        {
+          value: 'personal_accident',
+          label: 'Personal Accident',
+          type: 'fixed',
+          suffix: '₹',
+        },
         { value: 'mediclaim', label: 'Mediclaim', type: 'fixed', suffix: '₹' },
-      ]
+      ],
     },
     others: {
       label: 'Others',
       icon: '📋',
       components: [
-        { value: 'bonus', label: 'Bonus', type: 'percentage', suffix: '%', description: 'Percentage of Basic + DA' },
+        {
+          value: 'bonus',
+          label: 'Bonus',
+          type: 'percentage',
+          suffix: '%',
+          description: 'Percentage of Basic + DA',
+        },
         { value: 'incentive', label: 'Incentive', type: 'fixed', suffix: '₹' },
         { value: 'leaves', label: 'Leaves', type: 'fixed', suffix: 'days' },
-      ]
-    }
+      ],
+    },
   };
 
   const getAllComponents = () => {
-    return Object.values(componentCategories).flatMap(cat => cat.components);
+    return Object.values(componentCategories).flatMap((cat) => cat.components);
   };
 
   const getFilteredSchedules = () => {
     if (selectedCategory === 'all') return schedules;
-    const categoryComponents = componentCategories[selectedCategory].components.map(c => c.value);
-    return schedules.filter(s => categoryComponents.includes(s.component_type));
+    const categoryComponents = componentCategories[
+      selectedCategory
+    ].components.map((c) => c.value);
+    return schedules.filter((s) =>
+      categoryComponents.includes(s.component_type)
+    );
   };
 
   useEffect(() => {
@@ -106,19 +177,23 @@ export default function PayrollSchedulesPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
+
     try {
       const res = await fetch('/api/payroll/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          min_salary: formData.min_salary ? parseFloat(formData.min_salary) : null,
-          max_salary: formData.max_salary ? parseFloat(formData.max_salary) : null,
-          effective_to: formData.effective_to || null
-        })
+          min_salary: formData.min_salary
+            ? parseFloat(formData.min_salary)
+            : null,
+          max_salary: formData.max_salary
+            ? parseFloat(formData.max_salary)
+            : null,
+          effective_to: formData.effective_to || null,
+        }),
       });
-      
+
       const data = await res.json();
       if (data.success) {
         setShowForm(false);
@@ -131,7 +206,7 @@ export default function PayrollSchedulesPage() {
           min_salary: '',
           max_salary: '',
           is_active: true,
-          remarks: ''
+          remarks: '',
         });
         fetchSchedules();
       } else {
@@ -144,12 +219,12 @@ export default function PayrollSchedulesPage() {
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this schedule?')) return;
-    
+
     try {
       const res = await fetch(`/api/payroll/schedules?id=${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
-      
+
       const data = await res.json();
       if (data.success) {
         fetchSchedules();
@@ -163,26 +238,28 @@ export default function PayrollSchedulesPage() {
 
   const handleComponentChange = (e) => {
     const allComponents = getAllComponents();
-    const component = allComponents.find(c => c.value === e.target.value);
+    const component = allComponents.find((c) => c.value === e.target.value);
     setFormData({
       ...formData,
       component_type: e.target.value,
-      value_type: component?.type || 'percentage'
+      value_type: component?.type || 'percentage',
     });
   };
 
   const getComponentLabel = (type) => {
     const allComponents = getAllComponents();
-    return allComponents.find(c => c.value === type)?.label || type;
+    return allComponents.find((c) => c.value === type)?.label || type;
   };
 
-  const selectedComponentInfo = getAllComponents().find(c => c.value === formData.component_type);
+  const selectedComponentInfo = getAllComponents().find(
+    (c) => c.value === formData.component_type
+  );
   const filteredSchedules = getFilteredSchedules();
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6">
         {/* Header */}
         <div className="mb-4">
@@ -193,11 +270,15 @@ export default function PayrollSchedulesPage() {
             <ArrowLeftIcon className="w-4 h-4 mr-1" />
             Back
           </button>
-          
+
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Payroll Schedules</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Manage all payroll component rates</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Payroll Schedules
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Manage all payroll component rates
+              </p>
             </div>
             <button
               onClick={() => setShowForm(!showForm)}
@@ -250,23 +331,29 @@ export default function PayrollSchedulesPage() {
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Component *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Component *
+                  </label>
                   <select
                     value={formData.component_type}
                     onChange={handleComponentChange}
                     required
                     className="w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                   >
-                    {Object.entries(componentCategories).map(([catKey, cat]) => (
-                      <optgroup key={catKey} label={cat.label}>
-                        {cat.components.map(comp => (
-                          <option key={comp.value} value={comp.value}>{comp.label}</option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    {Object.entries(componentCategories).map(
+                      ([catKey, cat]) => (
+                        <optgroup key={catKey} label={cat.label}>
+                          {cat.components.map((comp) => (
+                            <option key={comp.value} value={comp.value}>
+                              {comp.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )
+                    )}
                   </select>
                 </div>
-                
+
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
                     Value * {selectedComponentInfo?.suffix}
@@ -275,29 +362,42 @@ export default function PayrollSchedulesPage() {
                     type="number"
                     step="0.01"
                     value={formData.value}
-                    onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, value: e.target.value })
+                    }
                     required
                     className="w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Effective From *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Effective From *
+                  </label>
                   <input
                     type="date"
                     value={formData.effective_from}
-                    onChange={(e) => setFormData({ ...formData, effective_from: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        effective_from: e.target.value,
+                      })
+                    }
                     required
                     className="w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Effective To</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Effective To
+                  </label>
                   <input
                     type="date"
                     value={formData.effective_to}
-                    onChange={(e) => setFormData({ ...formData, effective_to: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, effective_to: e.target.value })
+                    }
                     className="w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                   />
                 </div>
@@ -305,21 +405,35 @@ export default function PayrollSchedulesPage() {
                 {selectedComponentInfo?.hasSlab && (
                   <>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Min Salary</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Min Salary
+                      </label>
                       <input
                         type="number"
                         value={formData.min_salary}
-                        onChange={(e) => setFormData({ ...formData, min_salary: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            min_salary: e.target.value,
+                          })
+                        }
                         className="w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Max Salary</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Max Salary
+                      </label>
                       <input
                         type="number"
                         value={formData.max_salary}
-                        onChange={(e) => setFormData({ ...formData, max_salary: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            max_salary: e.target.value,
+                          })
+                        }
                         className="w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                       />
                     </div>
@@ -351,25 +465,41 @@ export default function PayrollSchedulesPage() {
           {loading ? (
             <InlineSpinner message="Loading schedules..." />
           ) : filteredSchedules.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-500">No schedules found</div>
+            <div className="p-8 text-center text-sm text-gray-500">
+              No schedules found
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead>
                   <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Component</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Value</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Effective From</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Effective To</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Salary Range</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Component
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Value
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Effective From
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Effective To
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Salary Range
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredSchedules.map((schedule, index) => (
-                    <tr 
-                      key={schedule.id} 
+                    <tr
+                      key={schedule.id}
                       className={`transition-colors duration-150 hover:bg-purple-50/50 ${
                         index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
                       }`}
@@ -378,30 +508,48 @@ export default function PayrollSchedulesPage() {
                         {getComponentLabel(schedule.component_type)}
                       </td>
                       <td className="px-4 py-3.5 text-sm font-medium text-purple-700">
-                        {schedule.value_type === 'percentage' 
-                          ? `${schedule.value}%` 
+                        {schedule.value_type === 'percentage'
+                          ? `${schedule.value}%`
                           : `₹${parseFloat(schedule.value).toLocaleString('en-IN')}`}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-gray-700">
-                        {new Date(schedule.effective_from).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {new Date(schedule.effective_from).toLocaleDateString(
+                          'en-IN',
+                          { day: '2-digit', month: 'short', year: 'numeric' }
+                        )}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-gray-700">
-                        {schedule.effective_to ? new Date(schedule.effective_to).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : <span className="text-gray-400">—</span>}
+                        {schedule.effective_to ? (
+                          new Date(schedule.effective_to).toLocaleDateString(
+                            'en-IN',
+                            { day: '2-digit', month: 'short', year: 'numeric' }
+                          )
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5 text-sm text-gray-700">
-                        {schedule.min_salary && schedule.max_salary
-                          ? `₹${parseFloat(schedule.min_salary).toLocaleString('en-IN')} - ₹${parseFloat(schedule.max_salary).toLocaleString('en-IN')}`
-                          : <span className="text-gray-400">—</span>}
+                        {schedule.min_salary && schedule.max_salary ? (
+                          `₹${parseFloat(schedule.min_salary).toLocaleString('en-IN')} - ₹${parseFloat(schedule.max_salary).toLocaleString('en-IN')}`
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
-                          schedule.is_active 
-                            ? 'bg-green-100 text-green-800 ring-1 ring-green-600/20' 
-                            : 'bg-gray-100 text-gray-700 ring-1 ring-gray-600/20'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                            schedule.is_active ? 'bg-green-600' : 'bg-gray-500'
-                          }`}></span>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
+                            schedule.is_active
+                              ? 'bg-green-100 text-green-800 ring-1 ring-green-600/20'
+                              : 'bg-gray-100 text-gray-700 ring-1 ring-gray-600/20'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                              schedule.is_active
+                                ? 'bg-green-600'
+                                : 'bg-gray-500'
+                            }`}
+                          ></span>
                           {schedule.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>

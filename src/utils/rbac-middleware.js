@@ -15,12 +15,12 @@ import { NextResponse } from 'next/server';
  */
 export function createRBACMiddleware(resource, permissions, options = {}) {
   const { requireAll = false, allowSuperAdmin = true } = options;
-  
+
   return async function rbacMiddleware(request, context = {}) {
     try {
       // Get user from session/auth (you'll need to implement this based on your auth system)
       const user = await getCurrentUser(request);
-      
+
       if (!user) {
         return NextResponse.json(
           { success: false, error: 'Authentication required' },
@@ -34,33 +34,35 @@ export function createRBACMiddleware(resource, permissions, options = {}) {
       }
 
       // Normalize permissions to array
-      const requiredPermissions = Array.isArray(permissions) ? permissions : [permissions];
-      
+      const requiredPermissions = Array.isArray(permissions)
+        ? permissions
+        : [permissions];
+
       // Check permissions
       let hasAccess = false;
-      
+
       if (requireAll) {
         // User must have ALL specified permissions
-        hasAccess = requiredPermissions.every(permission => 
+        hasAccess = requiredPermissions.every((permission) =>
           hasPermission(user, resource, permission)
         );
       } else {
         // User must have ANY of the specified permissions
-        hasAccess = requiredPermissions.some(permission => 
+        hasAccess = requiredPermissions.some((permission) =>
           hasPermission(user, resource, permission)
         );
       }
 
       if (!hasAccess) {
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             error: 'Insufficient permissions',
             required: {
               resource,
               permissions: requiredPermissions,
-              mode: requireAll ? 'all' : 'any'
-            }
+              mode: requireAll ? 'all' : 'any',
+            },
           },
           { status: 403 }
         );
@@ -69,9 +71,8 @@ export function createRBACMiddleware(resource, permissions, options = {}) {
       // Store user in context for use in the handler
       context.user = user;
       context.userPermissions = getUserPermissions(user, resource);
-      
+
       return null; // Continue to handler
-      
     } catch (error) {
       console.error('RBAC Middleware error:', error);
       return NextResponse.json(
@@ -95,10 +96,10 @@ async function getCurrentUser(request) {
     // 1. Extract auth token/cookie from request
     // 2. Validate the token
     // 3. Query user data with permissions from database
-    
+
     const authHeader = request.headers.get('authorization');
     const authCookie = request.cookies.get('auth');
-    
+
     if (!authHeader && !authCookie) {
       return null;
     }
@@ -110,9 +111,8 @@ async function getCurrentUser(request) {
       username: 'admin',
       permissions: [], // Direct user permissions
       role_permissions: [], // Role-based permissions
-      is_super_admin: false
+      is_super_admin: false,
     };
-    
   } catch (error) {
     console.error('Error getting current user:', error);
     return null;
@@ -131,12 +131,12 @@ export function withRBAC(handler, resource, permissions, options = {}) {
   return async function protectedHandler(request, context = {}) {
     const middleware = createRBACMiddleware(resource, permissions, options);
     const authResult = await middleware(request, context);
-    
+
     // If middleware returns a response, it means access was denied
     if (authResult) {
       return authResult;
     }
-    
+
     // Continue to the original handler with context containing user info
     return handler(request, context);
   };
@@ -162,7 +162,7 @@ export async function canUserPerform(request, resource, permission) {
 
 /**
  * Get user's permissions for a resource
- * @param {Request} request - Request object  
+ * @param {Request} request - Request object
  * @param {string} resource - Resource to check
  * @returns {Promise<Array>} Array of permissions user has for the resource
  */
@@ -186,29 +186,40 @@ export async function getUserResourcePermissions(request, resource) {
  */
 export function filterDataByPermissions(data, user, resource) {
   if (!user || !data) return data;
-  
+
   // If user is super admin, return all data
   if (user.is_super_admin) return data;
-  
+
   // Check if user has read permission for this resource
   if (!hasPermission(user, resource, 'read')) {
     return null; // No access to this resource
   }
-  
+
   // You can add more granular filtering here based on specific permissions
   // For example, hide certain fields if user doesn't have 'read_sensitive' permission
-  
+
   return data;
 }
 
 // Export commonly used RBAC decorators for specific resources
 export const requireLeadsRead = (handler) => withRBAC(handler, 'leads', 'read');
-export const requireLeadsWrite = (handler) => withRBAC(handler, 'leads', ['create', 'update'], { requireAll: false });
-export const requireLeadsDelete = (handler) => withRBAC(handler, 'leads', 'delete');
+export const requireLeadsWrite = (handler) =>
+  withRBAC(handler, 'leads', ['create', 'update'], { requireAll: false });
+export const requireLeadsDelete = (handler) =>
+  withRBAC(handler, 'leads', 'delete');
 
-export const requireProjectsRead = (handler) => withRBAC(handler, 'projects', 'read');
-export const requireProjectsWrite = (handler) => withRBAC(handler, 'projects', ['create', 'update'], { requireAll: false });
-export const requireProjectsDelete = (handler) => withRBAC(handler, 'projects', 'delete');
+export const requireProjectsRead = (handler) =>
+  withRBAC(handler, 'projects', 'read');
+export const requireProjectsWrite = (handler) =>
+  withRBAC(handler, 'projects', ['create', 'update'], { requireAll: false });
+export const requireProjectsDelete = (handler) =>
+  withRBAC(handler, 'projects', 'delete');
 
-export const requireUsersManage = (handler) => withRBAC(handler, 'users', ['create', 'update', 'delete'], { requireAll: false });
-export const requireRolesManage = (handler) => withRBAC(handler, 'roles', ['create', 'update', 'delete'], { requireAll: false });
+export const requireUsersManage = (handler) =>
+  withRBAC(handler, 'users', ['create', 'update', 'delete'], {
+    requireAll: false,
+  });
+export const requireRolesManage = (handler) =>
+  withRBAC(handler, 'roles', ['create', 'update', 'delete'], {
+    requireAll: false,
+  });

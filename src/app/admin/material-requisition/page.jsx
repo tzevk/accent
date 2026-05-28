@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import { 
+import {
   ClipboardDocumentListIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
@@ -15,60 +15,79 @@ import {
   PencilSquareIcon,
   TrashIcon,
   EyeIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
 export default function MaterialRequisitionPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useSessionRBAC();
-  
+
   const [requisitions, setRequisitions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
-  
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
-  
+
   // Stats
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
     approved: 0,
     fulfilled: 0,
-    rejected: 0
+    rejected: 0,
   });
 
   // Fetch requisitions
-  const fetchRequisitions = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pagination.limit.toString()
-      });
-      
-      if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (departmentFilter !== 'all') params.append('department', departmentFilter);
+  const fetchRequisitions = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: pagination.limit.toString(),
+        });
 
-      const res = await fetch(`/api/admin/material-requisitions?${params}`);
-      const data = await res.json();
-      
-      if (data.success) {
-        setRequisitions(data.data || []);
-        setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
-        setStats(data.stats || { total: 0, pending: 0, approved: 0, fulfilled: 0, rejected: 0 });
-      } else {
+        if (statusFilter !== 'all') params.append('status', statusFilter);
+        if (departmentFilter !== 'all')
+          params.append('department', departmentFilter);
+
+        const res = await fetch(`/api/admin/material-requisitions?${params}`);
+        const data = await res.json();
+
+        if (data.success) {
+          setRequisitions(data.data || []);
+          setPagination(
+            data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
+          );
+          setStats(
+            data.stats || {
+              total: 0,
+              pending: 0,
+              approved: 0,
+              fulfilled: 0,
+              rejected: 0,
+            }
+          );
+        } else {
+          setRequisitions([]);
+        }
+      } catch (error) {
+        console.error('Error fetching requisitions:', error);
         setRequisitions([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching requisitions:', error);
-      setRequisitions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, departmentFilter, pagination.limit]);
+    },
+    [statusFilter, departmentFilter, pagination.limit]
+  );
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -79,11 +98,13 @@ export default function MaterialRequisitionPage() {
   // Delete requisition
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this requisition?')) return;
-    
+
     try {
-      const res = await fetch(`/api/admin/material-requisitions?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/material-requisitions?id=${id}`, {
+        method: 'DELETE',
+      });
       const data = await res.json();
-      
+
       if (data.success) {
         fetchRequisitions(pagination.page);
       } else {
@@ -96,7 +117,7 @@ export default function MaterialRequisitionPage() {
   };
 
   // Filter requisitions by search term
-  const filteredRequisitions = requisitions.filter(r => {
+  const filteredRequisitions = requisitions.filter((r) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -128,14 +149,13 @@ export default function MaterialRequisitionPage() {
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-
         <div className="flex-1 flex flex-col">
           <Navbar />
           <div className="flex-1 flex items-center justify-center">
@@ -148,10 +168,9 @@ export default function MaterialRequisitionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-
       <div className="flex-1 flex flex-col">
         <Navbar />
-        
+
         <main className="flex-1 p-6 lg:px-8 xl:px-12 2xl:px-16 overflow-auto max-w-[1800px] mx-auto w-full">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -160,7 +179,9 @@ export default function MaterialRequisitionPage() {
                 <ClipboardDocumentListIcon className="h-7 w-7 text-purple-600" />
                 Material Requisitions
               </h1>
-              <p className="text-sm text-gray-500 mt-1">Manage material and stationery requisitions</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Manage material and stationery requisitions
+              </p>
             </div>
             <button
               onClick={() => router.push('/admin/material-requisition/new')}
@@ -174,23 +195,33 @@ export default function MaterialRequisitionPage() {
           {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <div className="text-2xl font-bold text-gray-900">{stats.total || 0}</div>
+              <div className="text-2xl font-bold text-gray-900">
+                {stats.total || 0}
+              </div>
               <div className="text-sm text-gray-600">Total</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <div className="text-2xl font-bold text-yellow-600">{stats.pending || 0}</div>
+              <div className="text-2xl font-bold text-yellow-600">
+                {stats.pending || 0}
+              </div>
               <div className="text-sm text-gray-600">Pending</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <div className="text-2xl font-bold text-green-600">{stats.approved || 0}</div>
+              <div className="text-2xl font-bold text-green-600">
+                {stats.approved || 0}
+              </div>
               <div className="text-sm text-gray-600">Approved</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <div className="text-2xl font-bold text-blue-600">{stats.fulfilled || 0}</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {stats.fulfilled || 0}
+              </div>
               <div className="text-sm text-gray-600">Fulfilled</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <div className="text-2xl font-bold text-red-600">{stats.rejected || 0}</div>
+              <div className="text-2xl font-bold text-red-600">
+                {stats.rejected || 0}
+              </div>
               <div className="text-sm text-gray-600">Rejected</div>
             </div>
           </div>
@@ -211,7 +242,7 @@ export default function MaterialRequisitionPage() {
                   />
                 </div>
               </div>
-              
+
               {/* Status Filter */}
               <div className="flex items-center gap-2">
                 <FunnelIcon className="h-5 w-5 text-gray-400" />
@@ -227,14 +258,16 @@ export default function MaterialRequisitionPage() {
                   <option value="rejected">Rejected</option>
                 </select>
               </div>
-              
+
               {/* Refresh */}
               <button
                 onClick={() => fetchRequisitions(pagination.page)}
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Refresh"
               >
-                <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+                <ArrowPathIcon
+                  className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`}
+                />
               </button>
             </div>
           </div>
@@ -244,65 +277,115 @@ export default function MaterialRequisitionPage() {
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-                <span className="ml-3 text-gray-600">Loading requisitions...</span>
+                <span className="ml-3 text-gray-600">
+                  Loading requisitions...
+                </span>
               </div>
             ) : filteredRequisitions.length === 0 ? (
               <div className="text-center py-12">
                 <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">No requisitions found</p>
-                <p className="text-sm text-gray-500 mt-2">Create a new requisition to get started</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Create a new requisition to get started
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Requisition #</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Requested By</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Department</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Items</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Requisition #
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Requested By
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Department
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Items
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {filteredRequisitions.map((req) => {
-                      const items = typeof req.line_items === 'string' ? JSON.parse(req.line_items || '[]') : (req.line_items || []);
+                      const items =
+                        typeof req.line_items === 'string'
+                          ? JSON.parse(req.line_items || '[]')
+                          : req.line_items || [];
                       return (
-                        <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                        <tr
+                          key={req.id}
+                          className="hover:bg-gray-50 transition-colors"
+                        >
                           <td className="px-6 py-4">
-                            <span className="font-medium text-purple-600">{req.requisition_number}</span>
+                            <span className="font-medium text-purple-600">
+                              {req.requisition_number}
+                            </span>
                           </td>
-                          <td className="px-6 py-4 text-gray-600">{formatDate(req.requisition_date)}</td>
-                          <td className="px-6 py-4">
-                            <div className="font-medium text-gray-900">{req.requested_by || '-'}</div>
+                          <td className="px-6 py-4 text-gray-600">
+                            {formatDate(req.requisition_date)}
                           </td>
-                          <td className="px-6 py-4 text-gray-600">{req.department || '-'}</td>
-                          <td className="px-6 py-4 text-gray-600">{items.length} item(s)</td>
                           <td className="px-6 py-4">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(req.status)}`}>
-                              {req.status?.charAt(0).toUpperCase() + req.status?.slice(1) || 'Pending'}
+                            <div className="font-medium text-gray-900">
+                              {req.requested_by || '-'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-gray-600">
+                            {req.department || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-gray-600">
+                            {items.length} item(s)
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(req.status)}`}
+                            >
+                              {req.status?.charAt(0).toUpperCase() +
+                                req.status?.slice(1) || 'Pending'}
                             </span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-center gap-1">
                               <button
-                                onClick={() => router.push(`/admin/material-requisition/${req.id}`)}
+                                onClick={() =>
+                                  router.push(
+                                    `/admin/material-requisition/${req.id}`
+                                  )
+                                }
                                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                 title="View"
                               >
                                 <EyeIcon className="h-5 w-5" />
                               </button>
                               <button
-                                onClick={() => window.open(`/api/admin/material-requisitions/download?id=${req.id}`, '_blank')}
+                                onClick={() =>
+                                  window.open(
+                                    `/api/admin/material-requisitions/download?id=${req.id}`,
+                                    '_blank'
+                                  )
+                                }
                                 className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                                 title="Download PDF"
                               >
                                 <ArrowDownTrayIcon className="h-5 w-5" />
                               </button>
                               <button
-                                onClick={() => router.push(`/admin/material-requisition/${req.id}/edit`)}
+                                onClick={() =>
+                                  router.push(
+                                    `/admin/material-requisition/${req.id}/edit`
+                                  )
+                                }
                                 className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                                 title="Edit"
                               >
@@ -324,12 +407,17 @@ export default function MaterialRequisitionPage() {
                 </table>
               </div>
             )}
-            
+
             {/* Pagination */}
             {pagination.totalPages > 1 && (
               <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                 <span className="text-sm text-gray-600">
-                  Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+                  Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                  {Math.min(
+                    pagination.page * pagination.limit,
+                    pagination.total
+                  )}{' '}
+                  of {pagination.total}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -339,7 +427,9 @@ export default function MaterialRequisitionPage() {
                   >
                     <ChevronLeftIcon className="h-4 w-4" />
                   </button>
-                  <span className="px-3 py-1 text-sm">{pagination.page} / {pagination.totalPages}</span>
+                  <span className="px-3 py-1 text-sm">
+                    {pagination.page} / {pagination.totalPages}
+                  </span>
                   <button
                     onClick={() => fetchRequisitions(pagination.page + 1)}
                     disabled={pagination.page === pagination.totalPages}

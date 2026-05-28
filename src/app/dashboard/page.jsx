@@ -6,11 +6,11 @@ import { useSession } from '@/context/SessionContext';
 
 /**
  * Dashboard Route - Redirector
- * 
+ *
  * This route redirects to the appropriate protected dashboard route:
  * - Super admins → /admin/dashboard (protected)
  * - Regular users → /user/dashboard (protected)
- * 
+ *
  * Uses SessionContext for consistent auth state.
  * Falls back to cookies if session not yet loaded.
  */
@@ -24,14 +24,16 @@ export default function DashboardRedirect() {
 
     // Session loaded but not authenticated - check cookies as fallback
     if (!authenticated || !user) {
-      const hasCookies = typeof document !== 'undefined' && 
-        document.cookie.includes('auth=') && 
+      const hasCookies =
+        typeof document !== 'undefined' &&
+        document.cookie.includes('auth=') &&
         document.cookie.includes('user_id=');
-      
+
       if (hasCookies) {
         // Redirect based on is_super_admin cookie
-        const isSuperAdmin = document.cookie.includes('is_super_admin=1') || 
-                             document.cookie.includes('is_super_admin=true');
+        const isSuperAdmin =
+          document.cookie.includes('is_super_admin=1') ||
+          document.cookie.includes('is_super_admin=true');
         router.replace(isSuperAdmin ? '/admin/dashboard' : '/user/dashboard');
         return;
       }
@@ -40,8 +42,9 @@ export default function DashboardRedirect() {
     }
 
     // Redirect based on user type
-    const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
-    
+    const isSuperAdmin =
+      user.is_super_admin === true || user.is_super_admin === 1;
+
     if (isSuperAdmin) {
       router.replace('/admin/dashboard');
     } else {

@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch attendance records
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -15,7 +23,7 @@ export async function GET(request) {
     const month = searchParams.get('month'); // Format: YYYY-MM
     const year = searchParams.get('year');
     const startDate = searchParams.get('start_date');
-  
+
     const endDate = searchParams.get('end_date');
 
     connection = await dbConnect();
@@ -59,7 +67,7 @@ export async function GET(request) {
 
     // Group by employee for summary
     const employeeSummary = {};
-    records.forEach(record => {
+    records.forEach((record) => {
       if (!employeeSummary[record.employee_id]) {
         employeeSummary[record.employee_id] = {
           employee_id: record.employee_id,
@@ -72,11 +80,13 @@ export async function GET(request) {
           total_leave: 0,
           total_overtime_hours: 0,
           total_weekly_off: 0,
-          days: {}
+          days: {},
         };
       }
-      
-      const dateKey = new Date(record.attendance_date).toISOString().split('T')[0];
+
+      const dateKey = new Date(record.attendance_date)
+        .toISOString()
+        .split('T')[0];
       employeeSummary[record.employee_id].days[dateKey] = {
         status: record.status,
         overtime_hours: record.overtime_hours,
@@ -84,26 +94,34 @@ export async function GET(request) {
         remarks: record.remarks,
         in_time: record.in_time,
         out_time: record.out_time,
-        idle_time: record.idle_time || 0
+        idle_time: record.idle_time || 0,
       };
 
       // Update totals
-      if (record.status === 'P') employeeSummary[record.employee_id].total_present++;
-      if (record.status === 'A') employeeSummary[record.employee_id].total_absent++;
-      if (record.status === 'PL') employeeSummary[record.employee_id].total_leave++;
-      if (record.is_weekly_off) employeeSummary[record.employee_id].total_weekly_off++;
-      employeeSummary[record.employee_id].total_overtime_hours += parseFloat(record.overtime_hours || 0);
+      if (record.status === 'P')
+        employeeSummary[record.employee_id].total_present++;
+      if (record.status === 'A')
+        employeeSummary[record.employee_id].total_absent++;
+      if (record.status === 'PL')
+        employeeSummary[record.employee_id].total_leave++;
+      if (record.is_weekly_off)
+        employeeSummary[record.employee_id].total_weekly_off++;
+      employeeSummary[record.employee_id].total_overtime_hours += parseFloat(
+        record.overtime_hours || 0
+      );
     });
 
     return NextResponse.json({
       success: true,
       records,
-      summary: Object.values(employeeSummary)
+      summary: Object.values(employeeSummary),
     });
-
   } catch (error) {
     console.error('Error fetching attendance:', error);
-    return NextResponse.json({ error: error.message || 'Failed to fetch attendance' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch attendance' },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }
@@ -112,7 +130,11 @@ export async function GET(request) {
 // POST - Save/Update attendance records (bulk) - OPTIMIZED with batching
 export async function POST(request) {
   // RBAC check
-  const authResultPost = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.UPDATE);
+  const authResultPost = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPost.authorized === false) return authResultPost.response;
 
   let connection;
@@ -121,20 +143,23 @@ export async function POST(request) {
     const { attendance_records } = body;
 
     if (!attendance_records || !Array.isArray(attendance_records)) {
-      return NextResponse.json({ error: 'Attendance records array is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Attendance records array is required' },
+        { status: 400 }
+      );
     }
 
     if (attendance_records.length === 0) {
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'No records to save',
         successCount: 0,
-        errorCount: 0
+        errorCount: 0,
       });
     }
 
     connection = await dbConnect();
-    
+
     // Create table if it doesn't exist (only runs once due to IF NOT EXISTS)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS employee_attendance (
@@ -158,7 +183,9 @@ export async function POST(request) {
 
     // Add idle_time column if it doesn't exist (for existing tables)
     try {
-      await connection.query(`ALTER TABLE employee_attendance ADD COLUMN idle_time INT DEFAULT 0 AFTER out_time`);
+      await connection.query(
+        `ALTER TABLE employee_attendance ADD COLUMN idle_time INT DEFAULT 0 AFTER out_time`
+      );
     } catch (e) {
       // Column already exists – ignore
     }
@@ -166,12 +193,12 @@ export async function POST(request) {
     // Process in smaller batches of 50 records to avoid query size limits
     const BATCH_SIZE = 50;
     let totalProcessed = 0;
-    
+
     for (let i = 0; i < attendance_records.length; i += BATCH_SIZE) {
       const batch = attendance_records.slice(i, i + BATCH_SIZE);
       const values = [];
       const placeholders = [];
-      
+
       for (const record of batch) {
         const status = (record.status || 'P').substring(0, 20);
         values.push(
@@ -187,7 +214,7 @@ export async function POST(request) {
         );
         placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?)');
       }
-      
+
       // Use query instead of execute for better performance with dynamic queries
       const batchQuery = `
         INSERT INTO employee_attendance 
@@ -203,7 +230,7 @@ export async function POST(request) {
           idle_time = VALUES(idle_time),
           updated_at = CURRENT_TIMESTAMP
       `;
-      
+
       await connection.query(batchQuery, values);
       totalProcessed += batch.length;
     }
@@ -246,13 +273,22 @@ export async function POST(request) {
       );
 
       const empSummaries = {};
-      savedRecords.forEach(r => {
+      savedRecords.forEach((r) => {
         if (!empSummaries[r.employee_id]) {
           empSummaries[r.employee_id] = {
-            present: 0, absent: 0, weekly_off: 0, holiday: 0,
-            privilege_leave: 0, casual_leave: 0, sick_leave: 0,
-            lwp: 0, half_day: 0, overtime_hours: 0, working_hours: 0,
-            std_in_time: r.in_time || null, std_out_time: r.out_time || null
+            present: 0,
+            absent: 0,
+            weekly_off: 0,
+            holiday: 0,
+            privilege_leave: 0,
+            casual_leave: 0,
+            sick_leave: 0,
+            lwp: 0,
+            half_day: 0,
+            overtime_hours: 0,
+            working_hours: 0,
+            std_in_time: r.in_time || null,
+            std_out_time: r.out_time || null,
           };
         }
         const s = empSummaries[r.employee_id];
@@ -269,8 +305,12 @@ export async function POST(request) {
 
         // Calculate working hours for present/HD/OT days
         if (r.status === 'P' || r.status === 'HD' || r.status === 'OT') {
-          const inTime = r.in_time ? r.in_time.toString().substring(0, 5) : '09:00';
-          const outTime = r.out_time ? r.out_time.toString().substring(0, 5) : '17:30';
+          const inTime = r.in_time
+            ? r.in_time.toString().substring(0, 5)
+            : '09:00';
+          const outTime = r.out_time
+            ? r.out_time.toString().substring(0, 5)
+            : '17:30';
           const [inH, inM] = inTime.split(':').map(Number);
           const [outH, outM] = outTime.split(':').map(Number);
           const inDec = inH + inM / 60;
@@ -312,25 +352,46 @@ export async function POST(request) {
              std_in_time = VALUES(std_in_time),
              std_out_time = VALUES(std_out_time),
              updated_at = CURRENT_TIMESTAMP`,
-          [empId, monthKey, s.present, s.absent, s.weekly_off, s.holiday,
-           s.privilege_leave, s.casual_leave, s.sick_leave, s.lwp, s.half_day,
-           parseFloat(s.overtime_hours.toFixed(2)), parseFloat(s.working_hours.toFixed(2)),
-           s.std_in_time, s.std_out_time]
+          [
+            empId,
+            monthKey,
+            s.present,
+            s.absent,
+            s.weekly_off,
+            s.holiday,
+            s.privilege_leave,
+            s.casual_leave,
+            s.sick_leave,
+            s.lwp,
+            s.half_day,
+            parseFloat(s.overtime_hours.toFixed(2)),
+            parseFloat(s.working_hours.toFixed(2)),
+            s.std_in_time,
+            s.std_out_time,
+          ]
         );
       }
     }
-    
+
     return NextResponse.json({
       success: true,
       message: `Attendance saved: ${totalProcessed} records processed`,
       successCount: totalProcessed,
-      errorCount: 0
+      errorCount: 0,
     });
-
   } catch (error) {
     console.error('Error saving attendance:', error);
-    return NextResponse.json({ error: error.message || 'Failed to save attendance' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to save attendance' },
+      { status: 500 }
+    );
   } finally {
-    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
+    if (connection && typeof connection.release === 'function') {
+      try {
+        connection.release();
+      } catch (_) {
+        /* ignore */
+      }
+    }
   }
 }

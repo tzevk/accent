@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { logActivity, updateScreenTime } from '@/utils/activity-logger';
 
 /**
@@ -9,7 +13,11 @@ import { logActivity, updateScreenTime } from '@/utils/activity-logger';
 export async function POST(request) {
   try {
     // Users should always be able to track their own activity
-    const auth = await ensurePermission(request, RESOURCES.PROFILE, PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.PROFILE,
+      PERMISSIONS.READ
+    );
     if (auth instanceof NextResponse) {
       return auth;
     }
@@ -26,7 +34,7 @@ export async function POST(request) {
       console.warn('Activity tracking: Invalid JSON body', parseError.message);
       return NextResponse.json({ success: true }); // Silently ignore invalid JSON
     }
-    
+
     // Handle batched activities
     if (data.batch && data.activities) {
       for (const activity of data.activities) {
@@ -39,24 +47,20 @@ export async function POST(request) {
     await processActivity(auth.user.id, data, request);
 
     return NextResponse.json({ success: true });
-
   } catch (error) {
     console.error('Error tracking activity:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to track activity' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to track activity',
+      },
+      { status: 500 }
+    );
   }
 }
 
 async function processActivity(userId, data, request) {
-  const {
-    actionType,
-    resourceType,
-    description,
-    details,
-    timestamp
-  } = data;
+  const { actionType, resourceType, description, details, timestamp } = data;
 
   // Validate required fields
   if (!actionType || !resourceType) {
@@ -73,10 +77,10 @@ async function processActivity(userId, data, request) {
       ...details,
       clientTimestamp: timestamp,
       userAgent: request.headers.get('user-agent'),
-      referer: request.headers.get('referer')
+      referer: request.headers.get('referer'),
     },
     request,
-    status: 'success'
+    status: 'success',
   });
 
   // Update screen time for heartbeat events
@@ -85,7 +89,7 @@ async function processActivity(userId, data, request) {
       activeTimeMs: details.activeTime || 0,
       idleTimeMs: details.idleTime || 0,
       sessionDurationMs: details.sessionDurationMs || 0,
-      currentPage: details.currentPage || null
+      currentPage: details.currentPage || null,
     });
   }
 }

@@ -8,21 +8,27 @@ import { getCurrentUser } from '@/utils/api-permissions';
  */
 export async function GET(request) {
   let db;
-  
+
   try {
     let user;
     try {
       user = await getCurrentUser(request);
     } catch (authErr) {
-      return NextResponse.json({ success: false, error: 'Authentication failed' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Authentication failed' },
+        { status: 500 }
+      );
     }
-    
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     db = await dbConnect();
-    
+
     // Ensure table exists
     await db.execute(`
       CREATE TABLE IF NOT EXISTS cash_vouchers (
@@ -46,12 +52,12 @@ export async function GET(request) {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Get current month number (01-12)
     const now = new Date();
     const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
     const monthPattern = `C-${currentMonth}|`;
-    
+
     // Get last voucher number for current month
     const [lastVoucher] = await db.execute(
       `SELECT voucher_number FROM cash_vouchers 
@@ -59,7 +65,7 @@ export async function GET(request) {
        ORDER BY id DESC LIMIT 1`,
       [`C-${currentMonth}|%`]
     );
-    
+
     let voucherNumber = `${monthPattern}001`;
     if (lastVoucher.length > 0 && lastVoucher[0].voucher_number) {
       // Extract the serial number from format C-MM|XXX
@@ -72,9 +78,8 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      voucher_number: voucherNumber
+      voucher_number: voucherNumber,
     });
-    
   } catch (error) {
     console.error('Get next voucher number error:', error?.message);
     return NextResponse.json(
@@ -83,7 +88,11 @@ export async function GET(request) {
     );
   } finally {
     if (db && typeof db.release === 'function') {
-      try { db.release(); } catch (e) { /* ignore */ }
+      try {
+        db.release();
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
 }

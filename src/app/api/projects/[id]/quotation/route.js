@@ -5,12 +5,12 @@ import { dbConnect } from '@/utils/database';
 function generateQuotationNumber(count) {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, '0'); // 01-12
-  
+
   // Calculate financial year (April to March)
   // If current month is Jan-Mar, we're in the previous financial year
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 1-12
-  
+
   let fyStartYear, fyEndYear;
   if (currentMonth >= 4) {
     // April or later - current year is start of FY
@@ -21,13 +21,13 @@ function generateQuotationNumber(count) {
     fyStartYear = currentYear - 1;
     fyEndYear = currentYear;
   }
-  
+
   // Format: YY-YY (e.g., 25-26)
   const fyString = `${String(fyStartYear).slice(-2)}-${String(fyEndYear).slice(-2)}`;
-  
+
   // Number starts from 7 (after 6), so add 6 to count
   const sequenceNumber = count + 107;
-  
+
   return `ATSPL/Q/${month}/${fyString}/${sequenceNumber}`;
 }
 
@@ -62,7 +62,9 @@ export async function GET(request, { params }) {
 
     // Add client_name column if it doesn't exist
     try {
-      await connection.execute('ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)');
+      await connection.execute(
+        'ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)'
+      );
     } catch (e) {
       // Column already exists
     }
@@ -86,7 +88,7 @@ export async function GET(request, { params }) {
     return NextResponse.json({
       success: true,
       data: rows[0] || null,
-      nextQuotationNumber
+      nextQuotationNumber,
     });
   } catch (error) {
     console.error('Error fetching project quotation:', error);
@@ -105,7 +107,7 @@ export async function POST(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     const {
       quotation_number,
       quotation_date,
@@ -116,7 +118,7 @@ export async function POST(request, { params }) {
       gross_amount,
       gst_percentage = 18,
       gst_amount,
-      net_amount
+      net_amount,
     } = body;
 
     connection = await dbConnect();
@@ -145,7 +147,9 @@ export async function POST(request, { params }) {
 
     // Add client_name column if it doesn't exist
     try {
-      await connection.execute('ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)');
+      await connection.execute(
+        'ALTER TABLE project_quotations ADD COLUMN client_name VARCHAR(255)'
+      );
     } catch (e) {
       // Column already exists
     }
@@ -183,7 +187,7 @@ export async function POST(request, { params }) {
           gst_percentage || 18,
           gst_amount || 0,
           net_amount || 0,
-          id
+          id,
         ]
       );
     } else {
@@ -205,7 +209,7 @@ export async function POST(request, { params }) {
           gross_amount || 0,
           gst_percentage || 18,
           gst_amount || 0,
-          net_amount || 0
+          net_amount || 0,
         ]
       );
     }
@@ -219,7 +223,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       success: true,
       data: rows[0],
-      message: existing.length > 0 ? 'Quotation updated' : 'Quotation created'
+      message: existing.length > 0 ? 'Quotation updated' : 'Quotation created',
     });
   } catch (error) {
     console.error('Error saving project quotation:', error);

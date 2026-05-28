@@ -26,7 +26,7 @@ export function logConnectionStats(label = 'API Route') {
 export async function withConnection(callback) {
   const { dbConnect } = await import('@/utils/database');
   const conn = await dbConnect();
-  
+
   try {
     return await callback(conn);
   } finally {

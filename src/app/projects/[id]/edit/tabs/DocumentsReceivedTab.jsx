@@ -1,5 +1,5 @@
-import { DocumentIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { normalizeDate } from "@/utils/date";
+import { DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { normalizeDate } from '@/utils/date';
 
 export default function DocumentsReceivedTab({
   newReceivedDoc,
@@ -66,15 +66,11 @@ export default function DocumentsReceivedTab({
                 <td className="py-2 px-2">
                   <input
                     type="date"
-                    value={normalizeDate(
-                      newReceivedDoc.date_received,
-                    )}
+                    value={normalizeDate(newReceivedDoc.date_received)}
                     onChange={(e) =>
                       setNewReceivedDoc((prev) => ({
                         ...prev,
-                        date_received: normalizeDate(
-                          e.target.value,
-                        ),
+                        date_received: normalizeDate(e.target.value),
                       }))
                     }
                     placeholder="Date"
@@ -176,7 +172,7 @@ export default function DocumentsReceivedTab({
                         newReceivedDoc.description.trim()
                       )
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newReceivedDoc.description && newReceivedDoc.description.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newReceivedDoc.description && newReceivedDoc.description.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add document"
                   >
                     Add
@@ -188,9 +184,7 @@ export default function DocumentsReceivedTab({
                   key={d.id}
                   className="hover:bg-gray-50 transition-colors align-top"
                 >
-                  <td className="py-2 px-2 text-center">
-                    {index + 1}
-                  </td>
+                  <td className="py-2 px-2 text-center">{index + 1}</td>
                   <td className="py-2 px-2">
                     <input
                       type="date"
@@ -198,8 +192,8 @@ export default function DocumentsReceivedTab({
                       onChange={(e) =>
                         updateReceivedDocument(
                           d.id,
-                          "date_received",
-                          normalizeDate(e.target.value),
+                          'date_received',
+                          normalizeDate(e.target.value)
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
@@ -208,12 +202,12 @@ export default function DocumentsReceivedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.description || ""}
+                      value={d.description || ''}
                       onChange={(e) =>
                         updateReceivedDocument(
                           d.id,
-                          "description",
-                          e.target.value,
+                          'description',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
@@ -222,12 +216,12 @@ export default function DocumentsReceivedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.drawing_number || ""}
+                      value={d.drawing_number || ''}
                       onChange={(e) =>
                         updateReceivedDocument(
                           d.id,
-                          "drawing_number",
-                          e.target.value,
+                          'drawing_number',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
@@ -236,12 +230,12 @@ export default function DocumentsReceivedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.revision_number || ""}
+                      value={d.revision_number || ''}
                       onChange={(e) =>
                         updateReceivedDocument(
                           d.id,
-                          "revision_number",
-                          e.target.value,
+                          'revision_number',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
@@ -250,12 +244,22 @@ export default function DocumentsReceivedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.unit_qty || ""}
+                      value={d.unit_qty || ''}
+                      onChange={(e) =>
+                        updateReceivedDocument(d.id, 'unit_qty', e.target.value)
+                      }
+                      className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
+                    />
+                  </td>
+                  <td className="py-2 px-2">
+                    <input
+                      type="text"
+                      value={d.document_sent_by || ''}
                       onChange={(e) =>
                         updateReceivedDocument(
                           d.id,
-                          "unit_qty",
-                          e.target.value,
+                          'document_sent_by',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
@@ -264,27 +268,9 @@ export default function DocumentsReceivedTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={d.document_sent_by || ""}
+                      value={d.remarks || ''}
                       onChange={(e) =>
-                        updateReceivedDocument(
-                          d.id,
-                          "document_sent_by",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
-                    />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input
-                      type="text"
-                      value={d.remarks || ""}
-                      onChange={(e) =>
-                        updateReceivedDocument(
-                          d.id,
-                          "remarks",
-                          e.target.value,
-                        )
+                        updateReceivedDocument(d.id, 'remarks', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent"
                     />

@@ -8,17 +8,22 @@ require('dotenv').config({ path: '.env.local' });
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    connectionLimit: 2
+    connectionLimit: 2,
   });
   const db = await pool.getConnection();
 
   // Find employee ATS0001
-  const [emp] = await db.execute("SELECT id, employee_id, first_name, last_name FROM employees WHERE employee_id = 'ATS0001'");
+  const [emp] = await db.execute(
+    "SELECT id, employee_id, first_name, last_name FROM employees WHERE employee_id = 'ATS0001'"
+  );
   console.log('Employee:', JSON.stringify(emp[0]));
   const empId = emp[0].id;
 
   // Check salary_structures
-  const [ss] = await db.execute('SELECT * FROM salary_structures WHERE employee_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1', [empId]);
+  const [ss] = await db.execute(
+    'SELECT * FROM salary_structures WHERE employee_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1',
+    [empId]
+  );
   if (ss.length > 0) {
     console.log('\n=== salary_structures ===');
     console.log('ctc:', ss[0].ctc);
@@ -38,7 +43,10 @@ require('dotenv').config({ path: '.env.local' });
   }
 
   // Check employee_salary_profile
-  const [esp] = await db.execute('SELECT * FROM employee_salary_profile WHERE employee_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1', [empId]);
+  const [esp] = await db.execute(
+    'SELECT * FROM employee_salary_profile WHERE employee_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1',
+    [empId]
+  );
   if (esp.length > 0) {
     console.log('\n=== employee_salary_profile ===');
     console.log('gross_salary:', esp[0].gross_salary);
@@ -66,7 +74,9 @@ require('dotenv').config({ path: '.env.local' });
   }
 
   // Check current DA schedule
-  const [da] = await db.execute("SELECT * FROM da_schedule WHERE is_active = 1 ORDER BY effective_from DESC LIMIT 1");
+  const [da] = await db.execute(
+    'SELECT * FROM da_schedule WHERE is_active = 1 ORDER BY effective_from DESC LIMIT 1'
+  );
   console.log('\n=== DA Schedule ===');
   console.log(da.length > 0 ? JSON.stringify(da[0]) : 'No DA schedule found');
 

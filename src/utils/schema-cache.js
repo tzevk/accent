@@ -5,8 +5,8 @@
  * Cache is per-process and auto-expires after TTL (default 10 minutes).
  */
 
-const _cache = new Map();          // tableName → { columns: Set<string>, pkCol: string, ts: number }
-const CACHE_TTL = 10 * 60 * 1000;  // 10 minutes
+const _cache = new Map(); // tableName → { columns: Set<string>, pkCol: string, ts: number }
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Get the set of column names for a table. Uses in-memory cache.
@@ -16,7 +16,7 @@ const CACHE_TTL = 10 * 60 * 1000;  // 10 minutes
  */
 export async function getTableColumns(db, tableName) {
   const entry = _cache.get(tableName);
-  if (entry && (Date.now() - entry.ts) < CACHE_TTL) {
+  if (entry && Date.now() - entry.ts < CACHE_TTL) {
     return entry.columns;
   }
   // Fetch fresh from DB
@@ -24,9 +24,13 @@ export async function getTableColumns(db, tableName) {
     `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
     [tableName]
   );
-  const columns = new Set((cols || []).map(c => c.COLUMN_NAME));
+  const columns = new Set((cols || []).map((c) => c.COLUMN_NAME));
   const existing = _cache.get(tableName);
-  _cache.set(tableName, { columns, pkCol: existing?.pkCol || null, ts: Date.now() });
+  _cache.set(tableName, {
+    columns,
+    pkCol: existing?.pkCol || null,
+    ts: Date.now(),
+  });
   return columns;
 }
 
@@ -38,19 +42,19 @@ export async function getTableColumns(db, tableName) {
  */
 export async function getPrimaryKeyColumn(db, tableName) {
   const entry = _cache.get(tableName);
-  if (entry && entry.pkCol !== undefined && (Date.now() - entry.ts) < CACHE_TTL) {
+  if (entry && entry.pkCol !== undefined && Date.now() - entry.ts < CACHE_TTL) {
     return entry.pkCol;
   }
   const [pkRows] = await db.execute(
     `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'`,
     [tableName]
   );
-  const pkCol = (pkRows && pkRows.length > 0) ? pkRows[0].COLUMN_NAME : null;
+  const pkCol = pkRows && pkRows.length > 0 ? pkRows[0].COLUMN_NAME : null;
   const existing = _cache.get(tableName);
   _cache.set(tableName, {
     columns: existing?.columns || new Set(),
     pkCol,
-    ts: existing?.ts || Date.now()
+    ts: existing?.ts || Date.now(),
   });
   return pkCol;
 }

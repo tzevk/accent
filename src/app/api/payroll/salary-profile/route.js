@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // POST /api/payroll/salary-profile - Create/Update employee salary profile
 // If `id` is provided, it updates that specific profile
@@ -14,19 +18,25 @@ export async function POST(request) {
     } catch (permErr) {
       console.error('Permission check failed:', permErr);
       return NextResponse.json(
-        { success: false, error: 'Permission denied: ' + (permErr.message || 'You do not have permission to update employees') },
+        {
+          success: false,
+          error:
+            'Permission denied: ' +
+            (permErr.message ||
+              'You do not have permission to update employees'),
+        },
         { status: 403 }
       );
     }
 
     const body = await request.json();
     console.log('Received salary profile data:', JSON.stringify(body, null, 2));
-    
-    const { 
+
+    const {
       id, // If provided, update existing profile; otherwise create new
-      employee_id, 
-      gross_salary, 
-      other_allowances = 0, 
+      employee_id,
+      gross_salary,
+      other_allowances = 0,
       effective_from = new Date().toISOString().split('T')[0],
       effective_to = null,
       da_year = new Date().getFullYear(),
@@ -89,19 +99,28 @@ export async function POST(request) {
       loan_active = false,
       // Advance fields
       advance_amount = 0,
-      advance_active = false
+      advance_active = false,
     } = body;
 
     // Validate required fields
-    if (!employee_id || gross_salary === undefined || gross_salary === null || gross_salary === '') {
+    if (
+      !employee_id ||
+      gross_salary === undefined ||
+      gross_salary === null ||
+      gross_salary === ''
+    ) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: employee_id and gross_salary are required' },
+        {
+          success: false,
+          error:
+            'Missing required fields: employee_id and gross_salary are required',
+        },
         { status: 400 }
       );
     }
 
     db = await dbConnect();
-    
+
     // Create table if it doesn't exist - NO FOREIGN KEY to avoid constraint issues
     await db.query(`
       CREATE TABLE IF NOT EXISTS employee_salary_profile (
@@ -134,7 +153,7 @@ export async function POST(request) {
         INDEX idx_employee_effective (employee_id, effective_from)
       )
     `);
-    
+
     // Add missing columns if table already exists with old schema
     const columnsToAdd = [
       { name: 'gross', definition: 'DECIMAL(12, 2) DEFAULT 0' },
@@ -184,7 +203,10 @@ export async function POST(request) {
       { name: 'daily_rate', definition: 'DECIMAL(12, 2)' },
       { name: 'std_working_days', definition: 'INT DEFAULT 26' },
       { name: 'contract_amount', definition: 'DECIMAL(12, 2)' },
-      { name: 'contract_duration', definition: "VARCHAR(20) DEFAULT 'monthly'" },
+      {
+        name: 'contract_duration',
+        definition: "VARCHAR(20) DEFAULT 'monthly'",
+      },
       { name: 'contract_end_date', definition: 'DATE' },
       { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
       { name: 'lumpsum_description', definition: 'TEXT' },
@@ -203,40 +225,48 @@ export async function POST(request) {
       { name: 'advance_amount', definition: 'DECIMAL(12, 2) DEFAULT 0' },
       { name: 'advance_active', definition: 'TINYINT(1) DEFAULT 0' },
     ];
-    
+
     for (const col of columnsToAdd) {
       try {
-        await db.query(`ALTER TABLE employee_salary_profile ADD COLUMN ${col.name} ${col.definition}`);
+        await db.query(
+          `ALTER TABLE employee_salary_profile ADD COLUMN ${col.name} ${col.definition}`
+        );
         console.log(`Added column: ${col.name}`);
       } catch (alterErr) {
         // Column already exists - ignore error code 1060
         if (alterErr.code !== 'ER_DUP_FIELDNAME' && alterErr.errno !== 1060) {
-          console.log(`Column ${col.name} might already exist or error:`, alterErr.message);
+          console.log(
+            `Column ${col.name} might already exist or error:`,
+            alterErr.message
+          );
         }
       }
     }
-    
+
     // Also modify existing 'gross' column to have a default value if it exists without one
     try {
-      await db.query(`ALTER TABLE employee_salary_profile MODIFY COLUMN gross DECIMAL(12, 2) DEFAULT 0`);
+      await db.query(
+        `ALTER TABLE employee_salary_profile MODIFY COLUMN gross DECIMAL(12, 2) DEFAULT 0`
+      );
     } catch {
       // Ignore if column doesn't exist
     }
     // Widen lumpsum_description to TEXT if it was previously VARCHAR(255)
     try {
-      await db.query(`ALTER TABLE employee_salary_profile MODIFY COLUMN lumpsum_description TEXT`);
+      await db.query(
+        `ALTER TABLE employee_salary_profile MODIFY COLUMN lumpsum_description TEXT`
+      );
     } catch {
       // Ignore
     }
-    
+
     console.log('Table schema verified/updated successfully');
 
     // Check if employee exists
-    const [empRows] = await db.query(
-      'SELECT id FROM employees WHERE id = ?',
-      [employee_id]
-    );
-    
+    const [empRows] = await db.query('SELECT id FROM employees WHERE id = ?', [
+      employee_id,
+    ]);
+
     console.log('Employee check result:', empRows);
 
     if (empRows.length === 0) {
@@ -249,16 +279,16 @@ export async function POST(request) {
 
     let result;
     let isUpdate = false;
-    
+
     // Prepare common values array
     const values = [
-      parseFloat(gross_salary) || 0,  // gross (legacy column)
-      parseFloat(gross_salary) || 0,  // gross_salary 
-      parseFloat(other_allowances) || 0, 
+      parseFloat(gross_salary) || 0, // gross (legacy column)
+      parseFloat(gross_salary) || 0, // gross_salary
+      parseFloat(other_allowances) || 0,
       effective_from,
       effective_to || null,
-      da_year, 
-      pf_applicable ? 1 : 0, 
+      da_year,
+      pf_applicable ? 1 : 0,
       esic_applicable ? 1 : 0,
       pt_applicable ? 1 : 0,
       mlwf_applicable ? 1 : 0,
@@ -267,26 +297,26 @@ export async function POST(request) {
       monthly_bonus ? 1 : 0,
       incentive_applicable ? 1 : 0,
       insurance_applicable ? 1 : 0,
-      parseFloat(basic_plus_da) || null, 
-      parseFloat(da) || null, 
-      parseFloat(basic) || null, 
-      parseFloat(hra) || null, 
-      parseFloat(conveyance) || null, 
+      parseFloat(basic_plus_da) || null,
+      parseFloat(da) || null,
+      parseFloat(basic) || null,
+      parseFloat(hra) || null,
+      parseFloat(conveyance) || null,
       parseFloat(call_allowance) || null,
       parseFloat(bonus) || null,
       parseFloat(incentive) || null,
-      parseFloat(pf_employee) || null, 
-      parseFloat(esic_employee) || null, 
-      parseFloat(pf_employer) || null, 
+      parseFloat(pf_employee) || null,
+      parseFloat(esic_employee) || null,
+      parseFloat(pf_employer) || null,
       parseFloat(esic_employer) || null,
       parseFloat(pt) || null,
       parseFloat(mlwf) || null,
       parseFloat(mlwf_employer) || null,
       parseFloat(retention) || null,
       parseFloat(insurance) || null,
-      parseFloat(total_earnings) || null, 
-      parseFloat(total_deductions) || null, 
-      parseFloat(net_pay) || null, 
+      parseFloat(total_earnings) || null,
+      parseFloat(total_deductions) || null,
+      parseFloat(net_pay) || null,
       parseFloat(employer_cost) || null,
       is_manual_override ? 1 : 0,
       salary_type || 'monthly',
@@ -312,7 +342,7 @@ export async function POST(request) {
       parseFloat(loan_total_amount) || 0,
       loan_active ? 1 : 0,
       parseFloat(advance_amount) || 0,
-      advance_active ? 1 : 0
+      advance_active ? 1 : 0,
     ];
 
     if (id) {
@@ -342,10 +372,15 @@ export async function POST(request) {
         `SELECT id FROM employee_salary_profile WHERE employee_id = ? AND effective_from = ? LIMIT 1`,
         [employee_id, effective_from]
       );
-      
+
       if (existing && existing.length > 0) {
         // UPDATE existing profile for this date
-        console.log('Updating existing salary profile for employee:', employee_id, 'effective_from:', effective_from);
+        console.log(
+          'Updating existing salary profile for employee:',
+          employee_id,
+          'effective_from:',
+          effective_from
+        );
         const existingId = existing[0].id;
         [result] = await db.query(
           `UPDATE employee_salary_profile SET
@@ -386,14 +421,16 @@ export async function POST(request) {
         );
       }
     }
-    
+
     console.log('Insert/Update result:', result);
-    
+
     if (db) db.release();
 
     return NextResponse.json({
       success: true,
-      message: isUpdate ? 'Salary profile updated successfully' : 'Salary profile created successfully',
+      message: isUpdate
+        ? 'Salary profile updated successfully'
+        : 'Salary profile created successfully',
       data: {
         id: id || result.insertId || null,
         employee_id,
@@ -403,14 +440,15 @@ export async function POST(request) {
         effective_to,
         da_year,
         pf_applicable,
-        esic_applicable
-      }
+        esic_applicable,
+      },
     });
-
   } catch (error) {
     console.error('Error saving salary profile:', error);
     if (db) {
-      try { db.release(); } catch {}
+      try {
+        db.release();
+      } catch {}
     }
     return NextResponse.json(
       { success: false, error: error.message || 'Internal server error' },
@@ -436,7 +474,7 @@ export async function GET(request) {
     }
 
     db = await dbConnect();
-    
+
     try {
       // First, ensure all required columns exist (same as POST method)
       const columnsToAdd = [
@@ -487,16 +525,21 @@ export async function GET(request) {
         { name: 'daily_rate', definition: 'DECIMAL(12, 2)' },
         { name: 'std_working_days', definition: 'INT DEFAULT 26' },
         { name: 'contract_amount', definition: 'DECIMAL(12, 2)' },
-        { name: 'contract_duration', definition: "VARCHAR(20) DEFAULT 'monthly'" },
+        {
+          name: 'contract_duration',
+          definition: "VARCHAR(20) DEFAULT 'monthly'",
+        },
         { name: 'contract_end_date', definition: 'DATE' },
         { name: 'lumpsum_amount', definition: 'DECIMAL(12, 2)' },
         { name: 'lumpsum_description', definition: 'TEXT' },
         { name: 'tds_percentage', definition: 'DECIMAL(5, 2) DEFAULT NULL' },
       ];
-      
+
       for (const col of columnsToAdd) {
         try {
-          await db.query(`ALTER TABLE employee_salary_profile ADD COLUMN ${col.name} ${col.definition}`);
+          await db.query(
+            `ALTER TABLE employee_salary_profile ADD COLUMN ${col.name} ${col.definition}`
+          );
         } catch (alterErr) {
           // Column already exists - ignore error code 1060
           if (alterErr.code !== 'ER_DUP_FIELDNAME' && alterErr.errno !== 1060) {
@@ -504,7 +547,7 @@ export async function GET(request) {
           }
         }
       }
-      
+
       // Get all salary profiles for this employee, ordered by effective_from descending
       // Use SELECT * to avoid errors when columns don't exist yet
       const [profiles] = await db.query(
@@ -513,20 +556,19 @@ export async function GET(request) {
          ORDER BY effective_from DESC, updated_at DESC`,
         [employee_id]
       );
-      
+
       // Map profiles to ensure consistent field names
-      const mappedProfiles = profiles.map(p => ({
+      const mappedProfiles = profiles.map((p) => ({
         ...p,
         gross_salary: p.gross_salary || p.gross || 0,
         std_in_time: p.std_in_time || '09:00:00',
-        std_out_time: p.std_out_time || '17:30:00'
+        std_out_time: p.std_out_time || '17:30:00',
       }));
 
       return NextResponse.json({
         success: true,
-        data: mappedProfiles
+        data: mappedProfiles,
       });
-
     } finally {
       if (db) {
         try {
@@ -536,7 +578,6 @@ export async function GET(request) {
         }
       }
     }
-
   } catch (error) {
     console.error('Error fetching salary profiles:', error);
     return NextResponse.json(
@@ -563,7 +604,7 @@ export async function DELETE(request) {
     }
 
     db = await dbConnect();
-    
+
     try {
       const [result] = await db.query(
         'DELETE FROM employee_salary_profile WHERE id = ?',
@@ -579,9 +620,8 @@ export async function DELETE(request) {
 
       return NextResponse.json({
         success: true,
-        message: 'Salary profile deleted successfully'
+        message: 'Salary profile deleted successfully',
       });
-
     } finally {
       if (db) {
         try {
@@ -591,7 +631,6 @@ export async function DELETE(request) {
         }
       }
     }
-
   } catch (error) {
     console.error('Error deleting salary profile:', error);
     return NextResponse.json(

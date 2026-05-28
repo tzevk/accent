@@ -8,7 +8,14 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 
-const STATUS_OPTIONS = ['NEW', 'planning', 'in-progress', 'on-hold', 'completed', 'cancelled'];
+const STATUS_OPTIONS = [
+  'NEW',
+  'planning',
+  'in-progress',
+  'on-hold',
+  'completed',
+  'cancelled',
+];
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
 const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
 
@@ -34,12 +41,16 @@ const INITIAL_FORM = {
   input_document: '',
   list_of_deliverables: '',
   kickoff_meeting: '',
-  in_house_meeting: ''
+  in_house_meeting: '',
 };
 
 function LoadingFallback() {
   return (
-    <LoadingSpinner message="Loading" subMessage="Preparing form..." size="sm" />
+    <LoadingSpinner
+      message="Loading"
+      subMessage="Preparing form..."
+      size="sm"
+    />
   );
 }
 
@@ -63,7 +74,11 @@ function NewProjectForm() {
 
   const router = useRouter();
   const [companies, setCompanies] = useState([]);
-  const [form, setForm] = useState(() => ({ ...INITIAL_FORM, start_date: normalizedDate, end_date: normalizedDate }));
+  const [form, setForm] = useState(() => ({
+    ...INITIAL_FORM,
+    start_date: normalizedDate,
+    end_date: normalizedDate,
+  }));
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -83,7 +98,7 @@ function NewProjectForm() {
       setForm((prev) => ({
         ...prev,
         start_date: prev.start_date || normalizedDate,
-        end_date: prev.end_date || normalizedDate
+        end_date: prev.end_date || normalizedDate,
       }));
     }
   }, [normalizedDate]);
@@ -92,7 +107,7 @@ function NewProjectForm() {
     const { name, value } = event.target;
     setForm((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -130,13 +145,13 @@ function NewProjectForm() {
         priority: form.priority || 'MEDIUM',
         progress: Number(form.progress) || 0,
         proposal_id: form.proposal_id || null,
-        notes: form.notes || null
+        notes: form.notes || null,
       };
 
       const result = await fetchJSON('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
       if (result.success) {
         // Navigate to edit page with the newly created project
@@ -157,7 +172,10 @@ function NewProjectForm() {
       <Navbar />
       <div className="flex-1 overflow-hidden">
         <div className="h-full overflow-y-auto">
-          <form onSubmit={handleSubmit} className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 space-y-6 max-w-[1800px] mx-auto w-full">
+          <form
+            onSubmit={handleSubmit}
+            className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-22 pb-8 space-y-6 max-w-[1800px] mx-auto w-full"
+          >
             <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <button
@@ -168,21 +186,30 @@ function NewProjectForm() {
                   <ArrowLeftIcon className="h-4 w-4 mr-1" />
                   Back to Projects
                 </button>
-                <h1 className="mt-3 text-2xl font-bold text-black">Create Project</h1>
+                <h1 className="mt-3 text-2xl font-bold text-black">
+                  Create Project
+                </h1>
                 <p className="text-sm text-gray-600">
-                  Fill in the core project fields as defined in the CRM database.
+                  Fill in the core project fields as defined in the CRM
+                  database.
                 </p>
               </div>
             </header>
 
             <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-semibold text-black">Basic Details</h2>
-                <p className="text-xs text-gray-500">Project identity, client alignment, and ownership.</p>
+                <h2 className="text-sm font-semibold text-black">
+                  Basic Details
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Project identity, client alignment, and ownership.
+                </p>
               </div>
               <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Project Number</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Project Number
+                  </label>
                   <input
                     type="text"
                     name="project_id"
@@ -193,10 +220,14 @@ function NewProjectForm() {
                     title="Format: 001-10-2024 (serial-month-year)"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Format: Serial-Month-Year. Leave empty to auto-generate.</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Format: Serial-Month-Year. Leave empty to auto-generate.
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Project Name *</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Project Name *
+                  </label>
                   <input
                     type="text"
                     name="name"
@@ -207,7 +238,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Company Name *</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Company Name *
+                  </label>
                   <select
                     name="company_id"
                     value={form.company_id}
@@ -224,7 +257,9 @@ function NewProjectForm() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Project Manager</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Project Manager
+                  </label>
                   <input
                     type="text"
                     name="project_manager"
@@ -234,7 +269,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Status</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Status
+                  </label>
                   <select
                     name="status"
                     value={form.status}
@@ -242,12 +279,16 @@ function NewProjectForm() {
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                   >
                     {STATUS_OPTIONS.map((status) => (
-                      <option key={status} value={status}>{status}</option>
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Priority</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Priority
+                  </label>
                   <select
                     name="priority"
                     value={form.priority}
@@ -255,12 +296,16 @@ function NewProjectForm() {
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                   >
                     {PRIORITY_OPTIONS.map((priority) => (
-                      <option key={priority} value={priority}>{priority}</option>
+                      <option key={priority} value={priority}>
+                        {priority}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Project Type</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Project Type
+                  </label>
                   <select
                     name="type"
                     value={form.type}
@@ -268,12 +313,16 @@ function NewProjectForm() {
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                   >
                     {TYPE_OPTIONS.map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Assigned To</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Assigned To
+                  </label>
                   <input
                     type="text"
                     name="assigned_to"
@@ -288,12 +337,18 @@ function NewProjectForm() {
 
             <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-semibold text-black">Schedule & Budget</h2>
-                <p className="text-xs text-gray-500">Dates and high-level financials.</p>
+                <h2 className="text-sm font-semibold text-black">
+                  Schedule & Budget
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Dates and high-level financials.
+                </p>
               </div>
               <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Start Date</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Start Date
+                  </label>
                   <input
                     type="date"
                     name="start_date"
@@ -303,7 +358,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">End Date</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    End Date
+                  </label>
                   <input
                     type="date"
                     name="end_date"
@@ -313,7 +370,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Target Date</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Target Date
+                  </label>
                   <input
                     type="date"
                     name="target_date"
@@ -323,7 +382,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Budget (INR)</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Budget (INR)
+                  </label>
                   <input
                     type="number"
                     name="budget"
@@ -335,7 +396,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-black mb-1">Progress (%)</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Progress (%)
+                  </label>
                   <input
                     type="range"
                     name="progress"
@@ -345,19 +408,28 @@ function NewProjectForm() {
                     onChange={handleProgressChange}
                     className="w-full"
                   />
-                  <p className="text-xs text-gray-500 mt-1">{form.progress}% complete</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {form.progress}% complete
+                  </p>
                 </div>
               </div>
             </section>
 
             <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-semibold text-black">Descriptions & Notes</h2>
-                <p className="text-xs text-gray-500">Store high-level description and internal notes (saved to the database).</p>
+                <h2 className="text-sm font-semibold text-black">
+                  Descriptions & Notes
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Store high-level description and internal notes (saved to the
+                  database).
+                </p>
               </div>
               <div className="px-6 py-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Project Description</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Project Description
+                  </label>
                   <textarea
                     name="description"
                     value={form.description}
@@ -368,7 +440,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Internal Notes</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Internal Notes
+                  </label>
                   <textarea
                     name="notes"
                     value={form.notes}
@@ -383,12 +457,19 @@ function NewProjectForm() {
 
             <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-semibold text-black">Meeting & Documents</h2>
-                <p className="text-xs text-gray-500">Project schedule, input documents, deliverables, and meeting information.</p>
+                <h2 className="text-sm font-semibold text-black">
+                  Meeting & Documents
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Project schedule, input documents, deliverables, and meeting
+                  information.
+                </p>
               </div>
               <div className="px-6 py-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Project Schedule</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Project Schedule
+                  </label>
                   <textarea
                     name="project_schedule"
                     value={form.project_schedule}
@@ -399,7 +480,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Input Document</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Input Document
+                  </label>
                   <textarea
                     name="input_document"
                     value={form.input_document}
@@ -410,7 +493,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">List of Deliverables</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    List of Deliverables
+                  </label>
                   <textarea
                     name="list_of_deliverables"
                     value={form.list_of_deliverables}
@@ -421,7 +506,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">Kickoff Meeting</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    Kickoff Meeting
+                  </label>
                   <textarea
                     name="kickoff_meeting"
                     value={form.kickoff_meeting}
@@ -432,7 +519,9 @@ function NewProjectForm() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-black mb-1">In House Meeting</label>
+                  <label className="block text-xs font-medium text-black mb-1">
+                    In House Meeting
+                  </label>
                   <textarea
                     name="in_house_meeting"
                     value={form.in_house_meeting}

@@ -4,16 +4,13 @@ import Navbar from '@/components/Navbar';
 import { useState } from 'react';
 import { fetchJSON } from '@/utils/http';
 import { useRouter } from 'next/navigation';
-import { 
-  ArrowLeftIcon,
-  CheckIcon
-} from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 export default function NewVendor() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
-  
+
   const [formData, setFormData] = useState({
     vendor_id: '',
     vendor_name: '',
@@ -49,14 +46,14 @@ export default function NewVendor() {
     remarks: '',
     contract_attachments: '',
     certificate_attachments: '',
-    profile_attachments: ''
+    profile_attachments: '',
   });
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -72,7 +69,7 @@ export default function NewVendor() {
         },
         body: JSON.stringify(formData),
       });
-      
+
       if (result.success) {
         alert('Vendor created successfully!');
         router.push('/vendors');
@@ -88,7 +85,11 @@ export default function NewVendor() {
   };
 
   const handleCancel = () => {
-    if (window.confirm('Are you sure you want to cancel? All entered data will be lost.')) {
+    if (
+      window.confirm(
+        'Are you sure you want to cancel? All entered data will be lost.'
+      )
+    ) {
       router.push('/vendors');
     }
   };
@@ -99,7 +100,7 @@ export default function NewVendor() {
     { id: 'registration', name: 'Registration & Compliance' },
     { id: 'financial', name: 'Financial Information' },
     { id: 'performance', name: 'Performance & History' },
-    { id: 'attachments', name: 'Attachments' }
+    { id: 'attachments', name: 'Attachments' },
   ];
 
   return (
@@ -117,7 +118,9 @@ export default function NewVendor() {
                 <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Add New Vendor</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Add New Vendor
+                </h1>
                 <p className="text-gray-600">Create a new vendor record</p>
               </div>
             </div>
@@ -143,7 +146,10 @@ export default function NewVendor() {
           {/* Tabs */}
           <div className="mb-6">
             <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-              <nav className="flex min-w-full overflow-x-auto" aria-label="Tabs">
+              <nav
+                className="flex min-w-full overflow-x-auto"
+                aria-label="Tabs"
+              >
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -167,7 +173,9 @@ export default function NewVendor() {
               {/* Basic Information Tab */}
               {activeTab === 'basic' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Basic Information
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -181,7 +189,9 @@ export default function NewVendor() {
                         placeholder="Auto-generated if empty"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent-primary focus:border-transparent"
                       />
-                      <p className="text-xs text-gray-500 mt-0.5">Format: XXX-MM-YYYY (auto-generated)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Format: XXX-MM-YYYY (auto-generated)
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -211,7 +221,9 @@ export default function NewVendor() {
                         <option value="Subcontractor">Subcontractor</option>
                         <option value="Consultant">Consultant</option>
                         <option value="OEM">OEM</option>
-                        <option value="Service Provider">Service Provider</option>
+                        <option value="Service Provider">
+                          Service Provider
+                        </option>
                         <option value="Manufacturer">Manufacturer</option>
                         <option value="Other">Other</option>
                       </select>
@@ -258,7 +270,9 @@ export default function NewVendor() {
               {/* Contact Information Tab */}
               {activeTab === 'contact' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Contact Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Contact Information
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -388,7 +402,9 @@ export default function NewVendor() {
               {/* Registration & Compliance Tab */}
               {activeTab === 'registration' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Registration & Compliance</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Registration & Compliance
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -459,7 +475,9 @@ export default function NewVendor() {
               {/* Financial Information Tab */}
               {activeTab === 'financial' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Information</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Financial Information
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -548,7 +566,9 @@ export default function NewVendor() {
               {/* Performance & History Tab */}
               {activeTab === 'performance' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Performance & History</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Performance & History
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -646,7 +666,9 @@ export default function NewVendor() {
               {/* Attachments Tab */}
               {activeTab === 'attachments' && (
                 <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Attachments</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Attachments
+                  </h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">

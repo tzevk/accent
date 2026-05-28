@@ -4,7 +4,7 @@ import {
   XMarkIcon,
   PencilIcon,
   TrashIcon,
-} from "@heroicons/react/24/outline";
+} from '@heroicons/react/24/outline';
 
 export default function InvoiceTab({
   canEditInvoices,
@@ -23,7 +23,7 @@ export default function InvoiceTab({
   accountHeads = [],
 }) {
   const invoiceOnly = invoices.filter(
-    (inv) => inv.tab_type !== "purchase_order",
+    (inv) => inv.tab_type !== 'purchase_order'
   );
 
   return (
@@ -33,12 +33,14 @@ export default function InvoiceTab({
           <div>
             <div className="flex items-center gap-2">
               <DocumentTextIcon className="h-4 w-4 text-[#7F2487]" />
-              <h2 className="text-sm font-bold text-gray-900">Purchase Invoices</h2>
+              <h2 className="text-sm font-bold text-gray-900">
+                Purchase Invoices
+              </h2>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
               {canEditInvoices
-                ? "Create and manage project invoices"
-                : "View-only mode - You have read permission only"}
+                ? 'Create and manage project invoices'
+                : 'View-only mode - You have read permission only'}
             </p>
           </div>
           {canEditInvoices && (
@@ -66,12 +68,12 @@ export default function InvoiceTab({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  {editingInvoiceId ? "Updating..." : "Adding..."}
+                  {editingInvoiceId ? 'Updating...' : 'Adding...'}
                 </>
               ) : (
                 <>
                   <PlusIcon className="h-4 w-4" />
-                  {editingInvoiceId ? "Update Invoice" : "Add Invoice"}
+                  {editingInvoiceId ? 'Update Invoice' : 'Add Invoice'}
                 </>
               )}
             </button>
@@ -85,10 +87,10 @@ export default function InvoiceTab({
           <h3 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
             <DocumentTextIcon className="h-3.5 w-3.5 text-[#7F2487]" />
             {editingInvoiceId
-              ? "Edit Invoice"
+              ? 'Edit Invoice'
               : canEditInvoices
-                ? "New Invoice"
-                : "Invoice Details"}
+                ? 'New Invoice'
+                : 'Invoice Details'}
           </h3>
 
           {/* Row 1: Company Name, City, Invoice No, Invoice Date */}
@@ -104,11 +106,13 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="Auto-filled"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">City</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                City
+              </label>
               <input
                 type="text"
                 name="city"
@@ -116,7 +120,7 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="Auto-filled"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
 
@@ -131,18 +135,20 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="INV-00001"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Invoice Date</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                Invoice Date
+              </label>
               <input
                 type="date"
                 name="invoice_date"
                 value={invoiceData.invoice_date}
                 onChange={handleInvoiceChange}
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
           </div>
@@ -161,11 +167,13 @@ export default function InvoiceTab({
                 placeholder="0.00"
                 step="0.01"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Project No.</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                Project No.
+              </label>
               <input
                 type="text"
                 name="project_number"
@@ -173,7 +181,7 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="Auto-filled"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
 
@@ -186,13 +194,16 @@ export default function InvoiceTab({
                 value={invoiceData.expenses_head}
                 onChange={handleInvoiceChange}
                 disabled={!canEditInvoices || loadingAccountHeads}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               >
                 <option value="">Select Expense Head</option>
                 {accountHeads.length > 0 ? (
                   accountHeads.map((head) => (
-                    <option key={head.id} value={head.name || head.head_name || ""}>
-                      {head.name || head.head_name || head.description || ""}
+                    <option
+                      key={head.id}
+                      value={head.name || head.head_name || ''}
+                    >
+                      {head.name || head.head_name || head.description || ''}
                     </option>
                   ))
                 ) : (
@@ -201,7 +212,9 @@ export default function InvoiceTab({
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Payment (₹)</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                Payment (₹)
+              </label>
               <input
                 type="number"
                 name="payment"
@@ -210,7 +223,7 @@ export default function InvoiceTab({
                 placeholder="0.00"
                 step="0.01"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
           </div>
@@ -218,7 +231,9 @@ export default function InvoiceTab({
           {/* Row 3: Overdue Days, Purchase Description, Remarks */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Overdue Days</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                Overdue Days
+              </label>
               <input
                 type="number"
                 name="payment_overdue_days"
@@ -226,11 +241,13 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="0"
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Purchase Description</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                Purchase Description
+              </label>
               <input
                 type="text"
                 name="purchase_description"
@@ -238,11 +255,13 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="Description..."
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">Remarks</label>
+              <label className="block text-[10px] font-medium text-gray-700 mb-0.5">
+                Remarks
+              </label>
               <input
                 type="text"
                 name="remarks"
@@ -250,7 +269,7 @@ export default function InvoiceTab({
                 onChange={handleInvoiceChange}
                 placeholder="Notes..."
                 disabled={!canEditInvoices}
-                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? "bg-gray-100 cursor-not-allowed text-gray-500" : "bg-white"}`}
+                className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487] focus:border-transparent ${!canEditInvoices ? 'bg-gray-100 cursor-not-allowed text-gray-500' : 'bg-white'}`}
               />
             </div>
           </div>
@@ -261,7 +280,7 @@ export default function InvoiceTab({
               <span className="text-[10px] text-gray-400 italic">
                 {editingInvoiceId
                   ? `Editing invoice ID: ${editingInvoiceId}`
-                  : "Fill fields above and click Add Invoice"}
+                  : 'Fill fields above and click Add Invoice'}
               </span>
               <div className="flex items-center gap-2">
                 {editingInvoiceId && (
@@ -271,17 +290,17 @@ export default function InvoiceTab({
                       setEditingInvoiceId(null);
                       setInvoiceData((prev) => ({
                         ...prev,
-                        invoice_number: "",
-                        invoice_date: new Date().toISOString().split("T")[0],
-                        invoice_amount: "",
-                        purchase_description: "",
-                        expenses_head: "",
-                        payment: "",
-                        payment_overdue_days: "",
-                        remarks: "",
-                        company_name: form.client_name || "",
-                        city: form.project_location_city || "",
-                        project_number: form.project_id || "",
+                        invoice_number: '',
+                        invoice_date: new Date().toISOString().split('T')[0],
+                        invoice_amount: '',
+                        purchase_description: '',
+                        expenses_head: '',
+                        payment: '',
+                        payment_overdue_days: '',
+                        remarks: '',
+                        company_name: form.client_name || '',
+                        city: form.project_location_city || '',
+                        project_number: form.project_id || '',
                       }));
                     }}
                     className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded hover:bg-gray-200 flex items-center gap-1"
@@ -312,13 +331,13 @@ export default function InvoiceTab({
                           fill="currentColor"
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         />
-                      </svg>{" "}
-                      {editingInvoiceId ? "Updating..." : "Adding..."}
+                      </svg>{' '}
+                      {editingInvoiceId ? 'Updating...' : 'Adding...'}
                     </>
                   ) : (
                     <>
-                      <PlusIcon className="h-3 w-3" />{" "}
-                      {editingInvoiceId ? "Update Invoice" : "Add Invoice"}
+                      <PlusIcon className="h-3 w-3" />{' '}
+                      {editingInvoiceId ? 'Update Invoice' : 'Add Invoice'}
                     </>
                   )}
                 </button>
@@ -333,47 +352,90 @@ export default function InvoiceTab({
             <table className="w-full text-xs border-collapse">
               <thead className="bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Sr. No.</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Company Name</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">City</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Invoice No.</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Invoice Date</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-700">Invoice Amount</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Project No</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Expenses Head</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-700">Payment</th>
-                  <th className="px-3 py-2 text-center font-semibold text-gray-700">Overdue Days</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-700">Remarks</th>
-                  <th className="px-3 py-2 text-center font-semibold text-gray-700">Action</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Sr. No.
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Company Name
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    City
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Invoice No.
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Invoice Date
+                  </th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-700">
+                    Invoice Amount
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Project No
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Expenses Head
+                  </th>
+                  <th className="px-3 py-2 text-right font-semibold text-gray-700">
+                    Payment
+                  </th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                    Overdue Days
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-700">
+                    Remarks
+                  </th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-700">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {invoiceOnly.map((inv, idx) => (
                   <tr key={inv.id || idx} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 text-center text-gray-600 font-semibold">{idx + 1}</td>
-                    <td className="px-3 py-2 text-gray-700">{inv.company_name || "-"}</td>
-                    <td className="px-3 py-2 text-gray-700">{inv.city || "-"}</td>
-                    <td className="px-3 py-2 text-gray-700 font-medium">{inv.invoice_number || "-"}</td>
+                    <td className="px-3 py-2 text-center text-gray-600 font-semibold">
+                      {idx + 1}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {inv.company_name || '-'}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {inv.city || '-'}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700 font-medium">
+                      {inv.invoice_number || '-'}
+                    </td>
                     <td className="px-3 py-2 text-gray-700">
                       {inv.invoice_date
-                        ? new Date(inv.invoice_date).toLocaleDateString("en-IN")
-                        : "-"}
+                        ? new Date(inv.invoice_date).toLocaleDateString('en-IN')
+                        : '-'}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-gray-800">
                       ₹
-                      {parseFloat(inv.invoice_amount || 0).toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
+                      {parseFloat(inv.invoice_amount || 0).toLocaleString(
+                        'en-IN',
+                        {
+                          minimumFractionDigits: 2,
+                        }
+                      )}
                     </td>
-                    <td className="px-3 py-2 text-gray-700">{inv.project_number || "-"}</td>
-                    <td className="px-3 py-2 text-gray-700">{inv.expenses_head || "-"}</td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {inv.project_number || '-'}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {inv.expenses_head || '-'}
+                    </td>
                     <td className="px-3 py-2 text-right font-semibold text-gray-800">
                       {inv.payment
-                        ? `₹${parseFloat(inv.payment || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
-                        : "-"}
+                        ? `₹${parseFloat(inv.payment || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                        : '-'}
                     </td>
-                    <td className="px-3 py-2 text-center text-gray-700">{inv.payment_overdue_days || "0"}</td>
-                    <td className="px-3 py-2 text-gray-700">{inv.remarks || "-"}</td>
+                    <td className="px-3 py-2 text-center text-gray-700">
+                      {inv.payment_overdue_days || '0'}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {inv.remarks || '-'}
+                    </td>
                     <td className="px-3 py-2 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
@@ -409,7 +471,8 @@ export default function InvoiceTab({
             <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 text-sm mb-2">No invoices added yet</p>
             <p className="text-gray-400 text-xs">
-              Fill in the form above and click &ldquo;Add Invoice&rdquo; to create your first invoice
+              Fill in the form above and click &ldquo;Add Invoice&rdquo; to
+              create your first invoice
             </p>
           </div>
         )}
@@ -419,34 +482,43 @@ export default function InvoiceTab({
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Invoices</p>
-                <p className="text-lg font-bold text-blue-700">{invoiceOnly.length}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+                  Total Invoices
+                </p>
+                <p className="text-lg font-bold text-blue-700">
+                  {invoiceOnly.length}
+                </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Amount</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+                  Total Amount
+                </p>
                 <p className="text-lg font-bold text-purple-700">
                   ₹
                   {parseFloat(
                     invoiceOnly.reduce(
                       (sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0),
-                      0,
-                    ),
-                  ).toLocaleString("en-IN", {
+                      0
+                    )
+                  ).toLocaleString('en-IN', {
                     minimumFractionDigits: 2,
                   })}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Avg. Overdue Days</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+                  Avg. Overdue Days
+                </p>
                 <p className="text-lg font-bold text-orange-700">
                   {invoiceOnly.length > 0
                     ? (
                         invoiceOnly.reduce(
-                          (sum, inv) => sum + (parseFloat(inv.payment_overdue_days) || 0),
-                          0,
+                          (sum, inv) =>
+                            sum + (parseFloat(inv.payment_overdue_days) || 0),
+                          0
                         ) / invoiceOnly.length
                       ).toFixed(0)
-                    : "0"}
+                    : '0'}
                 </p>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function ProjectHandoverTab({
   newHandoverDescRef,
@@ -64,9 +64,7 @@ export default function ProjectHandoverTab({
                 </td>
                 <td className="py-2 px-2">
                   <select
-                    value={
-                      newHandoverRow.requirement_accomplished
-                    }
+                    value={newHandoverRow.requirement_accomplished}
                     onChange={(e) =>
                       setNewHandoverRow((prev) => ({
                         ...prev,
@@ -120,7 +118,7 @@ export default function ProjectHandoverTab({
                         newHandoverRow.output_by_accent.trim()
                       )
                     }
-                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim() ? "bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all ${newHandoverRow.output_by_accent && newHandoverRow.output_by_accent.trim() ? 'bg-[#7F2487] text-white hover:bg-purple-700 shadow-sm' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     title="Add handover item"
                   >
                     Add
@@ -132,18 +130,16 @@ export default function ProjectHandoverTab({
                   key={r.id}
                   className="hover:bg-gray-50 transition-colors align-top"
                 >
-                  <td className="py-2 px-2 text-center">
-                    {index + 1}
-                  </td>
+                  <td className="py-2 px-2 text-center">{index + 1}</td>
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={r.output_by_accent || ""}
+                      value={r.output_by_accent || ''}
                       onChange={(e) =>
                         updateHandoverRow(
                           r.id,
-                          "output_by_accent",
-                          e.target.value,
+                          'output_by_accent',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -151,12 +147,12 @@ export default function ProjectHandoverTab({
                   </td>
                   <td className="py-2 px-2">
                     <select
-                      value={r.requirement_accomplished || ""}
+                      value={r.requirement_accomplished || ''}
                       onChange={(e) =>
                         updateHandoverRow(
                           r.id,
-                          "requirement_accomplished",
-                          e.target.value,
+                          'requirement_accomplished',
+                          e.target.value
                         )
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
@@ -169,26 +165,18 @@ export default function ProjectHandoverTab({
                   <td className="py-2 px-2">
                     <input
                       type="text"
-                      value={r.remark || ""}
+                      value={r.remark || ''}
                       onChange={(e) =>
-                        updateHandoverRow(
-                          r.id,
-                          "remark",
-                          e.target.value,
-                        )
+                        updateHandoverRow(r.id, 'remark', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     />
                   </td>
                   <td className="py-2 px-2">
                     <select
-                      value={r.hand_over || ""}
+                      value={r.hand_over || ''}
                       onChange={(e) =>
-                        updateHandoverRow(
-                          r.id,
-                          "hand_over",
-                          e.target.value,
-                        )
+                        updateHandoverRow(r.id, 'hand_over', e.target.value)
                       }
                       className="w-full text-sm px-2 py-1 border border-gray-200 rounded focus:ring-1 focus:ring-[#7F2487]"
                     >

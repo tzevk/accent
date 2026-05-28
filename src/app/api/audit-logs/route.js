@@ -1,6 +1,10 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { getCurrentUser, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  getCurrentUser,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 
 // Ensure audit_logs table exists
@@ -30,7 +34,7 @@ async function ensureAuditLogsTable(db) {
 /**
  * GET /api/audit-logs
  * Fetch audit logs with filtering and pagination
- * 
+ *
  * Query params:
  * - page: Page number (default: 1)
  * - limit: Items per page (default: 50)
@@ -45,17 +49,24 @@ export async function GET(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     // Only super admins or users with users:read can view audit logs
-    const canViewAuditLogs = currentUser.is_super_admin || 
-                             hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
-    
+    const canViewAuditLogs =
+      currentUser.is_super_admin ||
+      hasPermission(currentUser, RESOURCES.USERS, PERMISSIONS.READ);
+
     if (!canViewAuditLogs) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
@@ -134,10 +145,18 @@ export async function GET(request) {
     );
 
     // Parse JSON fields
-    const parsedLogs = logs.map(log => ({
+    const parsedLogs = logs.map((log) => ({
       ...log,
-      old_value: log.old_value ? (typeof log.old_value === 'string' ? JSON.parse(log.old_value) : log.old_value) : null,
-      new_value: log.new_value ? (typeof log.new_value === 'string' ? JSON.parse(log.new_value) : log.new_value) : null
+      old_value: log.old_value
+        ? typeof log.old_value === 'string'
+          ? JSON.parse(log.old_value)
+          : log.old_value
+        : null,
+      new_value: log.new_value
+        ? typeof log.new_value === 'string'
+          ? JSON.parse(log.new_value)
+          : log.new_value
+        : null,
     }));
 
     await db.end();
@@ -150,13 +169,16 @@ export async function GET(request) {
         page,
         limit,
         total: countResult[0].total,
-        totalPages: Math.ceil(countResult[0].total / limit)
-      }
+        totalPages: Math.ceil(countResult[0].total / limit),
+      },
     });
   } catch (error) {
     console.error('Error fetching audit logs:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to fetch audit logs' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch audit logs' },
+      { status: 500 }
+    );
   }
 }
 
@@ -168,25 +190,25 @@ export async function POST(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const data = await request.json();
-    const { 
-      action, 
-      resource, 
-      resource_id, 
-      old_value,
-      new_value
-    } = data;
+    const { action, resource, resource_id, old_value, new_value } = data;
 
     if (!action || !resource) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'action and resource are required' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'action and resource are required',
+        },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -194,7 +216,9 @@ export async function POST(request) {
 
     // Get IP and user agent from request
     const forwarded = request.headers.get('x-forwarded-for');
-    const ip = forwarded ? forwarded.split(',')[0].trim() : request.headers.get('x-real-ip') || 'unknown';
+    const ip = forwarded
+      ? forwarded.split(',')[0].trim()
+      : request.headers.get('x-real-ip') || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
 
     const [result] = await db.execute(
@@ -210,20 +234,26 @@ export async function POST(request) {
         old_value ? JSON.stringify(old_value) : null,
         new_value ? JSON.stringify(new_value) : null,
         ip,
-        userAgent
+        userAgent,
       ]
     );
 
     await db.end();
 
-    return NextResponse.json({
-      success: true,
-      data: { id: result.insertId },
-      message: 'Audit log created'
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: { id: result.insertId },
+        message: 'Audit log created',
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating audit log:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to create audit log' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to create audit log' },
+      { status: 500 }
+    );
   }
 }

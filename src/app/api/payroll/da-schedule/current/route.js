@@ -13,9 +13,9 @@ export async function GET(request) {
     const yearParam = searchParams.get('year');
     const forDate = dateParam || new Date().toISOString().split('T')[0];
     const forYear = yearParam ? parseInt(yearParam) : new Date().getFullYear();
-    
+
     db = await dbConnect();
-    
+
     const [rows] = await db.execute(
       `SELECT da_amount, effective_from, effective_to
        FROM da_schedule 
@@ -26,21 +26,25 @@ export async function GET(request) {
     );
 
     if (rows.length === 0) {
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         data: { da_amount: 0, effective_from: forDate, effective_to: null },
-        message: 'No active DA found, using 0'
+        message: 'No active DA found, using 0',
       });
     }
-    
-    return NextResponse.json({ 
-      success: true, 
-      data: rows[0]
+
+    return NextResponse.json({
+      success: true,
+      data: rows[0],
     });
   } catch (error) {
     console.error('GET /api/payroll/da-schedule/current error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch current DA', details: error.message },
+      {
+        success: false,
+        error: 'Failed to fetch current DA',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {

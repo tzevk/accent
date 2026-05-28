@@ -1,4 +1,4 @@
-const SITE_READINESS_OPTIONS = ["Ready", "Not Ready", "In Progress", "Delayed"];
+const SITE_READINESS_OPTIONS = ['Ready', 'Not Ready', 'In Progress', 'Delayed'];
 
 export default function ConstructionTab({ form, handleChange }) {
   return (

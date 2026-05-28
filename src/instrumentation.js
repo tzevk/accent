@@ -10,10 +10,15 @@ export async function register() {
     try {
       const { ensureSchema } = await import('@/utils/schema-init');
       await ensureSchema();
-      console.log('[Instrumentation] Database schema initialized on server start');
+      console.log(
+        '[Instrumentation] Database schema initialized on server start'
+      );
     } catch (err) {
       // Non-fatal: API routes have inline DDL as fallback (gated to first call)
-      console.warn('[Instrumentation] Schema init failed (will retry per-route):', err?.message || err);
+      console.warn(
+        '[Instrumentation] Schema init failed (will retry per-route):',
+        err?.message || err
+      );
     }
   }
 }

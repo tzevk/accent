@@ -6,9 +6,25 @@ import Navbar from '@/components/Navbar';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
-const STATUS_OPTIONS = ['NEW', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'cancelled'];
+const STATUS_OPTIONS = [
+  'NEW',
+  'contacted',
+  'qualified',
+  'proposal',
+  'negotiation',
+  'won',
+  'lost',
+  'cancelled',
+];
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH'];
-const ENQUIRY_TYPE_OPTIONS = ['CONSULTANCY', 'EPC', 'PMC', 'ONGOING_PROJECT', 'MAINTENANCE', 'OTHER'];
+const ENQUIRY_TYPE_OPTIONS = [
+  'CONSULTANCY',
+  'EPC',
+  'PMC',
+  'ONGOING_PROJECT',
+  'MAINTENANCE',
+  'OTHER',
+];
 
 const INITIAL_FORM = {
   lead_id: '',
@@ -26,12 +42,16 @@ const INITIAL_FORM = {
   enquiry_date: '',
   lead_source: '',
   priority: 'MEDIUM',
-  notes: ''
+  notes: '',
 };
 
 function LoadingFallback() {
   return (
-    <LoadingSpinner message="Loading" subMessage="Preparing form..." size="sm" />
+    <LoadingSpinner
+      message="Loading"
+      subMessage="Preparing form..."
+      size="sm"
+    />
   );
 }
 
@@ -70,9 +90,9 @@ function NewLeadForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -91,14 +111,19 @@ function NewLeadForm() {
                 <ArrowLeftIcon className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Add New Lead</h1>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  Add New Lead
+                </h1>
                 <p className="text-gray-600">Create a new lead entry</p>
               </div>
             </div>
 
             {/* Form */}
             <div className="max-w-4xl">
-              <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+              <form
+                onSubmit={handleSubmit}
+                className="bg-white rounded-xl shadow-sm border border-gray-200 p-8"
+              >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Lead ID */}
                   <div>
@@ -241,8 +266,10 @@ function NewLeadForm() {
                       onChange={handleChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     >
-                      {ENQUIRY_TYPE_OPTIONS.map(option => (
-                        <option key={option} value={option}>{option}</option>
+                      {ENQUIRY_TYPE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -258,8 +285,10 @@ function NewLeadForm() {
                       onChange={handleChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     >
-                      {STATUS_OPTIONS.map(option => (
-                        <option key={option} value={option}>{option}</option>
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -304,8 +333,10 @@ function NewLeadForm() {
                       onChange={handleChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     >
-                      {PRIORITY_OPTIONS.map(option => (
-                        <option key={option} value={option}>{option}</option>
+                      {PRIORITY_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
                       ))}
                     </select>
                   </div>

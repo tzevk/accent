@@ -34,8 +34,12 @@ export async function GET(request, { params }) {
 
     // Ensure payment_terms column is TEXT type (no character limit)
     try {
-      await connection.execute(`ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`);
-    } catch (e) { /* ignore if already TEXT */ }
+      await connection.execute(
+        `ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`
+      );
+    } catch (e) {
+      /* ignore if already TEXT */
+    }
 
     // Fetch purchase order for this project
     const [rows] = await connection.execute(
@@ -56,7 +60,7 @@ export async function GET(request, { params }) {
     return NextResponse.json({
       success: true,
       data: rows[0] || null,
-      nextPONumber
+      nextPONumber,
     });
   } catch (error) {
     console.error('Error fetching project purchase order:', error);
@@ -75,7 +79,7 @@ export async function POST(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     const {
       po_number,
       po_date,
@@ -88,7 +92,7 @@ export async function POST(request, { params }) {
       gst_amount,
       net_amount,
       payment_terms,
-      remarks
+      remarks,
     } = body;
 
     connection = await dbConnect();
@@ -119,8 +123,12 @@ export async function POST(request, { params }) {
 
     // Ensure payment_terms column is TEXT type (no character limit)
     try {
-      await connection.execute(`ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`);
-    } catch (e) { /* ignore if already TEXT */ }
+      await connection.execute(
+        `ALTER TABLE project_purchase_orders MODIFY COLUMN payment_terms TEXT`
+      );
+    } catch (e) {
+      /* ignore if already TEXT */
+    }
 
     // Check if purchase order already exists for this project
     const [existing] = await connection.execute(
@@ -159,7 +167,7 @@ export async function POST(request, { params }) {
           net_amount || 0,
           payment_terms,
           remarks,
-          id
+          id,
         ]
       );
     } else {
@@ -183,7 +191,7 @@ export async function POST(request, { params }) {
           gst_amount || 0,
           net_amount || 0,
           payment_terms,
-          remarks
+          remarks,
         ]
       );
     }
@@ -197,7 +205,10 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       success: true,
       data: rows[0],
-      message: existing.length > 0 ? 'Purchase order updated' : 'Purchase order created'
+      message:
+        existing.length > 0
+          ? 'Purchase order updated'
+          : 'Purchase order created',
     });
   } catch (error) {
     console.error('Error saving project purchase order:', error);

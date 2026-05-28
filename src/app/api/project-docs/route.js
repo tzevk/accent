@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // project-docs API: manages concrete documents attached to individual projects
 // Table schema (created lazily): project_documents
@@ -11,14 +15,16 @@ async function ensureTable(db) {
   // project_documents table should already exist with proper foreign keys
   // created by the fix-project-documents-fk.js script. This function just
   // ensures it exists with a basic structure if it somehow doesn't.
-  
+
   const [tableCheck] = await db.execute(
     `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES 
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_documents'`
   );
-  
+
   if (tableCheck[0].cnt === 0) {
-    console.warn('project_documents table does not exist. Creating basic structure...');
+    console.warn(
+      'project_documents table does not exist. Creating basic structure...'
+    );
     // Note: doc_master_id is int(11) to match documents_master.id, not VARCHAR(36)
     await db.execute(`
       CREATE TABLE IF NOT EXISTS project_documents (
@@ -37,13 +43,19 @@ async function ensureTable(db) {
         INDEX idx_doc_master_id (doc_master_id)
       ) ENGINE=InnoDB
     `);
-    console.log('Created project_documents table without foreign keys (add them manually if needed)');
+    console.log(
+      'Created project_documents table without foreign keys (add them manually if needed)'
+    );
   }
 }
 
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROJECTS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let db;
@@ -74,7 +86,14 @@ export async function GET(request) {
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('project-docs GET error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to load project documents', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to load project documents',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -82,37 +101,81 @@ export async function GET(request) {
 
 export async function POST(request) {
   // RBAC check
-  const authResultPost = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const authResultPost = await ensurePermission(
+    request,
+    RESOURCES.PROJECTS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPost.authorized === false) return authResultPost.response;
 
   let db;
   try {
     const body = await request.json();
-    const { project_id, name, file_url = null, thumb_url = null, description = '', status = 'active', doc_master_id = null, metadata = null } = body;
+    const {
+      project_id,
+      name,
+      file_url = null,
+      thumb_url = null,
+      description = '',
+      status = 'active',
+      doc_master_id = null,
+      metadata = null,
+    } = body;
     if (!project_id || !name) {
-      return NextResponse.json({ success: false, error: 'project_id and name are required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'project_id and name are required' },
+        { status: 400 }
+      );
     }
     db = await dbConnect();
     await ensureTable(db);
 
     // Ensure project exists
-    const [proj] = await db.execute('SELECT id FROM projects WHERE id = ?', [project_id]);
+    const [proj] = await db.execute('SELECT id FROM projects WHERE id = ?', [
+      project_id,
+    ]);
     if (proj.length === 0) {
-
-      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Project not found' },
+        { status: 404 }
+      );
     }
 
     const id = randomUUID();
     await db.execute(
       `INSERT INTO project_documents (id, project_id, doc_master_id, name, file_url, thumb_url, description, status, metadata)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, project_id, doc_master_id || null, name, file_url, thumb_url, description, status, metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null]
+      [
+        id,
+        project_id,
+        doc_master_id || null,
+        name,
+        file_url,
+        thumb_url,
+        description,
+        status,
+        metadata
+          ? typeof metadata === 'string'
+            ? metadata
+            : JSON.stringify(metadata)
+          : null,
+      ]
     );
 
-    return NextResponse.json({ success: true, data: { id }, message: 'Document linked to project' }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: { id }, message: 'Document linked to project' },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('project-docs POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to add project document', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to add project document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -120,7 +183,11 @@ export async function POST(request) {
 
 export async function PUT(request) {
   // RBAC check
-  const authResultPut = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+  const authResultPut = await ensurePermission(
+    request,
+    RESOURCES.PROJECTS,
+    PERMISSIONS.UPDATE
+  );
   if (authResultPut.authorized === false) return authResultPut.response;
 
   let db;
@@ -128,7 +195,10 @@ export async function PUT(request) {
     const body = await request.json();
     const { id, name, description, status, metadata } = body;
     if (!id) {
-      return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'id is required' },
+        { status: 400 }
+      );
     }
     db = await dbConnect();
     await ensureTable(db);
@@ -139,13 +209,33 @@ export async function PUT(request) {
          status = COALESCE(?, status),
          metadata = COALESCE(?, metadata)
        WHERE id = ?`,
-      [name ?? null, description ?? null, status ?? null, metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null, id]
+      [
+        name ?? null,
+        description ?? null,
+        status ?? null,
+        metadata
+          ? typeof metadata === 'string'
+            ? metadata
+            : JSON.stringify(metadata)
+          : null,
+        id,
+      ]
     );
 
-    return NextResponse.json({ success: true, message: 'Project document updated' });
+    return NextResponse.json({
+      success: true,
+      message: 'Project document updated',
+    });
   } catch (error) {
     console.error('project-docs PUT error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update project document', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update project document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }
@@ -153,7 +243,11 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   // RBAC check
-  const authResultDel = await ensurePermission(request, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
+  const authResultDel = await ensurePermission(
+    request,
+    RESOURCES.PROJECTS,
+    PERMISSIONS.DELETE
+  );
   if (authResultDel.authorized === false) return authResultDel.response;
 
   let db;
@@ -161,16 +255,29 @@ export async function DELETE(request) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) {
-      return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'id is required' },
+        { status: 400 }
+      );
     }
     db = await dbConnect();
     await ensureTable(db);
     await db.execute('DELETE FROM project_documents WHERE id = ?', [id]);
 
-    return NextResponse.json({ success: true, message: 'Project document removed' });
+    return NextResponse.json({
+      success: true,
+      message: 'Project document removed',
+    });
   } catch (error) {
     console.error('project-docs DELETE error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete project document', details: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete project document',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

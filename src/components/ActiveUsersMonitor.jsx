@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  UserIcon, 
+import {
+  UserIcon,
   ClockIcon,
   ComputerDesktopIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 export default function ActiveUsersMonitor() {
@@ -97,18 +97,24 @@ export default function ActiveUsersMonitor() {
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                       <UserIcon className="w-5 h-5 text-blue-600" />
                     </div>
-                    <div className={`absolute -bottom-1 -right-1 w-3 h-3 ${getStatusColor(user.last_activity)} rounded-full border-2 border-white`}></div>
+                    <div
+                      className={`absolute -bottom-1 -right-1 w-3 h-3 ${getStatusColor(user.last_activity)} rounded-full border-2 border-white`}
+                    ></div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {user.full_name || user.username}
                       </p>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        getStatusText(user.last_activity) === 'Active' ? 'bg-green-100 text-green-700' :
-                        getStatusText(user.last_activity) === 'Idle' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          getStatusText(user.last_activity) === 'Active'
+                            ? 'bg-green-100 text-green-700'
+                            : getStatusText(user.last_activity) === 'Idle'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
                         {getStatusText(user.last_activity)}
                       </span>
                     </div>

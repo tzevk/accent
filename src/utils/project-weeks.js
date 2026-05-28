@@ -1,4 +1,9 @@
-import { DAY_MS, parseIsoDay, formatShortDayMonth, normalizeDate } from "./date";
+import {
+  DAY_MS,
+  parseIsoDay,
+  formatShortDayMonth,
+  normalizeDate,
+} from './date';
 
 // Build week buckets starting from project start date (W1 = start..start+6).
 export const buildProjectWeeks = (projectStartIso, projectEndIso) => {
@@ -33,7 +38,7 @@ export const getWeekSpanForProjectRange = (
   projectStartIso,
   projectEndIso,
   itemStartIso,
-  itemEndIso,
+  itemEndIso
 ) => {
   const ps = parseIsoDay(projectStartIso);
   const pe = parseIsoDay(projectEndIso);

@@ -10,14 +10,25 @@ import { query } from '@/utils/database';
 const ALLOWED_TYPES = {
   'application/pdf': '.pdf',
   'application/msword': '.doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    '.docx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+    '.pptx',
   'application/vnd.ms-powerpoint': '.ppt',
   'image/jpeg': '.jpg',
   'image/png': '.png',
 };
 
-const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'pptx', 'ppt', 'jpg', 'jpeg', 'png'];
+const ALLOWED_EXTENSIONS = [
+  'pdf',
+  'doc',
+  'docx',
+  'pptx',
+  'ppt',
+  'jpg',
+  'jpeg',
+  'png',
+];
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
 // Ensure the entity_documents table exists
@@ -48,7 +59,10 @@ export async function POST(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const formData = await request.formData();
@@ -57,31 +71,46 @@ export async function POST(request) {
     const entityId = formData.get('entity_id');
 
     if (!file) {
-      return NextResponse.json({ success: false, error: 'No file uploaded' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'No file uploaded' },
+        { status: 400 }
+      );
     }
     if (!entityType || !entityId) {
-      return NextResponse.json({ success: false, error: 'entity_type and entity_id are required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'entity_type and entity_id are required' },
+        { status: 400 }
+      );
     }
     if (!['project', 'purchase_order', 'invoice'].includes(entityType)) {
-      return NextResponse.json({ success: false, error: 'Invalid entity_type' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Invalid entity_type' },
+        { status: 400 }
+      );
     }
 
     // Check file type
     const fileName = file.name || '';
     const fileExt = fileName.toLowerCase().split('.').pop();
     if (!ALLOWED_TYPES[file.type] && !ALLOWED_EXTENSIONS.includes(fileExt)) {
-      return NextResponse.json({
-        success: false,
-        error: `File type not allowed. Allowed: PDF, DOC, DOCX, PPTX, JPG, PNG`
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: `File type not allowed. Allowed: PDF, DOC, DOCX, PPTX, JPG, PNG`,
+        },
+        { status: 400 }
+      );
     }
 
     // Check file size
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({
-        success: false,
-        error: 'File size exceeds 20MB limit'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'File size exceeds 20MB limit',
+        },
+        { status: 400 }
+      );
     }
 
     // Generate unique filename
@@ -89,7 +118,12 @@ export async function POST(request) {
     const uniqueFilename = `${entityType}_${entityId}_${uuidv4()}${extension}`;
 
     // Create upload directory
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'documents');
+    const uploadDir = path.join(
+      process.cwd(),
+      'public',
+      'uploads',
+      'documents'
+    );
     if (!existsSync(uploadDir)) {
       await mkdir(uploadDir, { recursive: true });
     }
@@ -106,7 +140,17 @@ export async function POST(request) {
     await query(
       `INSERT INTO entity_documents (id, entity_type, entity_id, original_name, file_name, file_url, file_type, file_size, uploaded_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [docId, entityType, entityId, file.name, uniqueFilename, `/uploads/documents/${uniqueFilename}`, file.type, file.size, currentUser.id]
+      [
+        docId,
+        entityType,
+        entityId,
+        file.name,
+        uniqueFilename,
+        `/uploads/documents/${uniqueFilename}`,
+        file.type,
+        file.size,
+        currentUser.id,
+      ]
     );
 
     return NextResponse.json({
@@ -117,12 +161,15 @@ export async function POST(request) {
         file_name: uniqueFilename,
         file_url: `/uploads/documents/${uniqueFilename}`,
         file_type: file.type,
-        file_size: file.size
-      }
+        file_size: file.size,
+      },
     });
   } catch (error) {
     console.error('[Document Upload] Error:', error);
-    return NextResponse.json({ success: false, error: 'Upload failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Upload failed' },
+      { status: 500 }
+    );
   }
 }
 
@@ -134,7 +181,10 @@ export async function GET(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -142,7 +192,10 @@ export async function GET(request) {
     const entityId = searchParams.get('entity_id');
 
     if (!entityType || !entityId) {
-      return NextResponse.json({ success: false, error: 'entity_type and entity_id are required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'entity_type and entity_id are required' },
+        { status: 400 }
+      );
     }
 
     await ensureTable();
@@ -154,7 +207,10 @@ export async function GET(request) {
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('[Document Upload] GET Error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch documents' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch documents' },
+      { status: 500 }
+    );
   }
 }
 
@@ -166,22 +222,33 @@ export async function DELETE(request) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
     const docId = searchParams.get('id');
 
     if (!docId) {
-      return NextResponse.json({ success: false, error: 'Document id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Document id is required' },
+        { status: 400 }
+      );
     }
 
     await ensureTable();
 
     // Get file info before deleting
-    const [docs] = await query(`SELECT * FROM entity_documents WHERE id = ?`, [docId]);
+    const [docs] = await query(`SELECT * FROM entity_documents WHERE id = ?`, [
+      docId,
+    ]);
     if (!docs.length) {
-      return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Document not found' },
+        { status: 404 }
+      );
     }
 
     // Delete from DB
@@ -199,6 +266,9 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Document Upload] DELETE Error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete document' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete document' },
+      { status: 500 }
+    );
   }
 }

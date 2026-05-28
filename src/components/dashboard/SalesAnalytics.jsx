@@ -17,18 +17,18 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
         const url = `/api/analytics/sales?period=${encodeURIComponent(period)}&metric=${encodeURIComponent(metricToUse)}`;
         const res = await fetch(url);
         const json = await res.json();
-        
+
         if (!mounted) return false;
 
         if (json?.success) {
           const arr = Array.isArray(json.data) ? json.data : [];
-          const hasNonZero = arr.some(d => (Number(d.value) || 0) > 0);
-          
+          const hasNonZero = arr.some((d) => (Number(d.value) || 0) > 0);
+
           if (hasNonZero) {
             setSalesData(arr);
-            setSalesTotals({ 
-              total: Number(json.total) || 0, 
-              conversion: Number(json.conversion) || 0 
+            setSalesTotals({
+              total: Number(json.total) || 0,
+              conversion: Number(json.conversion) || 0,
             });
             return true;
           }
@@ -42,7 +42,7 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
     const load = async () => {
       setLoading(true);
       const ok = await loadSales(salesMetric);
-      
+
       // Fallback to count if value metric has no data
       if (!ok && salesMetric === 'value') {
         const okCount = await loadSales('count');
@@ -50,17 +50,19 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
           setSalesMetric('count');
         }
       }
-      
+
       if (!ok && mounted) {
         setSalesData([]);
         setSalesTotals({ total: 0, conversion: 0 });
       }
-      
+
       if (mounted) setLoading(false);
     };
 
     load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [period, salesMetric]);
 
   const formatINRCompact = (n, withSymbol = true) => {
@@ -68,7 +70,7 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
     const abs = Math.abs(num);
     let value = num;
     let suffix = '';
-    
+
     if (abs >= 1e7) {
       value = num / 1e7;
       suffix = 'Cr';
@@ -79,7 +81,7 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
       value = num / 1e3;
       suffix = 'K';
     }
-    
+
     const fixed = Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1);
     const sign = num < 0 ? '-' : '';
     return `${withSymbol ? '₹' : ''}${sign}${fixed}${suffix}`;
@@ -99,10 +101,12 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Sales Pipeline</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Sales Pipeline
+          </h3>
           <p className="text-sm text-gray-500 mt-1">{period} breakdown</p>
         </div>
-        
+
         <div className="flex gap-2">
           <button
             onClick={() => setSalesMetric('count')}
@@ -139,7 +143,7 @@ export default function SalesAnalytics({ period = 'Weekly' }) {
                   : salesTotals.total.toLocaleString()
               }
             />
-            
+
             {salesTotals.conversion > 0 && (
               <div className="mt-4 text-center">
                 <p className="text-sm text-gray-600">

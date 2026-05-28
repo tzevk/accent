@@ -10,19 +10,26 @@ export async function GET(request) {
   let db;
   try {
     const currentUser = await getCurrentUser(request);
-    
+
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     // Check if user is admin or super admin
-    const isAdmin = currentUser.is_super_admin || 
-                    currentUser.role_key === 'admin' || 
-                    currentUser.role_key === 'super_admin' ||
-                    currentUser.username === 'admin';
+    const isAdmin =
+      currentUser.is_super_admin ||
+      currentUser.role_key === 'admin' ||
+      currentUser.role_key === 'super_admin' ||
+      currentUser.username === 'admin';
 
     if (!isAdmin) {
-      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Admin access required' },
+        { status: 403 }
+      );
     }
 
     db = await dbConnect();
@@ -72,9 +79,10 @@ export async function GET(request) {
       params.push(priority);
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? 'WHERE ' + whereConditions.join(' AND ')
-      : '';
+    const whereClause =
+      whereConditions.length > 0
+        ? 'WHERE ' + whereConditions.join(' AND ')
+        : '';
 
     // Get total count
     const [countResult] = await db.execute(
@@ -133,12 +141,15 @@ export async function GET(request) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     console.error('Error fetching admin todos:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to fetch todos' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch todos' },
+      { status: 500 }
+    );
   }
 }

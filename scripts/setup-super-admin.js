@@ -15,17 +15,17 @@ const config = {
   username: 'crmadmin',
   email: 'crm@accent.com',
   fullName: 'Super Administrator',
-  password: 'admin123'
+  password: 'admin123',
 };
 
 async function createSuperAdmin() {
   let connection;
-  
+
   try {
     console.log('🔐 Generating password hash...');
     const passwordHash = await bcrypt.hash(config.password, 10);
     console.log('✓ Password hash generated');
-    
+
     console.log('\n📡 Connecting to database...');
     connection = await mysql.createConnection({
       host: process.env.DB_HOST || 'localhost',
@@ -33,24 +33,24 @@ async function createSuperAdmin() {
       database: process.env.DB_NAME,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      dateStrings: true
+      dateStrings: true,
     });
     console.log('✓ Connected to database');
-    
+
     // Check if username already exists
     console.log('\n🔍 Checking if username already exists...');
     const [existingUsers] = await connection.execute(
       'SELECT id, username, email, is_super_admin FROM users WHERE username = ? OR email = ?',
       [config.username, config.email]
     );
-    
+
     if (existingUsers.length > 0) {
       const existing = existingUsers[0];
       console.log('⚠️  User already exists!');
       console.log('   Username:', existing.username);
       console.log('   Email:', existing.email);
       console.log('   Is Super Admin:', existing.is_super_admin ? 'Yes' : 'No');
-      
+
       if (!existing.is_super_admin) {
         console.log('\n🔄 Promoting existing user to super admin...');
         await connection.execute(
@@ -78,14 +78,16 @@ async function createSuperAdmin() {
         ) VALUES (?, ?, ?, ?, 1, 'employee', 'active', 1, NOW())`,
         [config.username, passwordHash, config.email, config.fullName]
       );
-      
+
       console.log('✓ Super admin user created successfully!');
       console.log('   User ID:', result.insertId);
     }
-    
+
     // Verify and display all super admins
     console.log('\n📋 All Super Admin Users:');
-    console.log('═══════════════════════════════════════════════════════════════');
+    console.log(
+      '═══════════════════════════════════════════════════════════════'
+    );
     const [superAdmins] = await connection.execute(
       `SELECT 
         id,
@@ -99,7 +101,7 @@ async function createSuperAdmin() {
       WHERE is_super_admin = 1
       ORDER BY created_at DESC`
     );
-    
+
     if (superAdmins.length === 0) {
       console.log('   No super admin users found');
     } else {
@@ -111,8 +113,10 @@ async function createSuperAdmin() {
         console.log(`      Created: ${admin.created_at}`);
       });
     }
-    
-    console.log('\n═══════════════════════════════════════════════════════════════');
+
+    console.log(
+      '\n═══════════════════════════════════════════════════════════════'
+    );
     console.log('\n✅ Setup Complete!');
     console.log('\n📝 Login Credentials:');
     console.log('   Username:', config.username);
@@ -129,13 +133,14 @@ async function createSuperAdmin() {
     console.log('   - All reports and admin features');
     console.log('   - User management');
     console.log('   - All modules in the system');
-    
   } catch (error) {
     console.error('\n❌ Error:', error.message);
     if (error.code === 'ER_DUP_ENTRY') {
       console.error('   User with this username or email already exists');
     } else if (error.code === 'ECONNREFUSED') {
-      console.error('   Could not connect to database. Check your .env.local configuration');
+      console.error(
+        '   Could not connect to database. Check your .env.local configuration'
+      );
     } else {
       console.error('   Full error:', error);
     }
@@ -151,12 +156,16 @@ async function createSuperAdmin() {
 // Run the script
 console.log('═══════════════════════════════════════════════════════════════');
 console.log('           Super Admin Setup Script');
-console.log('═══════════════════════════════════════════════════════════════\n');
+console.log(
+  '═══════════════════════════════════════════════════════════════\n'
+);
 
-createSuperAdmin().then(() => {
-  console.log('\n🎉 Done!\n');
-  process.exit(0);
-}).catch((error) => {
-  console.error('\n💥 Unexpected error:', error);
-  process.exit(1);
-});
+createSuperAdmin()
+  .then(() => {
+    console.log('\n🎉 Done!\n');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('\n💥 Unexpected error:', error);
+    process.exit(1);
+  });

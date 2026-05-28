@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch invoices
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -63,17 +71,22 @@ export async function GET(request) {
       { name: 'client_pan', definition: 'VARCHAR(20) AFTER client_address' },
       { name: 'client_gstin', definition: 'VARCHAR(20) AFTER client_pan' },
       { name: 'client_state', definition: 'VARCHAR(100) AFTER client_gstin' },
-      { name: 'client_state_code', definition: 'VARCHAR(10) AFTER client_state' },
+      {
+        name: 'client_state_code',
+        definition: 'VARCHAR(10) AFTER client_state',
+      },
       { name: 'kind_attn', definition: 'VARCHAR(255) AFTER client_state_code' },
       { name: 'po_number', definition: 'VARCHAR(100) AFTER kind_attn' },
       { name: 'po_date', definition: 'DATE AFTER po_number' },
       { name: 'po_value', definition: 'DECIMAL(15, 2) AFTER po_date' },
-      { name: 'balance_po_value', definition: 'DECIMAL(15, 2) AFTER po_value' }
+      { name: 'balance_po_value', definition: 'DECIMAL(15, 2) AFTER po_value' },
     ];
 
     for (const col of newColumns) {
       try {
-        await connection.execute(`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`);
+        await connection.execute(
+          `ALTER TABLE invoices ADD COLUMN ${col.name} ${col.definition}`
+        );
       } catch (alterError) {
         // Column likely already exists, ignore
       }
@@ -100,13 +113,20 @@ export async function GET(request) {
     const [invoices] = await connection.execute(query, params);
 
     // Parse JSON items for each invoice
-    const parsedInvoices = invoices.map(inv => ({
+    const parsedInvoices = invoices.map((inv) => ({
       ...inv,
-      items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items
+      items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items,
     }));
 
     // Get stats
-    let stats = { total: 0, draft: 0, sent: 0, paid: 0, overdue: 0, cancelled: 0 };
+    let stats = {
+      total: 0,
+      draft: 0,
+      sent: 0,
+      paid: 0,
+      overdue: 0,
+      cancelled: 0,
+    };
     try {
       const [statsResult] = await connection.execute(`
         SELECT 
@@ -130,15 +150,18 @@ export async function GET(request) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       },
-      stats
+      stats,
     });
-
   } catch (error) {
     console.error('Error fetching invoices:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to fetch invoices', error: error.message },
+      {
+        success: false,
+        message: 'Failed to fetch invoices',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -158,13 +181,17 @@ function generateInvoiceNumber(count) {
 // POST - Create new invoice
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.WRITE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.WRITE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
   try {
     const body = await request.json();
-    
+
     const {
       client_name,
       client_email,
@@ -191,7 +218,7 @@ export async function POST(request) {
       notes,
       terms,
       due_date,
-      status
+      status,
     } = body;
 
     if (!client_name) {
@@ -204,7 +231,9 @@ export async function POST(request) {
     connection = await dbConnect();
 
     // Get count for invoice number generation
-    const [countResult] = await connection.execute('SELECT COUNT(*) as count FROM invoices');
+    const [countResult] = await connection.execute(
+      'SELECT COUNT(*) as count FROM invoices'
+    );
     const count = countResult[0]?.count || 0;
     const invoiceNumber = generateInvoiceNumber(count);
 
@@ -244,7 +273,7 @@ export async function POST(request) {
         notes || null,
         terms || null,
         due_date || null,
-        status || 'draft'
+        status || 'draft',
       ]
     );
 
@@ -253,14 +282,17 @@ export async function POST(request) {
       message: 'Invoice created successfully',
       data: {
         id: result.insertId,
-        invoice_number: invoiceNumber
-      }
+        invoice_number: invoiceNumber,
+      },
     });
-
   } catch (error) {
     console.error('Error creating invoice:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to create invoice', error: error.message },
+      {
+        success: false,
+        message: 'Failed to create invoice',
+        error: error.message,
+      },
       { status: 500 }
     );
   } finally {

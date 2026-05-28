@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 import { dbConnect } from '@/utils/database';
 
 // GET - Fetch screen time analytics
 export async function GET(request) {
   let db;
   try {
-    const auth = await ensurePermission(request, RESOURCES.USERS, PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      RESOURCES.USERS,
+      PERMISSIONS.READ
+    );
     if (!auth.authorized) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -20,15 +31,24 @@ export async function GET(request) {
     // Non-admin users can only view their own screen time
     const requestedUserId = userId ? parseInt(userId) : null;
     const currentUser = auth.user;
-    
-    if (!currentUser.is_super_admin && requestedUserId && requestedUserId !== currentUser.id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'You can only view your own screen time' 
-      }, { status: 403 });
+
+    if (
+      !currentUser.is_super_admin &&
+      requestedUserId &&
+      requestedUserId !== currentUser.id
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'You can only view your own screen time',
+        },
+        { status: 403 }
+      );
     }
 
-    const finalUserId = currentUser.is_super_admin ? requestedUserId : currentUser.id;
+    const finalUserId = currentUser.is_super_admin
+      ? requestedUserId
+      : currentUser.id;
 
     db = await dbConnect();
 
@@ -108,24 +128,66 @@ export async function GET(request) {
     // Calculate overall statistics
     const stats = {
       totalDays: screenTime.length,
-      totalScreenTimeMinutes: screenTime.reduce((sum, day) => sum + (day.total_screen_time_minutes || 0), 0),
-      totalActiveTimeMinutes: screenTime.reduce((sum, day) => sum + (day.active_time_minutes || 0), 0),
-      totalIdleTimeMinutes: screenTime.reduce((sum, day) => sum + (day.idle_time_minutes || 0), 0),
-      totalClicks: screenTime.reduce((sum, day) => sum + (day.total_clicks || 0), 0),
-      totalScrolls: screenTime.reduce((sum, day) => sum + (day.total_scrolls || 0), 0),
-      totalKeypresses: screenTime.reduce((sum, day) => sum + (day.total_keypresses || 0), 0),
-      avgScreenTimePerDay: screenTime.length > 0 
-        ? Math.round(screenTime.reduce((sum, day) => sum + (day.total_screen_time_minutes || 0), 0) / screenTime.length)
-        : 0,
-      avgActiveTimePerDay: screenTime.length > 0
-        ? Math.round(screenTime.reduce((sum, day) => sum + (day.active_time_minutes || 0), 0) / screenTime.length)
-        : 0,
-      avgProductivityScore: screenTime.length > 0
-        ? (screenTime.reduce((sum, day) => sum + (parseFloat(day.productivity_score) || 0), 0) / screenTime.length).toFixed(2)
-        : 0,
-      avgFocusScore: screenTime.length > 0
-        ? (screenTime.reduce((sum, day) => sum + (parseFloat(day.focus_score) || 0), 0) / screenTime.length).toFixed(2)
-        : 0
+      totalScreenTimeMinutes: screenTime.reduce(
+        (sum, day) => sum + (day.total_screen_time_minutes || 0),
+        0
+      ),
+      totalActiveTimeMinutes: screenTime.reduce(
+        (sum, day) => sum + (day.active_time_minutes || 0),
+        0
+      ),
+      totalIdleTimeMinutes: screenTime.reduce(
+        (sum, day) => sum + (day.idle_time_minutes || 0),
+        0
+      ),
+      totalClicks: screenTime.reduce(
+        (sum, day) => sum + (day.total_clicks || 0),
+        0
+      ),
+      totalScrolls: screenTime.reduce(
+        (sum, day) => sum + (day.total_scrolls || 0),
+        0
+      ),
+      totalKeypresses: screenTime.reduce(
+        (sum, day) => sum + (day.total_keypresses || 0),
+        0
+      ),
+      avgScreenTimePerDay:
+        screenTime.length > 0
+          ? Math.round(
+              screenTime.reduce(
+                (sum, day) => sum + (day.total_screen_time_minutes || 0),
+                0
+              ) / screenTime.length
+            )
+          : 0,
+      avgActiveTimePerDay:
+        screenTime.length > 0
+          ? Math.round(
+              screenTime.reduce(
+                (sum, day) => sum + (day.active_time_minutes || 0),
+                0
+              ) / screenTime.length
+            )
+          : 0,
+      avgProductivityScore:
+        screenTime.length > 0
+          ? (
+              screenTime.reduce(
+                (sum, day) => sum + (parseFloat(day.productivity_score) || 0),
+                0
+              ) / screenTime.length
+            ).toFixed(2)
+          : 0,
+      avgFocusScore:
+        screenTime.length > 0
+          ? (
+              screenTime.reduce(
+                (sum, day) => sum + (parseFloat(day.focus_score) || 0),
+                0
+              ) / screenTime.length
+            ).toFixed(2)
+          : 0,
     };
 
     return NextResponse.json({
@@ -134,16 +196,18 @@ export async function GET(request) {
         daily: screenTime,
         pages: pageStats,
         interactions: interactionStats,
-        stats
-      }
+        stats,
+      },
     });
-
   } catch (error) {
     console.error('Error fetching screen time:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch screen time data' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch screen time data',
+      },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

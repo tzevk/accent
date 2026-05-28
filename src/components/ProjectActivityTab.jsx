@@ -31,7 +31,9 @@ export default function ProjectActivityTab({ projectId }) {
 
   // date range – default last 30 days
   const today = new Date().toISOString().split('T')[0];
-  const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const thirtyAgo = new Date(Date.now() - 30 * 86400000)
+    .toISOString()
+    .split('T')[0];
   const [startDate, setStartDate] = useState(thirtyAgo);
   const [endDate, setEndDate] = useState(today);
 
@@ -41,7 +43,10 @@ export default function ProjectActivityTab({ projectId }) {
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ start_date: startDate, end_date: endDate });
+      const qs = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate,
+      });
       if (filterUser !== 'all') qs.set('user_id', filterUser);
 
       const res = await fetchJSON(`/api/projects/${projectId}/work-logs?${qs}`);
@@ -174,7 +179,8 @@ export default function ProjectActivityTab({ projectId }) {
               Day-wise User Activity
             </h2>
             <span className="ml-1 text-xs text-gray-500">
-              {totalLogs} log{totalLogs !== 1 ? 's' : ''} across {users.length} member
+              {totalLogs} log{totalLogs !== 1 ? 's' : ''} across {users.length}{' '}
+              member
               {users.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -234,7 +240,9 @@ export default function ProjectActivityTab({ projectId }) {
         {users.length === 0 ? (
           <div className="text-center py-10 text-gray-400">
             <ClipboardDocumentListIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No work logs found for this project in the selected range.</p>
+            <p className="text-sm">
+              No work logs found for this project in the selected range.
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -256,10 +264,14 @@ export default function ProjectActivityTab({ projectId }) {
                         <UserIcon className="w-4 h-4 text-[#7F2487]" />
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-800 text-sm">{user.full_name}</p>
+                        <p className="font-semibold text-gray-800 text-sm">
+                          {user.full_name}
+                        </p>
                         <p className="text-xs text-gray-500">
-                          {user.total_logs} log{user.total_logs !== 1 ? 's' : ''} ·{' '}
-                          {fmtMins(user.total_time_minutes)} total · {user.dates.length} day
+                          {user.total_logs} log
+                          {user.total_logs !== 1 ? 's' : ''} ·{' '}
+                          {fmtMins(user.total_time_minutes)} total ·{' '}
+                          {user.dates.length} day
                           {user.dates.length !== 1 ? 's' : ''}
                         </p>
                       </div>
@@ -297,7 +309,8 @@ export default function ProjectActivityTab({ projectId }) {
                                   {fmtDate(day.date)}
                                 </span>
                                 <span className="text-[10px] text-gray-400">
-                                  ({day.logs.length} entr{day.logs.length !== 1 ? 'ies' : 'y'})
+                                  ({day.logs.length} entr
+                                  {day.logs.length !== 1 ? 'ies' : 'y'})
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -341,11 +354,12 @@ export default function ProjectActivityTab({ projectId }) {
                                         >
                                           {log.log_type || 'done'}
                                         </span>
-                                        {log.status && log.status !== 'completed' && (
-                                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium">
-                                            {log.status}
-                                          </span>
-                                        )}
+                                        {log.status &&
+                                          log.status !== 'completed' && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium">
+                                              {log.status}
+                                            </span>
+                                          )}
                                       </div>
 
                                       {log.description && (
@@ -355,10 +369,13 @@ export default function ProjectActivityTab({ projectId }) {
                                       )}
 
                                       <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
-                                        {log.category && <span>{log.category}</span>}
+                                        {log.category && (
+                                          <span>{log.category}</span>
+                                        )}
                                         {log.time_spent && (
                                           <span className="flex items-center gap-0.5">
-                                            <ClockIcon className="h-3 w-3" /> {log.time_spent}
+                                            <ClockIcon className="h-3 w-3" />{' '}
+                                            {log.time_spent}
                                           </span>
                                         )}
                                       </div>
@@ -383,7 +400,8 @@ export default function ProjectActivityTab({ projectId }) {
       {totalLogs > 0 && (
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between text-xs gap-2">
           <span className="text-gray-600">
-            <span className="font-semibold text-[#7F2487]">{totalLogs}</span> work log
+            <span className="font-semibold text-[#7F2487]">{totalLogs}</span>{' '}
+            work log
             {totalLogs !== 1 ? 's' : ''} from{' '}
             <span className="font-semibold">{users.length}</span> member
             {users.length !== 1 ? 's' : ''}
@@ -413,7 +431,9 @@ function Header() {
   return (
     <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
       <CalendarDaysIcon className="h-5 w-5 text-[#7F2487]" />
-      <h2 className="text-sm font-semibold text-black">Day-wise User Activity</h2>
+      <h2 className="text-sm font-semibold text-black">
+        Day-wise User Activity
+      </h2>
     </div>
   );
 }

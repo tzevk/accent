@@ -14,7 +14,11 @@ export async function GET() {
   } catch (error) {
     console.error('Activities GET error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch activities', details: error.message },
+      {
+        success: false,
+        error: 'Failed to fetch activities',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -29,7 +33,10 @@ export async function POST(request) {
     const { function_id, activity_name } = body;
 
     if (!function_id || !activity_name) {
-      return NextResponse.json({ success: false, error: 'Function id and activity name are required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Function id and activity name are required' },
+        { status: 400 }
+      );
     }
 
     const id = randomUUID();
@@ -43,7 +50,11 @@ export async function POST(request) {
   } catch (error) {
     console.error('Activity POST error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to create activity', details: error.message },
+      {
+        success: false,
+        error: 'Failed to create activity',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -58,7 +69,10 @@ export async function PUT(request) {
     const { id, activity_name, function_id } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Activity id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Activity id is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -74,7 +88,11 @@ export async function PUT(request) {
   } catch (error) {
     console.error('Activity PUT error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update activity', details: error.message },
+      {
+        success: false,
+        error: 'Failed to update activity',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {
@@ -89,11 +107,14 @@ export async function DELETE(request) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Activity id is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Activity id is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
-    
+
     // First delete sub-activities, then delete the activity
     await db.execute('DELETE FROM sub_activities WHERE activity_id = ?', [id]);
     await db.execute('DELETE FROM activities_master WHERE id = ?', [id]);
@@ -102,7 +123,11 @@ export async function DELETE(request) {
   } catch (error) {
     console.error('Activity DELETE error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete activity', details: error.message },
+      {
+        success: false,
+        error: 'Failed to delete activity',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {

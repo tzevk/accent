@@ -11,7 +11,10 @@ export async function GET(request, { params }) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
@@ -20,7 +23,8 @@ export async function GET(request, { params }) {
     db = await dbConnect();
 
     // Fetch message
-    const [messages] = await db.execute(`
+    const [messages] = await db.execute(
+      `
       SELECT 
         m.*,
         sender.full_name as sender_name,
@@ -31,18 +35,25 @@ export async function GET(request, { params }) {
       LEFT JOIN users sender ON m.sender_id = sender.id
       LEFT JOIN users receiver ON m.receiver_id = receiver.id
       WHERE m.id = ?
-    `, [messageId]);
+    `,
+      [messageId]
+    );
 
     if (messages.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Message not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Message not found' },
+        { status: 404 }
+      );
     }
 
     const message = messages[0];
 
     // Security check: sender, receiver, or conversation member can access
-    let hasAccess = message.sender_id === currentUser.id || message.receiver_id === currentUser.id;
-    
+    let hasAccess =
+      message.sender_id === currentUser.id ||
+      message.receiver_id === currentUser.id;
+
     if (!hasAccess && message.conversation_id) {
       const [membership] = await db.execute(
         'SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
@@ -53,7 +64,10 @@ export async function GET(request, { params }) {
 
     if (!hasAccess) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Access denied' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Access denied' },
+        { status: 403 }
+      );
     }
 
     // Check if message is deleted for this user
@@ -62,29 +76,42 @@ export async function GET(request, { params }) {
       (message.receiver_id === currentUser.id && message.is_deleted_by_receiver)
     ) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Message not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Message not found' },
+        { status: 404 }
+      );
     }
 
     // Fetch attachments
-    const [attachments] = await db.execute(`
+    const [attachments] = await db.execute(
+      `
       SELECT id, file_name, original_name, file_type, file_size, uploaded_at
       FROM message_attachments
       WHERE message_id = ?
-    `, [messageId]);
+    `,
+      [messageId]
+    );
 
     // Mark conversation as read if receiver is viewing (update last_read_at instead of per-message flag)
     if (message.receiver_id === currentUser.id && message.conversation_id) {
-      await db.execute(`
+      await db.execute(
+        `
         UPDATE conversation_members 
         SET last_read_at = NOW() 
         WHERE conversation_id = ? AND user_id = ?
-      `, [message.conversation_id, currentUser.id]);
+      `,
+        [message.conversation_id, currentUser.id]
+      );
     }
 
     // Get related entity name if applicable
     let relatedEntityName = null;
     if (message.related_module !== 'none' && message.related_id) {
-      relatedEntityName = await getRelatedEntityName(db, message.related_module, message.related_id);
+      relatedEntityName = await getRelatedEntityName(
+        db,
+        message.related_module,
+        message.related_id
+      );
     }
 
     await db.end();
@@ -94,18 +121,23 @@ export async function GET(request, { params }) {
       data: {
         ...message,
         attachments,
-        related_entity_name: relatedEntityName
-      }
+        related_entity_name: relatedEntityName,
+      },
     });
-
   } catch (error) {
     console.error('Error fetching message:', error);
-    if (db) try { await db.end(); } catch {}
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to fetch message',
-      details: error.message 
-    }, { status: 500 });
+    if (db)
+      try {
+        await db.end();
+      } catch {}
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch message',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -118,7 +150,10 @@ export async function PATCH(request, { params }) {
   try {
     const currentUser = await getCurrentUser(request);
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const { id } = await params;
@@ -136,14 +171,19 @@ export async function PATCH(request, { params }) {
 
     if (messages.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Message not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Message not found' },
+        { status: 404 }
+      );
     }
 
     const message = messages[0];
 
     // Security check: sender, receiver, or conversation member can update
-    let hasAccess = message.sender_id === currentUser.id || message.receiver_id === currentUser.id;
-    
+    let hasAccess =
+      message.sender_id === currentUser.id ||
+      message.receiver_id === currentUser.id;
+
     if (!hasAccess && message.conversation_id) {
       const [membership] = await db.execute(
         'SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ?',
@@ -154,11 +194,15 @@ export async function PATCH(request, { params }) {
 
     if (!hasAccess) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Access denied' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Access denied' },
+        { status: 403 }
+      );
     }
 
     // For mark_read/mark_unread, allow any conversation member (not just receiver_id)
-    const isRecipient = message.receiver_id === currentUser.id || 
+    const isRecipient =
+      message.receiver_id === currentUser.id ||
       (message.sender_id !== currentUser.id && hasAccess);
 
     if (action === 'mark_read' && isRecipient) {
@@ -186,24 +230,32 @@ export async function PATCH(request, { params }) {
       }
     } else {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Invalid action' },
+        { status: 400 }
+      );
     }
 
     await db.end();
 
     return NextResponse.json({
       success: true,
-      message: `Message ${action.replace('_', ' ')} successfully`
+      message: `Message ${action.replace('_', ' ')} successfully`,
     });
-
   } catch (error) {
     console.error('Error updating message:', error);
-    if (db) try { await db.end(); } catch {}
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to update message',
-      details: error.message 
-    }, { status: 500 });
+    if (db)
+      try {
+        await db.end();
+      } catch {}
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update message',
+        details: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -225,7 +277,8 @@ async function getRelatedEntityName(db, module, id) {
         query = 'SELECT name FROM projects WHERE id = ?';
         break;
       case 'employee':
-        query = 'SELECT CONCAT(first_name, " ", last_name) as name FROM employees WHERE id = ?';
+        query =
+          'SELECT CONCAT(first_name, " ", last_name) as name FROM employees WHERE id = ?';
         break;
       case 'proposal':
         query = 'SELECT title as name FROM proposals WHERE id = ?';

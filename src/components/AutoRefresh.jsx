@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 /**
  * AutoRefresh Component
  * Automatically refreshes the page if loading takes too long
- * 
+ *
  * @param {number} timeout - Time in milliseconds before auto-refresh (default: 30 seconds)
  * @param {boolean} enabled - Whether auto-refresh is enabled (default: true)
  */
@@ -34,7 +34,7 @@ export default function AutoRefresh({ timeout = 30000, enabled = true }) {
 
     // Set up the timeout for auto-refresh
     const warningTime = timeout - 5000; // Show warning 5 seconds before refresh
-    
+
     const warningTimer = setTimeout(() => {
       if (isLoading) {
         setShowWarning(true);
@@ -61,7 +61,7 @@ export default function AutoRefresh({ timeout = 30000, enabled = true }) {
     if (countdown === null || countdown <= 0) return;
 
     const timer = setInterval(() => {
-      setCountdown(prev => {
+      setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
           return 0;
@@ -87,14 +87,27 @@ export default function AutoRefresh({ timeout = 30000, enabled = true }) {
       <div className="bg-yellow-100 border border-yellow-400 rounded-lg shadow-lg p-4 max-w-sm">
         <div className="flex items-start gap-3">
           <div className="text-yellow-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           </div>
           <div className="flex-1">
-            <h4 className="text-sm font-semibold text-yellow-800">Page Loading Slowly</h4>
+            <h4 className="text-sm font-semibold text-yellow-800">
+              Page Loading Slowly
+            </h4>
             <p className="text-xs text-yellow-700 mt-1">
-              Auto-refresh in <span className="font-bold">{countdown}</span> seconds...
+              Auto-refresh in <span className="font-bold">{countdown}</span>{' '}
+              seconds...
             </p>
             <div className="flex gap-2 mt-2">
               <button

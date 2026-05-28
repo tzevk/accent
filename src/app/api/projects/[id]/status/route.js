@@ -15,7 +15,10 @@ export async function PUT(request, { params }) {
   try {
     const user = await getCurrentUser(request);
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const canUpdate =
@@ -23,18 +26,27 @@ export async function PUT(request, { params }) {
       user.is_super_admin === 1 ||
       hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
     if (!canUpdate) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     const { id } = await params;
     if (!id || id === 'undefined') {
-      return NextResponse.json({ success: false, error: 'Invalid project id' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Invalid project id' },
+        { status: 400 }
+      );
     }
 
     const body = await request.json().catch(() => ({}));
     const status = typeof body?.status === 'string' ? body.status.trim() : '';
     if (!status) {
-      return NextResponse.json({ success: false, error: 'status is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'status is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
@@ -43,7 +55,10 @@ export async function PUT(request, { params }) {
     const hasStatus = await hasColumn(db, 'projects', 'status');
 
     if (!hasStatus && !hasProjectStatus) {
-      return NextResponse.json({ success: false, error: 'Project status column not found' }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: 'Project status column not found' },
+        { status: 500 }
+      );
     }
 
     const setParts = [];
@@ -76,14 +91,21 @@ export async function PUT(request, { params }) {
     }
 
     if (affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Project not found' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ success: true, affected_rows: affectedRows });
   } catch (error) {
     console.error('Project status update error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update project status', details: error.message },
+      {
+        success: false,
+        error: 'Failed to update project status',
+        details: error.message,
+      },
       { status: 500 }
     );
   } finally {

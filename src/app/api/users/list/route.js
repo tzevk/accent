@@ -5,9 +5,9 @@ import { hasPermission } from '@/utils/rbac';
 
 /**
  * GET /api/users/list
- * 
+ *
  * Optimized endpoint for users list page.
- * 
+ *
  * Performance optimizations:
  * 1. No CREATE TABLE or ALTER TABLE statements
  * 2. Parallel query execution
@@ -15,27 +15,37 @@ import { hasPermission } from '@/utils/rbac';
  */
 export async function GET(request) {
   const startTime = Date.now();
-  
+
   try {
     // Auth check
     const user = await getCurrentUser(request);
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
+
     // Permission check
-    const canReadUsers = user.is_super_admin || hasPermission(user, 'users', 'read');
+    const canReadUsers =
+      user.is_super_admin || hasPermission(user, 'users', 'read');
     if (!canReadUsers) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
     }
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page')) || 1;
-    const limit = Math.max(1, Math.min(1000, parseInt(searchParams.get('limit')) || 1000));
+    const limit = Math.max(
+      1,
+      Math.min(1000, parseInt(searchParams.get('limit')) || 1000)
+    );
     const offset = (page - 1) * limit;
 
     const db = await dbConnect();
-    
+
     try {
       // Execute queries in parallel
       const [usersResult, countResult, statsResult] = await Promise.all([
@@ -57,10 +67,12 @@ export async function GET(request) {
            LIMIT ? OFFSET ?`,
           [limit, offset]
         ),
-        
+
         // 2. Total count
-        db.execute('SELECT COUNT(*) as total FROM users WHERE is_active = TRUE'),
-        
+        db.execute(
+          'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE'
+        ),
+
         // 3. Stats
         db.execute(`
           SELECT 
@@ -70,7 +82,7 @@ export async function GET(request) {
             SUM(CASE WHEN is_super_admin = TRUE THEN 1 ELSE 0 END) as admins
           FROM users
           WHERE is_active = TRUE
-        `)
+        `),
       ]);
 
       const [users] = usersResult;
@@ -87,32 +99,41 @@ export async function GET(request) {
           current: page,
           total: Math.ceil(total / limit),
           limit,
-          totalRecords: total
+          totalRecords: total,
         },
         stats: {
           total: Number(statsRow.total) || 0,
           active: Number(statsRow.active) || 0,
           inactive: Number(statsRow.inactive) || 0,
-          admins: Number(statsRow.admins) || 0
+          admins: Number(statsRow.admins) || 0,
         },
-        _meta: { queryTimeMs: queryTime }
+        _meta: { queryTimeMs: queryTime },
       });
 
       // Cache for 30 seconds
-      response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
-      
+      response.headers.set(
+        'Cache-Control',
+        'private, max-age=30, stale-while-revalidate=60'
+      );
+
       return response;
-      
     } finally {
       if (db && typeof db.release === 'function') {
-        try { db.release(); } catch (e) { console.error('Error releasing connection:', e); }
+        try {
+          db.release();
+        } catch (e) {
+          console.error('Error releasing connection:', e);
+        }
       }
     }
-    
   } catch (error) {
     console.error('Users list error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch users', details: error.message },
+      {
+        success: false,
+        error: 'Failed to fetch users',
+        details: error.message,
+      },
       { status: 500 }
     );
   }

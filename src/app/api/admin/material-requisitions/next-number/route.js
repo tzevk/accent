@@ -6,7 +6,7 @@ export async function GET() {
   let db;
   try {
     db = await dbConnect();
-    
+
     // Create table if not exists
     await db.query(`
       CREATE TABLE IF NOT EXISTS material_requisitions (
@@ -28,14 +28,14 @@ export async function GET() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Get the last requisition number
     const [rows] = await db.query(
       `SELECT requisition_number FROM material_requisitions ORDER BY id DESC LIMIT 1`
     );
-    
+
     let nextNumber = 'ATSPL/PUR-001';
-    
+
     if (rows.length > 0) {
       const lastNumber = rows[0].requisition_number;
       // Extract number from format ATSPL/PUR-XXX
@@ -45,17 +45,16 @@ export async function GET() {
         nextNumber = `ATSPL/PUR-${num.toString().padStart(3, '0')}`;
       }
     }
-    
+
     return NextResponse.json({
       success: true,
-      requisition_number: nextNumber
+      requisition_number: nextNumber,
     });
-    
   } catch (error) {
     console.error('Error generating requisition number:', error);
-    return NextResponse.json({ 
-      success: true, 
-      requisition_number: `ATSPL/PUR-${Date.now().toString().slice(-4)}` 
+    return NextResponse.json({
+      success: true,
+      requisition_number: `ATSPL/PUR-${Date.now().toString().slice(-4)}`,
     });
   } finally {
     if (db) db.release();

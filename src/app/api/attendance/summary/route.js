@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch attendance summary for employee master display
 export async function GET(request) {
-  const authResult = await ensurePermission(request, RESOURCES.EMPLOYEES, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.EMPLOYEES,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -18,9 +26,15 @@ export async function GET(request) {
 
     // Check if summary table exists
     try {
-      await connection.execute('SELECT 1 FROM employee_attendance_summary LIMIT 1');
+      await connection.execute(
+        'SELECT 1 FROM employee_attendance_summary LIMIT 1'
+      );
     } catch {
-      return NextResponse.json({ success: true, data: [], message: 'No attendance data yet' });
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'No attendance data yet',
+      });
     }
 
     let query = `
@@ -66,11 +80,13 @@ export async function GET(request) {
            ORDER BY attendance_date ASC`,
           [employeeId, month]
         );
-        dayDetails = details.map(d => ({
+        dayDetails = details.map((d) => ({
           ...d,
-          attendance_date: new Date(d.attendance_date).toISOString().split('T')[0],
+          attendance_date: new Date(d.attendance_date)
+            .toISOString()
+            .split('T')[0],
           in_time: d.in_time ? d.in_time.toString().substring(0, 5) : null,
-          out_time: d.out_time ? d.out_time.toString().substring(0, 5) : null
+          out_time: d.out_time ? d.out_time.toString().substring(0, 5) : null,
         }));
       } catch {
         // Day details not available
@@ -81,12 +97,14 @@ export async function GET(request) {
       success: true,
       data: rows,
       dayDetails,
-      total: rows.length
+      total: rows.length,
     });
-
   } catch (error) {
     console.error('Error fetching attendance summary:', error);
-    return NextResponse.json({ error: error.message || 'Failed to fetch attendance summary' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch attendance summary' },
+      { status: 500 }
+    );
   } finally {
     if (connection) connection.release();
   }

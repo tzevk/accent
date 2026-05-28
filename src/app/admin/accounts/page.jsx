@@ -3,27 +3,32 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import { 
+import {
   BanknotesIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
   ArrowPathIcon,
   ArrowDownTrayIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
 export default function AccountsPage() {
   const { user, loading: authLoading } = useSessionRBAC();
-  
+
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
-  
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  
+
   // Stats
   const [stats, setStats] = useState({
     total: 0,
@@ -31,37 +36,51 @@ export default function AccountsPage() {
     expense: 0,
     pending: 0,
     totalIncome: 0,
-    totalExpense: 0
+    totalExpense: 0,
   });
 
   // Fetch transactions
-  const fetchTransactions = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pagination.limit.toString()
-      });
-      
-      if (typeFilter !== 'all') params.append('type', typeFilter);
+  const fetchTransactions = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: pagination.limit.toString(),
+        });
 
-      const res = await fetch(`/api/admin/accounts?${params}`);
-      const data = await res.json();
-      
-      if (data.success) {
-        setTransactions(data.data || []);
-        setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
-        setStats(data.stats || { total: 0, income: 0, expense: 0, pending: 0, totalIncome: 0, totalExpense: 0 });
-      } else {
+        if (typeFilter !== 'all') params.append('type', typeFilter);
+
+        const res = await fetch(`/api/admin/accounts?${params}`);
+        const data = await res.json();
+
+        if (data.success) {
+          setTransactions(data.data || []);
+          setPagination(
+            data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
+          );
+          setStats(
+            data.stats || {
+              total: 0,
+              income: 0,
+              expense: 0,
+              pending: 0,
+              totalIncome: 0,
+              totalExpense: 0,
+            }
+          );
+        } else {
+          setTransactions([]);
+        }
+      } catch (error) {
+        console.error('Error fetching transactions:', error);
         setTransactions([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setTransactions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [typeFilter, pagination.limit]);
+    },
+    [typeFilter, pagination.limit]
+  );
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -70,7 +89,7 @@ export default function AccountsPage() {
   }, [authLoading, user, typeFilter, fetchTransactions]);
 
   // Filter transactions by search term
-  const filteredTransactions = transactions.filter(txn => {
+  const filteredTransactions = transactions.filter((txn) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -114,7 +133,7 @@ export default function AccountsPage() {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
     }).format(amount || 0);
   };
 
@@ -124,14 +143,16 @@ export default function AccountsPage() {
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
   // Handle download
   const handleDownload = async (transaction) => {
     try {
-      const res = await fetch(`/api/admin/accounts/download?id=${transaction.id}`);
+      const res = await fetch(
+        `/api/admin/accounts/download?id=${transaction.id}`
+      );
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -159,7 +180,7 @@ export default function AccountsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <main className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -168,26 +189,36 @@ export default function AccountsPage() {
               <BanknotesIcon className="h-7 w-7 text-purple-600" />
               Accounts
             </h1>
-            <p className="text-sm text-gray-500 mt-1">View and download account transactions</p>
+            <p className="text-sm text-gray-500 mt-1">
+              View and download account transactions
+            </p>
           </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-gray-900">{stats.total || 0}</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {stats.total || 0}
+            </div>
             <div className="text-sm text-gray-600">Total Transactions</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.totalIncome)}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(stats.totalIncome)}
+            </div>
             <div className="text-sm text-gray-600">Total Income</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(stats.totalExpense)}</div>
+            <div className="text-2xl font-bold text-red-600">
+              {formatCurrency(stats.totalExpense)}
+            </div>
             <div className="text-sm text-gray-600">Total Expense</div>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="text-2xl font-bold text-yellow-600">{stats.pending || 0}</div>
+            <div className="text-2xl font-bold text-yellow-600">
+              {stats.pending || 0}
+            </div>
             <div className="text-sm text-gray-600">Pending</div>
           </div>
         </div>
@@ -208,7 +239,7 @@ export default function AccountsPage() {
                 />
               </div>
             </div>
-            
+
             {/* Type Filter */}
             <div className="flex items-center gap-2">
               <FunnelIcon className="h-5 w-5 text-gray-400" />
@@ -223,14 +254,16 @@ export default function AccountsPage() {
                 <option value="transfer">Transfer</option>
               </select>
             </div>
-            
+
             {/* Refresh */}
             <button
               onClick={() => fetchTransactions(pagination.page)}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               title="Refresh"
             >
-              <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowPathIcon
+                className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`}
+              />
             </button>
           </div>
         </div>
@@ -240,7 +273,9 @@ export default function AccountsPage() {
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-              <span className="ml-3 text-gray-600">Loading transactions...</span>
+              <span className="ml-3 text-gray-600">
+                Loading transactions...
+              </span>
             </div>
           ) : filteredTransactions.length === 0 ? (
             <div className="text-center py-12">
@@ -252,39 +287,81 @@ export default function AccountsPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Transaction ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Download</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Transaction ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Description
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Category
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Amount
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">
+                      Download
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredTransactions.map((txn) => (
-                    <tr key={txn.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={txn.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4">
-                        <span className="font-medium text-purple-600">{txn.transaction_id}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900 max-w-[200px] truncate">{txn.description}</div>
-                        <div className="text-sm text-gray-500">{txn.reference}</div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{txn.category}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeStyle(txn.type)}`}>
-                          {txn.type?.charAt(0).toUpperCase() + txn.type?.slice(1)}
+                        <span className="font-medium text-purple-600">
+                          {txn.transaction_id}
                         </span>
                       </td>
-                      <td className={`px-6 py-4 font-semibold ${txn.type === 'income' ? 'text-green-600' : txn.type === 'expense' ? 'text-red-600' : 'text-gray-900'}`}>
-                        {txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : ''}{formatCurrency(txn.amount)}
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{formatDate(txn.transaction_date)}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(txn.status)}`}>
-                          {txn.status?.charAt(0).toUpperCase() + txn.status?.slice(1)}
+                        <div className="font-medium text-gray-900 max-w-[200px] truncate">
+                          {txn.description}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {txn.reference}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {txn.category}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeStyle(txn.type)}`}
+                        >
+                          {txn.type?.charAt(0).toUpperCase() +
+                            txn.type?.slice(1)}
+                        </span>
+                      </td>
+                      <td
+                        className={`px-6 py-4 font-semibold ${txn.type === 'income' ? 'text-green-600' : txn.type === 'expense' ? 'text-red-600' : 'text-gray-900'}`}
+                      >
+                        {txn.type === 'income'
+                          ? '+'
+                          : txn.type === 'expense'
+                            ? '-'
+                            : ''}
+                        {formatCurrency(txn.amount)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {formatDate(txn.transaction_date)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusStyle(txn.status)}`}
+                        >
+                          {txn.status?.charAt(0).toUpperCase() +
+                            txn.status?.slice(1)}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -304,12 +381,14 @@ export default function AccountsPage() {
               </table>
             </div>
           )}
-          
+
           {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
               <span className="text-sm text-gray-600">
-                Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
+                Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
+                {Math.min(pagination.page * pagination.limit, pagination.total)}{' '}
+                of {pagination.total}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -319,7 +398,9 @@ export default function AccountsPage() {
                 >
                   <ChevronLeftIcon className="h-4 w-4" />
                 </button>
-                <span className="px-3 py-1 text-sm">{pagination.page} / {pagination.totalPages}</span>
+                <span className="px-3 py-1 text-sm">
+                  {pagination.page} / {pagination.totalPages}
+                </span>
                 <button
                   onClick={() => fetchTransactions(pagination.page + 1)}
                   disabled={pagination.page === pagination.totalPages}

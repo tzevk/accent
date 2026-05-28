@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -10,9 +10,9 @@ import {
   Fragment,
   useRef,
   useCallback,
-} from "react";
-import { useRouter, useParams } from "next/navigation";
-import Navbar from "@/components/Navbar";
+} from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import Navbar from '@/components/Navbar';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -37,255 +37,255 @@ import {
   PaperClipIcon,
   LockClosedIcon,
   LockOpenIcon,
-} from "@heroicons/react/24/outline";
-import { fetchJSON } from "@/utils/http";
-import { useSession } from "@/context/SessionContext";
-import Image from "next/image";
-import { normalizeDate, formatWeekHeaderDate } from "@/utils/date";
+} from '@heroicons/react/24/outline';
+import { fetchJSON } from '@/utils/http';
+import { useSession } from '@/context/SessionContext';
+import Image from 'next/image';
+import { normalizeDate, formatWeekHeaderDate } from '@/utils/date';
 import {
   buildProjectWeeks,
   getWeekSpanForProjectRange,
-} from "@/utils/project-weeks";
-import LoadingFallback from "@/components/LoadingFallback";
-import { getExportSheetPayloads } from "./excel/export/buildPayloads";
+} from '@/utils/project-weeks';
+import LoadingFallback from '@/components/LoadingFallback';
+import { getExportSheetPayloads } from './excel/export/buildPayloads';
 import {
   exportProjectWorkbook,
   exportSingleSheetWorkbook,
-} from "./excel/export/exportWorkbook";
-import { importProjectWorkbook } from "./excel/import/importWorkbook";
+} from './excel/export/exportWorkbook';
+import { importProjectWorkbook } from './excel/import/importWorkbook';
 
 // Tab Components
-import ProjectDetailsTab from "./tabs/ProjectDetailsTab";
-import ScopeTab from "./tabs/ScopeTab";
-import ProjectActivityTab from "./tabs/ProjectActivityTab";
-import ProjectScheduleTab from "./tabs/ProjectScheduleTab";
-import ProjectTeamTab from "./tabs/ProjectTeamTab";
-import ProjectHandoverTab from "./tabs/ProjectHandoverTab";
-import InputDocumentsTab from "./tabs/InputDocumentsTab";
-import DocumentsIssuedTab from "./tabs/DocumentsIssuedTab";
-import MeetingTab from "./tabs/MeetingTab";
-import ProjectManhoursTab from "./tabs/ProjectManhoursTab";
-import SoftwareTab from "./tabs/SoftwareTab";
-import MyActivitiesTab from "./tabs/MyActivitiesTab";
-import QueryLogTab from "./tabs/QueryLogTab";
-import AssumptionTab from "./tabs/AssumptionTab";
-import LessonsLearntTab from "./tabs/LessonsLearntTab";
-import DiscussionTab from "./tabs/DiscussionTab";
-import QuotationTab from "./tabs/QuotationTab";
-import PurchaseOrderTab from "./tabs/PurchaseOrderTab";
-import InvoiceTab from "./tabs/InvoiceTab";
-import CommercialTab from "./tabs/CommercialTab";
-import ActivitiesTab from "./tabs/ActivitiesTab";
-import TeamTab from "./tabs/TeamTab";
-import ProcurementTab from "./tabs/ProcurementTab";
-import ConstructionTab from "./tabs/ConstructionTab";
-import RiskTab from "./tabs/RiskTab";
-import CloseoutTab from "./tabs/CloseoutTab";
-import PlanningTab from "./tabs/PlanningTab";
-import DocumentationTab from "./tabs/DocumentationTab";
-import MeetingsTab from "./tabs/MeetingsTab";
-import DocumentsReceivedTab from "./tabs/DocumentsReceivedTab";
+import ProjectDetailsTab from './tabs/ProjectDetailsTab';
+import ScopeTab from './tabs/ScopeTab';
+import ProjectActivityTab from './tabs/ProjectActivityTab';
+import ProjectScheduleTab from './tabs/ProjectScheduleTab';
+import ProjectTeamTab from './tabs/ProjectTeamTab';
+import ProjectHandoverTab from './tabs/ProjectHandoverTab';
+import InputDocumentsTab from './tabs/InputDocumentsTab';
+import DocumentsIssuedTab from './tabs/DocumentsIssuedTab';
+import MeetingTab from './tabs/MeetingTab';
+import ProjectManhoursTab from './tabs/ProjectManhoursTab';
+import SoftwareTab from './tabs/SoftwareTab';
+import MyActivitiesTab from './tabs/MyActivitiesTab';
+import QueryLogTab from './tabs/QueryLogTab';
+import AssumptionTab from './tabs/AssumptionTab';
+import LessonsLearntTab from './tabs/LessonsLearntTab';
+import DiscussionTab from './tabs/DiscussionTab';
+import QuotationTab from './tabs/QuotationTab';
+import PurchaseOrderTab from './tabs/PurchaseOrderTab';
+import InvoiceTab from './tabs/InvoiceTab';
+import CommercialTab from './tabs/CommercialTab';
+import ActivitiesTab from './tabs/ActivitiesTab';
+import TeamTab from './tabs/TeamTab';
+import ProcurementTab from './tabs/ProcurementTab';
+import ConstructionTab from './tabs/ConstructionTab';
+import RiskTab from './tabs/RiskTab';
+import CloseoutTab from './tabs/CloseoutTab';
+import PlanningTab from './tabs/PlanningTab';
+import DocumentationTab from './tabs/DocumentationTab';
+import MeetingsTab from './tabs/MeetingsTab';
+import DocumentsReceivedTab from './tabs/DocumentsReceivedTab';
 
 const INITIAL_FORM = {
   // Scope & Annexure fields
-  scope_of_work: "",
-  additional_scope: "",
-  input_documents: "",
-  deliverables: "",
-  software_included: "",
-  duration: "",
-  mode_of_delivery: "",
-  revision: "",
-  site_visit: "",
-  quotation_validity: "",
-  exclusion: "",
-  billing_and_payment_terms: "",
-  other_terms_and_conditions: "",
+  scope_of_work: '',
+  additional_scope: '',
+  input_documents: '',
+  deliverables: '',
+  software_included: '',
+  duration: '',
+  mode_of_delivery: '',
+  revision: '',
+  site_visit: '',
+  quotation_validity: '',
+  exclusion: '',
+  billing_and_payment_terms: '',
+  other_terms_and_conditions: '',
 
   // General project fields (add more as needed)
-  client_name: "",
-  budget: "",
-  procurement_status: "",
-  material_delivery_schedule: "",
-  vendor_management: "",
-  mobilization_date: "",
-  site_readiness: "",
-  construction_progress: "",
-  major_risks: "",
-  mitigation_plans: "",
-  change_orders: "",
-  claims_disputes: "",
-  final_documentation_status: "",
-  lessons_learned: "",
-  client_feedback: "",
-  actual_profit_loss: "",
-  project_schedule: "",
-  input_document: "",
-  list_of_deliverables: "",
-  kickoff_meeting: "",
-  in_house_meeting: "",
-  project_start_milestone: "",
-  project_review_milestone: "",
-  project_end_milestone: "",
-  kickoff_meeting_date: "",
-  kickoff_followup_date: "",
-  internal_meeting_date: "",
-  next_internal_meeting: "",
+  client_name: '',
+  budget: '',
+  procurement_status: '',
+  material_delivery_schedule: '',
+  vendor_management: '',
+  mobilization_date: '',
+  site_readiness: '',
+  construction_progress: '',
+  major_risks: '',
+  mitigation_plans: '',
+  change_orders: '',
+  claims_disputes: '',
+  final_documentation_status: '',
+  lessons_learned: '',
+  client_feedback: '',
+  actual_profit_loss: '',
+  project_schedule: '',
+  input_document: '',
+  list_of_deliverables: '',
+  kickoff_meeting: '',
+  in_house_meeting: '',
+  project_start_milestone: '',
+  project_review_milestone: '',
+  project_end_milestone: '',
+  kickoff_meeting_date: '',
+  kickoff_followup_date: '',
+  internal_meeting_date: '',
+  next_internal_meeting: '',
   // additional fields surfaced in Project Details
-  estimated_manhours: "",
-  unit_qty: "",
-  project_team: "",
+  estimated_manhours: '',
+  unit_qty: '',
+  project_team: '',
   // Minutes - Internal Meeting fields
-  internal_meeting_no: "",
-  internal_meeting_client_name: "",
-  internal_meeting_date: "",
-  internal_meeting_organizer: "",
-  internal_minutes_drafted: "",
-  internal_meeting_location: "",
-  internal_client_representative: "",
-  internal_meeting_title: "",
-  internal_points_discussed: "",
-  internal_persons_involved: "",
+  internal_meeting_no: '',
+  internal_meeting_client_name: '',
+  internal_meeting_date: '',
+  internal_meeting_organizer: '',
+  internal_minutes_drafted: '',
+  internal_meeting_location: '',
+  internal_client_representative: '',
+  internal_meeting_title: '',
+  internal_points_discussed: '',
+  internal_persons_involved: '',
   // Kickoff meeting detailed fields
-  kickoff_meeting_no: "",
-  kickoff_client_name: "",
-  kickoff_meeting_organizer: "",
-  kickoff_minutes_drafted: "",
-  kickoff_meeting_location: "",
-  kickoff_client_representative: "",
-  kickoff_meeting_title: "",
-  kickoff_points_discussed: "",
-  kickoff_persons_involved: "",
+  kickoff_meeting_no: '',
+  kickoff_client_name: '',
+  kickoff_meeting_organizer: '',
+  kickoff_minutes_drafted: '',
+  kickoff_meeting_location: '',
+  kickoff_client_representative: '',
+  kickoff_meeting_title: '',
+  kickoff_points_discussed: '',
+  kickoff_persons_involved: '',
 };
 
 // UI constants used by the edit form (kept local to avoid cross-file imports)
 const TABS = [
   {
-    id: "project_details",
-    label: "Project Details",
-    projectSectionKey: "project_details",
+    id: 'project_details',
+    label: 'Project Details',
+    projectSectionKey: 'project_details',
   },
   {
-    id: "scope",
-    label: "Scope",
+    id: 'scope',
+    label: 'Scope',
     requiresUpdate: true,
-    projectSectionKey: "scope",
+    projectSectionKey: 'scope',
   },
   {
-    id: "project_activity",
-    label: "Project Activity",
+    id: 'project_activity',
+    label: 'Project Activity',
     adminOrActivities: true,
     requiresUpdate: true,
-    projectSectionKey: "project_activity",
+    projectSectionKey: 'project_activity',
   },
   {
-    id: "project_schedule",
-    label: "Schedule",
+    id: 'project_schedule',
+    label: 'Schedule',
     requiresUpdate: true,
-    projectSectionKey: "project_schedule",
+    projectSectionKey: 'project_schedule',
   },
   {
-    id: "project_team_tab",
-    label: "Project Team",
+    id: 'project_team_tab',
+    label: 'Project Team',
     requiresUpdate: true,
-    projectSectionKey: "project_details",
+    projectSectionKey: 'project_details',
   },
   {
-    id: "project_handover",
-    label: "Progress Measurement",
+    id: 'project_handover',
+    label: 'Progress Measurement',
     requiresUpdate: true,
-    projectSectionKey: "project_handover",
+    projectSectionKey: 'project_handover',
   },
   {
-    id: "input_documents",
-    label: "Input Document",
+    id: 'input_documents',
+    label: 'Input Document',
     requiresUpdate: true,
-    projectSectionKey: "documents_received",
+    projectSectionKey: 'documents_received',
   },
   {
-    id: "documents_issued",
-    label: "Deliverables",
+    id: 'documents_issued',
+    label: 'Deliverables',
     requiresUpdate: true,
-    projectSectionKey: "documents_issued",
+    projectSectionKey: 'documents_issued',
   },
   {
-    id: "minutes_internal_meet",
-    label: "Meeting",
+    id: 'minutes_internal_meet',
+    label: 'Meeting',
     requiresUpdate: true,
-    projectSectionKey: "minutes_internal_meet",
+    projectSectionKey: 'minutes_internal_meet',
   },
   {
-    id: "project_manhours",
-    label: "Project Manhours",
+    id: 'project_manhours',
+    label: 'Project Manhours',
     requiresUpdate: true,
-    projectSectionKey: "project_manhours",
+    projectSectionKey: 'project_manhours',
   },
-  { id: "software", label: "Software", requiresUpdate: true },
-  { id: "my_activities", label: "My Activities", userOnly: true },
+  { id: 'software', label: 'Software', requiresUpdate: true },
+  { id: 'my_activities', label: 'My Activities', userOnly: true },
   {
-    id: "query_log",
-    label: "Query Log",
+    id: 'query_log',
+    label: 'Query Log',
     requiresUpdate: true,
-    projectSectionKey: "query_log",
+    projectSectionKey: 'query_log',
   },
   {
-    id: "assumption",
-    label: "Assumption",
+    id: 'assumption',
+    label: 'Assumption',
     requiresUpdate: true,
-    projectSectionKey: "assumption",
+    projectSectionKey: 'assumption',
   },
   {
-    id: "lessons_learnt",
-    label: "Lessons Learnt",
+    id: 'lessons_learnt',
+    label: 'Lessons Learnt',
     requiresUpdate: true,
-    projectSectionKey: "lessons_learnt",
+    projectSectionKey: 'lessons_learnt',
   },
   {
-    id: "discussion",
-    label: "Discussion",
+    id: 'discussion',
+    label: 'Discussion',
     requiresUpdate: true,
-    projectSectionKey: "minutes_internal_meet",
+    projectSectionKey: 'minutes_internal_meet',
   },
   {
-    id: "quotation",
-    label: "Quotation",
-    requiresPermission: "quotations",
-    requiresUpdate: true,
-  },
-  {
-    id: "purchase_order",
-    label: "Purchase Order",
-    requiresPermission: "purchase_orders",
+    id: 'quotation',
+    label: 'Quotation',
+    requiresPermission: 'quotations',
     requiresUpdate: true,
   },
   {
-    id: "invoice",
-    label: "Invoice",
-    requiresPermission: "invoices",
+    id: 'purchase_order',
+    label: 'Purchase Order',
+    requiresPermission: 'purchase_orders',
+    requiresUpdate: true,
+  },
+  {
+    id: 'invoice',
+    label: 'Invoice',
+    requiresPermission: 'invoices',
     requiresUpdate: true,
   },
 ];
 
-const TYPE_OPTIONS = ["ONGOING", "CONSULTANCY", "EPC", "PMC"];
-const CURRENCY_OPTIONS = ["INR", "USD", "EUR", "GBP"];
-const PAYMENT_TERMS_OPTIONS = ["Net 30", "Net 45", "Net 60", "Advance"];
+const TYPE_OPTIONS = ['ONGOING', 'CONSULTANCY', 'EPC', 'PMC'];
+const CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'];
+const PAYMENT_TERMS_OPTIONS = ['Net 30', 'Net 45', 'Net 60', 'Advance'];
 const INVOICING_STATUS_OPTIONS = [
-  "Uninvoiced",
-  "Partially Invoiced",
-  "Invoiced",
-  "Paid",
+  'Uninvoiced',
+  'Partially Invoiced',
+  'Invoiced',
+  'Paid',
 ];
 const PROCUREMENT_STATUS_OPTIONS = [
-  "Not Started",
-  "In Progress",
-  "Completed",
-  "On Hold",
+  'Not Started',
+  'In Progress',
+  'Completed',
+  'On Hold',
 ];
 const DOCUMENTATION_STATUS_OPTIONS = [
-  "Not Started",
-  "Drafted",
-  "Reviewed",
-  "Finalized",
+  'Not Started',
+  'Drafted',
+  'Reviewed',
+  'Finalized',
 ];
 
 export default function EditProjectForm() {
@@ -308,8 +308,8 @@ export default function EditProjectForm() {
   const isAdminUser = useMemo(() => {
     const hierarchy = Number(
       sessionUser?.role?.hierarchy ??
-      sessionUser?.role_hierarchy ??
-      sessionUser?.role_info?.hierarchy,
+        sessionUser?.role_hierarchy ??
+        sessionUser?.role_info?.hierarchy
     );
     return (
       !!sessionUser?.is_super_admin ||
@@ -348,27 +348,27 @@ export default function EditProjectForm() {
     isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
   const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
-  const [activeTab, setActiveTab] = useState("project_details");
+  const [activeTab, setActiveTab] = useState('project_details');
   const [functions, setFunctions] = useState([]); // Top-level disciplines/functions
   const [activities, setActivities] = useState([]); // Standalone activities list
   const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
   const [form, setForm] = useState(INITIAL_FORM);
   const [projectActivities, setProjectActivities] = useState([]);
-  const [newScopeActivityName, setNewScopeActivityName] = useState("");
+  const [newScopeActivityName, setNewScopeActivityName] = useState('');
   const [teamMembers, setTeamMembers] = useState([]);
 
   // Kickoff meetings stored as an array
   const [kickoffMeetings, setKickoffMeetings] = useState([]);
-  const [newKickoffMeetingTitle, setNewKickoffMeetingTitle] = useState("");
+  const [newKickoffMeetingTitle, setNewKickoffMeetingTitle] = useState('');
 
   // Internal meetings stored as an array (each meeting has same fields as kickoff)
   const [internalMeetings, setInternalMeetings] = useState([]);
-  const [newInternalMeetingTitle, setNewInternalMeetingTitle] = useState("");
+  const [newInternalMeetingTitle, setNewInternalMeetingTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
   const [selectedExportSheet, setSelectedExportSheet] =
-    useState("input_documents");
+    useState('input_documents');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -379,7 +379,7 @@ export default function EditProjectForm() {
   // Multi-select activity checkbox state
   const [showActivitySelector, setShowActivitySelector] = useState(false);
   const [selectedActivitiesForAdd, setSelectedActivitiesForAdd] = useState({});
-  const [activitySelectorSearch, setActivitySelectorSearch] = useState("");
+  const [activitySelectorSearch, setActivitySelectorSearch] = useState('');
 
   // Track which activity is in edit mode
   const [editingActivityId, setEditingActivityId] = useState(null);
@@ -396,7 +396,7 @@ export default function EditProjectForm() {
       if (openUserSelectorForActivity !== null) {
         // Check if click is outside the dropdown
         const dropdowns = document.querySelectorAll(
-          "[data-user-selector-dropdown]",
+          '[data-user-selector-dropdown]'
         );
         let clickedInside = false;
         dropdowns.forEach((dropdown) => {
@@ -410,8 +410,8 @@ export default function EditProjectForm() {
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openUserSelectorForActivity]);
 
   // Collapsible sections for General / Project Details (Basic, Scope, Unit/Qty, Deliverables)
@@ -429,18 +429,18 @@ export default function EditProjectForm() {
   // Input document list management with categories and full document details
   const [inputDocumentsList, setInputDocumentsList] = useState([]);
   const [newInputDocument, setNewInputDocument] = useState({
-    sr_no: "",
-    date_received: "",
-    description: "",
-    drawing_number: "",
-    sheet_number: "",
-    revision_number: "",
-    unit_qty: "",
-    document_sent_by: "",
-    remarks: "",
-    category: "lot",
-    lotNumber: "",
-    subLot: "",
+    sr_no: '',
+    date_received: '',
+    description: '',
+    drawing_number: '',
+    sheet_number: '',
+    revision_number: '',
+    unit_qty: '',
+    document_sent_by: '',
+    remarks: '',
+    category: 'lot',
+    lotNumber: '',
+    subLot: '',
   });
   const [docMaster, setDocMaster] = useState([]);
 
@@ -448,14 +448,14 @@ export default function EditProjectForm() {
   const [projectTeamMembers, setProjectTeamMembers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
-  const [teamMemberSearch, setTeamMemberSearch] = useState("");
+  const [teamMemberSearch, setTeamMemberSearch] = useState('');
 
   // Software Management
   const [softwareItems, setSoftwareItems] = useState([]);
   const [softwareCategories, setSoftwareCategories] = useState([]);
-  const [selectedSoftwareCategory, setSelectedSoftwareCategory] = useState("");
-  const [selectedSoftware, setSelectedSoftware] = useState("");
-  const [selectedSoftwareVersion, setSelectedSoftwareVersion] = useState("");
+  const [selectedSoftwareCategory, setSelectedSoftwareCategory] = useState('');
+  const [selectedSoftware, setSelectedSoftware] = useState('');
+  const [selectedSoftwareVersion, setSelectedSoftwareVersion] = useState('');
 
   // User Master (for Assigned To dropdowns)
   const [userMaster, setUserMaster] = useState([]);
@@ -466,35 +466,35 @@ export default function EditProjectForm() {
   // Documents Received - structured table rows
   const [documentsReceived, setDocumentsReceived] = useState([]);
   const [newReceivedDoc, setNewReceivedDoc] = useState({
-    date_received: "",
-    description: "",
-    drawing_number: "",
-    revision_number: "",
-    unit_qty: "",
-    document_sent_by: "",
-    remarks: "",
+    date_received: '',
+    description: '',
+    drawing_number: '',
+    revision_number: '',
+    unit_qty: '',
+    document_sent_by: '',
+    remarks: '',
   });
   const newReceivedDescRef = useRef(null);
 
   // Documents Issued - structured table rows (Document Issued to Client)
   const [documentsIssued, setDocumentsIssued] = useState([]);
   const [newIssuedDoc, setNewIssuedDoc] = useState({
-    document_name: "",
-    issued_for: "",
-    document_number: "",
-    revision_number: "",
-    issue_date: "",
-    remarks: "",
+    document_name: '',
+    issued_for: '',
+    document_number: '',
+    revision_number: '',
+    issue_date: '',
+    remarks: '',
   });
   const newIssuedDescRef = useRef(null);
 
   // Project Handover - structured rows (handover checklist)
   const [projectHandover, setProjectHandover] = useState([]);
   const [newHandoverRow, setNewHandoverRow] = useState({
-    output_by_accent: "",
-    requirement_accomplished: "",
-    remark: "",
-    hand_over: "",
+    output_by_accent: '',
+    requirement_accomplished: '',
+    remark: '',
+    hand_over: '',
   });
   const newHandoverDescRef = useRef(null);
 
@@ -506,56 +506,56 @@ export default function EditProjectForm() {
   const SCHEDULE_LEGENDS = useMemo(
     () => [
       {
-        key: "accent_activities",
-        label: "Accent Activities",
-        cellClass: "bg-gray-200",
-        textClass: "text-gray-900",
+        key: 'accent_activities',
+        label: 'Accent Activities',
+        cellClass: 'bg-gray-200',
+        textClass: 'text-gray-900',
       },
       {
-        key: "piping_modelling",
-        label: "Piping/Modelling",
-        cellClass: "bg-purple-200",
-        textClass: "text-gray-900",
+        key: 'piping_modelling',
+        label: 'Piping/Modelling',
+        cellClass: 'bg-purple-200',
+        textClass: 'text-gray-900',
       },
       {
-        key: "civil_structural",
-        label: "Civil/Structural",
-        cellClass: "bg-amber-200",
-        textClass: "text-gray-900",
+        key: 'civil_structural',
+        label: 'Civil/Structural',
+        cellClass: 'bg-amber-200',
+        textClass: 'text-gray-900',
       },
       {
-        key: "electrical",
-        label: "Electrical",
-        cellClass: "bg-indigo-200",
-        textClass: "text-gray-900",
+        key: 'electrical',
+        label: 'Electrical',
+        cellClass: 'bg-indigo-200',
+        textClass: 'text-gray-900',
       },
       {
-        key: "instrumentation",
-        label: "Instrumentation",
-        cellClass: "bg-slate-200",
-        textClass: "text-gray-900",
+        key: 'instrumentation',
+        label: 'Instrumentation',
+        cellClass: 'bg-slate-200',
+        textClass: 'text-gray-900',
       },
       {
-        key: "swpl_controlled",
-        label: "SWPL Controlled",
-        cellClass: "bg-green-700",
-        textClass: "text-white",
+        key: 'swpl_controlled',
+        label: 'SWPL Controlled',
+        cellClass: 'bg-green-700',
+        textClass: 'text-white',
       },
       {
-        key: "milestone",
-        label: "Milestone",
-        cellClass: "bg-emerald-200",
-        textClass: "text-gray-900",
+        key: 'milestone',
+        label: 'Milestone',
+        cellClass: 'bg-emerald-200',
+        textClass: 'text-gray-900',
       },
     ],
-    [],
+    []
   );
 
   const generateScheduleRowId = useCallback(() => {
     try {
       if (
-        typeof crypto !== "undefined" &&
-        typeof crypto.randomUUID === "function"
+        typeof crypto !== 'undefined' &&
+        typeof crypto.randomUUID === 'function'
       ) {
         return crypto.randomUUID();
       }
@@ -569,15 +569,15 @@ export default function EditProjectForm() {
     (rows) => {
       const seen = new Set();
       return (Array.isArray(rows) ? rows : []).map((row) => {
-        const base = row && typeof row === "object" ? row : {};
+        const base = row && typeof row === 'object' ? row : {};
         let id = base.id;
-        if (id === null || id === undefined || id === "") id = null;
-        const idStr = id === null ? "" : String(id);
+        if (id === null || id === undefined || id === '') id = null;
+        const idStr = id === null ? '' : String(id);
         const safeId =
           !idStr || seen.has(idStr) ? generateScheduleRowId() : idStr;
         seen.add(safeId);
 
-        const legend = base.legend || base.schedule_legend || "";
+        const legend = base.legend || base.schedule_legend || '';
         const weeks = Array.isArray(base.weeks)
           ? base.weeks.map((n) => Number(n)).filter((n) => Number.isFinite(n))
           : base.weeks;
@@ -590,54 +590,54 @@ export default function EditProjectForm() {
         };
       });
     },
-    [generateScheduleRowId],
+    [generateScheduleRowId]
   );
 
   const canEditSchedule = canEditProjectContent && !scheduleLocked;
   const scheduleEffectivelyLocked = scheduleLocked || !canEditProjectContent;
 
   const [selectedScheduleLegend, setSelectedScheduleLegend] =
-    useState("accent_activities");
+    useState('accent_activities');
 
   const getScheduleLegend = useCallback(
     (key) => {
-      const k = String(key || "").trim();
+      const k = String(key || '').trim();
       return SCHEDULE_LEGENDS.find((l) => l.key === k) || null;
     },
-    [SCHEDULE_LEGENDS],
+    [SCHEDULE_LEGENDS]
   );
 
   const scheduleWeeks = useMemo(
     () => buildProjectWeeks(form.start_date, form.end_date),
-    [form.start_date, form.end_date],
+    [form.start_date, form.end_date]
   );
 
   const projectActivityScheduleGroups = useMemo(() => {
     const byDiscipline = new Map();
 
     (projectActivities || []).forEach((pa) => {
-      const type = String(pa?.type || "").toLowerCase();
-      if (type !== "activity" && type !== "subactivity") return;
+      const type = String(pa?.type || '').toLowerCase();
+      if (type !== 'activity' && type !== 'subactivity') return;
 
       const disciplineName =
         pa?.discipline ||
         pa?.function_name ||
         (pa?.function_id
           ? (functions || []).find(
-            (f) => String(f.id) === String(pa.function_id),
-          )?.function_name
+              (f) => String(f.id) === String(pa.function_id)
+            )?.function_name
           : null) ||
-        "Other";
+        'Other';
 
-      const parentName = pa?.activity_name || pa?.activity || "";
+      const parentName = pa?.activity_name || pa?.activity || '';
       const childName =
-        pa?.name || pa?.sub_activity_name || pa?.sub_activity || "";
+        pa?.name || pa?.sub_activity_name || pa?.sub_activity || '';
       const label =
-        type === "subactivity"
+        type === 'subactivity'
           ? parentName && childName
             ? `${parentName} - ${childName}`
             : childName || parentName
-          : parentName || pa?.name || "";
+          : parentName || pa?.name || '';
 
       if (!label) return;
 
@@ -650,7 +650,7 @@ export default function EditProjectForm() {
       .map(([discipline, optionSet]) => ({
         discipline,
         options: Array.from(optionSet.values()).sort((a, b) =>
-          a.localeCompare(b),
+          a.localeCompare(b)
         ),
       }))
       .sort((a, b) => a.discipline.localeCompare(b.discipline));
@@ -675,9 +675,9 @@ export default function EditProjectForm() {
     if (!projectActivities || projectActivities.length === 0) return;
 
     const normalizeDateOnly = (value) => {
-      if (!value) return "";
+      if (!value) return '';
       const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return "";
+      if (Number.isNaN(d.getTime())) return '';
       return d.toISOString().slice(0, 10);
     };
 
@@ -690,27 +690,27 @@ export default function EditProjectForm() {
 
     const derived = (projectActivities || [])
       .filter((pa) =>
-        ["activity", "subactivity"].includes(
-          String(pa?.type || "").toLowerCase(),
-        ),
+        ['activity', 'subactivity'].includes(
+          String(pa?.type || '').toLowerCase()
+        )
       )
       .map((pa, idx) => {
-        const type = String(pa?.type || "").toLowerCase();
+        const type = String(pa?.type || '').toLowerCase();
         const disciplineName =
           pa?.discipline ||
           pa?.function_name ||
           pa?.function ||
           pa?.department ||
-          "Manual / Other";
-        const parentName = pa?.activity_name || pa?.activity || "";
+          'Manual / Other';
+        const parentName = pa?.activity_name || pa?.activity || '';
         const childName =
-          pa?.name || pa?.sub_activity_name || pa?.sub_activity || "";
+          pa?.name || pa?.sub_activity_name || pa?.sub_activity || '';
         const activityLabel =
-          type === "subactivity"
+          type === 'subactivity'
             ? parentName && childName
               ? `${parentName} - ${childName}`
               : childName || parentName
-            : parentName || pa?.name || "";
+            : parentName || pa?.name || '';
 
         const assignments = Array.isArray(pa?.assigned_users)
           ? pa.assigned_users
@@ -718,30 +718,30 @@ export default function EditProjectForm() {
         const startCandidates = assignments
           .map((a) => a?.start_date)
           .map(parseDateMs)
-          .filter((v) => typeof v === "number");
+          .filter((v) => typeof v === 'number');
         const endCandidates = assignments
           .map((a) => a?.due_date || a?.end_date)
           .map(parseDateMs)
-          .filter((v) => typeof v === "number");
+          .filter((v) => typeof v === 'number');
 
         const minStart = startCandidates.length
           ? new Date(Math.min(...startCandidates)).toISOString().slice(0, 10)
-          : "";
+          : '';
         const maxEnd = endCandidates.length
           ? new Date(Math.max(...endCandidates)).toISOString().slice(0, 10)
-          : "";
+          : '';
 
         const qtyTotal = assignments.reduce(
           (sum, a) => sum + (parseFloat(a?.qty_assigned) || 0),
-          0,
+          0
         );
         const statusValues = assignments
-          .map((a) => String(a?.status || "").toLowerCase())
+          .map((a) => String(a?.status || '').toLowerCase())
           .filter(Boolean);
         const allDone =
           statusValues.length > 0 &&
           statusValues.every((s) =>
-            ["done", "completed", "complete", "yes"].includes(s),
+            ['done', 'completed', 'complete', 'yes'].includes(s)
           );
         const anyAssigned = assignments.length > 0;
 
@@ -750,14 +750,14 @@ export default function EditProjectForm() {
           sr_no: String(idx + 1),
           activity_description: activityLabel,
           discipline: disciplineName,
-          legend: "accent_activities",
-          color: "",
-          unit_qty: qtyTotal > 0 ? String(qtyTotal) : "",
-          start_date: normalizeDateOnly(minStart) || "",
-          end_date: normalizeDateOnly(maxEnd) || "",
-          time_required: "",
-          status_completed: allDone ? "Yes" : anyAssigned ? "Ongoing" : "",
-          remarks: "",
+          legend: 'accent_activities',
+          color: '',
+          unit_qty: qtyTotal > 0 ? String(qtyTotal) : '',
+          start_date: normalizeDateOnly(minStart) || '',
+          end_date: normalizeDateOnly(maxEnd) || '',
+          time_required: '',
+          status_completed: allDone ? 'Yes' : anyAssigned ? 'Ongoing' : '',
+          remarks: '',
         };
       })
       .filter((row) => !!row.activity_description);
@@ -777,18 +777,18 @@ export default function EditProjectForm() {
   const [projectManhours, setProjectManhours] = useState([
     {
       id: Date.now(),
-      employee_id: "",
-      employee_name: "",
-      salary_type: "",
-      rate_company: "",
-      rate_accent: "",
+      employee_id: '',
+      employee_name: '',
+      salary_type: '',
+      rate_company: '',
+      rate_accent: '',
       monthly_hours: {},
     },
   ]);
   // State for adding new months - multiple selection
   const [selectedMonths, setSelectedMonths] = useState([]);
-  const [monthRangeStart, setMonthRangeStart] = useState("");
-  const [monthRangeEnd, setMonthRangeEnd] = useState("");
+  const [monthRangeStart, setMonthRangeStart] = useState('');
+  const [monthRangeEnd, setMonthRangeEnd] = useState('');
   // State for employees with salary profiles (for rate lookup)
   const [employeesWithRates, setEmployeesWithRates] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
@@ -796,102 +796,102 @@ export default function EditProjectForm() {
   const [attendanceHoursCache, setAttendanceHoursCache] = useState({});
   // New entry form for adding employee hours within a month
   const [newManhourEntry, setNewManhourEntry] = useState({
-    employee_id: "",
-    employee_name: "",
-    rate: "",
-    salary_type: "",
-    hours: "",
+    employee_id: '',
+    employee_name: '',
+    rate: '',
+    salary_type: '',
+    hours: '',
   });
   const newManhourNameRef = useRef(null);
 
   // Query Log - structured rows
   const [queryLog, setQueryLog] = useState([]);
   const [newQuery, setNewQuery] = useState({
-    query_description: "",
-    query_issued_date: "",
-    reply_from_client: "",
-    reply_received_date: "",
-    query_updated_by: "",
-    query_resolved: "",
-    remark: "",
+    query_description: '',
+    query_issued_date: '',
+    reply_from_client: '',
+    reply_received_date: '',
+    query_updated_by: '',
+    query_resolved: '',
+    remark: '',
   });
   const newQueryDescRef = useRef(null);
 
   // Assumptions - structured rows
   const [assumptions, setAssumptions] = useState([]);
   const [newAssumption, setNewAssumption] = useState({
-    assumption_description: "",
-    reason: "",
-    assumption_taken_by: "",
-    remark: "",
+    assumption_description: '',
+    reason: '',
+    assumption_taken_by: '',
+    remark: '',
   });
   const newAssumptionDescRef = useRef(null);
 
   // Lessons Learnt - structured rows
   const [lessonsLearnt, setLessonsLearnt] = useState([]);
   const [newLesson, setNewLesson] = useState({
-    what_was_new: "",
-    difficulty_faced: "",
-    what_you_learn: "",
-    areas_of_improvement: "",
-    remark: "",
+    what_was_new: '',
+    difficulty_faced: '',
+    what_you_learn: '',
+    areas_of_improvement: '',
+    remark: '',
   });
   const newLessonDescRef = useRef(null);
 
   // Project Planning tab - activity tracking
   const [planningActivities, setPlanningActivities] = useState([]);
   const [newPlanningActivity, setNewPlanningActivity] = useState({
-    serialNumber: "",
-    activity: "",
-    quantity: "",
-    startDate: "",
-    endDate: "",
-    actualCompletionDate: "",
-    timeRequired: "",
-    actualTimeRequired: "",
+    serialNumber: '',
+    activity: '',
+    quantity: '',
+    startDate: '',
+    endDate: '',
+    actualCompletionDate: '',
+    timeRequired: '',
+    actualTimeRequired: '',
   });
 
   // Quotation tab state
   const [quotationData, setQuotationData] = useState({
-    quotation_number: "",
-    quotation_date: "",
-    client_name: "",
-    enquiry_number: "",
-    enquiry_quantity: "",
-    scope_of_work: "",
-    gross_amount: "",
+    quotation_number: '',
+    quotation_date: '',
+    client_name: '',
+    enquiry_number: '',
+    enquiry_quantity: '',
+    scope_of_work: '',
+    gross_amount: '',
     gst_percentage: 18,
-    gst_amount: "",
-    net_amount: "",
+    gst_amount: '',
+    net_amount: '',
   });
   const [quotationSaving, setQuotationSaving] = useState(false);
 
   // Purchase Order tab state
   const [purchaseOrderData, setPurchaseOrderData] = useState({
-    po_number: "",
-    po_date: "",
-    client_name: "",
-    vendor_name: "",
-    vendor_id: "",
-    delivery_date: "",
-    scope_of_work: "",
-    gross_amount: "",
+    po_number: '',
+    po_date: '',
+    client_name: '',
+    vendor_name: '',
+    vendor_id: '',
+    delivery_date: '',
+    scope_of_work: '',
+    gross_amount: '',
     gst_percentage: 18,
-    gst_amount: "",
-    net_amount: "",
-    payment_terms: "",
-    remarks: "",
+    gst_amount: '',
+    net_amount: '',
+    payment_terms: '',
+    remarks: '',
   });
   const [incomingPOs, setIncomingPOs] = useState([]);
   const [incomingPOData, setIncomingPOData] = useState({
-    company_name: "",
-    city: "",
-    po_number: "",
-    po_date: "",
-    po_amount: "",
-    project_number: "",
-    expenses_head: "",
-    remarks: "",
+    company_name: '',
+    city: '',
+    po_number: '',
+    po_date: '',
+    po_amount: '',
+    project_number: '',
+    expenses_head: '',
+    remarks: '',
   });
   const [purchaseOrderSaving, setPurchaseOrderSaving] = useState(false);
 
@@ -906,21 +906,21 @@ export default function EditProjectForm() {
 
   // Invoice tab state
   const [invoiceData, setInvoiceData] = useState({
-    invoice_number: "",
-    invoice_date: "",
-    company_name: "",
-    city: "",
-    invoice_amount: "",
-    purchase_description: "",
-    project_number: "",
-    expenses_head: "",
-    payment: "",
-    payment_overdue_days: "",
-    remarks: "",
+    invoice_number: '',
+    invoice_date: '',
+    company_name: '',
+    city: '',
+    invoice_amount: '',
+    purchase_description: '',
+    project_number: '',
+    expenses_head: '',
+    payment: '',
+    payment_overdue_days: '',
+    remarks: '',
   });
   const [invoices, setInvoices] = useState([]);
   const [invoiceSaving, setInvoiceSaving] = useState(false);
-  const [nextInvoiceNumber, setNextInvoiceNumber] = useState("");
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState('');
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
 
   // Fetch all required reference/master data + project data in parallel (single DB connection for ref data)
@@ -945,66 +945,66 @@ export default function EditProjectForm() {
           // If users were not returned by init-data, fetch them separately
           if ((!d.users || d.users.length === 0) && canReadUsers) {
             console.warn(
-              "[init-data] No users returned, fetching from /api/users",
+              '[init-data] No users returned, fetching from /api/users'
             );
             try {
-              const usersRes = await fetchJSON("/api/users?limit=500");
+              const usersRes = await fetchJSON('/api/users?limit=500');
               if (usersRes.success && usersRes.data) {
                 setUserMaster(usersRes.data);
                 setAllUsers(usersRes.data);
               }
             } catch (ue) {
-              console.error("Fallback users fetch failed:", ue);
+              console.error('Fallback users fetch failed:', ue);
             }
           } else if (!d.users || d.users.length === 0) {
             console.warn(
-              "[init-data] Users not returned and users:read not granted; skipping /api/users fallback",
+              '[init-data] Users not returned and users:read not granted; skipping /api/users fallback'
             );
           }
         } else {
           // init-data failed, fetch users separately
           if (canReadUsers) {
-            console.warn("[init-data] Failed, fetching users separately");
+            console.warn('[init-data] Failed, fetching users separately');
             try {
-              const usersRes = await fetchJSON("/api/users?limit=500");
+              const usersRes = await fetchJSON('/api/users?limit=500');
               if (usersRes.success && usersRes.data) {
                 setUserMaster(usersRes.data);
                 setAllUsers(usersRes.data);
               }
             } catch (ue) {
-              console.error("Fallback users fetch failed:", ue);
+              console.error('Fallback users fetch failed:', ue);
             }
           } else {
             console.warn(
-              "[init-data] Failed and users:read not granted; skipping /api/users fallback",
+              '[init-data] Failed and users:read not granted; skipping /api/users fallback'
             );
           }
         }
       } catch (error) {
         console.warn(
-          "Failed to fetch init data, falling back to individual calls",
-          error,
+          'Failed to fetch init data, falling back to individual calls',
+          error
         );
         // Fetch users as fallback
         if (canReadUsers) {
           try {
-            const usersRes = await fetchJSON("/api/users?limit=500");
+            const usersRes = await fetchJSON('/api/users?limit=500');
             if (usersRes.success && usersRes.data) {
               setUserMaster(usersRes.data);
               setAllUsers(usersRes.data);
             }
           } catch (ue) {
-            console.error("Fallback users fetch failed:", ue);
+            console.error('Fallback users fetch failed:', ue);
           }
         } else {
-          console.warn("[init-data] Fallback blocked: users:read not granted");
+          console.warn('[init-data] Fallback blocked: users:read not granted');
         }
       } finally {
         setLoadingVendors(false);
         setUsersLoading(false);
       }
     };
-    if (id && id !== "undefined") {
+    if (id && id !== 'undefined') {
       fetchAllInitData();
     }
   }, [id, canReadUsers]);
@@ -1014,9 +1014,9 @@ export default function EditProjectForm() {
     const fetchAccountHeads = async () => {
       setLoadingAccountHeads(true);
       try {
-        const res = await fetch("/api/account-masters?limit=500");
+        const res = await fetch('/api/account-masters?limit=500');
         if (!res.ok) {
-          console.warn("Account heads API not available");
+          console.warn('Account heads API not available');
           setAccountHeads([]);
           return;
         }
@@ -1027,7 +1027,7 @@ export default function EditProjectForm() {
           setAccountHeads([]);
         }
       } catch (error) {
-        console.warn("Error fetching account heads:", error);
+        console.warn('Error fetching account heads:', error);
         setAccountHeads([]);
       } finally {
         setLoadingAccountHeads(false);
@@ -1039,145 +1039,145 @@ export default function EditProjectForm() {
 
   // Fetch existing project data
   useEffect(() => {
-    if (!id || id === "undefined") {
-      setError("Invalid project ID");
+    if (!id || id === 'undefined') {
+      setError('Invalid project ID');
       setLoading(false);
       return;
     }
 
     // Helper to format date for input[type="date"] (YYYY-MM-DD)
     const formatDateForInput = (dateValue) => {
-      if (!dateValue) return "";
+      if (!dateValue) return '';
       try {
         const date = new Date(dateValue);
-        if (isNaN(date.getTime())) return "";
-        return date.toISOString().split("T")[0];
+        if (isNaN(date.getTime())) return '';
+        return date.toISOString().split('T')[0];
       } catch {
-        return "";
+        return '';
       }
     };
 
     const fetchProject = async () => {
       try {
-        console.log("[fetchProject] Fetching project data for ID:", id);
+        console.log('[fetchProject] Fetching project data for ID:', id);
         // Use optimized /api/projects/{id}/detail endpoint for better TTFB
         const result = await fetchJSON(`/api/projects/${id}/detail`);
-        console.log("[fetchProject] API response success:", result.success);
+        console.log('[fetchProject] API response success:', result.success);
 
         if (result.success && result.data) {
           const project = result.data;
           console.log(
-            "[fetchProject] Project data keys:",
-            Object.keys(project),
+            '[fetchProject] Project data keys:',
+            Object.keys(project)
           );
-          console.log("[fetchProject] Project name:", project.name);
-          console.log("[fetchProject] Project client:", project.client_name);
+          console.log('[fetchProject] Project name:', project.name);
+          console.log('[fetchProject] Project client:', project.client_name);
           setForm({
-            project_id: project.project_code || project.project_id || "",
-            name: project.name || "",
-            client_name: project.client_name || "",
-            client_contact_details: project.client_contact_details || "",
-            project_location_country: project.project_location_country || "",
-            project_location_city: project.project_location_city || "",
-            project_location_site: project.project_location_site || "",
-            industry: project.industry || "",
-            contract_type: project.contract_type || project.type || "",
-            company_id: project.company_id || "",
-            project_manager: project.project_manager || "",
+            project_id: project.project_code || project.project_id || '',
+            name: project.name || '',
+            client_name: project.client_name || '',
+            client_contact_details: project.client_contact_details || '',
+            project_location_country: project.project_location_country || '',
+            project_location_city: project.project_location_city || '',
+            project_location_site: project.project_location_site || '',
+            industry: project.industry || '',
+            contract_type: project.contract_type || project.type || '',
+            company_id: project.company_id || '',
+            project_manager: project.project_manager || '',
             start_date: formatDateForInput(project.start_date),
             end_date: formatDateForInput(project.end_date),
             target_date: formatDateForInput(project.target_date),
-            project_duration_planned: project.project_duration_planned || "",
-            project_duration_actual: project.project_duration_actual || "",
-            status: project.status || "Ongoing",
-            priority: project.priority || "MEDIUM",
+            project_duration_planned: project.project_duration_planned || '',
+            project_duration_actual: project.project_duration_actual || '',
+            status: project.status || 'Ongoing',
+            priority: project.priority || 'MEDIUM',
             progress: project.progress || 0,
-            assigned_to: project.assigned_to || "",
-            type: project.type || "EPC",
-            description: project.description || "",
-            notes: project.notes || "",
-            proposal_id: project.proposal_id || "",
-            project_value: project.project_value || "",
-            currency: project.currency || "INR",
-            payment_terms: project.payment_terms || "",
-            invoicing_status: project.invoicing_status || "",
-            cost_to_company: project.cost_to_company || "",
-            profitability_estimate: project.profitability_estimate || "",
-            subcontractors_vendors: project.subcontractors_vendors || "",
-            budget: project.budget || "",
-            procurement_status: project.procurement_status || "",
+            assigned_to: project.assigned_to || '',
+            type: project.type || 'EPC',
+            description: project.description || '',
+            notes: project.notes || '',
+            proposal_id: project.proposal_id || '',
+            project_value: project.project_value || '',
+            currency: project.currency || 'INR',
+            payment_terms: project.payment_terms || '',
+            invoicing_status: project.invoicing_status || '',
+            cost_to_company: project.cost_to_company || '',
+            profitability_estimate: project.profitability_estimate || '',
+            subcontractors_vendors: project.subcontractors_vendors || '',
+            budget: project.budget || '',
+            procurement_status: project.procurement_status || '',
             material_delivery_schedule:
-              project.material_delivery_schedule || "",
-            vendor_management: project.vendor_management || "",
+              project.material_delivery_schedule || '',
+            vendor_management: project.vendor_management || '',
             mobilization_date: formatDateForInput(project.mobilization_date),
-            site_readiness: project.site_readiness || "",
-            construction_progress: project.construction_progress || "",
-            major_risks: project.major_risks || "",
-            mitigation_plans: project.mitigation_plans || "",
-            change_orders: project.change_orders || "",
-            claims_disputes: project.claims_disputes || "",
+            site_readiness: project.site_readiness || '',
+            construction_progress: project.construction_progress || '',
+            major_risks: project.major_risks || '',
+            mitigation_plans: project.mitigation_plans || '',
+            change_orders: project.change_orders || '',
+            claims_disputes: project.claims_disputes || '',
             final_documentation_status:
-              project.final_documentation_status || "",
-            lessons_learned: project.lessons_learned || "",
-            client_feedback: project.client_feedback || "",
-            actual_profit_loss: project.actual_profit_loss || "",
+              project.final_documentation_status || '',
+            lessons_learned: project.lessons_learned || '',
+            client_feedback: project.client_feedback || '',
+            actual_profit_loss: project.actual_profit_loss || '',
             estimated_manhours:
-              project.estimated_manhours || project.estimated_hours || "",
-            unit_qty: project.unit_qty || project.unit || "",
-            project_team: project.project_team || "",
+              project.estimated_manhours || project.estimated_hours || '',
+            unit_qty: project.unit_qty || project.unit || '',
+            project_team: project.project_team || '',
             // Scope & Deliverables fields
-            scope_of_work: project.scope_of_work || "",
+            scope_of_work: project.scope_of_work || '',
             input_document:
-              typeof project.input_document === "object" &&
-                project.input_document !== null
+              typeof project.input_document === 'object' &&
+              project.input_document !== null
                 ? JSON.stringify(project.input_document)
-                : project.input_document || "",
-            deliverables: project.deliverables || "",
-            list_of_deliverables: project.list_of_deliverables || "",
-            software_included: project.software_included || "",
-            duration: project.duration || "",
-            mode_of_delivery: project.mode_of_delivery || "",
-            revision: project.revision || "",
-            site_visit: project.site_visit || "",
-            quotation_validity: project.quotation_validity || "",
-            exclusion: project.exclusion || "",
-            billing_and_payment_terms: project.billing_and_payment_terms || "",
+                : project.input_document || '',
+            deliverables: project.deliverables || '',
+            list_of_deliverables: project.list_of_deliverables || '',
+            software_included: project.software_included || '',
+            duration: project.duration || '',
+            mode_of_delivery: project.mode_of_delivery || '',
+            revision: project.revision || '',
+            site_visit: project.site_visit || '',
+            quotation_validity: project.quotation_validity || '',
+            exclusion: project.exclusion || '',
+            billing_and_payment_terms: project.billing_and_payment_terms || '',
             other_terms_and_conditions:
-              project.other_terms_and_conditions || "",
+              project.other_terms_and_conditions || '',
             // internal minutes fields
-            internal_meeting_no: project.internal_meeting_no || "",
+            internal_meeting_no: project.internal_meeting_no || '',
             internal_meeting_client_name:
-              project.internal_meeting_client_name || "",
-            internal_meeting_date: project.internal_meeting_date || "",
+              project.internal_meeting_client_name || '',
+            internal_meeting_date: project.internal_meeting_date || '',
             internal_meeting_organizer:
-              project.internal_meeting_organizer || "",
-            internal_minutes_drafted: project.internal_minutes_drafted || "",
-            internal_meeting_location: project.internal_meeting_location || "",
+              project.internal_meeting_organizer || '',
+            internal_minutes_drafted: project.internal_minutes_drafted || '',
+            internal_meeting_location: project.internal_meeting_location || '',
             internal_client_representative:
-              project.internal_client_representative || "",
-            internal_meeting_title: project.internal_meeting_title || "",
-            internal_points_discussed: project.internal_points_discussed || "",
-            internal_persons_involved: project.internal_persons_involved || "",
+              project.internal_client_representative || '',
+            internal_meeting_title: project.internal_meeting_title || '',
+            internal_points_discussed: project.internal_points_discussed || '',
+            internal_persons_involved: project.internal_persons_involved || '',
             // kickoff mapping will be set below if present
             kickoff_meeting_no:
-              project.kickoff_meeting_no || project.kickoff_meeting || "",
-            kickoff_client_name: project.kickoff_client_name || "",
-            kickoff_meeting_date: project.kickoff_meeting_date || "",
-            kickoff_meeting_organizer: project.kickoff_meeting_organizer || "",
-            kickoff_minutes_drafted: project.kickoff_minutes_drafted || "",
-            kickoff_meeting_location: project.kickoff_meeting_location || "",
+              project.kickoff_meeting_no || project.kickoff_meeting || '',
+            kickoff_client_name: project.kickoff_client_name || '',
+            kickoff_meeting_date: project.kickoff_meeting_date || '',
+            kickoff_meeting_organizer: project.kickoff_meeting_organizer || '',
+            kickoff_minutes_drafted: project.kickoff_minutes_drafted || '',
+            kickoff_meeting_location: project.kickoff_meeting_location || '',
             kickoff_client_representative:
-              project.kickoff_client_representative || "",
-            kickoff_meeting_title: project.kickoff_meeting_title || "",
-            kickoff_points_discussed: project.kickoff_points_discussed || "",
-            kickoff_persons_involved: project.kickoff_persons_involved || "",
+              project.kickoff_client_representative || '',
+            kickoff_meeting_title: project.kickoff_meeting_title || '',
+            kickoff_points_discussed: project.kickoff_points_discussed || '',
+            kickoff_persons_involved: project.kickoff_persons_involved || '',
           });
 
           // Fetch proposal if proposal_id exists to auto-populate common fields
           if (project.proposal_id) {
             try {
               const proposalResult = await fetchJSON(
-                `/api/proposals/${project.proposal_id}`,
+                `/api/proposals/${project.proposal_id}`
               );
               if (proposalResult.success && proposalResult.data) {
                 const proposal = proposalResult.data;
@@ -1196,8 +1196,8 @@ export default function EditProjectForm() {
                   scope_of_work: proposal.scope_of_work || prev.scope_of_work,
                   deliverables: proposal.deliverables || prev.deliverables,
                   input_document:
-                    typeof proposal.input_document === "object" &&
-                      proposal.input_document !== null
+                    typeof proposal.input_document === 'object' &&
+                    proposal.input_document !== null
                       ? JSON.stringify(proposal.input_document)
                       : proposal.input_document || prev.input_document,
                   list_of_deliverables:
@@ -1252,7 +1252,7 @@ export default function EditProjectForm() {
                   if (proposal.activities) {
                     try {
                       const proposalActivities =
-                        typeof proposal.activities === "string"
+                        typeof proposal.activities === 'string'
                           ? JSON.parse(proposal.activities)
                           : proposal.activities;
 
@@ -1264,26 +1264,26 @@ export default function EditProjectForm() {
                         const mappedActivities = proposalActivities.map(
                           (act) => ({
                             id: act.id || Date.now() + Math.random(),
-                            type: act.type || "activity",
-                            source: "proposal",
-                            name: act.name || act.activity_name || "",
-                            status: act.status || "NEW",
-                            deliverables: act.deliverables || "",
+                            type: act.type || 'activity',
+                            source: 'proposal',
+                            name: act.name || act.activity_name || '',
+                            status: act.status || 'NEW',
+                            deliverables: act.deliverables || '',
                             manhours: act.manhours || 0,
                             assigned_users: act.assigned_users || [],
-                            function_name: act.function_name || "From Proposal",
-                          }),
+                            function_name: act.function_name || 'From Proposal',
+                          })
                         );
                         setProjectActivities(mappedActivities);
                       }
                     } catch (err) {
-                      console.warn("Failed to parse proposal activities:", err);
+                      console.warn('Failed to parse proposal activities:', err);
                     }
                   }
                 }
               }
             } catch (err) {
-              console.warn("Failed to fetch proposal:", err);
+              console.warn('Failed to fetch proposal:', err);
             }
           }
 
@@ -1291,7 +1291,7 @@ export default function EditProjectForm() {
           if (project.team_members) {
             try {
               const parsed =
-                typeof project.team_members === "string"
+                typeof project.team_members === 'string'
                   ? JSON.parse(project.team_members)
                   : project.team_members;
               setTeamMembers(Array.isArray(parsed) ? parsed : []);
@@ -1304,7 +1304,7 @@ export default function EditProjectForm() {
           if (project.project_activities_list) {
             try {
               const parsed =
-                typeof project.project_activities_list === "string"
+                typeof project.project_activities_list === 'string'
                   ? JSON.parse(project.project_activities_list)
                   : project.project_activities_list;
               // Ensure assigned_users is always an array for each activity
@@ -1326,7 +1326,7 @@ export default function EditProjectForm() {
           if (project.planning_activities_list) {
             try {
               const parsed =
-                typeof project.planning_activities_list === "string"
+                typeof project.planning_activities_list === 'string'
                   ? JSON.parse(project.planning_activities_list)
                   : project.planning_activities_list;
               setPlanningActivities(Array.isArray(parsed) ? parsed : []);
@@ -1339,7 +1339,7 @@ export default function EditProjectForm() {
           if (project.documents_list) {
             try {
               const parsed =
-                typeof project.documents_list === "string"
+                typeof project.documents_list === 'string'
                   ? JSON.parse(project.documents_list)
                   : project.documents_list;
               setDocumentsList(Array.isArray(parsed) ? parsed : []);
@@ -1352,25 +1352,25 @@ export default function EditProjectForm() {
           if (project.input_documents_list) {
             try {
               const parsed =
-                typeof project.input_documents_list === "string"
+                typeof project.input_documents_list === 'string'
                   ? JSON.parse(project.input_documents_list)
                   : project.input_documents_list;
               console.log(
-                "[fetchProject] input_documents_list loaded:",
+                '[fetchProject] input_documents_list loaded:',
                 parsed?.length,
-                "items",
+                'items'
               );
               const normalized = (Array.isArray(parsed) ? parsed : []).map(
                 (d) => ({
                   ...d,
                   date_received: normalizeDate(d.date_received),
-                }),
+                })
               );
               setInputDocumentsList(normalized);
             } catch (err) {
               console.error(
-                "[fetchProject] Error parsing input_documents_list:",
-                err,
+                '[fetchProject] Error parsing input_documents_list:',
+                err
               );
               setInputDocumentsList([]);
             }
@@ -1378,14 +1378,14 @@ export default function EditProjectForm() {
             let parsedDocs = [];
             try {
               const maybeJson = project.input_document.trim();
-              if (maybeJson.startsWith("[")) {
+              if (maybeJson.startsWith('[')) {
                 const arr = JSON.parse(maybeJson);
                 if (Array.isArray(arr)) {
                   parsedDocs = arr
                     .map((d) => ({
                       id: d.id || Date.now() + Math.random(),
-                      text: d.text || d.name || "",
-                      name: d.name || d.text || "",
+                      text: d.text || d.name || '',
+                      name: d.name || d.text || '',
                       fileUrl: d.fileUrl || null,
                       thumbUrl: d.thumbUrl || null,
                       addedAt: d.addedAt || new Date().toISOString(),
@@ -1395,7 +1395,7 @@ export default function EditProjectForm() {
               } else {
                 // legacy comma separated
                 parsedDocs = project.input_document
-                  .split(",")
+                  .split(',')
                   .map((doc, index) => ({
                     id: Date.now() + index,
                     text: doc.trim(),
@@ -1409,7 +1409,7 @@ export default function EditProjectForm() {
             } catch {
               // fallback to comma split
               parsedDocs = project.input_document
-                .split(",")
+                .split(',')
                 .map((doc, index) => ({
                   id: Date.now() + index,
                   text: doc.trim(),
@@ -1424,7 +1424,7 @@ export default function EditProjectForm() {
               parsedDocs.map((d) => ({
                 ...d,
                 date_received: normalizeDate(d.date_received),
-              })),
+              }))
             );
           }
 
@@ -1432,24 +1432,24 @@ export default function EditProjectForm() {
           if (project.documents_received_list) {
             try {
               const parsed =
-                typeof project.documents_received_list === "string"
+                typeof project.documents_received_list === 'string'
                   ? JSON.parse(project.documents_received_list)
                   : project.documents_received_list;
               console.log(
-                "[fetchProject] documents_received_list loaded:",
+                '[fetchProject] documents_received_list loaded:',
                 parsed?.length,
-                "items",
+                'items'
               );
               setDocumentsReceived(Array.isArray(parsed) ? parsed : []);
             } catch (err) {
               console.error(
-                "[fetchProject] Error parsing documents_received_list:",
-                err,
+                '[fetchProject] Error parsing documents_received_list:',
+                err
               );
               setDocumentsReceived([]);
             }
           } else {
-            console.log("[fetchProject] No documents_received_list found");
+            console.log('[fetchProject] No documents_received_list found');
             setDocumentsReceived([]);
           }
 
@@ -1457,7 +1457,7 @@ export default function EditProjectForm() {
           if (project.project_query_log_list) {
             try {
               const parsed =
-                typeof project.project_query_log_list === "string"
+                typeof project.project_query_log_list === 'string'
                   ? JSON.parse(project.project_query_log_list)
                   : project.project_query_log_list;
               setQueryLog(Array.isArray(parsed) ? parsed : []);
@@ -1472,7 +1472,7 @@ export default function EditProjectForm() {
           if (project.project_assumption_list) {
             try {
               const parsed =
-                typeof project.project_assumption_list === "string"
+                typeof project.project_assumption_list === 'string'
                   ? JSON.parse(project.project_assumption_list)
                   : project.project_assumption_list;
               setAssumptions(Array.isArray(parsed) ? parsed : []);
@@ -1487,7 +1487,7 @@ export default function EditProjectForm() {
           if (project.project_lessons_learnt_list) {
             try {
               const parsed =
-                typeof project.project_lessons_learnt_list === "string"
+                typeof project.project_lessons_learnt_list === 'string'
                   ? JSON.parse(project.project_lessons_learnt_list)
                   : project.project_lessons_learnt_list;
               setLessonsLearnt(Array.isArray(parsed) ? parsed : []);
@@ -1502,7 +1502,7 @@ export default function EditProjectForm() {
           if (project.documents_issued_list) {
             try {
               const parsed =
-                typeof project.documents_issued_list === "string"
+                typeof project.documents_issued_list === 'string'
                   ? JSON.parse(project.documents_issued_list)
                   : project.documents_issued_list;
               setDocumentsIssued(Array.isArray(parsed) ? parsed : []);
@@ -1517,7 +1517,7 @@ export default function EditProjectForm() {
           if (project.project_handover_list) {
             try {
               const parsed =
-                typeof project.project_handover_list === "string"
+                typeof project.project_handover_list === 'string'
                   ? JSON.parse(project.project_handover_list)
                   : project.project_handover_list;
               setProjectHandover(Array.isArray(parsed) ? parsed : []);
@@ -1532,13 +1532,13 @@ export default function EditProjectForm() {
           if (project.project_manhours_list) {
             try {
               const parsed =
-                typeof project.project_manhours_list === "string"
+                typeof project.project_manhours_list === 'string'
                   ? JSON.parse(project.project_manhours_list)
                   : project.project_manhours_list;
 
               if (Array.isArray(parsed) && parsed.length > 0) {
                 // Check if it's the new format (has 'month' and 'entries' keys)
-                const isNewFormat = parsed[0] && "entries" in parsed[0];
+                const isNewFormat = parsed[0] && 'entries' in parsed[0];
 
                 if (isNewFormat) {
                   // Already in new format
@@ -1547,7 +1547,7 @@ export default function EditProjectForm() {
                   // Old format - migrate to new format by grouping by month
                   const groupedByMonth = {};
                   parsed.forEach((row) => {
-                    const month = row.month || "unknown";
+                    const month = row.month || 'unknown';
                     if (!groupedByMonth[month]) {
                       groupedByMonth[month] = {
                         id: Date.now() + Math.random(),
@@ -1559,9 +1559,9 @@ export default function EditProjectForm() {
                     groupedByMonth[month].entries.push({
                       id: row.id || Date.now() + Math.random(),
                       employee_id: null, // Old format didn't have this
-                      employee_name: row.name_of_engineer_designer || "",
+                      employee_name: row.name_of_engineer_designer || '',
                       rate: 0, // Old format didn't track rate
-                      salary_type: "monthly",
+                      salary_type: 'monthly',
                       // Sum all hour categories from old format
                       hours:
                         (parseFloat(row.engineering) || 0) +
@@ -1601,12 +1601,12 @@ export default function EditProjectForm() {
           if (project.project_schedule_list) {
             try {
               const parsed =
-                typeof project.project_schedule_list === "string"
+                typeof project.project_schedule_list === 'string'
                   ? JSON.parse(project.project_schedule_list)
                   : project.project_schedule_list;
               if (
                 parsed &&
-                typeof parsed === "object" &&
+                typeof parsed === 'object' &&
                 !Array.isArray(parsed) &&
                 Array.isArray(parsed.rows)
               ) {
@@ -1615,7 +1615,7 @@ export default function EditProjectForm() {
               } else {
                 setScheduleLocked(false);
                 setProjectSchedule(
-                  normalizeScheduleRows(Array.isArray(parsed) ? parsed : []),
+                  normalizeScheduleRows(Array.isArray(parsed) ? parsed : [])
                 );
               }
             } catch {
@@ -1631,7 +1631,7 @@ export default function EditProjectForm() {
           if (project.software_items) {
             try {
               const parsed =
-                typeof project.software_items === "string"
+                typeof project.software_items === 'string'
                   ? JSON.parse(project.software_items)
                   : project.software_items;
               setSoftwareItems(Array.isArray(parsed) ? parsed : []);
@@ -1646,7 +1646,7 @@ export default function EditProjectForm() {
           if (project.internal_meetings_list) {
             try {
               const parsed =
-                typeof project.internal_meetings_list === "string"
+                typeof project.internal_meetings_list === 'string'
                   ? JSON.parse(project.internal_meetings_list)
                   : project.internal_meetings_list;
               setInternalMeetings(Array.isArray(parsed) ? parsed : []);
@@ -1662,17 +1662,17 @@ export default function EditProjectForm() {
             setInternalMeetings([
               {
                 id: Date.now(),
-                meeting_no: project.internal_meeting_no || "",
-                client_name: project.internal_meeting_client_name || "",
-                meeting_date: project.internal_meeting_date || "",
-                organizer: project.internal_meeting_organizer || "",
-                minutes_drafted: project.internal_minutes_drafted || "",
-                meeting_location: project.internal_meeting_location || "",
+                meeting_no: project.internal_meeting_no || '',
+                client_name: project.internal_meeting_client_name || '',
+                meeting_date: project.internal_meeting_date || '',
+                organizer: project.internal_meeting_organizer || '',
+                minutes_drafted: project.internal_minutes_drafted || '',
+                meeting_location: project.internal_meeting_location || '',
                 client_representative:
-                  project.internal_client_representative || "",
-                meeting_title: project.internal_meeting_title || "",
-                points_discussed: project.internal_points_discussed || "",
-                persons_involved: project.internal_persons_involved || "",
+                  project.internal_client_representative || '',
+                meeting_title: project.internal_meeting_title || '',
+                points_discussed: project.internal_points_discussed || '',
+                persons_involved: project.internal_persons_involved || '',
               },
             ]);
           } else {
@@ -1683,7 +1683,7 @@ export default function EditProjectForm() {
           if (project.kickoff_meetings_list) {
             try {
               const parsed =
-                typeof project.kickoff_meetings_list === "string"
+                typeof project.kickoff_meetings_list === 'string'
                   ? JSON.parse(project.kickoff_meetings_list)
                   : project.kickoff_meetings_list;
               setKickoffMeetings(Array.isArray(parsed) ? parsed : []);
@@ -1699,28 +1699,28 @@ export default function EditProjectForm() {
             setKickoffMeetings([
               {
                 id: Date.now(),
-                meeting_no: project.kickoff_meeting_no || "",
-                client_name: project.kickoff_client_name || "",
-                meeting_date: project.kickoff_meeting_date || "",
-                organizer: project.kickoff_meeting_organizer || "",
-                minutes_drafted: project.kickoff_minutes_drafted || "",
-                meeting_location: project.kickoff_meeting_location || "",
+                meeting_no: project.kickoff_meeting_no || '',
+                client_name: project.kickoff_client_name || '',
+                meeting_date: project.kickoff_meeting_date || '',
+                organizer: project.kickoff_meeting_organizer || '',
+                minutes_drafted: project.kickoff_minutes_drafted || '',
+                meeting_location: project.kickoff_meeting_location || '',
                 client_representative:
-                  project.kickoff_client_representative || "",
-                meeting_title: project.kickoff_meeting_title || "",
-                points_discussed: project.kickoff_points_discussed || "",
-                persons_involved: project.kickoff_persons_involved || "",
+                  project.kickoff_client_representative || '',
+                meeting_title: project.kickoff_meeting_title || '',
+                points_discussed: project.kickoff_points_discussed || '',
+                persons_involved: project.kickoff_persons_involved || '',
               },
             ]);
           } else {
             setKickoffMeetings([]);
           }
         } else {
-          setError(result.error || "Failed to load project");
+          setError(result.error || 'Failed to load project');
         }
       } catch (error) {
-        console.error("Failed to fetch project", error);
-        setError(error?.message || "Unable to load project");
+        console.error('Failed to fetch project', error);
+        setError(error?.message || 'Unable to load project');
       } finally {
         setLoading(false);
       }
@@ -1736,7 +1736,7 @@ export default function EditProjectForm() {
   // Function to fetch attendance hours for an employee for a given year
   const fetchAttendanceHours = async (
     employeeId,
-    year = new Date().getFullYear(),
+    year = new Date().getFullYear()
   ) => {
     // Check cache first
     const cacheKey = `${employeeId}_${year}`;
@@ -1746,7 +1746,7 @@ export default function EditProjectForm() {
 
     try {
       const res = await fetch(
-        `/api/attendance?employee_id=${employeeId}&year=${year}`,
+        `/api/attendance?employee_id=${employeeId}&year=${year}`
       );
       const json = await res.json();
 
@@ -1766,40 +1766,40 @@ export default function EditProjectForm() {
           dec: 0,
         };
         const monthMap = {
-          "01": "jan",
-          "02": "feb",
-          "03": "mar",
-          "04": "apr",
-          "05": "may",
-          "06": "jun",
-          "07": "jul",
-          "08": "aug",
-          "09": "sep",
-          10: "oct",
-          11: "nov",
-          12: "dec",
+          '01': 'jan',
+          '02': 'feb',
+          '03': 'mar',
+          '04': 'apr',
+          '05': 'may',
+          '06': 'jun',
+          '07': 'jul',
+          '08': 'aug',
+          '09': 'sep',
+          10: 'oct',
+          11: 'nov',
+          12: 'dec',
         };
 
         json.records.forEach((record) => {
           if (
-            record.status === "P" ||
-            record.status === "HD" ||
-            record.status === "OT"
+            record.status === 'P' ||
+            record.status === 'HD' ||
+            record.status === 'OT'
           ) {
             const date = new Date(record.attendance_date);
             const monthKey =
-              monthMap[String(date.getMonth() + 1).padStart(2, "0")];
+              monthMap[String(date.getMonth() + 1).padStart(2, '0')];
 
             // Calculate hours from in_time and out_time
             let hours = 8; // Default 8 hours if no time data
             if (record.in_time && record.out_time) {
-              const [inH, inM] = record.in_time.split(":").map(Number);
-              const [outH, outM] = record.out_time.split(":").map(Number);
+              const [inH, inM] = record.in_time.split(':').map(Number);
+              const [outH, outM] = record.out_time.split(':').map(Number);
               const inDecimal = inH + inM / 60;
               const outDecimal = outH + outM / 60;
               if (outDecimal > inDecimal) {
                 hours = outDecimal - inDecimal;
-                if (record.status === "HD") hours = hours / 2; // Half day
+                if (record.status === 'HD') hours = hours / 2; // Half day
               }
             }
 
@@ -1820,7 +1820,7 @@ export default function EditProjectForm() {
         return monthlyHours;
       }
     } catch (error) {
-      console.error("Failed to fetch attendance hours:", error);
+      console.error('Failed to fetch attendance hours:', error);
     }
     return null;
   };
@@ -1830,14 +1830,14 @@ export default function EditProjectForm() {
       setEmployeesLoading(true);
       try {
         // Fetch employees list from employee master
-        const empRes = await fetch("/api/employee-master/list?limit=2000");
+        const empRes = await fetch('/api/employee-master/list?limit=2000');
         if (!empRes.ok) {
           throw new Error(`HTTP ${empRes.status}: ${empRes.statusText}`);
         }
         const empJson = await empRes.json();
 
-        if (!empJson || typeof empJson !== "object") {
-          console.error("Invalid response format:", empJson);
+        if (!empJson || typeof empJson !== 'object') {
+          console.error('Invalid response format:', empJson);
           setEmployeesWithRates([]);
           setEmployeesLoading(false);
           return;
@@ -1849,14 +1849,14 @@ export default function EditProjectForm() {
             id: emp.id,
             name:
               emp.full_name ||
-              `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
+              `${emp.first_name || ''} ${emp.last_name || ''}`.trim() ||
               emp.email ||
               `Employee ${emp.id}`,
             employee_id: emp.employee_id,
             department: emp.department,
             workplace: emp.workplace,
             rate: 0,
-            salary_type: "monthly",
+            salary_type: 'monthly',
           }));
           setEmployeesWithRates(basicEmployeesData);
           setEmployeesLoading(false);
@@ -1872,23 +1872,23 @@ export default function EditProjectForm() {
               batch.map(async (emp, batchIndex) => {
                 try {
                   const salaryRes = await fetch(
-                    `/api/payroll/salary-profile?employee_id=${emp.id}`,
+                    `/api/payroll/salary-profile?employee_id=${emp.id}`
                   );
                   const salaryJson = await salaryRes.json();
 
                   const latestProfile = salaryJson?.data?.[0] || null;
 
                   let rate = 0;
-                  let salaryType = "monthly";
+                  let salaryType = 'monthly';
 
                   if (latestProfile) {
-                    salaryType = latestProfile.salary_type || "monthly";
+                    salaryType = latestProfile.salary_type || 'monthly';
 
-                    if (salaryType === "hourly") {
+                    if (salaryType === 'hourly') {
                       rate = parseFloat(latestProfile.hourly_rate) || 0;
-                    } else if (salaryType === "daily") {
+                    } else if (salaryType === 'daily') {
                       rate = parseFloat(latestProfile.daily_rate) || 0;
-                    } else if (salaryType === "custom") {
+                    } else if (salaryType === 'custom') {
                       try {
                         const customData = latestProfile.lumpsum_description
                           ? JSON.parse(latestProfile.lumpsum_description)
@@ -1912,11 +1912,11 @@ export default function EditProjectForm() {
                       rate =
                         grossSalary > 0
                           ? parseFloat(
-                            (
-                              grossSalary /
-                              (stdWorkingDays * stdHoursPerDay)
-                            ).toFixed(2),
-                          )
+                              (
+                                grossSalary /
+                                (stdWorkingDays * stdHoursPerDay)
+                              ).toFixed(2)
+                            )
                           : 0;
                     }
                   }
@@ -1930,10 +1930,10 @@ export default function EditProjectForm() {
                 } catch (err) {
                   console.error(
                     `Failed to fetch salary for employee ${emp.id}:`,
-                    err,
+                    err
                   );
                 }
-              }),
+              })
             );
 
             // Update state after each batch
@@ -1941,14 +1941,14 @@ export default function EditProjectForm() {
           }
         } else {
           console.error(
-            "Failed to fetch employees - invalid response structure:",
-            empJson,
+            'Failed to fetch employees - invalid response structure:',
+            empJson
           );
           setEmployeesWithRates([]);
           setEmployeesLoading(false);
         }
       } catch (error) {
-        console.error("Failed to fetch employees with rates:", error);
+        console.error('Failed to fetch employees with rates:', error);
         setEmployeesLoading(false);
       }
     };
@@ -1961,14 +1961,14 @@ export default function EditProjectForm() {
     if (form.project_team) {
       try {
         const teamData =
-          typeof form.project_team === "string"
+          typeof form.project_team === 'string'
             ? JSON.parse(form.project_team)
             : form.project_team;
         if (Array.isArray(teamData)) {
           setProjectTeamMembers(teamData);
         }
       } catch (error) {
-        console.error("Failed to parse project_team:", error);
+        console.error('Failed to parse project_team:', error);
       }
     }
   }, [form.project_team]);
@@ -1978,7 +1978,7 @@ export default function EditProjectForm() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    console.log("[handleChange]", name, "=", value);
+    console.log('[handleChange]', name, '=', value);
     setForm({ ...form, [name]: value });
   };
 
@@ -1990,7 +1990,7 @@ export default function EditProjectForm() {
       const updated = { ...prev, [name]: value };
 
       // Auto-calculate GST and net amount when gross amount changes
-      if (name === "gross_amount") {
+      if (name === 'gross_amount') {
         const gross = parseFloat(value) || 0;
         const gstRate = parseFloat(prev.gst_percentage) || 18;
         const gstAmount = (gross * gstRate) / 100;
@@ -1999,7 +1999,7 @@ export default function EditProjectForm() {
       }
 
       // Recalculate if GST percentage changes
-      if (name === "gst_percentage") {
+      if (name === 'gst_percentage') {
         const gross = parseFloat(prev.gross_amount) || 0;
         const gstRate = parseFloat(value) || 18;
         const gstAmount = (gross * gstRate) / 100;
@@ -2015,19 +2015,19 @@ export default function EditProjectForm() {
     setQuotationSaving(true);
     try {
       const res = await fetch(`/api/projects/${id}/quotation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quotationData),
       });
       const json = await res.json();
       if (json?.success) {
-        alert("Quotation saved successfully!");
+        alert('Quotation saved successfully!');
       } else {
-        alert("Failed to save quotation: " + (json?.error || "Unknown error"));
+        alert('Failed to save quotation: ' + (json?.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error("Error saving quotation:", error);
-      alert("Error saving quotation");
+      console.error('Error saving quotation:', error);
+      alert('Error saving quotation');
     } finally {
       setQuotationSaving(false);
     }
@@ -2036,7 +2036,7 @@ export default function EditProjectForm() {
   // Fetch latest quotation number from admin quotation page (by project or proposal linkage)
   const syncQuotationFromAdmin = useCallback(async () => {
     // Try to fetch by proposal_id if available, else by project id
-    let url = "";
+    let url = '';
     if (form.proposal_id) {
       url = `/api/admin/quotations/${form.proposal_id}?source=proposal`;
     } else if (id) {
@@ -2054,7 +2054,7 @@ export default function EditProjectForm() {
         if (q.scope_items) {
           try {
             scopeItems =
-              typeof q.scope_items === "string"
+              typeof q.scope_items === 'string'
                 ? JSON.parse(q.scope_items)
                 : q.scope_items;
           } catch (e) {
@@ -2062,30 +2062,30 @@ export default function EditProjectForm() {
           }
         }
         setQuotationData({
-          quotation_number: q.quotation_number || "",
+          quotation_number: q.quotation_number || '',
           quotation_date: q.quotation_date
-            ? q.quotation_date.split("T")[0]
-            : "",
-          client_name: q.client_name || "",
-          enquiry_number: q.enquiry_number || "",
-          enquiry_quantity: scopeItems?.[0]?.qty || "",
-          scope_of_work: q.annexure_scope_of_work || q.scope_of_work || "",
-          gross_amount: q.gross_amount || "",
+            ? q.quotation_date.split('T')[0]
+            : '',
+          client_name: q.client_name || '',
+          enquiry_number: q.enquiry_number || '',
+          enquiry_quantity: scopeItems?.[0]?.qty || '',
+          scope_of_work: q.annexure_scope_of_work || q.scope_of_work || '',
+          gross_amount: q.gross_amount || '',
           gst_percentage: q.gst_percentage || 18,
-          gst_amount: q.gst_amount || "",
-          net_amount: q.net_amount || "",
-          amount_in_words: q.amount_in_words || "",
+          gst_amount: q.gst_amount || '',
+          net_amount: q.net_amount || '',
+          amount_in_words: q.amount_in_words || '',
           scope_items: scopeItems,
         });
       }
     } catch (err) {
-      console.warn("Failed to fetch admin quotation data:", err);
+      console.warn('Failed to fetch admin quotation data:', err);
     }
   }, [form.proposal_id, id]);
 
   // Auto-sync when switching to quotation tab (after project data is loaded)
   useEffect(() => {
-    if (activeTab === "quotation" && !loading && id) {
+    if (activeTab === 'quotation' && !loading && id) {
       syncQuotationFromAdmin();
     }
   }, [activeTab, loading, id, syncQuotationFromAdmin]);
@@ -2098,7 +2098,7 @@ export default function EditProjectForm() {
       const updated = { ...prev, [name]: value };
 
       // Auto-calculate GST and net amount when gross amount changes
-      if (name === "gross_amount") {
+      if (name === 'gross_amount') {
         const gross = parseFloat(value) || 0;
         const gstRate = parseFloat(prev.gst_percentage) || 18;
         const gstAmount = (gross * gstRate) / 100;
@@ -2107,7 +2107,7 @@ export default function EditProjectForm() {
       }
 
       // Recalculate if GST percentage changes
-      if (name === "gst_percentage") {
+      if (name === 'gst_percentage') {
         const gross = parseFloat(prev.gross_amount) || 0;
         const gstRate = parseFloat(value) || 18;
         const gstAmount = (gross * gstRate) / 100;
@@ -2123,12 +2123,12 @@ export default function EditProjectForm() {
   const handleVendorSelect = (e) => {
     if (!canEditPurchaseOrders) return;
     const vendorId = e.target.value;
-    if (vendorId === "") {
+    if (vendorId === '') {
       setSelectedVendor(null);
       setPurchaseOrderData((prev) => ({
         ...prev,
-        vendor_name: "",
-        vendor_id: "",
+        vendor_name: '',
+        vendor_id: '',
       }));
       return;
     }
@@ -2137,7 +2137,7 @@ export default function EditProjectForm() {
     if (vendor) {
       setPurchaseOrderData((prev) => ({
         ...prev,
-        vendor_name: vendor.vendor_name || "",
+        vendor_name: vendor.vendor_name || '',
         vendor_id: vendor.id,
       }));
     }
@@ -2146,7 +2146,7 @@ export default function EditProjectForm() {
   const savePurchaseOrder = async () => {
     // Validate vendor selection
     if (!selectedVendor && !purchaseOrderData.vendor_name) {
-      alert("Please select a vendor from the dropdown");
+      alert('Please select a vendor from the dropdown');
       return;
     }
 
@@ -2154,8 +2154,8 @@ export default function EditProjectForm() {
     try {
       // Save to project-specific purchase order
       const res = await fetch(`/api/projects/${id}/purchase-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(purchaseOrderData),
       });
       const json = await res.json();
@@ -2164,25 +2164,25 @@ export default function EditProjectForm() {
         // Also save to main purchase orders table for display on Purchase Order page
         const vendorAddress = selectedVendor
           ? [
-            selectedVendor.address_street,
-            selectedVendor.address_city,
-            selectedVendor.address_state,
-            selectedVendor.address_country,
-            selectedVendor.address_pin,
-          ]
-            .filter(Boolean)
-            .join(", ")
-          : "";
+              selectedVendor.address_street,
+              selectedVendor.address_city,
+              selectedVendor.address_state,
+              selectedVendor.address_country,
+              selectedVendor.address_pin,
+            ]
+              .filter(Boolean)
+              .join(', ')
+          : '';
 
-        const mainPORes = await fetch("/api/admin/purchase-orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const mainPORes = await fetch('/api/admin/purchase-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             po_number: purchaseOrderData.po_number,
             vendor_name:
               purchaseOrderData.vendor_name || selectedVendor?.vendor_name,
-            vendor_email: selectedVendor?.email || "",
-            vendor_phone: selectedVendor?.phone || "",
+            vendor_email: selectedVendor?.email || '',
+            vendor_phone: selectedVendor?.phone || '',
             vendor_address: vendorAddress,
             description: purchaseOrderData.scope_of_work,
             items: [],
@@ -2194,7 +2194,7 @@ export default function EditProjectForm() {
             notes: purchaseOrderData.remarks,
             terms: purchaseOrderData.payment_terms,
             delivery_date: purchaseOrderData.delivery_date || null,
-            status: "pending",
+            status: 'pending',
             project_id: id,
           }),
         });
@@ -2202,22 +2202,22 @@ export default function EditProjectForm() {
         const mainPOJson = await mainPORes.json();
 
         if (mainPOJson?.success) {
-          alert("Purchase Order saved successfully!");
+          alert('Purchase Order saved successfully!');
         } else {
           // Project PO saved but main PO failed - still consider partial success
           alert(
-            "Purchase Order saved to project. Note: " +
-            (mainPOJson?.message || "Could not sync to main PO list"),
+            'Purchase Order saved to project. Note: ' +
+              (mainPOJson?.message || 'Could not sync to main PO list')
           );
         }
       } else {
         alert(
-          "Failed to save purchase order: " + (json?.error || "Unknown error"),
+          'Failed to save purchase order: ' + (json?.error || 'Unknown error')
         );
       }
     } catch (error) {
-      console.error("Error saving purchase order:", error);
-      alert("Error saving purchase order");
+      console.error('Error saving purchase order:', error);
+      alert('Error saving purchase order');
     } finally {
       setPurchaseOrderSaving(false);
     }
@@ -2231,7 +2231,7 @@ export default function EditProjectForm() {
         const vendor = vendors.find(
           (v) =>
             v.id === prev.vendor_id ||
-            v.id.toString() === prev.vendor_id.toString(),
+            v.id.toString() === prev.vendor_id.toString()
         );
         if (vendor) {
           setSelectedVendor(vendor);
@@ -2239,27 +2239,27 @@ export default function EditProjectForm() {
       }
       return {
         ...prev,
-        po_number: prev.po_number || `PO-${String(id).padStart(5, "0")}`,
-        po_date: prev.po_date || new Date().toISOString().split("T")[0],
-        client_name: form.client_name || "",
+        po_number: prev.po_number || `PO-${String(id).padStart(5, '0')}`,
+        po_date: prev.po_date || new Date().toISOString().split('T')[0],
+        client_name: form.client_name || '',
       };
     });
   }, [form.client_name, id, vendors]);
 
   // Auto-sync when switching to purchase order tab (after project data is loaded)
   useEffect(() => {
-    if (activeTab === "purchase_order" && !loading && id) {
+    if (activeTab === 'purchase_order' && !loading && id) {
       syncPurchaseOrderFromProject();
     }
   }, [activeTab, loading, id, syncPurchaseOrderFromProject]);
 
   // Sync incoming PO data with project details
   useEffect(() => {
-    if (activeTab === "purchase_order" && form.client_name) {
+    if (activeTab === 'purchase_order' && form.client_name) {
       setIncomingPOData((prev) => ({
         ...prev,
         company_name: form.client_name,
-        city: form.project_location_city || "",
+        city: form.project_location_city || '',
       }));
     }
   }, [activeTab, form.client_name, form.project_location_city]);
@@ -2267,14 +2267,14 @@ export default function EditProjectForm() {
   // Sync invoice data with project details (company name and city) for both invoice and purchase_order tabs
   useEffect(() => {
     if (
-      (activeTab === "invoice" || activeTab === "purchase_order") &&
+      (activeTab === 'invoice' || activeTab === 'purchase_order') &&
       form.client_name
     ) {
       setInvoiceData((prev) => ({
         ...prev,
         company_name: form.client_name,
-        city: form.project_location_city || "",
-        project_number: form.project_id || "",
+        city: form.project_location_city || '',
+        project_number: form.project_id || '',
       }));
     }
   }, [
@@ -2293,19 +2293,19 @@ export default function EditProjectForm() {
 
   const handleAddIncomingPO = async () => {
     if (!incomingPOData.company_name) {
-      alert("Please ensure company name from project details is set");
+      alert('Please ensure company name from project details is set');
       return;
     }
     if (!incomingPOData.po_number) {
-      alert("Please enter PO number");
+      alert('Please enter PO number');
       return;
     }
 
     setPurchaseOrderSaving(true);
     try {
       const res = await fetch(`/api/projects/${id}/incoming-po`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...incomingPOData,
           project_id: id,
@@ -2316,13 +2316,13 @@ export default function EditProjectForm() {
       if (!res.ok) {
         if (res.status === 404) {
           console.warn(
-            "Incoming PO API endpoint not yet implemented. Feature will be available once backend is updated.",
+            'Incoming PO API endpoint not yet implemented. Feature will be available once backend is updated.'
           );
           alert(
-            "Incoming PO feature is not yet available. Please try again later.",
+            'Incoming PO feature is not yet available. Please try again later.'
           );
         } else {
-          alert("Failed to add incoming PO: Server error");
+          alert('Failed to add incoming PO: Server error');
         }
         return;
       }
@@ -2334,42 +2334,42 @@ export default function EditProjectForm() {
         // Reset form but keep company_name and city from project
         setIncomingPOData({
           company_name: form.client_name,
-          city: form.project_location_city || "",
-          po_number: "",
-          po_date: new Date().toISOString().split("T")[0],
-          po_amount: "",
-          project_number: form.project_id || "",
-          expenses_head: "",
-          remarks: "",
+          city: form.project_location_city || '',
+          po_number: '',
+          po_date: new Date().toISOString().split('T')[0],
+          po_amount: '',
+          project_number: form.project_id || '',
+          expenses_head: '',
+          remarks: '',
         });
-        alert("Incoming PO added successfully!");
+        alert('Incoming PO added successfully!');
       } else {
-        alert("Failed to add incoming PO: " + (json?.error || "Unknown error"));
+        alert('Failed to add incoming PO: ' + (json?.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error("Error adding incoming PO:", error);
-      alert("Error adding incoming PO");
+      console.error('Error adding incoming PO:', error);
+      alert('Error adding incoming PO');
     } finally {
       setPurchaseOrderSaving(false);
     }
   };
 
   const handleDeleteIncomingPO = async (poId) => {
-    if (!confirm("Are you sure you want to delete this incoming PO?")) return;
+    if (!confirm('Are you sure you want to delete this incoming PO?')) return;
 
     try {
       const res = await fetch(`/api/projects/${id}/incoming-po/${poId}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
       });
 
       // Handle 404 or other errors gracefully
       if (!res.ok) {
         if (res.status === 404) {
-          console.warn("Incoming PO API endpoint not yet implemented");
-          alert("Incoming PO feature is not yet available");
+          console.warn('Incoming PO API endpoint not yet implemented');
+          alert('Incoming PO feature is not yet available');
         } else {
-          alert("Failed to delete incoming PO: Server error");
+          alert('Failed to delete incoming PO: Server error');
         }
         return;
       }
@@ -2379,11 +2379,11 @@ export default function EditProjectForm() {
         await fetchIncomingPOs();
       } else {
         alert(
-          "Failed to delete incoming PO: " + (json?.error || "Unknown error"),
+          'Failed to delete incoming PO: ' + (json?.error || 'Unknown error')
         );
       }
     } catch (error) {
-      console.warn("Error deleting incoming PO:", error);
+      console.warn('Error deleting incoming PO:', error);
       // Silently fail as API might not be implemented yet
     }
   };
@@ -2395,7 +2395,7 @@ export default function EditProjectForm() {
       // If endpoint doesn't exist (404 or other error), silently fail
       if (!res.ok) {
         console.warn(
-          `Incoming POs API returned ${res.status}, using empty list`,
+          `Incoming POs API returned ${res.status}, using empty list`
         );
         setIncomingPOs([]);
         return;
@@ -2409,8 +2409,8 @@ export default function EditProjectForm() {
       }
     } catch (error) {
       console.warn(
-        "Incoming POs API not yet available, using empty list:",
-        error,
+        'Incoming POs API not yet available, using empty list:',
+        error
       );
       setIncomingPOs([]);
     }
@@ -2418,7 +2418,7 @@ export default function EditProjectForm() {
 
   // Auto-fetch incoming POs when switching to purchase_order tab
   useEffect(() => {
-    if (activeTab === "purchase_order" && !loading && id) {
+    if (activeTab === 'purchase_order' && !loading && id) {
       fetchIncomingPOs();
     }
   }, [activeTab, loading, id, fetchIncomingPOs]);
@@ -2435,7 +2435,7 @@ export default function EditProjectForm() {
 
   const handleAddInvoice = async () => {
     if (!invoiceData.invoice_number) {
-      alert("Please enter an invoice number");
+      alert('Please enter an invoice number');
       return;
     }
 
@@ -2444,10 +2444,10 @@ export default function EditProjectForm() {
       const isEditing = !!editingInvoiceId;
       const payload = { ...invoiceData, tab_type: activeTab };
       const res = await fetch(`/api/projects/${id}/invoice`, {
-        method: isEditing ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
+        method: isEditing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          isEditing ? { ...payload, invoiceId: editingInvoiceId } : payload,
+          isEditing ? { ...payload, invoiceId: editingInvoiceId } : payload
         ),
       });
       const json = await res.json();
@@ -2458,111 +2458,111 @@ export default function EditProjectForm() {
         setEditingInvoiceId(null);
         setInvoiceData((prev) => ({
           ...prev,
-          invoice_number: "",
-          invoice_date: new Date().toISOString().split("T")[0],
-          company_name: form.client_name || "",
-          city: form.project_location_city || "",
-          project_number: form.project_id || "",
-          invoice_amount: "",
-          purchase_description: "",
-          expenses_head: "",
+          invoice_number: '',
+          invoice_date: new Date().toISOString().split('T')[0],
+          company_name: form.client_name || '',
+          city: form.project_location_city || '',
+          project_number: form.project_id || '',
+          invoice_amount: '',
+          purchase_description: '',
+          expenses_head: '',
 
-          payment: "",
-          payment_overdue_days: "",
-          remarks: "",
+          payment: '',
+          payment_overdue_days: '',
+          remarks: '',
         }));
       } else {
         alert(
           (isEditing
-            ? "Failed to update invoice: "
-            : "Failed to add invoice: ") + (json?.error || "Unknown error"),
+            ? 'Failed to update invoice: '
+            : 'Failed to add invoice: ') + (json?.error || 'Unknown error')
         );
       }
     } catch (error) {
-      console.error("Error saving invoice:", error);
-      alert("Error saving invoice");
+      console.error('Error saving invoice:', error);
+      alert('Error saving invoice');
     } finally {
       setInvoiceSaving(false);
     }
   };
 
   const handleDeleteInvoice = async (invoiceId) => {
-    if (!confirm("Are you sure you want to delete this invoice?")) return;
+    if (!confirm('Are you sure you want to delete this invoice?')) return;
 
     try {
       const res = await fetch(
         `/api/projects/${id}/invoice?invoiceId=${invoiceId}`,
         {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-        },
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        }
       );
       const json = await res.json();
       if (json?.success) {
         await fetchInvoices();
       } else {
-        alert("Failed to delete invoice: " + (json?.error || "Unknown error"));
+        alert('Failed to delete invoice: ' + (json?.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error("Error deleting invoice:", error);
-      alert("Error deleting invoice");
+      console.error('Error deleting invoice:', error);
+      alert('Error deleting invoice');
     }
   };
 
   const handleEditInvoice = (inv) => {
     setEditingInvoiceId(inv.id);
     setInvoiceData({
-      invoice_number: inv.invoice_number || "",
+      invoice_number: inv.invoice_number || '',
       invoice_date: inv.invoice_date
-        ? String(inv.invoice_date).split("T")[0]
-        : "",
-      company_name: inv.company_name || "",
-      city: inv.city || "",
-      invoice_amount: inv.invoice_amount || "",
-      purchase_description: inv.purchase_description || "",
-      project_number: inv.project_number || "",
-      expenses_head: inv.expenses_head || "",
-      payment: inv.payment || "",
-      payment_overdue_days: inv.payment_overdue_days || "",
-      remarks: inv.remarks || "",
+        ? String(inv.invoice_date).split('T')[0]
+        : '',
+      company_name: inv.company_name || '',
+      city: inv.city || '',
+      invoice_amount: inv.invoice_amount || '',
+      purchase_description: inv.purchase_description || '',
+      project_number: inv.project_number || '',
+      expenses_head: inv.expenses_head || '',
+      payment: inv.payment || '',
+      payment_overdue_days: inv.payment_overdue_days || '',
+      remarks: inv.remarks || '',
     });
     // Scroll to the form
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const saveInvoice = async () => {
     setInvoiceSaving(true);
     try {
       const res = await fetch(`/api/projects/${id}/invoice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(invoiceData),
       });
       const json = await res.json();
       if (json?.success) {
-        alert("Invoice saved successfully!");
+        alert('Invoice saved successfully!');
         // Refresh invoices list - this will also update nextInvoiceNumber
         await fetchInvoices();
         // Reset form for new invoice
         setInvoiceData((prev) => ({
           ...prev,
-          invoice_number: "",
-          invoice_date: new Date().toISOString().split("T")[0],
-          company_name: form.client_name || "",
-          city: form.project_location_city || "",
-          invoice_amount: "",
-          purchase_description: "",
-          project_number: form.project_id || "",
-          expenses_head: "",
-          payment_overdue_days: "",
-          remarks: "",
+          invoice_number: '',
+          invoice_date: new Date().toISOString().split('T')[0],
+          company_name: form.client_name || '',
+          city: form.project_location_city || '',
+          invoice_amount: '',
+          purchase_description: '',
+          project_number: form.project_id || '',
+          expenses_head: '',
+          payment_overdue_days: '',
+          remarks: '',
         }));
       } else {
-        alert("Failed to save invoice: " + (json?.error || "Unknown error"));
+        alert('Failed to save invoice: ' + (json?.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error("Error saving invoice:", error);
-      alert("Error saving invoice");
+      console.error('Error saving invoice:', error);
+      alert('Error saving invoice');
     } finally {
       setInvoiceSaving(false);
     }
@@ -2579,7 +2579,7 @@ export default function EditProjectForm() {
         }
       }
     } catch (error) {
-      console.error("Error fetching invoices:", error);
+      console.error('Error fetching invoices:', error);
     }
   }, [id]);
 
@@ -2588,16 +2588,16 @@ export default function EditProjectForm() {
     setInvoiceData((prev) => ({
       ...prev,
       // Only sync the project-level data; other fields come from user input
-      company_name: prev.company_name || form.client_name || "",
-      city: prev.city || form.project_location_city || "",
-      project_number: prev.project_number || form.project_id || "",
+      company_name: prev.company_name || form.client_name || '',
+      city: prev.city || form.project_location_city || '',
+      project_number: prev.project_number || form.project_id || '',
     }));
   }, [form.client_name, form.project_location_city, form.project_id]);
 
   // Auto-sync when switching to invoice or purchase_order tab
   useEffect(() => {
     if (
-      (activeTab === "invoice" || activeTab === "purchase_order") &&
+      (activeTab === 'invoice' || activeTab === 'purchase_order') &&
       !loading &&
       id
     ) {
@@ -2610,7 +2610,7 @@ export default function EditProjectForm() {
 
   // Recalculate balance when invoices change
   useEffect(() => {
-    if (activeTab === "invoice") {
+    if (activeTab === 'invoice') {
       syncInvoiceFromProject();
     }
   }, [invoices, activeTab, syncInvoiceFromProject]);
@@ -2618,7 +2618,7 @@ export default function EditProjectForm() {
   // Apply next invoice number as soon as it's available and field is empty
   useEffect(() => {
     if (
-      activeTab === "invoice" &&
+      activeTab === 'invoice' &&
       nextInvoiceNumber &&
       !invoiceData.invoice_number
     ) {
@@ -2637,34 +2637,34 @@ export default function EditProjectForm() {
         sr_no: newInputDocument.sr_no || String(inputDocumentsList.length + 1),
         date_received:
           normalizeDate(newInputDocument.date_received) ||
-          new Date().toISOString().split("T")[0],
+          new Date().toISOString().split('T')[0],
         description: newInputDocument.description.trim(),
-        drawing_number: newInputDocument.drawing_number || "",
-        sheet_number: newInputDocument.sheet_number || "",
-        revision_number: newInputDocument.revision_number || "",
-        unit_qty: newInputDocument.unit_qty || "",
-        document_sent_by: newInputDocument.document_sent_by || "",
-        remarks: newInputDocument.remarks || "",
-        category: newInputDocument.category || "others",
-        lotNumber: newInputDocument.lotNumber || "",
-        subLot: newInputDocument.subLot || "",
+        drawing_number: newInputDocument.drawing_number || '',
+        sheet_number: newInputDocument.sheet_number || '',
+        revision_number: newInputDocument.revision_number || '',
+        unit_qty: newInputDocument.unit_qty || '',
+        document_sent_by: newInputDocument.document_sent_by || '',
+        remarks: newInputDocument.remarks || '',
+        category: newInputDocument.category || 'others',
+        lotNumber: newInputDocument.lotNumber || '',
+        subLot: newInputDocument.subLot || '',
         addedAt: new Date().toISOString(),
       };
       const updated = [...inputDocumentsList, newDoc];
       setInputDocumentsList(updated);
       setNewInputDocument({
-        sr_no: "",
-        date_received: "",
-        description: "",
-        drawing_number: "",
-        sheet_number: "",
-        revision_number: "",
-        unit_qty: "",
-        document_sent_by: "",
-        remarks: "",
-        category: "lot",
-        lotNumber: "",
-        subLot: "",
+        sr_no: '',
+        date_received: '',
+        description: '',
+        drawing_number: '',
+        sheet_number: '',
+        revision_number: '',
+        unit_qty: '',
+        document_sent_by: '',
+        remarks: '',
+        category: 'lot',
+        lotNumber: '',
+        subLot: '',
       });
       // Persist as JSON array
       setForm((prev) => ({ ...prev, input_document: JSON.stringify(updated) }));
@@ -2682,8 +2682,8 @@ export default function EditProjectForm() {
 
   const handleInputDocumentKeyPress = (e) => {
     if (
-      e.key === "Enter" &&
-      (e.target.name === "description" || e.target.name === "drawing_number")
+      e.key === 'Enter' &&
+      (e.target.name === 'description' || e.target.name === 'drawing_number')
     ) {
       e.preventDefault();
       addInputDocument();
@@ -2699,18 +2699,18 @@ export default function EditProjectForm() {
       !selectedSoftware ||
       !selectedSoftwareVersion
     ) {
-      alert("Please select category, software, and version");
+      alert('Please select category, software, and version');
       return;
     }
 
     const category = softwareCategories.find(
-      (c) => c.id === selectedSoftwareCategory,
+      (c) => c.id === selectedSoftwareCategory
     );
     const software = category?.softwares?.find(
-      (s) => s.id === selectedSoftware,
+      (s) => s.id === selectedSoftware
     );
     const version = software?.versions?.find(
-      (v) => v.id === selectedSoftwareVersion,
+      (v) => v.id === selectedSoftwareVersion
     );
 
     if (!category || !software || !version) return;
@@ -2719,11 +2719,11 @@ export default function EditProjectForm() {
     const exists = softwareItems.some(
       (item) =>
         item.software_id === selectedSoftware &&
-        item.version_id === selectedSoftwareVersion,
+        item.version_id === selectedSoftwareVersion
     );
 
     if (exists) {
-      alert("This software version is already added");
+      alert('This software version is already added');
       return;
     }
 
@@ -2733,19 +2733,19 @@ export default function EditProjectForm() {
       category_name: category.name,
       software_id: software.id,
       software_name: software.name,
-      provider: software.provider || "",
+      provider: software.provider || '',
       version_id: version.id,
       version_name: version.name,
-      release_date: version.release_date || "",
-      notes: version.notes || "",
+      release_date: version.release_date || '',
+      notes: version.notes || '',
     };
 
     setSoftwareItems((prev) => [...prev, newItem]);
 
     // Reset selections
-    setSelectedSoftwareCategory("");
-    setSelectedSoftware("");
-    setSelectedSoftwareVersion("");
+    setSelectedSoftwareCategory('');
+    setSelectedSoftware('');
+    setSelectedSoftwareVersion('');
   };
 
   // Project Team Management Functions
@@ -2753,7 +2753,7 @@ export default function EditProjectForm() {
     // Check if already added
     const exists = projectTeamMembers.some((member) => member.id === user.id);
     if (exists) {
-      alert("This user is already in the team");
+      alert('This user is already in the team');
       return;
     }
 
@@ -2762,9 +2762,9 @@ export default function EditProjectForm() {
       employee_id: user.employee_id || user.id,
       name: user.full_name || user.username,
       email: user.email,
-      department: user.department || "",
-      position: user.role_name || "",
-      role: "Team Member", // Default role, can be changed
+      department: user.department || '',
+      position: user.role_name || '',
+      role: 'Team Member', // Default role, can be changed
     };
 
     setProjectTeamMembers((prev) => [...prev, teamMember]);
@@ -2778,7 +2778,7 @@ export default function EditProjectForm() {
 
   const removeTeamMember = (memberId) => {
     const updated = projectTeamMembers.filter(
-      (member) => member.id !== memberId,
+      (member) => member.id !== memberId
     );
     setProjectTeamMembers(updated);
 
@@ -2791,7 +2791,7 @@ export default function EditProjectForm() {
 
   const updateTeamMemberRole = (memberId, newRole) => {
     const updated = projectTeamMembers.map((member) =>
-      member.id === memberId ? { ...member, role: newRole } : member,
+      member.id === memberId ? { ...member, role: newRole } : member
     );
     setProjectTeamMembers(updated);
 
@@ -2806,14 +2806,12 @@ export default function EditProjectForm() {
   const availableUsers = allUsers.filter(
     (user) =>
       !projectTeamMembers.some((member) => member.id === user.id) &&
-      (teamMemberSearch === "" ||
-        (user.full_name || user.username || "")
+      (teamMemberSearch === '' ||
+        (user.full_name || user.username || '')
           .toLowerCase()
           .includes(teamMemberSearch.toLowerCase()) ||
         user.email?.toLowerCase().includes(teamMemberSearch.toLowerCase()) ||
-        user.department
-          ?.toLowerCase()
-          .includes(teamMemberSearch.toLowerCase())),
+        user.department?.toLowerCase().includes(teamMemberSearch.toLowerCase()))
   );
 
   // Get project team members for use in other tabs (replaces full user list)
@@ -2823,8 +2821,8 @@ export default function EditProjectForm() {
       id: member.id,
       employee_id: member.employee_id,
       name: member.name,
-      first_name: member.name.split(" ")[0],
-      last_name: member.name.split(" ").slice(1).join(" "),
+      first_name: member.name.split(' ')[0],
+      last_name: member.name.split(' ').slice(1).join(' '),
       email: member.email,
       department: member.department,
       position: member.position,
@@ -2841,7 +2839,7 @@ export default function EditProjectForm() {
   // Get available software for selected category
   const availableSoftware = selectedSoftwareCategory
     ? softwareCategories.find((c) => c.id === selectedSoftwareCategory)
-      ?.softwares || []
+        ?.softwares || []
     : [];
 
   // Get available versions for selected software
@@ -2869,9 +2867,9 @@ export default function EditProjectForm() {
       for (const file of files) {
         try {
           const b64 = await toBase64(file);
-          const uploadResp = await fetchJSON("/api/uploads", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+          const uploadResp = await fetchJSON('/api/uploads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, b64 }),
           });
 
@@ -2888,7 +2886,7 @@ export default function EditProjectForm() {
             failedFiles.push(file.name);
           }
         } catch (err) {
-          console.error("Upload failed for file:", file.name, err);
+          console.error('Upload failed for file:', file.name, err);
           failedFiles.push(file.name);
         }
       }
@@ -2903,20 +2901,20 @@ export default function EditProjectForm() {
       }
 
       if (failedFiles.length > 0) {
-        alert(`Some files failed to upload: ${failedFiles.join(", ")}`);
+        alert(`Some files failed to upload: ${failedFiles.join(', ')}`);
       }
     } catch (e) {
-      console.error("File processing error", e);
-      alert("Upload failed");
+      console.error('File processing error', e);
+      alert('Upload failed');
     } finally {
       // reset input so same files can be re-selected
-      event.target.value = "";
+      event.target.value = '';
     }
   };
 
   // Documents Received helpers
   const addReceivedDocument = () => {
-    console.log("[addReceivedDocument] Called with:", newReceivedDoc);
+    console.log('[addReceivedDocument] Called with:', newReceivedDoc);
     // Basic validation: require description
     if (!newReceivedDoc.description || !newReceivedDoc.description.trim())
       return;
@@ -2928,23 +2926,23 @@ export default function EditProjectForm() {
       id: Date.now(),
       date_received: normalizeDate(newReceivedDoc.date_received) || today,
     };
-    console.log("[addReceivedDocument] Adding document:", doc);
+    console.log('[addReceivedDocument] Adding document:', doc);
     setDocumentsReceived((prev) => {
       const updated = [...prev, doc];
       console.log(
-        "[addReceivedDocument] New documentsReceived array:",
-        updated,
+        '[addReceivedDocument] New documentsReceived array:',
+        updated
       );
       return updated;
     });
     setNewReceivedDoc({
-      date_received: "",
-      description: "",
-      drawing_number: "",
-      revision_number: "",
-      unit_qty: "",
-      document_sent_by: "",
-      remarks: "",
+      date_received: '',
+      description: '',
+      drawing_number: '',
+      revision_number: '',
+      unit_qty: '',
+      document_sent_by: '',
+      remarks: '',
     });
 
     // Focus description input for fast entry
@@ -2955,7 +2953,7 @@ export default function EditProjectForm() {
 
   const updateReceivedDocument = (id, field, value) => {
     setDocumentsReceived((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d)),
+      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d))
     );
   };
 
@@ -2972,19 +2970,19 @@ export default function EditProjectForm() {
     const doc = { ...newIssuedDoc, id: Date.now(), issue_date: issueDate };
     setDocumentsIssued((prev) => [...prev, doc]);
     setNewIssuedDoc({
-      document_name: "",
-      issued_for: "",
-      document_number: "",
-      revision_number: "",
-      issue_date: "",
-      remarks: "",
+      document_name: '',
+      issued_for: '',
+      document_number: '',
+      revision_number: '',
+      issue_date: '',
+      remarks: '',
     });
     setTimeout(() => newIssuedDescRef.current?.focus(), 10);
   };
 
   const updateIssuedDocument = (id, field, value) => {
     setDocumentsIssued((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d)),
+      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d))
     );
   };
 
@@ -2994,39 +2992,39 @@ export default function EditProjectForm() {
 
   // Project Handover helpers
   const addHandoverRow = () => {
-    console.log("[addHandoverRow] Called with:", newHandoverRow);
+    console.log('[addHandoverRow] Called with:', newHandoverRow);
     if (
       !newHandoverRow.output_by_accent ||
       !newHandoverRow.output_by_accent.trim()
     ) {
       console.log(
-        "[addHandoverRow] Validation failed - output_by_accent is required",
+        '[addHandoverRow] Validation failed - output_by_accent is required'
       );
       return;
     }
     const row = { ...newHandoverRow, id: Date.now() };
-    console.log("[addHandoverRow] Adding row:", row);
+    console.log('[addHandoverRow] Adding row:', row);
     setProjectHandover((prev) => {
       const updated = [...prev, row];
       console.log(
-        "[addHandoverRow] New projectHandover array length:",
-        updated.length,
+        '[addHandoverRow] New projectHandover array length:',
+        updated.length
       );
-      console.log("[addHandoverRow] New projectHandover array:", updated);
+      console.log('[addHandoverRow] New projectHandover array:', updated);
       return updated;
     });
     setNewHandoverRow({
-      output_by_accent: "",
-      requirement_accomplished: "",
-      remark: "",
-      hand_over: "",
+      output_by_accent: '',
+      requirement_accomplished: '',
+      remark: '',
+      hand_over: '',
     });
     setTimeout(() => newHandoverDescRef.current?.focus(), 10);
   };
 
   const updateHandoverRow = (id, field, value) => {
     setProjectHandover((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
     );
   };
 
@@ -3039,26 +3037,26 @@ export default function EditProjectForm() {
     if (!currentMonth) {
       // Default to current month if no month provided
       const now = new Date();
-      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     }
-    const [year, month] = currentMonth.split("-").map(Number);
+    const [year, month] = currentMonth.split('-').map(Number);
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
-    return `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+    return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
   };
 
   // Generate array of months between start and end (inclusive)
   const generateMonthRange = (start, end) => {
     if (!start || !end) return [];
     const months = [];
-    let [startYear, startMonth] = start.split("-").map(Number);
-    const [endYear, endMonth] = end.split("-").map(Number);
+    let [startYear, startMonth] = start.split('-').map(Number);
+    const [endYear, endMonth] = end.split('-').map(Number);
 
     while (
       startYear < endYear ||
       (startYear === endYear && startMonth <= endMonth)
     ) {
-      months.push(`${startYear}-${String(startMonth).padStart(2, "0")}`);
+      months.push(`${startYear}-${String(startMonth).padStart(2, '0')}`);
       if (startMonth === 12) {
         startMonth = 1;
         startYear++;
@@ -3075,7 +3073,7 @@ export default function EditProjectForm() {
     const monthsToAdd = generateMonthRange(monthRangeStart, monthRangeEnd);
 
     if (monthsToAdd.length === 0) {
-      alert("Please select a valid month range (From and To)");
+      alert('Please select a valid month range (From and To)');
       return;
     }
 
@@ -3084,7 +3082,7 @@ export default function EditProjectForm() {
     const newMonths = monthsToAdd.filter((m) => !existingMonths.includes(m));
 
     if (newMonths.length === 0) {
-      alert("All selected months already exist");
+      alert('All selected months already exist');
       return;
     }
 
@@ -3097,13 +3095,13 @@ export default function EditProjectForm() {
 
     setProjectManhours((prev) =>
       [...prev, ...newMonthEntries].sort((a, b) =>
-        a.month.localeCompare(b.month),
-      ),
+        a.month.localeCompare(b.month)
+      )
     );
 
     // Clear selection
-    setMonthRangeStart("");
-    setMonthRangeEnd("");
+    setMonthRangeStart('');
+    setMonthRangeEnd('');
   };
 
   // Add an employee entry to a specific month
@@ -3111,7 +3109,7 @@ export default function EditProjectForm() {
     if (!newManhourEntry.employee_id || !newManhourEntry.hours) return;
 
     const employee = employeesWithRates.find(
-      (e) => e.id === parseInt(newManhourEntry.employee_id),
+      (e) => e.id === parseInt(newManhourEntry.employee_id)
     );
     if (!employee) return;
 
@@ -3133,16 +3131,16 @@ export default function EditProjectForm() {
           return { ...m, entries: [...(m.entries || []), entry] };
         }
         return m;
-      }),
+      })
     );
 
     // Reset the entry form
     setNewManhourEntry({
-      employee_id: "",
-      employee_name: "",
-      rate: "",
-      salary_type: "",
-      hours: "",
+      employee_id: '',
+      employee_name: '',
+      rate: '',
+      salary_type: '',
+      hours: '',
     });
     setTimeout(() => newManhourNameRef.current?.focus(), 10);
   };
@@ -3156,7 +3154,7 @@ export default function EditProjectForm() {
             if (e.id === entryId) {
               const updated = { ...e, [field]: value };
               // Recalculate total cost if hours changed
-              if (field === "hours") {
+              if (field === 'hours') {
                 updated.total_cost = (
                   updated.rate * (parseFloat(value) || 0)
                 ).toFixed(2);
@@ -3168,7 +3166,7 @@ export default function EditProjectForm() {
           return { ...m, entries: updatedEntries };
         }
         return m;
-      }),
+      })
     );
   };
 
@@ -3183,7 +3181,7 @@ export default function EditProjectForm() {
           };
         }
         return m;
-      }),
+      })
     );
   };
 
@@ -3195,7 +3193,7 @@ export default function EditProjectForm() {
   // Handle employee selection - auto-fill rate
   const handleEmployeeSelect = (employeeId) => {
     const employee = employeesWithRates.find(
-      (e) => e.id === parseInt(employeeId),
+      (e) => e.id === parseInt(employeeId)
     );
     if (employee) {
       setNewManhourEntry((prev) => ({
@@ -3208,10 +3206,10 @@ export default function EditProjectForm() {
     } else {
       setNewManhourEntry((prev) => ({
         ...prev,
-        employee_id: "",
-        employee_name: "",
-        rate: "",
-        salary_type: "",
+        employee_id: '',
+        employee_name: '',
+        rate: '',
+        salary_type: '',
       }));
     }
   };
@@ -3221,11 +3219,11 @@ export default function EditProjectForm() {
     const entries = monthData.entries || [];
     const totalHours = entries.reduce(
       (sum, e) => sum + (parseFloat(e.hours) || 0),
-      0,
+      0
     );
     const totalCost = entries.reduce(
       (sum, e) => sum + (parseFloat(e.total_cost) || 0),
-      0,
+      0
     );
     return { totalHours, totalCost };
   };
@@ -3239,20 +3237,20 @@ export default function EditProjectForm() {
     const row = { ...newQuery, id: Date.now(), query_issued_date: issuedDate };
     setQueryLog((prev) => [...prev, row]);
     setNewQuery({
-      query_description: "",
-      query_issued_date: "",
-      reply_from_client: "",
-      reply_received_date: "",
-      query_updated_by: "",
-      query_resolved: "",
-      remark: "",
+      query_description: '',
+      query_issued_date: '',
+      reply_from_client: '',
+      reply_received_date: '',
+      query_updated_by: '',
+      query_resolved: '',
+      remark: '',
     });
     setTimeout(() => newQueryDescRef.current?.focus(), 10);
   };
 
   const updateQueryRow = (id, field, value) => {
     setQueryLog((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
     );
   };
 
@@ -3270,17 +3268,17 @@ export default function EditProjectForm() {
     const row = { ...newAssumption, id: Date.now() };
     setAssumptions((prev) => [...prev, row]);
     setNewAssumption({
-      assumption_description: "",
-      reason: "",
-      assumption_taken_by: "",
-      remark: "",
+      assumption_description: '',
+      reason: '',
+      assumption_taken_by: '',
+      remark: '',
     });
     setTimeout(() => newAssumptionDescRef.current?.focus(), 10);
   };
 
   const updateAssumptionRow = (id, field, value) => {
     setAssumptions((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
     );
   };
 
@@ -3294,18 +3292,18 @@ export default function EditProjectForm() {
     const row = { ...newLesson, id: Date.now() };
     setLessonsLearnt((prev) => [...prev, row]);
     setNewLesson({
-      what_was_new: "",
-      difficulty_faced: "",
-      what_you_learn: "",
-      areas_of_improvement: "",
-      remark: "",
+      what_was_new: '',
+      difficulty_faced: '',
+      what_you_learn: '',
+      areas_of_improvement: '',
+      remark: '',
     });
     setTimeout(() => newLessonDescRef.current?.focus(), 10);
   };
 
   const updateLessonRow = (id, field, value) => {
     setLessonsLearnt((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
     );
   };
 
@@ -3320,7 +3318,7 @@ export default function EditProjectForm() {
         form.start_date,
         form.end_date,
         startIso,
-        endIso,
+        endIso
       );
       if (!span) return [];
       const start = Math.max(0, span.startWeek);
@@ -3330,53 +3328,53 @@ export default function EditProjectForm() {
       for (let i = start; i <= end; i += 1) indices.push(i);
       return indices;
     },
-    [form.start_date, form.end_date, scheduleWeeks.length],
+    [form.start_date, form.end_date, scheduleWeeks.length]
   );
 
   const computeScheduleDatesFromWeeks = useCallback(
     (weekIndices) => {
       if (!Array.isArray(weekIndices) || weekIndices.length === 0)
-        return { start_date: "", end_date: "" };
+        return { start_date: '', end_date: '' };
       const valid = weekIndices
         .map((w) => Number(w))
         .filter((n) => Number.isFinite(n) && n >= 0 && n < scheduleWeeks.length)
         .sort((a, b) => a - b);
-      if (valid.length === 0) return { start_date: "", end_date: "" };
+      if (valid.length === 0) return { start_date: '', end_date: '' };
       const first = scheduleWeeks[valid[0]];
       const last = scheduleWeeks[valid[valid.length - 1]];
       return {
-        start_date: first?.start ? first.start.toISOString().slice(0, 10) : "",
-        end_date: last?.end ? last.end.toISOString().slice(0, 10) : "",
+        start_date: first?.start ? first.start.toISOString().slice(0, 10) : '',
+        end_date: last?.end ? last.end.toISOString().slice(0, 10) : '',
       };
     },
-    [scheduleWeeks],
+    [scheduleWeeks]
   );
 
   const addSchedule = (seed = {}) => {
     if (!canEditSchedule) return;
     const defaultSr =
-      seed.sr_no && String(seed.sr_no).trim() !== ""
+      seed.sr_no && String(seed.sr_no).trim() !== ''
         ? seed.sr_no
         : String(projectSchedule.length + 1);
-    const legendKey = seed.legend || seed.schedule_legend || "";
-    const disciplineSeed = seed.discipline || "";
+    const legendKey = seed.legend || seed.schedule_legend || '';
+    const disciplineSeed = seed.discipline || '';
     const disciplineFromLegend =
-      !String(disciplineSeed || "").trim() && legendKey
-        ? getScheduleLegend(legendKey)?.label || ""
+      !String(disciplineSeed || '').trim() && legendKey
+        ? getScheduleLegend(legendKey)?.label || ''
         : disciplineSeed;
     const sch = {
       id: generateScheduleRowId(),
       sr_no: defaultSr,
-      activity_description: seed.activity_description || "",
+      activity_description: seed.activity_description || '',
       discipline: disciplineFromLegend,
       legend: legendKey,
-      color: seed.color || "",
-      unit_qty: seed.unit_qty || "",
-      start_date: seed.start_date || "",
-      end_date: seed.end_date || "",
-      time_required: seed.time_required || "",
-      status_completed: seed.status_completed || "",
-      remarks: seed.remarks || "",
+      color: seed.color || '',
+      unit_qty: seed.unit_qty || '',
+      start_date: seed.start_date || '',
+      end_date: seed.end_date || '',
+      time_required: seed.time_required || '',
+      status_completed: seed.status_completed || '',
+      remarks: seed.remarks || '',
       weeks: Array.isArray(seed.weeks) ? seed.weeks : undefined,
     };
     setProjectSchedule((prev) => [...prev, sch]);
@@ -3389,14 +3387,14 @@ export default function EditProjectForm() {
         if (r.id !== id) return r;
         const updated = { ...r, [field]: value };
         // Keep weeks <-> dates in sync (for gantt chart editing)
-        if (field === "start_date" || field === "end_date") {
+        if (field === 'start_date' || field === 'end_date') {
           updated.weeks = computeScheduleWeeksFromDates(
             updated.start_date,
-            updated.end_date,
+            updated.end_date
           );
         }
         return updated;
-      }),
+      })
     );
   };
 
@@ -3415,7 +3413,7 @@ export default function EditProjectForm() {
               ? row.weeks
               : computeScheduleWeeksFromDates(row.start_date, row.end_date);
           const set = new Set(
-            existing.map((n) => Number(n)).filter((n) => Number.isFinite(n)),
+            existing.map((n) => Number(n)).filter((n) => Number.isFinite(n))
           );
 
           const wasMarked = set.has(wi);
@@ -3438,14 +3436,14 @@ export default function EditProjectForm() {
             nextRow.legend = selectedScheduleLegend;
 
             // If discipline is empty, fill it from the selected legend label
-            if (!String(nextRow.discipline || "").trim()) {
+            if (!String(nextRow.discipline || '').trim()) {
               const legend = getScheduleLegend(selectedScheduleLegend);
               if (legend?.label) nextRow.discipline = legend.label;
             }
           }
 
           return nextRow;
-        }),
+        })
       );
     },
     [
@@ -3455,7 +3453,7 @@ export default function EditProjectForm() {
       computeScheduleDatesFromWeeks,
       selectedScheduleLegend,
       getScheduleLegend,
-    ],
+    ]
   );
 
   const removeSchedule = (id) => {
@@ -3482,14 +3480,14 @@ export default function EditProjectForm() {
       };
       setPlanningActivities([...planningActivities, activity]);
       setNewPlanningActivity({
-        serialNumber: "",
-        activity: "",
-        quantity: "",
-        startDate: "",
-        endDate: "",
-        actualCompletionDate: "",
-        timeRequired: "",
-        actualTimeRequired: "",
+        serialNumber: '',
+        activity: '',
+        quantity: '',
+        startDate: '',
+        endDate: '',
+        actualCompletionDate: '',
+        timeRequired: '',
+        actualTimeRequired: '',
       });
     }
   };
@@ -3507,7 +3505,7 @@ export default function EditProjectForm() {
     let activity = null;
     let functionId = null;
 
-    if (type === "activity") {
+    if (type === 'activity') {
       // Find activity in nested structure
       for (const func of functions) {
         const found = func.activities?.find((a) => a.id === activityId);
@@ -3535,14 +3533,14 @@ export default function EditProjectForm() {
     if (!activity) return;
 
     const exists = projectActivities.find(
-      (pa) => pa.id === activityId && pa.type === type,
+      (pa) => pa.id === activityId && pa.type === type
     );
 
     if (exists) {
       setProjectActivities(
         projectActivities.filter(
-          (pa) => !(pa.id === activityId && pa.type === type),
-        ),
+          (pa) => !(pa.id === activityId && pa.type === type)
+        )
       );
     } else {
       setProjectActivities([
@@ -3551,7 +3549,7 @@ export default function EditProjectForm() {
           id: activityId,
           type,
           name: activity.activity_name || activity.name,
-          activity_description: activity.activity_description || "",
+          activity_description: activity.activity_description || '',
           function_id: functionId,
           activity_id: activity.activity_id || null,
         },
@@ -3561,38 +3559,38 @@ export default function EditProjectForm() {
 
   // Scope Activity table helpers (add/update/remove rows with status & deliverables)
   const addScopeActivity = () => {
-    const name = (newScopeActivityName || "").trim();
+    const name = (newScopeActivityName || '').trim();
     if (!name) return;
     const row = {
       id: `manual-${Date.now()}`, // Use string ID for manual activities to avoid conflicts
-      type: "manual",
-      source: "manual",
+      type: 'manual',
+      source: 'manual',
       name,
-      activity_description: "",
-      status: "NEW",
-      deliverables: "",
+      activity_description: '',
+      status: 'NEW',
+      deliverables: '',
       manhours: 0,
-      unit_qty: "",
+      unit_qty: '',
       planned_hours: 0,
-      start_time: "",
-      end_time: "",
+      start_time: '',
+      end_time: '',
       actual_hours: 0,
-      activity_done_by: "",
-      status_completed: "",
-      remark: "",
-      assigned_user: "",
-      due_date: "",
-      priority: "MEDIUM",
+      activity_done_by: '',
+      status_completed: '',
+      remark: '',
+      assigned_user: '',
+      due_date: '',
+      priority: 'MEDIUM',
       assigned_users: [],
-      function_name: "Manual / Other",
+      function_name: 'Manual / Other',
     };
     setProjectActivities((prev) => [...prev, row]);
-    setNewScopeActivityName("");
+    setNewScopeActivityName('');
   };
 
   const updateScopeActivity = (id, field, value) => {
     setProjectActivities((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
     );
   };
 
@@ -3610,22 +3608,22 @@ export default function EditProjectForm() {
           const userIdStr = String(userId);
           // Handle both old object format and new string format
           const isAssigned = currentUsers.some((u) => {
-            const id = typeof u === "object" ? u.user_id : u;
+            const id = typeof u === 'object' ? u.user_id : u;
             return String(id) === userIdStr;
           });
           const newUsers = isAssigned
             ? currentUsers.filter((u) => {
-              const id = typeof u === "object" ? u.user_id : u;
-              return String(id) !== userIdStr;
-            })
+                const id = typeof u === 'object' ? u.user_id : u;
+                return String(id) !== userIdStr;
+              })
             : [
-              ...currentUsers,
-              { user_id: userIdStr, planned_hours: 0, actual_hours: 0 },
-            ];
+                ...currentUsers,
+                { user_id: userIdStr, planned_hours: 0, actual_hours: 0 },
+              ];
           return { ...act, assigned_users: newUsers };
         }
         return act;
-      }),
+      })
     );
   };
 
@@ -3635,40 +3633,40 @@ export default function EditProjectForm() {
       prev.map((act) => {
         if (act.id === activityId) {
           const updatedUsers = (act.assigned_users || []).map((u) => {
-            const uId = typeof u === "object" ? u.user_id : u;
+            const uId = typeof u === 'object' ? u.user_id : u;
             if (String(uId) === String(userId)) {
               // Only parse as float for numeric fields
               const numericFields = [
-                "planned_hours",
-                "actual_hours",
-                "qty_assigned",
-                "qty_completed",
+                'planned_hours',
+                'actual_hours',
+                'qty_assigned',
+                'qty_completed',
               ];
               const newValue = numericFields.includes(field)
                 ? parseFloat(value) || 0
                 : value;
 
-              if (typeof u === "object") {
+              if (typeof u === 'object') {
                 return { ...u, [field]: newValue };
               } else {
                 return {
                   user_id: u,
                   planned_hours:
-                    field === "planned_hours" ? parseFloat(value) || 0 : 0,
+                    field === 'planned_hours' ? parseFloat(value) || 0 : 0,
                   actual_hours:
-                    field === "actual_hours" ? parseFloat(value) || 0 : 0,
+                    field === 'actual_hours' ? parseFloat(value) || 0 : 0,
                   [field]: newValue,
                 };
               }
             }
-            return typeof u === "object"
+            return typeof u === 'object'
               ? u
               : { user_id: u, planned_hours: 0, actual_hours: 0 };
           });
           return { ...act, assigned_users: updatedUsers };
         }
         return act;
-      }),
+      })
     );
   };
 
@@ -3678,10 +3676,10 @@ export default function EditProjectForm() {
       prev.map((act) => {
         if (act.id === activityId) {
           const updatedUsers = (act.assigned_users || []).map((u) => {
-            const uId = typeof u === "object" ? u.user_id : u;
+            const uId = typeof u === 'object' ? u.user_id : u;
             if (String(uId) === String(userId)) {
               const currentEntries =
-                typeof u === "object" && u.daily_entries ? u.daily_entries : [];
+                typeof u === 'object' && u.daily_entries ? u.daily_entries : [];
               // Get the next date based on last entry, or today if no entries
               let nextDate;
               const validEntries = currentEntries.filter((e) => e != null);
@@ -3689,9 +3687,9 @@ export default function EditProjectForm() {
                 const lastEntry = validEntries[validEntries.length - 1];
                 const lastDate = new Date(lastEntry.date);
                 lastDate.setDate(lastDate.getDate() + 1);
-                nextDate = lastDate.toISOString().split("T")[0];
+                nextDate = lastDate.toISOString().split('T')[0];
               } else {
-                nextDate = new Date().toISOString().split("T")[0];
+                nextDate = new Date().toISOString().split('T')[0];
               }
               // Lock all previous entries and add new unlocked entry
               const lockedEntries = validEntries.map((e) => ({
@@ -3700,9 +3698,9 @@ export default function EditProjectForm() {
               }));
               const newEntry = {
                 date: nextDate,
-                qty_done: "",
-                hours: "",
-                remarks: "",
+                qty_done: '',
+                hours: '',
+                remarks: '',
                 isLocked: false,
               };
               return { ...u, daily_entries: [...lockedEntries, newEntry] };
@@ -3712,7 +3710,7 @@ export default function EditProjectForm() {
           return { ...act, assigned_users: updatedUsers };
         }
         return act;
-      }),
+      })
     );
   };
 
@@ -3722,8 +3720,8 @@ export default function EditProjectForm() {
       prev.map((act) => {
         if (act.id === activityId) {
           const updatedUsers = (act.assigned_users || []).map((u) => {
-            const uId = typeof u === "object" ? u.user_id : u;
-            if (String(uId) === String(userId) && typeof u === "object") {
+            const uId = typeof u === 'object' ? u.user_id : u;
+            if (String(uId) === String(userId) && typeof u === 'object') {
               const entries = [...(u.daily_entries || [])];
               if (entries[entryIndex]) {
                 entries[entryIndex] = {
@@ -3738,7 +3736,7 @@ export default function EditProjectForm() {
           return { ...act, assigned_users: updatedUsers };
         }
         return act;
-      }),
+      })
     );
   };
 
@@ -3748,8 +3746,8 @@ export default function EditProjectForm() {
       prev.map((act) => {
         if (act.id === activityId) {
           const updatedUsers = (act.assigned_users || []).map((u) => {
-            const uId = typeof u === "object" ? u.user_id : u;
-            if (String(uId) === String(userId) && typeof u === "object") {
+            const uId = typeof u === 'object' ? u.user_id : u;
+            if (String(uId) === String(userId) && typeof u === 'object') {
               const entries = [...(u.daily_entries || [])];
               entries.splice(entryIndex, 1);
               return { ...u, daily_entries: entries };
@@ -3759,7 +3757,7 @@ export default function EditProjectForm() {
           return { ...act, assigned_users: updatedUsers };
         }
         return act;
-      }),
+      })
     );
   };
 
@@ -3769,7 +3767,7 @@ export default function EditProjectForm() {
       return parseFloat(act.planned_hours) || 0;
     return (act.assigned_users || []).reduce((sum, u) => {
       const hours =
-        typeof u === "object" ? parseFloat(u.planned_hours) || 0 : 0;
+        typeof u === 'object' ? parseFloat(u.planned_hours) || 0 : 0;
       return sum + hours;
     }, 0);
   };
@@ -3779,32 +3777,32 @@ export default function EditProjectForm() {
     if (!act.assigned_users || act.assigned_users.length === 0)
       return parseFloat(act.actual_hours) || 0;
     return (act.assigned_users || []).reduce((sum, u) => {
-      const hours = typeof u === "object" ? parseFloat(u.actual_hours) || 0 : 0;
+      const hours = typeof u === 'object' ? parseFloat(u.actual_hours) || 0 : 0;
       return sum + hours;
     }, 0);
   };
 
   const getAssignedUserNames = (assignedUsers) => {
-    if (!assignedUsers || assignedUsers.length === 0) return "Select users...";
+    if (!assignedUsers || assignedUsers.length === 0) return 'Select users...';
     const userList = allUsers.length > 0 ? allUsers : userMaster;
     return assignedUsers
       .map((assignment) => {
         const userId =
-          typeof assignment === "object" ? assignment.user_id : assignment;
+          typeof assignment === 'object' ? assignment.user_id : assignment;
         const user = userList.find((u) => String(u.id) === String(userId));
         return user
           ? user.full_name || user.employee_name || user.username || user.email
-          : "";
+          : '';
       })
       .filter(Boolean)
-      .join(", ");
+      .join(', ');
   };
 
   // Helper to check if a user is assigned (handles both old string format and new object format)
   const isUserAssigned = (assignedUsers, userId) => {
     if (!assignedUsers || assignedUsers.length === 0) return false;
     return assignedUsers.some((u) => {
-      const id = typeof u === "object" ? u.user_id : u;
+      const id = typeof u === 'object' ? u.user_id : u;
       return String(id) === String(userId);
     });
   };
@@ -3813,7 +3811,7 @@ export default function EditProjectForm() {
   const getUserAssignment = (assignedUsers, userId) => {
     if (!assignedUsers || assignedUsers.length === 0) return null;
     return assignedUsers.find((u) => {
-      const id = typeof u === "object" ? u.user_id : u;
+      const id = typeof u === 'object' ? u.user_id : u;
       return String(id) === String(userId);
     });
   };
@@ -3823,7 +3821,7 @@ export default function EditProjectForm() {
     if (!showActivitySelector) {
       // Reset selection state when opening
       setSelectedActivitiesForAdd({});
-      setActivitySelectorSearch("");
+      setActivitySelectorSearch('');
     }
     setShowActivitySelector(!showActivitySelector);
   };
@@ -3838,7 +3836,7 @@ export default function EditProjectForm() {
 
   const toggleAllActivitiesInDiscipline = (funcId, acts) => {
     const allSelected = acts.every(
-      (act) => selectedActivitiesForAdd[`${funcId}|${act.id}`],
+      (act) => selectedActivitiesForAdd[`${funcId}|${act.id}`]
     );
     const updates = {};
     acts.forEach((act) => {
@@ -3858,34 +3856,34 @@ export default function EditProjectForm() {
 
     const newActivities = [];
     selectedKeys.forEach((key) => {
-      const [funcId, actId] = key.split("|");
+      const [funcId, actId] = key.split('|');
       const func = functions.find((f) => String(f.id) === funcId);
       const activity = func?.activities?.find((a) => String(a.id) === actId);
 
       if (activity && func) {
         // Check if already exists
         const exists = projectActivities.some(
-          (pa) => String(pa.id) === String(actId) && pa.type === "activity",
+          (pa) => String(pa.id) === String(actId) && pa.type === 'activity'
         );
         if (!exists) {
           newActivities.push({
             id: activity.id,
-            type: "activity",
-            source: "master",
+            type: 'activity',
+            source: 'master',
             name: activity.activity_name,
             discipline: func.function_name,
             discipline_id: func.id,
             activity_name: activity.activity_name,
-            activity_description: activity.activity_description || "",
+            activity_description: activity.activity_description || '',
             planned_hours: parseFloat(activity.default_manhours) || 0,
             actual_hours: 0,
-            assigned_user: "",
+            assigned_user: '',
             assigned_users: [],
-            due_date: "",
-            priority: "MEDIUM",
-            status: "Not Started",
+            due_date: '',
+            priority: 'MEDIUM',
+            status: 'Not Started',
             function_name: func.function_name,
-            remarks: "",
+            remarks: '',
           });
         }
       }
@@ -3900,62 +3898,62 @@ export default function EditProjectForm() {
 
   // Internal Meetings helpers (add/update/remove)
   const addKickoffMeeting = () => {
-    const meetingNo = `KOM-${String(kickoffMeetings.length + 1).padStart(3, "0")}`;
+    const meetingNo = `KOM-${String(kickoffMeetings.length + 1).padStart(3, '0')}`;
     const meeting = {
       id: Date.now(),
       meeting_no: meetingNo,
-      client_name: "",
-      meeting_date: "",
-      organizer: "",
-      minutes_drafted: "",
-      meeting_location: "",
-      client_representative: "",
-      meeting_title: newKickoffMeetingTitle || "",
-      points_discussed: "",
-      persons_involved: "",
+      client_name: '',
+      meeting_date: '',
+      organizer: '',
+      minutes_drafted: '',
+      meeting_location: '',
+      client_representative: '',
+      meeting_title: newKickoffMeetingTitle || '',
+      points_discussed: '',
+      persons_involved: '',
     };
     setKickoffMeetings((prev) => [...prev, meeting]);
-    setNewKickoffMeetingTitle("");
+    setNewKickoffMeetingTitle('');
   };
 
   const updateKickoffMeeting = (id, field, value) => {
     setKickoffMeetings((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
+      prev.map((m) => (m.id === id ? { ...m, [field]: value } : m))
     );
   };
 
   const updateProjectActivity = (activityId, field, value) => {
     setProjectActivities((prev) =>
       prev.map((act) =>
-        act.id === activityId ? { ...act, [field]: value } : act,
-      ),
+        act.id === activityId ? { ...act, [field]: value } : act
+      )
     );
   };
 
   const formatAsBulletPoints = (text) => {
-    if (!text) return "";
-    const lines = text.split("\n").filter((line) => line.trim());
+    if (!text) return '';
+    const lines = text.split('\n').filter((line) => line.trim());
     return lines
       .map((line) => {
         const trimmed = line.trim();
         // If line doesn't start with bullet, add one
         if (
-          !trimmed.startsWith("•") &&
-          !trimmed.startsWith("-") &&
-          !trimmed.startsWith("*")
+          !trimmed.startsWith('•') &&
+          !trimmed.startsWith('-') &&
+          !trimmed.startsWith('*')
         ) {
-          return "• " + trimmed;
+          return '• ' + trimmed;
         }
         return trimmed;
       })
-      .join("\n");
+      .join('\n');
   };
 
   const handlePointsBlur = (
     id,
     value,
     updateFunction,
-    fieldName = "points_discussed",
+    fieldName = 'points_discussed'
   ) => {
     const formatted = formatAsBulletPoints(value);
     updateFunction(id, fieldName, formatted);
@@ -3966,27 +3964,27 @@ export default function EditProjectForm() {
   };
 
   const addInternalMeeting = () => {
-    const meetingNo = `IOM-${String(internalMeetings.length + 1).padStart(3, "0")}`;
+    const meetingNo = `IOM-${String(internalMeetings.length + 1).padStart(3, '0')}`;
     const meeting = {
       id: Date.now(),
       meeting_no: meetingNo,
-      client_name: "",
-      meeting_date: "",
-      organizer: "",
-      minutes_drafted: "",
-      meeting_location: "",
-      client_representative: "",
-      meeting_title: newInternalMeetingTitle || "",
-      points_discussed: "",
-      persons_involved: "",
+      client_name: '',
+      meeting_date: '',
+      organizer: '',
+      minutes_drafted: '',
+      meeting_location: '',
+      client_representative: '',
+      meeting_title: newInternalMeetingTitle || '',
+      points_discussed: '',
+      persons_involved: '',
     };
     setInternalMeetings((prev) => [...prev, meeting]);
-    setNewInternalMeetingTitle("");
+    setNewInternalMeetingTitle('');
   };
 
   const updateInternalMeeting = (id, field, value) => {
     setInternalMeetings((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
+      prev.map((m) => (m.id === id ? { ...m, [field]: value } : m))
     );
   };
 
@@ -4002,18 +4000,18 @@ export default function EditProjectForm() {
     // Keep client-side limit aligned with API limit.
     const MAX_MOM_FILE_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_MOM_FILE_SIZE) {
-      alert("File size exceeds 10MB limit for MOM upload");
-      event.target.value = "";
+      alert('File size exceeds 10MB limit for MOM upload');
+      event.target.value = '';
       return;
     }
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append('file', file);
 
-      const res = await fetch("/api/projects/mom-upload", {
-        method: "POST",
-        credentials: "include",
+      const res = await fetch('/api/projects/mom-upload', {
+        method: 'POST',
+        credentials: 'include',
         body: formData,
       });
 
@@ -4035,42 +4033,38 @@ export default function EditProjectForm() {
           uploaded_at: new Date().toISOString(),
         };
 
-        if (meetingType === "kickoff") {
+        if (meetingType === 'kickoff') {
           setKickoffMeetings((prev) =>
             prev.map((m) =>
-              m.id === meetingId ? { ...m, mom_document: momDoc } : m,
-            ),
+              m.id === meetingId ? { ...m, mom_document: momDoc } : m
+            )
           );
         } else {
           setInternalMeetings((prev) =>
             prev.map((m) =>
-              m.id === meetingId ? { ...m, mom_document: momDoc } : m,
-            ),
+              m.id === meetingId ? { ...m, mom_document: momDoc } : m
+            )
           );
         }
       } else {
-        alert(result.error || "Upload failed");
+        alert(result.error || 'Upload failed');
       }
     } catch (err) {
-      console.error("MOM upload failed:", err);
-      alert("MOM upload failed");
+      console.error('MOM upload failed:', err);
+      alert('MOM upload failed');
     } finally {
-      event.target.value = "";
+      event.target.value = '';
     }
   };
 
   const removeMomDocument = (meetingId, meetingType) => {
-    if (meetingType === "kickoff") {
+    if (meetingType === 'kickoff') {
       setKickoffMeetings((prev) =>
-        prev.map((m) =>
-          m.id === meetingId ? { ...m, mom_document: null } : m,
-        ),
+        prev.map((m) => (m.id === meetingId ? { ...m, mom_document: null } : m))
       );
     } else {
       setInternalMeetings((prev) =>
-        prev.map((m) =>
-          m.id === meetingId ? { ...m, mom_document: null } : m,
-        ),
+        prev.map((m) => (m.id === meetingId ? { ...m, mom_document: null } : m))
       );
     }
   };
@@ -4081,16 +4075,16 @@ export default function EditProjectForm() {
       ...teamMembers,
       {
         id: Date.now(),
-        employee_id: "",
-        activity_id: "",
-        discipline: "",
-        sub_activity: "",
-        required_hours: "",
-        actual_hours: "",
-        planned_start_date: "",
-        planned_end_date: "",
-        actual_completion_date: "",
-        cost: "",
+        employee_id: '',
+        activity_id: '',
+        discipline: '',
+        sub_activity: '',
+        required_hours: '',
+        actual_hours: '',
+        planned_start_date: '',
+        planned_end_date: '',
+        actual_completion_date: '',
+        cost: '',
         manhours: 0,
       },
     ]);
@@ -4106,22 +4100,22 @@ export default function EditProjectForm() {
         if (member.id === id) {
           const updated = { ...member, [field]: value };
           // numeric derived fields
-          if (field === "required_hours") {
+          if (field === 'required_hours') {
             updated.manhours = parseFloat(value) || 0;
           }
           // when discipline changes, clear activity and sub-activity to avoid mismatches
-          if (field === "discipline") {
-            updated.activity_id = "";
-            updated.sub_activity = "";
+          if (field === 'discipline') {
+            updated.activity_id = '';
+            updated.sub_activity = '';
           }
           // when activity changes, clear any selected sub_activity
-          if (field === "activity_id") {
-            updated.sub_activity = "";
+          if (field === 'activity_id') {
+            updated.sub_activity = '';
           }
           return updated;
         }
         return member;
-      }),
+      })
     );
   };
 
@@ -4129,19 +4123,19 @@ export default function EditProjectForm() {
   const totalManhours = useMemo(() => {
     return teamMembers.reduce(
       (sum, member) => sum + (parseFloat(member.manhours) || 0),
-      0,
+      0
     );
   }, [teamMembers]);
 
   const totalCost = useMemo(() => {
     return teamMembers.reduce(
       (sum, member) => sum + (parseFloat(member.cost) || 0),
-      0,
+      0
     );
   }, [teamMembers]);
 
   const handleCancel = () => {
-    router.push("/projects");
+    router.push('/projects');
   };
 
   const visibleTabs = useMemo(() => {
@@ -4152,8 +4146,8 @@ export default function EditProjectForm() {
       if (isSuperAdmin) return true;
 
       const hasActivitiesPermission =
-        can("activities", PERMISSIONS.READ) ||
-        can("activities", PERMISSIONS.ASSIGN);
+        can('activities', PERMISSIONS.READ) ||
+        can('activities', PERMISSIONS.ASSIGN);
       if (tab.adminOnly && !isAdminUser) return false;
       // For project-level views, allow users with project view permission to see these tabs.
       if (
@@ -4197,24 +4191,24 @@ export default function EditProjectForm() {
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab(visibleTabs[0]?.id || "project_details");
+      setActiveTab(visibleTabs[0]?.id || 'project_details');
     }
   }, [activeTab, visibleTabs]);
 
   const EXPORT_TAB_OPTIONS = [
-    { key: "input_documents", title: "Input Documents" },
-    { key: "scope", title: "Scope" },
-    { key: "project_activity", title: "Project Activity" },
-    { key: "documents_issued", title: "Document Issued" },
-    { key: "query_log", title: "Query Log" },
-    { key: "assumption", title: "Assumption" },
-    { key: "discussion", title: "Discussion" },
+    { key: 'input_documents', title: 'Input Documents' },
+    { key: 'scope', title: 'Scope' },
+    { key: 'project_activity', title: 'Project Activity' },
+    { key: 'documents_issued', title: 'Document Issued' },
+    { key: 'query_log', title: 'Query Log' },
+    { key: 'assumption', title: 'Assumption' },
+    { key: 'discussion', title: 'Discussion' },
   ];
 
   const handleImportProjectTabsExcel = async (event) => {
     if (!canEditProjectContent) {
-      alert("You do not have permission to import/edit project data.");
-      if (event?.target) event.target.value = "";
+      alert('You do not have permission to import/edit project data.');
+      if (event?.target) event.target.value = '';
       return;
     }
     const file = event?.target?.files?.[0];
@@ -4253,17 +4247,17 @@ export default function EditProjectForm() {
         `Imported ${results.updates} sheet(s) into the form.`,
         results.discussionImported > 0
           ? `Added ${results.discussionImported} discussion item(s).`
-          : "No discussion rows were added.",
-        "Review and click Update Project to save imported tab data.",
-      ].join(" ");
+          : 'No discussion rows were added.',
+        'Review and click Update Project to save imported tab data.',
+      ].join(' ');
       alert(message);
     } catch (err) {
-      console.error("Excel import failed:", err);
+      console.error('Excel import failed:', err);
       alert(
-        "Failed to import Excel. Please ensure it is a valid workbook exported from this module.",
+        'Failed to import Excel. Please ensure it is a valid workbook exported from this module.'
       );
     } finally {
-      if (event?.target) event.target.value = "";
+      if (event?.target) event.target.value = '';
       setImportingExcel(false);
     }
   };
@@ -4289,8 +4283,8 @@ export default function EditProjectForm() {
         payloads,
       });
     } catch (err) {
-      console.error("Excel export failed:", err);
-      alert("Failed to export Excel. Please try again.");
+      console.error('Excel export failed:', err);
+      alert('Failed to export Excel. Please try again.');
     } finally {
       setExportingExcel(false);
     }
@@ -4319,8 +4313,8 @@ export default function EditProjectForm() {
         selectedExportSheet,
       });
     } catch (err) {
-      console.error("Single sheet Excel export failed:", err);
-      alert("Failed to export selected sheet. Please try again.");
+      console.error('Single sheet Excel export failed:', err);
+      alert('Failed to export selected sheet. Please try again.');
     } finally {
       setExportingExcel(false);
     }
@@ -4330,12 +4324,12 @@ export default function EditProjectForm() {
     event.preventDefault();
 
     if (!canEditProjectContent) {
-      alert("You do not have permission to update this project.");
+      alert('You do not have permission to update this project.');
       return;
     }
 
     if (!form.name.trim()) {
-      alert("Project name is required");
+      alert('Project name is required');
       return;
     }
 
@@ -4383,13 +4377,13 @@ export default function EditProjectForm() {
         }),
       };
 
-      console.log("[SUBMIT] Sending update for project:", id);
+      console.log('[SUBMIT] Sending update for project:', id);
       console.log(
-        "[SUBMIT] Payload size:",
+        '[SUBMIT] Payload size:',
         JSON.stringify(payload).length,
-        "bytes",
+        'bytes'
       );
-      console.log("[SUBMIT] List field counts:", {
+      console.log('[SUBMIT] List field counts:', {
         inputDocumentsList: inputDocumentsList.length,
         documentsReceived: documentsReceived.length,
         documentsIssued: documentsIssued.length,
@@ -4401,25 +4395,25 @@ export default function EditProjectForm() {
         projectSchedule: projectSchedule.length,
       });
       console.log(
-        "[SUBMIT] Sample data - documentsIssued:",
-        JSON.stringify(documentsIssued).substring(0, 200),
+        '[SUBMIT] Sample data - documentsIssued:',
+        JSON.stringify(documentsIssued).substring(0, 200)
       );
 
       const result = await fetchJSON(`/api/projects/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (result.success) {
-        alert("Project updated successfully!");
+        alert('Project updated successfully!');
       } else {
         alert(
-          `Failed to update project: ${result.error || result.message || "Unknown error"}`,
+          `Failed to update project: ${result.error || result.message || 'Unknown error'}`
         );
       }
     } catch (error) {
-      alert(`Failed to update project: ${error?.message || "Unknown error"}`);
+      alert(`Failed to update project: ${error?.message || 'Unknown error'}`);
     } finally {
       setSubmitting(false);
     }
@@ -4435,7 +4429,7 @@ export default function EditProjectForm() {
           <div className="text-center">
             <p className="text-sm text-red-600 mb-4">{error}</p>
             <button
-              onClick={() => router.push("/projects")}
+              onClick={() => router.push('/projects')}
               className="text-sm text-[#7F2487] hover:underline"
             >
               Back to Projects
@@ -4449,7 +4443,7 @@ export default function EditProjectForm() {
   return (
     <div
       className="min-h-screen flex flex-col overflow-x-hidden"
-      style={{ background: "#ffffff" }}
+      style={{ background: '#ffffff' }}
     >
       <Navbar />
 
@@ -4461,17 +4455,17 @@ export default function EditProjectForm() {
         <div
           className="absolute -top-[10%] -right-[5%] w-96 h-96 rounded-full opacity-[0.04]"
           style={{
-            background: "radial-gradient(circle, #8b5cf6 0%, transparent 70%)",
-            filter: "blur(60px)",
-            animation: "orbit-smooth 20s ease-in-out infinite",
+            background: 'radial-gradient(circle, #8b5cf6 0%, transparent 70%)',
+            filter: 'blur(60px)',
+            animation: 'orbit-smooth 20s ease-in-out infinite',
           }}
         />
         <div
           className="absolute -bottom-[10%] -left-[5%] w-96 h-96 rounded-full opacity-[0.04]"
           style={{
-            background: "radial-gradient(circle, #3b82f6 0%, transparent 70%)",
-            filter: "blur(60px)",
-            animation: "orbit-smooth 25s ease-in-out infinite reverse",
+            background: 'radial-gradient(circle, #3b82f6 0%, transparent 70%)',
+            filter: 'blur(60px)',
+            animation: 'orbit-smooth 25s ease-in-out infinite reverse',
           }}
         />
       </div>
@@ -4484,11 +4478,11 @@ export default function EditProjectForm() {
               className="px-6 lg:px-8 xl:px-12 2xl:px-16 py-5 sticky top-16 z-30"
               style={{
                 background:
-                  "linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)",
-                backdropFilter: "blur(20px)",
-                borderBottom: "1.5px solid rgba(139, 92, 246, 0.1)",
+                  'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)',
+                backdropFilter: 'blur(20px)',
+                borderBottom: '1.5px solid rgba(139, 92, 246, 0.1)',
                 boxShadow:
-                  "0 4px 16px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+                  '0 4px 16px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
               }}
             >
               <div className="flex items-center justify-between">
@@ -4499,36 +4493,36 @@ export default function EditProjectForm() {
                     className="p-2.5 rounded-xl transition-all duration-300 group"
                     style={{
                       background:
-                        "linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)",
-                      border: "1.5px solid rgba(139, 92, 246, 0.1)",
-                      boxShadow: "0 2px 4px rgba(15, 23, 42, 0.04)",
+                        'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)',
+                      border: '1.5px solid rgba(139, 92, 246, 0.1)',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateX(-2px)";
+                      e.currentTarget.style.transform = 'translateX(-2px)';
                       e.currentTarget.style.boxShadow =
-                        "0 4px 12px rgba(139, 92, 246, 0.15)";
+                        '0 4px 12px rgba(139, 92, 246, 0.15)';
                       e.currentTarget.style.borderColor =
-                        "rgba(139, 92, 246, 0.25)";
+                        'rgba(139, 92, 246, 0.25)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateX(0)";
+                      e.currentTarget.style.transform = 'translateX(0)';
                       e.currentTarget.style.boxShadow =
-                        "0 2px 4px rgba(15, 23, 42, 0.04)";
+                        '0 2px 4px rgba(15, 23, 42, 0.04)';
                       e.currentTarget.style.borderColor =
-                        "rgba(139, 92, 246, 0.1)";
+                        'rgba(139, 92, 246, 0.1)';
                     }}
                     title="Back to Projects"
                   >
                     <ArrowLeftIcon
                       className="h-5 w-5 transition-transform duration-300 group-hover:-translate-x-0.5"
-                      style={{ color: "#8b5cf6" }}
+                      style={{ color: '#8b5cf6' }}
                     />
                   </button>
                   <div>
                     <div className="flex items-center gap-3 mb-1">
                       <h1
                         className="text-2xl font-bold"
-                        style={{ color: "#0f172a", letterSpacing: "-0.02em" }}
+                        style={{ color: '#0f172a', letterSpacing: '-0.02em' }}
                       >
                         Edit Project
                       </h1>
@@ -4537,9 +4531,9 @@ export default function EditProjectForm() {
                           className="px-3 py-1 text-xs font-bold rounded-lg"
                           style={{
                             background:
-                              "linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)",
-                            color: "#8b5cf6",
-                            border: "1px solid rgba(139, 92, 246, 0.2)",
+                              'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)',
+                            color: '#8b5cf6',
+                            border: '1px solid rgba(139, 92, 246, 0.2)',
                           }}
                         >
                           {form.name}
@@ -4566,13 +4560,13 @@ export default function EditProjectForm() {
                     className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       background:
-                        "linear-gradient(135deg, #ffffff 0%, #fafafa 100%)",
-                      border: "1.5px solid rgba(16, 185, 129, 0.28)",
-                      color: "#059669",
-                      boxShadow: "0 2px 4px rgba(15, 23, 42, 0.04)",
+                        'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: '1.5px solid rgba(16, 185, 129, 0.28)',
+                      color: '#059669',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
                     }}
                   >
-                    {importingExcel ? "Importing..." : "Import Excel"}
+                    {importingExcel ? 'Importing...' : 'Import Excel'}
                   </button>
                   <select
                     value={selectedExportSheet}
@@ -4593,13 +4587,13 @@ export default function EditProjectForm() {
                     className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       background:
-                        "linear-gradient(135deg, #ffffff 0%, #fafafa 100%)",
-                      border: "1.5px solid rgba(30, 136, 229, 0.28)",
-                      color: "#1E88E5",
-                      boxShadow: "0 2px 4px rgba(15, 23, 42, 0.04)",
+                        'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: '1.5px solid rgba(30, 136, 229, 0.28)',
+                      color: '#1E88E5',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
                     }}
                   >
-                    {exportingExcel ? "Exporting..." : "Export Section"}
+                    {exportingExcel ? 'Exporting...' : 'Export Section'}
                   </button>
                   <button
                     type="button"
@@ -4608,13 +4602,13 @@ export default function EditProjectForm() {
                     className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       background:
-                        "linear-gradient(135deg, #ffffff 0%, #fafafa 100%)",
-                      border: "1.5px solid rgba(127, 36, 135, 0.22)",
-                      color: "#7F2487",
-                      boxShadow: "0 2px 4px rgba(15, 23, 42, 0.04)",
+                        'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: '1.5px solid rgba(127, 36, 135, 0.22)',
+                      color: '#7F2487',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
                     }}
                   >
-                    {exportingExcel ? "Exporting..." : "Export Full Workbook"}
+                    {exportingExcel ? 'Exporting...' : 'Export Full Workbook'}
                   </button>
                   <button
                     type="button"
@@ -4622,20 +4616,20 @@ export default function EditProjectForm() {
                     className="px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300"
                     style={{
                       background:
-                        "linear-gradient(135deg, #ffffff 0%, #fafafa 100%)",
-                      border: "1.5px solid rgba(100, 116, 139, 0.15)",
-                      color: "#475569",
-                      boxShadow: "0 2px 4px rgba(15, 23, 42, 0.04)",
+                        'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)',
+                      border: '1.5px solid rgba(100, 116, 139, 0.15)',
+                      color: '#475569',
+                      boxShadow: '0 2px 4px rgba(15, 23, 42, 0.04)',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.transform = 'translateY(-1px)';
                       e.currentTarget.style.boxShadow =
-                        "0 4px 12px rgba(15, 23, 42, 0.08)";
+                        '0 4px 12px rgba(15, 23, 42, 0.08)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.transform = 'translateY(0)';
                       e.currentTarget.style.boxShadow =
-                        "0 2px 4px rgba(15, 23, 42, 0.04)";
+                        '0 2px 4px rgba(15, 23, 42, 0.04)';
                     }}
                   >
                     Cancel
@@ -4646,34 +4640,34 @@ export default function EditProjectForm() {
                     className="px-6 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     style={{
                       background:
-                        "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
-                      color: "#ffffff",
+                        'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                      color: '#ffffff',
                       boxShadow:
-                        "0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
-                      letterSpacing: "0.01em",
+                        '0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                      letterSpacing: '0.01em',
                     }}
                     onMouseEnter={(e) =>
                       !submitting &&
                       (() => {
-                        e.currentTarget.style.transform = "translateY(-2px)";
+                        e.currentTarget.style.transform = 'translateY(-2px)';
                         e.currentTarget.style.boxShadow =
-                          "0 8px 20px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)";
+                          '0 8px 20px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
                       })()
                     }
                     onMouseLeave={(e) =>
                       !submitting &&
                       (() => {
-                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.transform = 'translateY(0)';
                         e.currentTarget.style.boxShadow =
-                          "0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)";
+                          '0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
                       })()
                     }
                   >
                     {submitting
-                      ? "Saving..."
+                      ? 'Saving...'
                       : canEditProjectContent
-                        ? "Update Project"
-                        : "View Only"}
+                        ? 'Update Project'
+                        : 'View Only'}
                   </button>
                 </div>
               </div>
@@ -4683,17 +4677,17 @@ export default function EditProjectForm() {
             <div
               className="px-6 lg:px-8 xl:px-12 2xl:px-16 sticky z-20 mt-20"
               style={{
-                top: "calc(4rem + 5.5rem)",
-                paddingTop: "1rem",
-                paddingBottom: "1rem",
-                background: "#ffffff",
+                top: 'calc(4rem + 5.5rem)',
+                paddingTop: '1rem',
+                paddingBottom: '1rem',
+                background: '#ffffff',
               }}
             >
               <div
                 className="rounded-lg overflow-hidden border border-gray-200"
                 style={{
-                  background: "#ffffff",
-                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+                  background: '#ffffff',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
                 }}
               >
                 <div className="flex items-center gap-0 flex-wrap">
@@ -4706,23 +4700,23 @@ export default function EditProjectForm() {
                         onClick={() => setActiveTab(tab.id)}
                         className="relative px-6 py-3.5 text-sm font-medium transition-all duration-200 whitespace-nowrap flex-shrink-0"
                         style={{
-                          color: isActive ? "#111827" : "#6b7280",
+                          color: isActive ? '#111827' : '#6b7280',
                           borderBottom: isActive
-                            ? "2px solid #111827"
-                            : "2px solid transparent",
-                          background: isActive ? "#f9fafb" : "transparent",
-                          fontWeight: isActive ? "600" : "500",
+                            ? '2px solid #111827'
+                            : '2px solid transparent',
+                          background: isActive ? '#f9fafb' : 'transparent',
+                          fontWeight: isActive ? '600' : '500',
                         }}
                         onMouseEnter={(e) => {
                           if (!isActive) {
-                            e.currentTarget.style.color = "#111827";
-                            e.currentTarget.style.background = "#fafafa";
+                            e.currentTarget.style.color = '#111827';
+                            e.currentTarget.style.background = '#fafafa';
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!isActive) {
-                            e.currentTarget.style.color = "#6b7280";
-                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.color = '#6b7280';
+                            e.currentTarget.style.background = 'transparent';
                           }
                         }}
                       >
@@ -4738,7 +4732,7 @@ export default function EditProjectForm() {
             <div className="mt-5 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-8 space-y-6">
               <fieldset disabled={!canEditProjectContent}>
                 {/* Enhanced Project Details Tab */}
-                {activeTab === "project_details" && (
+                {activeTab === 'project_details' && (
                   <ProjectDetailsTab
                     form={form}
                     handleChange={handleChange}
@@ -4753,7 +4747,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Input Documents Tab - Inline Table Format */}
-                {activeTab === "input_documents" && (
+                {activeTab === 'input_documents' && (
                   <InputDocumentsTab
                     newInputDocument={newInputDocument}
                     setNewInputDocument={setNewInputDocument}
@@ -4767,7 +4761,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Software Tab */}
-                {activeTab === "software" && (
+                {activeTab === 'software' && (
                   <SoftwareTab
                     selectedSoftwareCategory={selectedSoftwareCategory}
                     setSelectedSoftwareCategory={setSelectedSoftwareCategory}
@@ -4785,7 +4779,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Project Team Tab */}
-                {activeTab === "project_team_tab" && (
+                {activeTab === 'project_team_tab' && (
                   <ProjectTeamTab
                     toggleSection={toggleSection}
                     openSections={openSections}
@@ -4802,7 +4796,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Enhanced Meetings Tab: Kickoff + Internal Meetings */}
-                {activeTab === "minutes_internal_meet" && (
+                {activeTab === 'minutes_internal_meet' && (
                   <MeetingTab
                     newKickoffMeetingTitle={newKickoffMeetingTitle}
                     setNewKickoffMeetingTitle={setNewKickoffMeetingTitle}
@@ -4823,7 +4817,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Project Handover Tab */}
-                {activeTab === "project_handover" && (
+                {activeTab === 'project_handover' && (
                   <ProjectHandoverTab
                     newHandoverDescRef={newHandoverDescRef}
                     newHandoverRow={newHandoverRow}
@@ -4836,7 +4830,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Project Manhours Tab */}
-                {activeTab === "project_manhours" && (
+                {activeTab === 'project_manhours' && (
                   <ProjectManhoursTab
                     projectManhours={projectManhours}
                     setProjectManhours={setProjectManhours}
@@ -4847,7 +4841,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Query Log Tab */}
-                {activeTab === "query_log" && (
+                {activeTab === 'query_log' && (
                   <QueryLogTab
                     newQueryDescRef={newQueryDescRef}
                     newQuery={newQuery}
@@ -4860,7 +4854,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Assumption Tab */}
-                {activeTab === "assumption" && (
+                {activeTab === 'assumption' && (
                   <AssumptionTab
                     newAssumptionDescRef={newAssumptionDescRef}
                     newAssumption={newAssumption}
@@ -4873,7 +4867,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Lessons Learnt Tab */}
-                {activeTab === "lessons_learnt" && (
+                {activeTab === 'lessons_learnt' && (
                   <LessonsLearntTab
                     newLessonDescRef={newLessonDescRef}
                     newLesson={newLesson}
@@ -4886,13 +4880,15 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Documents Issued Tab */}
-                {activeTab === "documents_issued" && (
+                {activeTab === 'documents_issued' && (
                   <DocumentsIssuedTab
                     newIssuedDescRef={newIssuedDescRef}
                     newIssuedDoc={newIssuedDoc}
                     setNewIssuedDoc={setNewIssuedDoc}
                     canEditProjectContent={canEditProjectContent}
-                    projectActivityDocumentNameOptions={projectActivityDocumentNameOptions}
+                    projectActivityDocumentNameOptions={
+                      projectActivityDocumentNameOptions
+                    }
                     addIssuedDocument={addIssuedDocument}
                     documentsIssued={documentsIssued}
                     updateIssuedDocument={updateIssuedDocument}
@@ -4901,7 +4897,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Documents Received Tab */}
-                {activeTab === "documents_received" && (
+                {activeTab === 'documents_received' && (
                   <DocumentsReceivedTab
                     newReceivedDoc={newReceivedDoc}
                     setNewReceivedDoc={setNewReceivedDoc}
@@ -4914,7 +4910,7 @@ export default function EditProjectForm() {
                 )}
 
                 {/* Project Schedule Tab */}
-                {activeTab === "project_schedule" && (
+                {activeTab === 'project_schedule' && (
                   <ProjectScheduleTab
                     scheduleWeeks={scheduleWeeks}
                     form={form}
@@ -4928,17 +4924,21 @@ export default function EditProjectForm() {
                     scheduleEffectivelyLocked={scheduleEffectivelyLocked}
                     addSchedule={addSchedule}
                     projectSchedule={projectSchedule}
-                    computeScheduleWeeksFromDates={computeScheduleWeeksFromDates}
+                    computeScheduleWeeksFromDates={
+                      computeScheduleWeeksFromDates
+                    }
                     updateSchedule={updateSchedule}
                     removeSchedule={removeSchedule}
                     toggleScheduleWeek={toggleScheduleWeek}
                     getScheduleLegend={getScheduleLegend}
-                    projectActivityScheduleGroups={projectActivityScheduleGroups}
+                    projectActivityScheduleGroups={
+                      projectActivityScheduleGroups
+                    }
                   />
                 )}
 
                 {/* Project Activity Tab - Admin view for all team members */}
-                {activeTab === "project_activity" && (
+                {activeTab === 'project_activity' && (
                   <ProjectActivityTab
                     projectActivities={projectActivities}
                     getActivityTotalPlanned={getActivityTotalPlanned}
@@ -4951,7 +4951,9 @@ export default function EditProjectForm() {
                     getSelectedCount={getSelectedCount}
                     addSelectedActivities={addSelectedActivities}
                     selectedActivitiesForAdd={selectedActivitiesForAdd}
-                    toggleAllActivitiesInDiscipline={toggleAllActivitiesInDiscipline}
+                    toggleAllActivitiesInDiscipline={
+                      toggleAllActivitiesInDiscipline
+                    }
                     toggleActivitySelection={toggleActivitySelection}
                     editingActivityId={editingActivityId}
                     setEditingActivityId={setEditingActivityId}
@@ -4962,13 +4964,15 @@ export default function EditProjectForm() {
                     updateUserManhours={updateUserManhours}
                     toggleUserForActivity={toggleUserForActivity}
                     openUserSelectorForActivity={openUserSelectorForActivity}
-                    setOpenUserSelectorForActivity={setOpenUserSelectorForActivity}
+                    setOpenUserSelectorForActivity={
+                      setOpenUserSelectorForActivity
+                    }
                     isUserAssigned={isUserAssigned}
                     removeScopeActivity={removeScopeActivity}
                   />
                 )}
                 {/* Discussion Tab */}
-                {activeTab === "discussion" && (
+                {activeTab === 'discussion' && (
                   <DiscussionTab
                     id={id}
                     projectTeamMembers={projectTeamMembers}
@@ -4976,7 +4980,7 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Quotation Tab - Read Only Details (from Proposal) */}
-                {activeTab === "quotation" && (
+                {activeTab === 'quotation' && (
                   <QuotationTab
                     form={form}
                     canEditQuotations={canEditQuotations}
@@ -4984,7 +4988,7 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Purchase Order Tab */}
-                {activeTab === "purchase_order" && (
+                {activeTab === 'purchase_order' && (
                   <PurchaseOrderTab
                     canEditPurchaseOrders={canEditPurchaseOrders}
                     handleAddInvoice={handleAddInvoice}
@@ -5001,7 +5005,7 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Invoice Tab */}
-                {activeTab === "invoice" && (
+                {activeTab === 'invoice' && (
                   <InvoiceTab
                     canEditInvoices={canEditInvoices}
                     handleAddInvoice={handleAddInvoice}
@@ -5020,7 +5024,7 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* My Activities Tab - Personalized user manhours tracking */}
-                {activeTab === "my_activities" && (
+                {activeTab === 'my_activities' && (
                   <MyActivitiesTab
                     sessionUser={sessionUser}
                     projectActivities={projectActivities}
@@ -5031,7 +5035,7 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Scope of Work Tab */}
-                {activeTab === "scope" && (
+                {activeTab === 'scope' && (
                   <ScopeTab
                     form={form}
                     setForm={setForm}
@@ -5039,11 +5043,11 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Commercial Tab */}
-                {activeTab === "commercial" && (
+                {activeTab === 'commercial' && (
                   <CommercialTab form={form} handleChange={handleChange} />
                 )}
                 {/* Activities Tab */}
-                {activeTab === "activities" && (
+                {activeTab === 'activities' && (
                   <ActivitiesTab
                     projectActivities={projectActivities}
                     functions={functions}
@@ -5056,7 +5060,7 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Team Builder Tab */}
-                {activeTab === "team" && (
+                {activeTab === 'team' && (
                   <TeamTab
                     addActivityTeamMember={addActivityTeamMember}
                     totalManhours={totalManhours}
@@ -5070,23 +5074,23 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Procurement Tab */}
-                {activeTab === "procurement" && (
+                {activeTab === 'procurement' && (
                   <ProcurementTab form={form} handleChange={handleChange} />
                 )}
                 {/* Construction Tab */}
-                {activeTab === "construction" && (
+                {activeTab === 'construction' && (
                   <ConstructionTab form={form} handleChange={handleChange} />
                 )}
                 {/* Risk Tab */}
-                {activeTab === "risk" && (
+                {activeTab === 'risk' && (
                   <RiskTab form={form} handleChange={handleChange} />
                 )}
                 {/* Closeout Tab */}
-                {activeTab === "closeout" && (
+                {activeTab === 'closeout' && (
                   <CloseoutTab form={form} handleChange={handleChange} />
                 )}
                 {/* Project Planning Tab */}
-                {activeTab === "planning" && (
+                {activeTab === 'planning' && (
                   <PlanningTab
                     newPlanningActivity={newPlanningActivity}
                     updatePlanningActivityField={updatePlanningActivityField}
@@ -5096,20 +5100,22 @@ export default function EditProjectForm() {
                   />
                 )}
                 {/* Documentation Tab */}
-                {activeTab === "documentation" && (
+                {activeTab === 'documentation' && (
                   <DocumentationTab
                     newInputDocument={newInputDocument}
                     setNewInputDocument={setNewInputDocument}
                     handleInputDocumentKeyPress={handleInputDocumentKeyPress}
                     addInputDocument={addInputDocument}
-                    handleInputDocumentFileUpload={handleInputDocumentFileUpload}
+                    handleInputDocumentFileUpload={
+                      handleInputDocumentFileUpload
+                    }
                     inputDocumentsList={inputDocumentsList}
                     removeInputDocument={removeInputDocument}
                   />
                 )}
 
                 {/* Meetings & Communications Tab */}
-                {activeTab === "meetings" && (
+                {activeTab === 'meetings' && (
                   <MeetingsTab form={form} handleChange={handleChange} />
                 )}
               </fieldset>

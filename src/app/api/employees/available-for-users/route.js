@@ -9,7 +9,7 @@ export async function GET(request) {
     const includeWithUsers = searchParams.get('include_with_users') === 'true';
 
     db = await dbConnect();
-    
+
     let query = `
       SELECT e.id, e.employee_id, e.first_name, e.last_name, e.email, e.department, e.position,
              e.status, e.hire_date,
@@ -17,11 +17,11 @@ export async function GET(request) {
       FROM employees e
       LEFT JOIN users u ON e.id = u.employee_id AND u.is_active = TRUE
     `;
-    
+
     if (!includeWithUsers) {
       query += ' WHERE u.id IS NULL';
     }
-    
+
     query += ' ORDER BY e.first_name, e.last_name';
 
     const [rows] = await db.execute(query);
@@ -29,7 +29,10 @@ export async function GET(request) {
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching employees for users:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch employees' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch employees' },
+      { status: 500 }
+    );
   } finally {
     if (db) db.release();
   }

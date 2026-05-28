@@ -1,6 +1,10 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES as API_RESOURCES,
+  PERMISSIONS as API_PERMISSIONS,
+} from '@/utils/api-permissions';
 import { getPrimaryKeyColumn } from '@/utils/schema-cache';
 
 // Flag to ensure schema DDL runs at most once per process
@@ -20,59 +24,59 @@ async function detectEmployeePrimaryKey(connection) {
 // Helpers to ensure columns exist even on older MySQL/MariaDB where IF NOT EXISTS isn't supported
 async function getExistingColumns(connection) {
   const [rows] = await connection.execute('SHOW COLUMNS FROM employees');
-  return new Set(rows.map(r => r.Field));
+  return new Set(rows.map((r) => r.Field));
 }
 
 async function ensureEmployeesTable(connection) {
   const desired = [
-    ['username', "VARCHAR(50) UNIQUE"],
-    ['middle_name', "VARCHAR(50)"],
+    ['username', 'VARCHAR(50) UNIQUE'],
+    ['middle_name', 'VARCHAR(50)'],
     ['gender', "ENUM('Male','Female','Other')"],
     ['employee_type', "ENUM('Payroll','Contract','Deputation')"],
-    ['grade', "VARCHAR(50)"],
-    ['workplace', "VARCHAR(100)"],
-    ['level', "VARCHAR(50)"],
-    ['reporting_to', "VARCHAR(100)"],
-    ['pf_no', "VARCHAR(50)"],
-    ['dob', "DATE"],
+    ['grade', 'VARCHAR(50)'],
+    ['workplace', 'VARCHAR(100)'],
+    ['level', 'VARCHAR(50)'],
+    ['reporting_to', 'VARCHAR(100)'],
+    ['pf_no', 'VARCHAR(50)'],
+    ['dob', 'DATE'],
     ['marital_status', "ENUM('Single','Married','Other')"],
-    ['employment_status', "VARCHAR(50)"],
-    ['role', "VARCHAR(100)"],
-    ['joining_date', "DATE"],
-    ['present_address', "TEXT"],
-    ['city', "VARCHAR(100)"],
-    ['pin', "VARCHAR(20)"],
-    ['state', "VARCHAR(100)"],
-    ['country', "VARCHAR(100)"],
-    ['mobile', "VARCHAR(30)"],
-    ['personal_email', "VARCHAR(255)"],
-    ['profile_photo_url', "VARCHAR(255)"],
-    ['bonus_eligible', "TINYINT(1) DEFAULT 0"],
-    ['stat_pf', "TINYINT(1) DEFAULT 0"],
-    ['stat_mlwf', "TINYINT(1) DEFAULT 0"],
-    ['stat_pt', "TINYINT(1) DEFAULT 0"],
-    ['stat_esic', "TINYINT(1) DEFAULT 0"],
-    ['stat_tds', "TINYINT(1) DEFAULT 0"],
-    ['qualification', "VARCHAR(100)"],
-    ['institute', "VARCHAR(150)"],
-    ['passing_year', "VARCHAR(4)"],
-    ['work_experience', "TEXT"],
-    ['bank_account_no', "VARCHAR(50)"],
-    ['bank_ifsc', "VARCHAR(20)"],
-    ['bank_name', "VARCHAR(100)"],
-    ['bank_branch', "VARCHAR(100)"],
-    ['account_holder_name', "VARCHAR(150)"],
-    ['pan', "VARCHAR(20)"],
-    ['aadhar', "VARCHAR(20)"],
-    ['gratuity_no', "VARCHAR(50)"],
-    ['uan', "VARCHAR(50)"],
-    ['esi_no', "VARCHAR(50)"],
-    ['attendance_id', "VARCHAR(50)"],
-    ['biometric_code', "VARCHAR(50)"],
-    ['device_code', "VARCHAR(50)"],
-    ['exit_date', "DATE"],
-    ['exit_reason', "TEXT"],
-    ['deputation_company_id', "INT"],
+    ['employment_status', 'VARCHAR(50)'],
+    ['role', 'VARCHAR(100)'],
+    ['joining_date', 'DATE'],
+    ['present_address', 'TEXT'],
+    ['city', 'VARCHAR(100)'],
+    ['pin', 'VARCHAR(20)'],
+    ['state', 'VARCHAR(100)'],
+    ['country', 'VARCHAR(100)'],
+    ['mobile', 'VARCHAR(30)'],
+    ['personal_email', 'VARCHAR(255)'],
+    ['profile_photo_url', 'VARCHAR(255)'],
+    ['bonus_eligible', 'TINYINT(1) DEFAULT 0'],
+    ['stat_pf', 'TINYINT(1) DEFAULT 0'],
+    ['stat_mlwf', 'TINYINT(1) DEFAULT 0'],
+    ['stat_pt', 'TINYINT(1) DEFAULT 0'],
+    ['stat_esic', 'TINYINT(1) DEFAULT 0'],
+    ['stat_tds', 'TINYINT(1) DEFAULT 0'],
+    ['qualification', 'VARCHAR(100)'],
+    ['institute', 'VARCHAR(150)'],
+    ['passing_year', 'VARCHAR(4)'],
+    ['work_experience', 'TEXT'],
+    ['bank_account_no', 'VARCHAR(50)'],
+    ['bank_ifsc', 'VARCHAR(20)'],
+    ['bank_name', 'VARCHAR(100)'],
+    ['bank_branch', 'VARCHAR(100)'],
+    ['account_holder_name', 'VARCHAR(150)'],
+    ['pan', 'VARCHAR(20)'],
+    ['aadhar', 'VARCHAR(20)'],
+    ['gratuity_no', 'VARCHAR(50)'],
+    ['uan', 'VARCHAR(50)'],
+    ['esi_no', 'VARCHAR(50)'],
+    ['attendance_id', 'VARCHAR(50)'],
+    ['biometric_code', 'VARCHAR(50)'],
+    ['device_code', 'VARCHAR(50)'],
+    ['exit_date', 'DATE'],
+    ['exit_reason', 'TEXT'],
+    ['deputation_company_id', 'INT'],
     ['company_name', "VARCHAR(255) DEFAULT 'Accent Techno Solutions Pvt Ltd'"],
   ];
 
@@ -81,7 +85,9 @@ async function ensureEmployeesTable(connection) {
   for (const [name, type] of desired) {
     if (!existing.has(name)) {
       try {
-        await connection.execute(`ALTER TABLE employees ADD COLUMN ${name} ${type}`);
+        await connection.execute(
+          `ALTER TABLE employees ADD COLUMN ${name} ${type}`
+        );
         existing.add(name);
       } catch {
         // Ignore individual failures to avoid blocking; inserts/updates will intersect with existing columns
@@ -91,7 +97,9 @@ async function ensureEmployeesTable(connection) {
 
   // Update employee_type ENUM to include new values (Payroll, Contract, Deputation)
   try {
-    await connection.execute(`ALTER TABLE employees MODIFY COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')`);
+    await connection.execute(
+      `ALTER TABLE employees MODIFY COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')`
+    );
   } catch {
     // Ignore if modification fails
   }
@@ -129,9 +137,13 @@ export async function GET(request) {
   let connection;
   try {
     // RBAC: read employees
-    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.EMPLOYEES,
+      API_PERMISSIONS.READ
+    );
     if (auth instanceof Response) return auth;
-    
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const department = searchParams.get('department') || '';
@@ -142,20 +154,25 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit')) || 10;
     const offset = (page - 1) * limit;
 
-  connection = await dbConnect();
-  // Run schema DDL at most once per process
-  if (!_employeesSchemaReady) {
-    try { await ensureBaseEmployeesTable(connection); } catch {}
-    try { await ensureEmployeesTable(connection); } catch {}
-    _employeesSchemaReady = true;
-  }
+    connection = await dbConnect();
+    // Run schema DDL at most once per process
+    if (!_employeesSchemaReady) {
+      try {
+        await ensureBaseEmployeesTable(connection);
+      } catch {}
+      try {
+        await ensureEmployeesTable(connection);
+      } catch {}
+      _employeesSchemaReady = true;
+    }
 
     // Build WHERE clause for filtering (use alias to avoid ambiguity with self-join)
     let whereClause = 'WHERE 1=1';
     const params = [];
 
     if (search) {
-      whereClause += ' AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.email LIKE ? OR e.employee_id LIKE ?)';
+      whereClause +=
+        ' AND (e.first_name LIKE ? OR e.last_name LIKE ? OR e.email LIKE ? OR e.employee_id LIKE ?)';
       const searchPattern = `%${search}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
@@ -178,10 +195,10 @@ export async function GET(request) {
     if (employment_status) {
       if (employment_status === 'employed') {
         // Employed = active status and no exit_date
-        whereClause += ' AND (e.exit_date IS NULL OR e.exit_date = \'\')';
+        whereClause += " AND (e.exit_date IS NULL OR e.exit_date = '')";
       } else if (employment_status === 'resigned') {
         // Resigned = has exit_date
-        whereClause += ' AND e.exit_date IS NOT NULL AND e.exit_date != \'\'';
+        whereClause += " AND e.exit_date IS NOT NULL AND e.exit_date != ''";
       }
     }
 
@@ -217,21 +234,20 @@ export async function GET(request) {
 
     // Get unique workplaces for filter options
     const [workplaces] = await connection.execute(
-      'SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != \'\' ORDER BY workplace'
+      "SELECT DISTINCT workplace FROM employees WHERE workplace IS NOT NULL AND workplace != '' ORDER BY workplace"
     );
 
     return NextResponse.json({
       employees,
-      departments: departments.map(d => d.department),
-      workplaces: workplaces.map(w => w.workplace),
+      departments: departments.map((d) => d.department),
+      workplaces: workplaces.map((w) => w.workplace),
       pagination: {
         current: page,
         total: Math.ceil(total / limit),
         limit,
-        totalRecords: total
-      }
+        totalRecords: total,
+      },
     });
-
   } catch (error) {
     console.error('Error fetching employees:', error);
     return NextResponse.json(
@@ -240,7 +256,9 @@ export async function GET(request) {
     );
   } finally {
     if (connection) {
-      try { await connection.end(); } catch {}
+      try {
+        await connection.end();
+      } catch {}
     }
   }
 }
@@ -250,7 +268,11 @@ export async function POST(request) {
   let connection;
   try {
     // RBAC: create employees
-    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.CREATE);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.EMPLOYEES,
+      API_PERMISSIONS.CREATE
+    );
     if (auth instanceof Response) return auth;
     const data = await request.json();
     // Trim and sanitize incoming values
@@ -269,7 +291,7 @@ export async function POST(request) {
     try {
       console.debug('[employees.POST] sanitized keys:', Object.keys(sanitized));
     } catch {}
-    
+
     // Validation
     const requiredFields = ['employee_id', 'first_name', 'last_name', 'email'];
     for (const field of requiredFields) {
@@ -290,18 +312,28 @@ export async function POST(request) {
       );
     }
 
-  connection = await dbConnect();
-  if (!_employeesSchemaReady) {
-    try { await ensureBaseEmployeesTable(connection); } catch {}
-    try { await ensureEmployeesTable(connection); } catch {}
-    _employeesSchemaReady = true;
-  }
+    connection = await dbConnect();
+    if (!_employeesSchemaReady) {
+      try {
+        await ensureBaseEmployeesTable(connection);
+      } catch {}
+      try {
+        await ensureEmployeesTable(connection);
+      } catch {}
+      _employeesSchemaReady = true;
+    }
 
     // Check if employee_id or email already exists
     // Auto-generate ATS-prefixed employee_id when missing or only prefix provided
     try {
-      if (!sanitized.employee_id || /^ATS\s*$/i.test(sanitized.employee_id) || /^ATS\d*$/i.test(sanitized.employee_id)) {
-        const [rows] = await connection.execute("SELECT employee_id FROM employees WHERE employee_id LIKE 'ATS%'");
+      if (
+        !sanitized.employee_id ||
+        /^ATS\s*$/i.test(sanitized.employee_id) ||
+        /^ATS\d*$/i.test(sanitized.employee_id)
+      ) {
+        const [rows] = await connection.execute(
+          "SELECT employee_id FROM employees WHERE employee_id LIKE 'ATS%'"
+        );
         let maxNum = 0;
         for (const r of rows) {
           const m = String(r.employee_id || '').match(/ATS0*(\d+)$/i);
@@ -314,7 +346,10 @@ export async function POST(request) {
         sanitized.employee_id = `ATS${next}`;
       }
     } catch (genErr) {
-      console.warn('Failed to auto-generate ATS id:', genErr?.message || genErr);
+      console.warn(
+        'Failed to auto-generate ATS id:',
+        genErr?.message || genErr
+      );
     }
 
     const [existing] = await connection.execute(
@@ -331,19 +366,71 @@ export async function POST(request) {
 
     // Dynamic insert for provided fields
     const allowedFields = [
-      'employee_id','first_name','middle_name','last_name','username','email','personal_email','phone','mobile',
-      'department','position','hire_date','joining_date','status','employment_status','manager_id','reporting_to',
-      'address','present_address','city','pin','state','country','gender','employee_type','grade','workplace','level',
-      'pf_no','dob','marital_status','role','profile_photo_url','emergency_contact_name','emergency_contact_phone','notes',
-      'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
-      'qualification','institute','passing_year','work_experience',
-      'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
-      'attendance_id','biometric_code','exit_date','exit_reason',
-      'company_name'
+      'employee_id',
+      'first_name',
+      'middle_name',
+      'last_name',
+      'username',
+      'email',
+      'personal_email',
+      'phone',
+      'mobile',
+      'department',
+      'position',
+      'hire_date',
+      'joining_date',
+      'status',
+      'employment_status',
+      'manager_id',
+      'reporting_to',
+      'address',
+      'present_address',
+      'city',
+      'pin',
+      'state',
+      'country',
+      'gender',
+      'employee_type',
+      'grade',
+      'workplace',
+      'level',
+      'pf_no',
+      'dob',
+      'marital_status',
+      'role',
+      'profile_photo_url',
+      'emergency_contact_name',
+      'emergency_contact_phone',
+      'notes',
+      'bonus_eligible',
+      'stat_pf',
+      'stat_mlwf',
+      'stat_pt',
+      'stat_esic',
+      'stat_tds',
+      'qualification',
+      'institute',
+      'passing_year',
+      'work_experience',
+      'bank_account_no',
+      'bank_ifsc',
+      'bank_name',
+      'bank_branch',
+      'account_holder_name',
+      'pan',
+      'aadhar',
+      'gratuity_no',
+      'uan',
+      'esi_no',
+      'attendance_id',
+      'biometric_code',
+      'exit_date',
+      'exit_reason',
+      'company_name',
     ];
     // Only include columns that actually exist in DB
     const existingCols = await getExistingColumns(connection);
-    const insertable = allowedFields.filter(f => existingCols.has(f));
+    const insertable = allowedFields.filter((f) => existingCols.has(f));
     const cols = [];
     const placeholders = [];
     const vals = [];
@@ -356,17 +443,36 @@ export async function POST(request) {
     }
     // Safety: log and fail fast if something unexpected occurs with columns/values
     try {
-      console.debug('[employees.POST] insert columns count:', cols.length, 'values count:', vals.length);
+      console.debug(
+        '[employees.POST] insert columns count:',
+        cols.length,
+        'values count:',
+        vals.length
+      );
     } catch {}
     if (cols.length !== vals.length) {
       // helpful diagnostic for developers when payload/DB diverge
       console.error('[employees.POST] column/value mismatch', { cols, vals });
-      return NextResponse.json({ error: 'Server misconfiguration: column/value mismatch when saving employee' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error:
+            'Server misconfiguration: column/value mismatch when saving employee',
+        },
+        { status: 500 }
+      );
     }
     // Required fields safety
-    if (!cols.includes('employee_id') || !cols.includes('first_name') || !cols.includes('last_name') || !cols.includes('email')) {
+    if (
+      !cols.includes('employee_id') ||
+      !cols.includes('first_name') ||
+      !cols.includes('last_name') ||
+      !cols.includes('email')
+    ) {
       return NextResponse.json(
-        { error: 'Missing required fields (employee_id, first_name, last_name, email)' },
+        {
+          error:
+            'Missing required fields (employee_id, first_name, last_name, email)',
+        },
         { status: 400 }
       );
     }
@@ -388,13 +494,12 @@ export async function POST(request) {
     }
 
     return NextResponse.json(
-      { 
+      {
         message: 'Employee created successfully',
-        employeeId: result.insertId
+        employeeId: result.insertId,
       },
       { status: 201 }
     );
-
   } catch (error) {
     console.error('Error creating employee:', error);
     return NextResponse.json(
@@ -402,7 +507,13 @@ export async function POST(request) {
       { status: 500 }
     );
   } finally {
-    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
+    if (connection && typeof connection.release === 'function') {
+      try {
+        connection.release();
+      } catch (_) {
+        /* ignore */
+      }
+    }
   }
 }
 
@@ -411,13 +522,17 @@ export async function PUT(request) {
   let connection;
   try {
     // RBAC: update employees
-    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.UPDATE);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.EMPLOYEES,
+      API_PERMISSIONS.UPDATE
+    );
     if (auth instanceof Response) return auth;
-    
+
     // Get ID from query params or body
     const { searchParams } = new URL(request.url);
     const idFromQuery = searchParams.get('id');
-    
+
     const raw = await request.json();
     // Trim and sanitize
     const data = {};
@@ -431,10 +546,10 @@ export async function PUT(request) {
         data[k] = v;
       }
     }
-    
+
     // Use ID from query params if available, otherwise from body
     const employeeId = idFromQuery || data.id;
-    
+
     if (!employeeId) {
       return NextResponse.json(
         { success: false, error: 'Employee ID is required' },
@@ -444,8 +559,12 @@ export async function PUT(request) {
 
     connection = await dbConnect();
     if (!_employeesSchemaReady) {
-      try { await ensureBaseEmployeesTable(connection); } catch {}
-      try { await ensureEmployeesTable(connection); } catch {}
+      try {
+        await ensureBaseEmployeesTable(connection);
+      } catch {}
+      try {
+        await ensureEmployeesTable(connection);
+      } catch {}
       _employeesSchemaReady = true;
     }
     const pkCol = await detectEmployeePrimaryKey(connection);
@@ -454,7 +573,8 @@ export async function PUT(request) {
     const [existing] = await connection.execute(
       `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
       [employeeId]
-    );    if (existing.length === 0) {
+    );
+    if (existing.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Employee not found' },
         { status: 404 }
@@ -481,20 +601,73 @@ export async function PUT(request) {
     const values = [];
 
     const allowedFields = [
-      'employee_id','first_name','middle_name','last_name','username','email','personal_email','phone','mobile',
-      'department','position','hire_date','joining_date','status','employment_status','manager_id','reporting_to',
-      'address','present_address','city','pin','state','country','gender','employee_type','grade','workplace','level',
-      'pf_no','dob','marital_status','role','profile_photo_url','emergency_contact_name','emergency_contact_phone','notes',
-      'bonus_eligible','stat_pf','stat_mlwf','stat_pt','stat_esic','stat_tds',
-      'qualification','institute','passing_year','work_experience',
-      'bank_account_no','bank_ifsc','bank_name','bank_branch','account_holder_name','pan','aadhar','gratuity_no','uan','esi_no',
-      'attendance_id','biometric_code','device_code','exit_date','exit_reason',
-      'company_name'
+      'employee_id',
+      'first_name',
+      'middle_name',
+      'last_name',
+      'username',
+      'email',
+      'personal_email',
+      'phone',
+      'mobile',
+      'department',
+      'position',
+      'hire_date',
+      'joining_date',
+      'status',
+      'employment_status',
+      'manager_id',
+      'reporting_to',
+      'address',
+      'present_address',
+      'city',
+      'pin',
+      'state',
+      'country',
+      'gender',
+      'employee_type',
+      'grade',
+      'workplace',
+      'level',
+      'pf_no',
+      'dob',
+      'marital_status',
+      'role',
+      'profile_photo_url',
+      'emergency_contact_name',
+      'emergency_contact_phone',
+      'notes',
+      'bonus_eligible',
+      'stat_pf',
+      'stat_mlwf',
+      'stat_pt',
+      'stat_esic',
+      'stat_tds',
+      'qualification',
+      'institute',
+      'passing_year',
+      'work_experience',
+      'bank_account_no',
+      'bank_ifsc',
+      'bank_name',
+      'bank_branch',
+      'account_holder_name',
+      'pan',
+      'aadhar',
+      'gratuity_no',
+      'uan',
+      'esi_no',
+      'attendance_id',
+      'biometric_code',
+      'device_code',
+      'exit_date',
+      'exit_reason',
+      'company_name',
     ];
     const existingCols = await getExistingColumns(connection);
-    const updatable = allowedFields.filter(f => existingCols.has(f));
+    const updatable = allowedFields.filter((f) => existingCols.has(f));
 
-    updatable.forEach(field => {
+    updatable.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(data, field)) {
         const val = data[field];
         // Skip empty string or null to avoid wiping existing DB values unintentionally
@@ -534,12 +707,23 @@ export async function PUT(request) {
         }
       }
       // If employment status provided, toggle user's is_active accordingly
-      if (Object.prototype.hasOwnProperty.call(data, 'status') || Object.prototype.hasOwnProperty.call(data, 'employment_status')) {
-        const statusVal = (data.status || data.employment_status || '').toLowerCase();
-        if (['active','inactive','terminated'].includes(statusVal)) {
+      if (
+        Object.prototype.hasOwnProperty.call(data, 'status') ||
+        Object.prototype.hasOwnProperty.call(data, 'employment_status')
+      ) {
+        const statusVal = (
+          data.status ||
+          data.employment_status ||
+          ''
+        ).toLowerCase();
+        if (['active', 'inactive', 'terminated'].includes(statusVal)) {
           await connection.execute(
             'UPDATE users SET is_active = ? , status = ? WHERE employee_id = ?',
-            [statusVal === 'active', statusVal === 'inactive' ? 'inactive' : 'active', employeeId]
+            [
+              statusVal === 'active',
+              statusVal === 'inactive' ? 'inactive' : 'active',
+              employeeId,
+            ]
           );
         }
       }
@@ -550,9 +734,8 @@ export async function PUT(request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Employee updated successfully'
+      message: 'Employee updated successfully',
     });
-
   } catch (error) {
     console.error('Error updating employee:', error);
     return NextResponse.json(
@@ -560,7 +743,13 @@ export async function PUT(request) {
       { status: 500 }
     );
   } finally {
-    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
+    if (connection && typeof connection.release === 'function') {
+      try {
+        connection.release();
+      } catch (_) {
+        /* ignore */
+      }
+    }
   }
 }
 
@@ -569,7 +758,11 @@ export async function DELETE(request) {
   let connection;
   try {
     // RBAC: delete employees
-    const auth = await ensurePermission(request, API_RESOURCES.EMPLOYEES, API_PERMISSIONS.DELETE);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.EMPLOYEES,
+      API_PERMISSIONS.DELETE
+    );
     if (auth instanceof Response) return auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -583,7 +776,9 @@ export async function DELETE(request) {
 
     connection = await dbConnect();
     if (!_employeesSchemaReady) {
-      try { await ensureBaseEmployeesTable(connection); } catch {}
+      try {
+        await ensureBaseEmployeesTable(connection);
+      } catch {}
       _employeesSchemaReady = true;
     }
     const pkCol = await detectEmployeePrimaryKey(connection);
@@ -592,7 +787,8 @@ export async function DELETE(request) {
     const [existing] = await connection.execute(
       `SELECT ${pkCol} FROM employees WHERE ${pkCol} = ?`,
       [id]
-    );    if (existing.length === 0) {
+    );
+    if (existing.length === 0) {
       return NextResponse.json(
         { error: 'Employee not found' },
         { status: 404 }
@@ -607,16 +803,16 @@ export async function DELETE(request) {
 
     if (managedEmployees[0].count > 0) {
       return NextResponse.json(
-        { error: 'Cannot delete employee who is managing other employees. Please reassign their reports first.' },
+        {
+          error:
+            'Cannot delete employee who is managing other employees. Please reassign their reports first.',
+        },
         { status: 400 }
       );
     }
 
     // Delete employee
-    await connection.execute(
-      `DELETE FROM employees WHERE ${pkCol} = ?`,
-      [id]
-    );
+    await connection.execute(`DELETE FROM employees WHERE ${pkCol} = ?`, [id]);
     // Optionally deactivate linked user instead of hard delete
     try {
       await connection.execute(
@@ -626,9 +822,8 @@ export async function DELETE(request) {
     } catch {}
 
     return NextResponse.json({
-      message: 'Employee deleted successfully'
+      message: 'Employee deleted successfully',
     });
-
   } catch (error) {
     console.error('Error deleting employee:', error);
     return NextResponse.json(
@@ -636,6 +831,12 @@ export async function DELETE(request) {
       { status: 500 }
     );
   } finally {
-    if (connection && typeof connection.release === 'function') { try { connection.release(); } catch (_) { /* ignore */ } }
+    if (connection && typeof connection.release === 'function') {
+      try {
+        connection.release();
+      } catch (_) {
+        /* ignore */
+      }
+    }
   }
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { 
+import {
   ClipboardDocumentListIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
@@ -14,7 +14,7 @@ import {
   ExclamationTriangleIcon,
   CalendarIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 
 export default function AdminTodosPage() {
@@ -24,41 +24,52 @@ export default function AdminTodosPage() {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
-  
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 0,
+  });
+
   // Filters
   const [selectedUser, setSelectedUser] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchTodos = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pagination.limit.toString()
-      });
-      
-      if (selectedUser !== 'all') params.append('user_id', selectedUser);
-      if (selectedStatus !== 'all') params.append('status', selectedStatus);
-      if (selectedPriority !== 'all') params.append('priority', selectedPriority);
+  const fetchTodos = useCallback(
+    async (page = 1) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: pagination.limit.toString(),
+        });
 
-      const res = await fetch(`/api/admin/todos?${params}`);
-      const data = await res.json();
-      
-      if (data.success) {
-        setTodos(data.data || []);
-        setUsers(data.users || []);
-        setStats(data.stats || {});
-        setPagination(data.pagination || { page: 1, limit: 50, total: 0, totalPages: 0 });
+        if (selectedUser !== 'all') params.append('user_id', selectedUser);
+        if (selectedStatus !== 'all') params.append('status', selectedStatus);
+        if (selectedPriority !== 'all')
+          params.append('priority', selectedPriority);
+
+        const res = await fetch(`/api/admin/todos?${params}`);
+        const data = await res.json();
+
+        if (data.success) {
+          setTodos(data.data || []);
+          setUsers(data.users || []);
+          setStats(data.stats || {});
+          setPagination(
+            data.pagination || { page: 1, limit: 50, total: 0, totalPages: 0 }
+          );
+        }
+      } catch (error) {
+        console.error('Error fetching todos:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching todos:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedUser, selectedStatus, selectedPriority, pagination.limit]);
+    },
+    [selectedUser, selectedStatus, selectedPriority, pagination.limit]
+  );
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -68,7 +79,7 @@ export default function AdminTodosPage() {
   }, [authLoading, user, selectedUser, selectedStatus, selectedPriority]);
 
   // Filter todos by search term (client-side)
-  const filteredTodos = todos.filter(todo => {
+  const filteredTodos = todos.filter((todo) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -81,19 +92,27 @@ export default function AdminTodosPage() {
 
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'high': return 'bg-red-100 text-red-700 border-red-200';
-      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-      case 'low': return 'bg-green-100 text-green-700 border-green-200';
-      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+      case 'high':
+        return 'bg-red-100 text-red-700 border-red-200';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'low':
+        return 'bg-green-100 text-green-700 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'completed': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-      case 'in_progress': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'pending': return 'bg-amber-100 text-amber-700 border-amber-200';
-      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+      case 'completed':
+        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'in_progress':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'pending':
+        return 'bg-amber-100 text-amber-700 border-amber-200';
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
 
@@ -102,7 +121,7 @@ export default function AdminTodosPage() {
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
 
@@ -130,7 +149,7 @@ export default function AdminTodosPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      
+
       <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-16 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -142,13 +161,17 @@ export default function AdminTodosPage() {
                 <li className="text-gray-700">All Todos</li>
               </ol>
             </nav>
-            <h1 className="text-3xl font-bold text-gray-900">All User To-Do Lists</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              All User To-Do Lists
+            </h1>
           </div>
           <button
             onClick={() => fetchTodos(pagination.page)}
             className="inline-flex items-center gap-2 rounded-lg border border-purple-200 text-[#64126D] px-3.5 py-2 hover:bg-purple-50"
           >
-            <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <ArrowPathIcon
+              className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+            />
             Refresh
           </button>
         </div>
@@ -158,44 +181,68 @@ export default function AdminTodosPage() {
           <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <ClipboardDocumentListIcon className="h-5 w-5 text-[#64126D]" />
-              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Total</span>
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
+                Total
+              </span>
             </div>
-            <span className="text-2xl font-bold text-gray-900">{stats.total_todos || 0}</span>
+            <span className="text-2xl font-bold text-gray-900">
+              {stats.total_todos || 0}
+            </span>
           </div>
           <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <ClockIcon className="h-5 w-5 text-amber-500" />
-              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Pending</span>
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
+                Pending
+              </span>
             </div>
-            <span className="text-2xl font-bold text-amber-600">{stats.pending_count || 0}</span>
+            <span className="text-2xl font-bold text-amber-600">
+              {stats.pending_count || 0}
+            </span>
           </div>
           <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <ArrowPathIcon className="h-5 w-5 text-blue-500" />
-              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">In Progress</span>
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
+                In Progress
+              </span>
             </div>
-            <span className="text-2xl font-bold text-blue-600">{stats.in_progress_count || 0}</span>
+            <span className="text-2xl font-bold text-blue-600">
+              {stats.in_progress_count || 0}
+            </span>
           </div>
           <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <CheckCircleIcon className="h-5 w-5 text-emerald-500" />
-              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Completed</span>
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
+                Completed
+              </span>
             </div>
-            <span className="text-2xl font-bold text-emerald-600">{stats.completed_count || 0}</span>
+            <span className="text-2xl font-bold text-emerald-600">
+              {stats.completed_count || 0}
+            </span>
           </div>
           <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
-              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">High Priority</span>
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
+                High Priority
+              </span>
             </div>
-            <span className="text-2xl font-bold text-red-600">{stats.high_priority_count || 0}</span>
+            <span className="text-2xl font-bold text-red-600">
+              {stats.high_priority_count || 0}
+            </span>
           </div>
           <div className="bg-white border border-purple-200 rounded-xl px-6 py-5 flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <CalendarIcon className="h-5 w-5 text-orange-500" />
-              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">Overdue</span>
+              <span className="text-xs font-semibold text-gray-500 tracking-widest uppercase">
+                Overdue
+              </span>
             </div>
-            <span className="text-2xl font-bold text-orange-600">{stats.overdue_count || 0}</span>
+            <span className="text-2xl font-bold text-orange-600">
+              {stats.overdue_count || 0}
+            </span>
           </div>
         </div>
 
@@ -219,7 +266,7 @@ export default function AdminTodosPage() {
                 />
               </div>
             </div>
-            
+
             {/* User Filter */}
             <div>
               <select
@@ -281,58 +328,92 @@ export default function AdminTodosPage() {
           ) : filteredTodos.length === 0 ? (
             <div className="text-center py-12">
               <ClipboardDocumentListIcon className="h-12 w-12 mx-auto text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-500">No todos found</p>
-              <p className="text-xs text-gray-400 mt-1">Try adjusting your filters</p>
+              <p className="text-sm font-medium text-gray-500">
+                No todos found
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Try adjusting your filters
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-purple-50 border-b border-purple-200">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 w-12">Sr.</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">User</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Title</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Priority</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Due Date</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Created</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 w-12">
+                      Sr.
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      User
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Title
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Priority
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Due Date
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Created
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredTodos.map((todo, index) => (
-                    <tr key={todo.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={todo.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-4 py-3 text-gray-500 font-medium">
                         {(pagination.page - 1) * pagination.limit + index + 1}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="h-7 w-7 rounded-full bg-gradient-to-br from-[#7F2487] to-[#5a1a61] flex items-center justify-center text-white text-xs font-medium">
-                            {(todo.full_name || todo.username || '?')[0].toUpperCase()}
+                            {(todo.full_name ||
+                              todo.username ||
+                              '?')[0].toUpperCase()}
                           </div>
                           <div>
                             <p className="font-medium text-gray-900 text-xs">
                               {todo.full_name || todo.username || 'Unknown'}
                             </p>
                             {todo.department && (
-                              <p className="text-[10px] text-gray-500">{todo.department}</p>
+                              <p className="text-[10px] text-gray-500">
+                                {todo.department}
+                              </p>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 text-xs line-clamp-1">{todo.title}</p>
+                        <p className="font-medium text-gray-900 text-xs line-clamp-1">
+                          {todo.title}
+                        </p>
                         {todo.description && (
-                          <p className="text-[10px] text-gray-500 line-clamp-1 mt-0.5">{todo.description}</p>
+                          <p className="text-[10px] text-gray-500 line-clamp-1 mt-0.5">
+                            {todo.description}
+                          </p>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getPriorityColor(todo.priority)}`}>
+                        <span
+                          className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getPriorityColor(todo.priority)}`}
+                        >
                           {todo.priority?.toUpperCase() || 'MEDIUM'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getStatusColor(todo.status)}`}>
-                          {todo.status?.replace('_', ' ').toUpperCase() || 'PENDING'}
+                        <span
+                          className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getStatusColor(todo.status)}`}
+                        >
+                          {todo.status?.replace('_', ' ').toUpperCase() ||
+                            'PENDING'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -340,7 +421,9 @@ export default function AdminTodosPage() {
                           {isOverdue(todo.due_date, todo.status) && (
                             <ExclamationTriangleIcon className="h-3.5 w-3.5 text-red-500" />
                           )}
-                          <span className={`text-xs ${isOverdue(todo.due_date, todo.status) ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+                          <span
+                            className={`text-xs ${isOverdue(todo.due_date, todo.status) ? 'text-red-600 font-medium' : 'text-gray-600'}`}
+                          >
                             {formatDate(todo.due_date)}
                           </span>
                         </div>
@@ -360,8 +443,8 @@ export default function AdminTodosPage() {
             <div className="px-6 py-4 border-t border-purple-200 flex items-center justify-between">
               <p className="text-xs text-gray-500">
                 Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} results
+                {Math.min(pagination.page * pagination.limit, pagination.total)}{' '}
+                of {pagination.total} results
               </p>
               <div className="flex items-center gap-2">
                 <button

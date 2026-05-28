@@ -1,24 +1,36 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { ensurePermission, RESOURCES as API_RESOURCES, PERMISSIONS as API_PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES as API_RESOURCES,
+  PERMISSIONS as API_PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - fetch single user by ID
 export async function GET(request, { params }) {
   let db;
   try {
     // RBAC: read users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.READ);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.USERS,
+      API_PERMISSIONS.READ
+    );
     if (auth instanceof Response) return auth;
 
     const { id } = await params;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'User ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
 
-    const [rows] = await db.execute(`
+    const [rows] = await db.execute(
+      `
       SELECT u.*, 
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
              e.first_name, e.last_name, e.email as employee_email, e.department as employee_department,
@@ -28,22 +40,30 @@ export async function GET(request, { params }) {
       LEFT JOIN roles_master r ON u.role_id = r.id
       WHERE u.id = ?
       LIMIT 1
-    `, [id]);
+    `,
+      [id]
+    );
 
     await db.end();
 
     if (!rows || rows.length === 0) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      data: rows[0]
+    return NextResponse.json({
+      success: true,
+      data: rows[0],
     });
   } catch (error) {
     console.error('Error fetching user:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to fetch user' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch user' },
+      { status: 500 }
+    );
   }
 }
 
@@ -52,23 +72,36 @@ export async function PUT(request, { params }) {
   let db;
   try {
     // RBAC: update users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.UPDATE);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.USERS,
+      API_PERMISSIONS.UPDATE
+    );
     if (auth instanceof Response) return auth;
 
     const { id } = await params;
     const data = await request.json();
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'User ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
 
     // Check if user exists
-    const [existing] = await db.execute('SELECT id FROM users WHERE id = ? LIMIT 1', [id]);
+    const [existing] = await db.execute(
+      'SELECT id FROM users WHERE id = ? LIMIT 1',
+      [id]
+    );
     if (!existing || existing.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
     }
 
     // Build update query dynamically based on provided fields
@@ -89,11 +122,15 @@ export async function PUT(request, { params }) {
     }
     if (data.permissions !== undefined) {
       updateFields.push('permissions = ?');
-      updateValues.push(data.permissions ? JSON.stringify(data.permissions) : null);
+      updateValues.push(
+        data.permissions ? JSON.stringify(data.permissions) : null
+      );
     }
     if (data.field_permissions !== undefined) {
       updateFields.push('field_permissions = ?');
-      updateValues.push(data.field_permissions ? JSON.stringify(data.field_permissions) : null);
+      updateValues.push(
+        data.field_permissions ? JSON.stringify(data.field_permissions) : null
+      );
     }
     if (data.status !== undefined) {
       updateFields.push('status = ?');
@@ -114,7 +151,10 @@ export async function PUT(request, { params }) {
 
     if (updateFields.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'No fields to update' },
+        { status: 400 }
+      );
     }
 
     // Add ID to values
@@ -126,7 +166,8 @@ export async function PUT(request, { params }) {
     );
 
     // Fetch updated user
-    const [rows] = await db.execute(`
+    const [rows] = await db.execute(
+      `
       SELECT u.*, 
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
              r.role_name, r.role_code
@@ -134,19 +175,24 @@ export async function PUT(request, { params }) {
       LEFT JOIN employees e ON u.employee_id = e.id
       LEFT JOIN roles_master r ON u.role_id = r.id
       WHERE u.id = ?
-    `, [id]);
+    `,
+      [id]
+    );
 
     await db.end();
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: rows[0],
-      message: 'User updated successfully'
+      message: 'User updated successfully',
     });
   } catch (error) {
     console.error('Error updating user:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to update user' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to update user' },
+      { status: 500 }
+    );
   }
 }
 
@@ -155,40 +201,59 @@ export async function DELETE(request, { params }) {
   let db;
   try {
     // RBAC: delete users
-    const auth = await ensurePermission(request, API_RESOURCES.USERS, API_PERMISSIONS.DELETE);
+    const auth = await ensurePermission(
+      request,
+      API_RESOURCES.USERS,
+      API_PERMISSIONS.DELETE
+    );
     if (auth instanceof Response) return auth;
 
     const { id } = await params;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'User ID is required' },
+        { status: 400 }
+      );
     }
 
     db = await dbConnect();
 
     // Check if user exists
-    const [existing] = await db.execute('SELECT id, is_super_admin FROM users WHERE id = ? LIMIT 1', [id]);
+    const [existing] = await db.execute(
+      'SELECT id, is_super_admin FROM users WHERE id = ? LIMIT 1',
+      [id]
+    );
     if (!existing || existing.length === 0) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
     }
 
     // Prevent deleting super admin
     if (existing[0].is_super_admin) {
       await db.end();
-      return NextResponse.json({ success: false, error: 'Cannot delete super admin user' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete super admin user' },
+        { status: 403 }
+      );
     }
 
     await db.execute('DELETE FROM users WHERE id = ?', [id]);
     await db.end();
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'User deleted successfully'
+    return NextResponse.json({
+      success: true,
+      message: 'User deleted successfully',
     });
   } catch (error) {
     console.error('Error deleting user:', error);
     if (db) await db.end();
-    return NextResponse.json({ success: false, error: 'Failed to delete user' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete user' },
+      { status: 500 }
+    );
   }
 }

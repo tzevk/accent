@@ -3,14 +3,17 @@ const ExcelJS = require('exceljs');
 const mysql = require('mysql2/promise');
 require('dotenv').config({ path: '.env.local' });
 
-const workbookPath = process.argv.find((arg) => arg.endsWith('.xlsx')) || path.join(__dirname, 'Updated salary Sheet.xlsx');
+const workbookPath =
+  process.argv.find((arg) => arg.endsWith('.xlsx')) ||
+  path.join(__dirname, 'Updated salary Sheet.xlsx');
 const replaceExistingMonth = process.argv.includes('--replace-existing-month');
 
-const normalizeText = (value) => String(value || '')
-  .replace(/[.]/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .toUpperCase();
+const normalizeText = (value) =>
+  String(value || '')
+    .replace(/[.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
 const parseNumber = (value) => {
   if (value === null || value === undefined || value === '') return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -53,7 +56,9 @@ async function main() {
   }
 
   if (!payrollMonth) {
-    throw new Error('Could not determine payroll month from the workbook header');
+    throw new Error(
+      'Could not determine payroll month from the workbook header'
+    );
   }
 
   const pool = mysql.createPool({
@@ -62,7 +67,7 @@ async function main() {
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    connectionLimit: 2
+    connectionLimit: 2,
   });
 
   const db = await pool.getConnection();
@@ -140,14 +145,20 @@ async function main() {
       const totalDeductions = parseNumber(row.getCell(48).value);
       const netPay = parseNumber(row.getCell(49).value);
 
-      const daysAbsent = Math.max(totalDays - daysPresent - weekOffDays - leaveDays - paidHoliday, 0);
+      const daysAbsent = Math.max(
+        totalDays - daysPresent - weekOffDays - leaveDays - paidHoliday,
+        0
+      );
       const otherDeductions = loan + advance;
       const employerContributions = 0;
       const employerCost = gross + employerContributions;
-      const computedTotalDeductions = pfEmployee + esicEmployee + pt + retention + tds + otherDeductions;
+      const computedTotalDeductions =
+        pfEmployee + esicEmployee + pt + retention + tds + otherDeductions;
 
       if (Math.abs(computedTotalDeductions - totalDeductions) > 0.5) {
-        console.warn(`Row ${rowNumber} total deduction mismatch for ${fullName}: sheet=${totalDeductions}, computed=${computedTotalDeductions}`);
+        console.warn(
+          `Row ${rowNumber} total deduction mismatch for ${fullName}: sheet=${totalDeductions}, computed=${computedTotalDeductions}`
+        );
       }
 
       records.push({
@@ -219,14 +230,18 @@ async function main() {
         'DELETE FROM payroll_slips WHERE month = ?',
         [payrollMonth]
       );
-      console.log(`Deleted ${deleted.affectedRows} existing payroll slip(s) for ${payrollMonth}`);
+      console.log(
+        `Deleted ${deleted.affectedRows} existing payroll slip(s) for ${payrollMonth}`
+      );
     } else {
       const [existing] = await db.execute(
         'SELECT COUNT(*) AS count FROM payroll_slips WHERE month = ?',
         [payrollMonth]
       );
       if ((existing[0]?.count || 0) > 0) {
-        throw new Error(`Payroll slips already exist for ${payrollMonth}. Re-run with --replace-existing-month to overwrite them.`);
+        throw new Error(
+          `Payroll slips already exist for ${payrollMonth}. Re-run with --replace-existing-month to overwrite them.`
+        );
       }
     }
 
@@ -297,7 +312,9 @@ async function main() {
 
     await db.commit();
 
-    console.log(`Imported ${records.length} payroll slip(s) for ${payrollMonth}`);
+    console.log(
+      `Imported ${records.length} payroll slip(s) for ${payrollMonth}`
+    );
     if (unmatchedRows.length > 0) {
       console.log(`Skipped ${unmatchedRows.length} unmatched row(s)`);
     }

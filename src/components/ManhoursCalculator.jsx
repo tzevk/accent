@@ -8,7 +8,7 @@ export default function ManhoursCalculator({ value, onChange }) {
 
   useEffect(() => {
     // compute days assuming 8 hours per day and distribute across resources
-    const computedDays = resources > 0 ? (hours / (8 * resources)) : 0;
+    const computedDays = resources > 0 ? hours / (8 * resources) : 0;
     setDays(Number(computedDays.toFixed(2)));
     if (onChange) onChange(hours);
   }, [hours, resources, onChange]);
@@ -41,8 +41,12 @@ export default function ManhoursCalculator({ value, onChange }) {
       </div>
 
       <div className="mt-3 text-sm text-gray-700">
-        <div>Estimated Days (8h/day): <strong>{days}</strong></div>
-        <div className="text-xs text-gray-500">This is a simple estimate dividing total manhours by 8*resources.</div>
+        <div>
+          Estimated Days (8h/day): <strong>{days}</strong>
+        </div>
+        <div className="text-xs text-gray-500">
+          This is a simple estimate dividing total manhours by 8*resources.
+        </div>
       </div>
     </div>
   );

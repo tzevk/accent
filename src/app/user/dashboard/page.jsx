@@ -9,20 +9,20 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 // Dynamic import to prevent any flash
 const UserDashboardContent = dynamic(
   () => import('@/app/dashboard/user-dashboard'),
-  { 
+  {
     ssr: false,
     loading: () => (
-      <LoadingSpinner 
-        message="Loading Dashboard" 
-        subMessage="Preparing your workspace..." 
+      <LoadingSpinner
+        message="Loading Dashboard"
+        subMessage="Preparing your workspace..."
       />
-    )
+    ),
   }
 );
 
 /**
  * User Dashboard - Protected route
- * 
+ *
  * Uses SessionContext for consistent auth state.
  * AuthGate handles redirect to signin if not authenticated.
  */
@@ -34,7 +34,8 @@ export default function UserDashboardPage() {
   useEffect(() => {
     // If session context already has user data (from cache), use it immediately
     if (user && authenticated) {
-      const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+      const isSuperAdmin =
+        user.is_super_admin === true || user.is_super_admin === 1;
       if (isSuperAdmin) {
         // Super admin - redirect to admin dashboard
         router.replace('/admin/dashboard');
@@ -44,7 +45,7 @@ export default function UserDashboardPage() {
       setAuthorized(true);
       return;
     }
-    
+
     // Wait for session to load
     if (loading) return;
 
@@ -54,7 +55,8 @@ export default function UserDashboardPage() {
     }
 
     // Super admin should go to admin dashboard
-    const isSuperAdmin = user.is_super_admin === true || user.is_super_admin === 1;
+    const isSuperAdmin =
+      user.is_super_admin === true || user.is_super_admin === 1;
     if (isSuperAdmin) {
       router.replace('/admin/dashboard');
       return;
@@ -67,10 +69,7 @@ export default function UserDashboardPage() {
   // Show loader only while session is loading
   if (loading || !user || !authorized) {
     return (
-      <LoadingSpinner 
-        message="Loading Dashboard" 
-        subMessage="Please wait..." 
-      />
+      <LoadingSpinner message="Loading Dashboard" subMessage="Please wait..." />
     );
   }
 

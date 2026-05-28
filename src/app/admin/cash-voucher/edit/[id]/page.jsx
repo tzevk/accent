@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
-import { 
+import {
   BanknotesIcon,
   PlusIcon,
   TrashIcon,
   ArrowLeftIcon,
-  CheckIcon
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 export default function EditCashVoucherPage({ params }) {
@@ -23,7 +23,7 @@ export default function EditCashVoucherPage({ params }) {
   const [projects, setProjects] = useState([]);
   const [descriptions, setDescriptions] = useState([]);
   const [accountHeads, setAccountHeads] = useState([]);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     voucher_number: '',
@@ -37,12 +37,20 @@ export default function EditCashVoucherPage({ params }) {
     checked_by: '',
     approved_by: '',
     receiver_signature: '',
-    notes: ''
+    notes: '',
   });
 
   // Line items
   const [lineItems, setLineItems] = useState([
-    { sr_no: 1, bill_date: '', bill_no: '', account_head: '', amount_rs: '', amount_ps: '', description: '' }
+    {
+      sr_no: 1,
+      bill_date: '',
+      bill_no: '',
+      account_head: '',
+      amount_rs: '',
+      amount_ps: '',
+      description: '',
+    },
   ]);
 
   // Fetch voucher data and dropdown options
@@ -55,7 +63,9 @@ export default function EditCashVoucherPage({ params }) {
           const voucher = data.data;
           setFormData({
             voucher_number: voucher.voucher_number || '',
-            voucher_date: voucher.voucher_date ? new Date(voucher.voucher_date).toISOString().split('T')[0] : '',
+            voucher_date: voucher.voucher_date
+              ? new Date(voucher.voucher_date).toISOString().split('T')[0]
+              : '',
             paid_to: voucher.paid_to || '',
             project_number: voucher.project_number || '',
             payment_mode: voucher.payment_mode || 'cash',
@@ -65,20 +75,26 @@ export default function EditCashVoucherPage({ params }) {
             checked_by: voucher.checked_by || '',
             approved_by: voucher.approved_by_name || '',
             receiver_signature: voucher.receiver_signature || '',
-            notes: voucher.notes || ''
+            notes: voucher.notes || '',
           });
-          
+
           // Set line items
-          if (voucher.line_items && Array.isArray(voucher.line_items) && voucher.line_items.length > 0) {
-            setLineItems(voucher.line_items.map((item, index) => ({
-              sr_no: index + 1,
-              bill_date: item.bill_date || '',
-              bill_no: item.bill_no || '',
-              account_head: item.account_head || '',
-              amount_rs: item.amount_rs || '',
-              amount_ps: item.amount_ps || '',
-              description: item.description || ''
-            })));
+          if (
+            voucher.line_items &&
+            Array.isArray(voucher.line_items) &&
+            voucher.line_items.length > 0
+          ) {
+            setLineItems(
+              voucher.line_items.map((item, index) => ({
+                sr_no: index + 1,
+                bill_date: item.bill_date || '',
+                bill_no: item.bill_no || '',
+                account_head: item.account_head || '',
+                amount_rs: item.amount_rs || '',
+                amount_ps: item.amount_ps || '',
+                description: item.description || '',
+              }))
+            );
           }
         }
       } catch (error) {
@@ -117,7 +133,9 @@ export default function EditCashVoucherPage({ params }) {
         const res = await fetch('/api/masters/descriptions');
         const data = await res.json();
         if (data.success) {
-          setDescriptions((data.data || []).filter(d => d.is_active !== false));
+          setDescriptions(
+            (data.data || []).filter((d) => d.is_active !== false)
+          );
         }
       } catch (error) {
         console.error('Error fetching descriptions:', error);
@@ -129,13 +147,15 @@ export default function EditCashVoucherPage({ params }) {
         const res = await fetch('/api/masters/account-heads');
         const data = await res.json();
         if (data.success) {
-          setAccountHeads((data.data || []).filter(d => d.is_active !== false));
+          setAccountHeads(
+            (data.data || []).filter((d) => d.is_active !== false)
+          );
         }
       } catch (error) {
         console.error('Error fetching account heads:', error);
       }
     };
-    
+
     if (!authLoading && user && id) {
       fetchVoucher();
       fetchEmployees();
@@ -150,75 +170,129 @@ export default function EditCashVoucherPage({ params }) {
     const total = lineItems.reduce((sum, item) => {
       const rs = parseFloat(item.amount_rs) || 0;
       const ps = parseFloat(item.amount_ps) || 0;
-      return sum + rs + (ps / 100);
+      return sum + rs + ps / 100;
     }, 0);
-    setFormData(prev => ({ ...prev, total_amount: total }));
+    setFormData((prev) => ({ ...prev, total_amount: total }));
   }, [lineItems]);
 
   // Convert number to words
   const numberToWords = (num) => {
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    
+    const ones = [
+      '',
+      'One',
+      'Two',
+      'Three',
+      'Four',
+      'Five',
+      'Six',
+      'Seven',
+      'Eight',
+      'Nine',
+      'Ten',
+      'Eleven',
+      'Twelve',
+      'Thirteen',
+      'Fourteen',
+      'Fifteen',
+      'Sixteen',
+      'Seventeen',
+      'Eighteen',
+      'Nineteen',
+    ];
+    const tens = [
+      '',
+      '',
+      'Twenty',
+      'Thirty',
+      'Forty',
+      'Fifty',
+      'Sixty',
+      'Seventy',
+      'Eighty',
+      'Ninety',
+    ];
+
     if (num === 0) return 'Zero';
-    
+
     const convertLessThanThousand = (n) => {
       if (n === 0) return '';
       if (n < 20) return ones[n];
-      if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
-      return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + convertLessThanThousand(n % 100) : '');
+      if (n < 100)
+        return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+      return (
+        ones[Math.floor(n / 100)] +
+        ' Hundred' +
+        (n % 100 ? ' ' + convertLessThanThousand(n % 100) : '')
+      );
     };
-    
+
     const wholePart = Math.floor(num);
     const decimalPart = Math.round((num - wholePart) * 100);
-    
+
     let result = '';
-    
+
     if (wholePart >= 10000000) {
-      result += convertLessThanThousand(Math.floor(wholePart / 10000000)) + ' Crore ';
+      result +=
+        convertLessThanThousand(Math.floor(wholePart / 10000000)) + ' Crore ';
     }
     if (wholePart >= 100000) {
-      result += convertLessThanThousand(Math.floor((wholePart % 10000000) / 100000)) + ' Lakh ';
+      result +=
+        convertLessThanThousand(Math.floor((wholePart % 10000000) / 100000)) +
+        ' Lakh ';
     }
     if (wholePart >= 1000) {
-      result += convertLessThanThousand(Math.floor((wholePart % 100000) / 1000)) + ' Thousand ';
+      result +=
+        convertLessThanThousand(Math.floor((wholePart % 100000) / 1000)) +
+        ' Thousand ';
     }
     if (wholePart >= 100) {
-      result += convertLessThanThousand(Math.floor((wholePart % 1000) / 100)) + ' Hundred ';
+      result +=
+        convertLessThanThousand(Math.floor((wholePart % 1000) / 100)) +
+        ' Hundred ';
     }
     if (wholePart % 100 > 0) {
       result += convertLessThanThousand(wholePart % 100);
     }
-    
+
     result = result.trim() + ' Rupees';
-    
+
     if (decimalPart > 0) {
       result += ' and ' + convertLessThanThousand(decimalPart) + ' Paise';
     }
-    
+
     return result + ' Only';
   };
 
   // Update amount in words when total changes
   useEffect(() => {
     if (formData.total_amount > 0) {
-      setFormData(prev => ({ ...prev, amount_in_words: numberToWords(prev.total_amount) }));
+      setFormData((prev) => ({
+        ...prev,
+        amount_in_words: numberToWords(prev.total_amount),
+      }));
     }
   }, [formData.total_amount]);
 
   // Add new line item
   const addLineItem = () => {
-    setLineItems(prev => [
+    setLineItems((prev) => [
       ...prev,
-      { sr_no: prev.length + 1, bill_date: '', bill_no: '', account_head: '', amount_rs: '', amount_ps: '', description: '' }
+      {
+        sr_no: prev.length + 1,
+        bill_date: '',
+        bill_no: '',
+        account_head: '',
+        amount_rs: '',
+        amount_ps: '',
+        description: '',
+      },
     ]);
   };
 
   // Remove line item
   const removeLineItem = (index) => {
     if (lineItems.length === 1) return;
-    setLineItems(prev => {
+    setLineItems((prev) => {
       const updated = prev.filter((_, i) => i !== index);
       return updated.map((item, i) => ({ ...item, sr_no: i + 1 }));
     });
@@ -226,16 +300,16 @@ export default function EditCashVoucherPage({ params }) {
 
   // Update line item
   const updateLineItem = (index, field, value) => {
-    setLineItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, [field]: value } : item
-    ));
+    setLineItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
   };
 
   // Handle form submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    
+
     try {
       const res = await fetch(`/api/admin/cash-vouchers/${id}`, {
         method: 'PUT',
@@ -243,12 +317,12 @@ export default function EditCashVoucherPage({ params }) {
         body: JSON.stringify({
           ...formData,
           line_items: lineItems,
-          voucher_type: 'payment'
-        })
+          voucher_type: 'payment',
+        }),
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success) {
         router.push('/admin/cash-voucher');
       } else {
@@ -267,7 +341,7 @@ export default function EditCashVoucherPage({ params }) {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
     }).format(amount || 0);
   };
 
@@ -289,7 +363,7 @@ export default function EditCashVoucherPage({ params }) {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="flex-1 flex flex-col">
         <Navbar />
-        
+
         <main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto max-w-[1800px] mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -305,7 +379,9 @@ export default function EditCashVoucherPage({ params }) {
                   <BanknotesIcon className="h-7 w-7 text-purple-600" />
                   Edit Cash Voucher
                 </h1>
-                <p className="text-sm text-gray-500 mt-1">Edit voucher #{formData.voucher_number}</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Edit voucher #{formData.voucher_number}
+                </p>
               </div>
             </div>
           </div>
@@ -317,20 +393,30 @@ export default function EditCashVoucherPage({ params }) {
               <div className="border-b-2 border-gray-800 flex">
                 {/* Company Info */}
                 <div className="flex-1 p-4 border-r-2 border-gray-800">
-                  <h2 className="text-lg font-bold text-gray-900">Accent Techno Solutions Pvt. Ltd.</h2>
-                  <p className="text-sm text-gray-600">17/130, Anand Nagar, Neharu Road, Vakola,</p>
-                  <p className="text-sm text-gray-600">Santacruz (E), Mumbai - 400 055.</p>
+                  <h2 className="text-lg font-bold text-gray-900">
+                    Accent Techno Solutions Pvt. Ltd.
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    17/130, Anand Nagar, Neharu Road, Vakola,
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Santacruz (E), Mumbai - 400 055.
+                  </p>
                 </div>
                 {/* Title */}
                 <div className="flex-1 p-4 border-r-2 border-gray-800 text-center">
                   <h1 className="text-xl font-bold text-gray-900">PETTY</h1>
-                  <h1 className="text-xl font-bold text-gray-900">CASH-CHEQUE</h1>
+                  <h1 className="text-xl font-bold text-gray-900">
+                    CASH-CHEQUE
+                  </h1>
                   <h1 className="text-xl font-bold text-gray-900">VOUCHER</h1>
                 </div>
                 {/* Voucher Details */}
                 <div className="w-150">
                   <div className="flex border-b border-gray-800">
-                    <div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">SR. NO.:</div>
+                    <div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">
+                      SR. NO.:
+                    </div>
                     <input
                       type="text"
                       value={formData.voucher_number}
@@ -342,36 +428,65 @@ export default function EditCashVoucherPage({ params }) {
                     <input
                       type="date"
                       value={formData.voucher_date}
-                      onChange={(e) => setFormData(prev => ({ ...prev, voucher_date: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          voucher_date: e.target.value,
+                        }))
+                      }
                       className="w-full px-3 py-2 bg-transparent"
                     />
                   </div>
                   <div className="flex border-b border-gray-800">
-                    <div className="px-3 py-2 text-sm font-semibold bg-white w-24">PROJECT:</div>
+                    <div className="px-3 py-2 text-sm font-semibold bg-white w-24">
+                      PROJECT:
+                    </div>
                     <select
                       value={formData.project_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, project_number: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          project_number: e.target.value,
+                        }))
+                      }
                       className="flex-1 px-3 py-2 bg-transparent"
                     >
                       <option value="">Select Project</option>
-                      {projects.map(proj => (
-                        <option key={proj.id || proj.project_id} value={proj.project_id}>
+                      {projects.map((proj) => (
+                        <option
+                          key={proj.id || proj.project_id}
+                          value={proj.project_id}
+                        >
                           {proj.project_id}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="flex">
-                    <div className="px-3 py-2 text-sm font-semibold bg-white w-24">PAID TO:</div>
+                    <div className="px-3 py-2 text-sm font-semibold bg-white w-24">
+                      PAID TO:
+                    </div>
                     <select
                       value={formData.paid_to}
-                      onChange={(e) => setFormData(prev => ({ ...prev, paid_to: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          paid_to: e.target.value,
+                        }))
+                      }
                       className="flex-1 px-3 py-2 bg-transparent"
                     >
                       <option value="">Select Employee</option>
-                      {employees.map(emp => (
-                        <option key={emp.id} value={emp.full_name || `${emp.first_name} ${emp.last_name}`}>
-                          {emp.full_name || `${emp.first_name} ${emp.last_name}`}
+                      {employees.map((emp) => (
+                        <option
+                          key={emp.id}
+                          value={
+                            emp.full_name ||
+                            `${emp.first_name} ${emp.last_name}`
+                          }
+                        >
+                          {emp.full_name ||
+                            `${emp.first_name} ${emp.last_name}`}
                         </option>
                       ))}
                     </select>
@@ -384,30 +499,49 @@ export default function EditCashVoucherPage({ params }) {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-white">
-                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-14">SR. NO.</th>
-                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-28">BILL DATE</th>
-                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-24">BILL NO.</th>
-                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-40">ACCOUNT HEAD</th>
-                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700" colSpan="2">
+                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-14">
+                        SR. NO.
+                      </th>
+                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-28">
+                        BILL DATE
+                      </th>
+                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-24">
+                        BILL NO.
+                      </th>
+                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-40">
+                        ACCOUNT HEAD
+                      </th>
+                      <th
+                        className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700"
+                        colSpan="2"
+                      >
                         <div>AMOUNT</div>
                         <div className="flex border-t border-gray-800 mt-1">
-                          <div className="flex-1 border-r border-gray-800 px-1">RS.</div>
+                          <div className="flex-1 border-r border-gray-800 px-1">
+                            RS.
+                          </div>
                           <div className="flex-1 px-1">PS.</div>
                         </div>
                       </th>
-                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700">DESCRIPTION</th>
+                      <th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700">
+                        DESCRIPTION
+                      </th>
                       <th className="px-2 py-2 text-xs font-semibold text-gray-700 w-10"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {lineItems.map((item, index) => (
                       <tr key={index} className="border-t border-gray-800">
-                        <td className="border-r border-gray-800 px-2 py-1 text-center text-sm">{item.sr_no}</td>
+                        <td className="border-r border-gray-800 px-2 py-1 text-center text-sm">
+                          {item.sr_no}
+                        </td>
                         <td className="border-r border-gray-800 px-1 py-1">
                           <input
                             type="date"
                             value={item.bill_date}
-                            onChange={(e) => updateLineItem(index, 'bill_date', e.target.value)}
+                            onChange={(e) =>
+                              updateLineItem(index, 'bill_date', e.target.value)
+                            }
                             className="w-full px-1 py-1 bg-transparent text-sm"
                           />
                         </td>
@@ -415,7 +549,9 @@ export default function EditCashVoucherPage({ params }) {
                           <input
                             type="text"
                             value={item.bill_no}
-                            onChange={(e) => updateLineItem(index, 'bill_no', e.target.value)}
+                            onChange={(e) =>
+                              updateLineItem(index, 'bill_no', e.target.value)
+                            }
                             className="w-full px-1 py-1 bg-transparent text-sm"
                             placeholder="Bill #"
                           />
@@ -423,12 +559,21 @@ export default function EditCashVoucherPage({ params }) {
                         <td className="border-r border-gray-800 px-1 py-1">
                           <select
                             value={item.account_head}
-                            onChange={(e) => updateLineItem(index, 'account_head', e.target.value)}
+                            onChange={(e) =>
+                              updateLineItem(
+                                index,
+                                'account_head',
+                                e.target.value
+                              )
+                            }
                             className="w-full px-1 py-1 bg-transparent text-sm"
                           >
                             <option value="">Select Account Head</option>
-                            {accountHeads.map(head => (
-                              <option key={head.id} value={head.account_head_name}>
+                            {accountHeads.map((head) => (
+                              <option
+                                key={head.id}
+                                value={head.account_head_name}
+                              >
                                 {head.account_head_name}
                               </option>
                             ))}
@@ -438,7 +583,9 @@ export default function EditCashVoucherPage({ params }) {
                           <input
                             type="number"
                             value={item.amount_rs}
-                            onChange={(e) => updateLineItem(index, 'amount_rs', e.target.value)}
+                            onChange={(e) =>
+                              updateLineItem(index, 'amount_rs', e.target.value)
+                            }
                             className="w-full px-1 py-1 bg-transparent text-sm text-right"
                             placeholder="0"
                           />
@@ -447,7 +594,9 @@ export default function EditCashVoucherPage({ params }) {
                           <input
                             type="number"
                             value={item.amount_ps}
-                            onChange={(e) => updateLineItem(index, 'amount_ps', e.target.value)}
+                            onChange={(e) =>
+                              updateLineItem(index, 'amount_ps', e.target.value)
+                            }
                             className="w-full px-1 py-1 bg-transparent text-sm text-right"
                             placeholder="00"
                             max="99"
@@ -456,12 +605,21 @@ export default function EditCashVoucherPage({ params }) {
                         <td className="border-r border-gray-800 px-1 py-1">
                           <select
                             value={item.description}
-                            onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                            onChange={(e) =>
+                              updateLineItem(
+                                index,
+                                'description',
+                                e.target.value
+                              )
+                            }
                             className="w-full px-1 py-1 bg-transparent text-sm"
                           >
                             <option value="">Select Description</option>
-                            {descriptions.map(desc => (
-                              <option key={desc.id} value={desc.description_name}>
+                            {descriptions.map((desc) => (
+                              <option
+                                key={desc.id}
+                                value={desc.description_name}
+                              >
                                 {desc.description_name}
                               </option>
                             ))}
@@ -482,7 +640,7 @@ export default function EditCashVoucherPage({ params }) {
                     ))}
                   </tbody>
                 </table>
-                
+
                 {/* Add Row Button */}
                 <div className="border-t border-gray-800 p-2">
                   <button
@@ -507,7 +665,12 @@ export default function EditCashVoucherPage({ params }) {
                         name="payment_mode"
                         value="cash"
                         checked={formData.payment_mode === 'cash'}
-                        onChange={(e) => setFormData(prev => ({ ...prev, payment_mode: e.target.value }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            payment_mode: e.target.value,
+                          }))
+                        }
                         className="text-purple-600"
                       />
                       <span>Cash</span>
@@ -518,7 +681,12 @@ export default function EditCashVoucherPage({ params }) {
                         name="payment_mode"
                         value="cheque"
                         checked={formData.payment_mode === 'cheque'}
-                        onChange={(e) => setFormData(prev => ({ ...prev, payment_mode: e.target.value }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            payment_mode: e.target.value,
+                          }))
+                        }
                         className="text-purple-600"
                       />
                       <span>Cheque</span>
@@ -526,52 +694,88 @@ export default function EditCashVoucherPage({ params }) {
                   </div>
                 </div>
                 <div className="w-40 p-3 border-r-2 border-gray-800 bg-white">
-                  <div className="text-xs font-semibold text-gray-600">TOTAL</div>
-                  <div className="text-lg font-bold text-gray-900">{formatCurrency(formData.total_amount)}</div>
+                  <div className="text-xs font-semibold text-gray-600">
+                    TOTAL
+                  </div>
+                  <div className="text-lg font-bold text-gray-900">
+                    {formatCurrency(formData.total_amount)}
+                  </div>
                 </div>
                 <div className="flex-1 p-3">
-                  <div className="text-xs font-semibold text-gray-600 mb-1">Rs. (In Words)</div>
-                  <div className="text-sm text-gray-800">{formData.amount_in_words || '-'}</div>
+                  <div className="text-xs font-semibold text-gray-600 mb-1">
+                    Rs. (In Words)
+                  </div>
+                  <div className="text-sm text-gray-800">
+                    {formData.amount_in_words || '-'}
+                  </div>
                 </div>
               </div>
 
               {/* Signatures Section */}
               <div className="flex">
                 <div className="flex-1 p-4 border-r-2 border-gray-800">
-                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">PREPARED BY</div>
+                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">
+                    PREPARED BY
+                  </div>
                   <input
                     type="text"
                     value={formData.prepared_by}
-                    onChange={(e) => setFormData(prev => ({ ...prev, prepared_by: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        prepared_by: e.target.value,
+                      }))
+                    }
                     className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
                   />
                 </div>
                 <div className="flex-1 p-4 border-r-2 border-gray-800">
-                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">CHECKED BY</div>
+                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">
+                    CHECKED BY
+                  </div>
                   <input
                     type="text"
                     value={formData.checked_by}
-                    onChange={(e) => setFormData(prev => ({ ...prev, checked_by: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        checked_by: e.target.value,
+                      }))
+                    }
                     className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
                     placeholder="Name"
                   />
                 </div>
                 <div className="flex-1 p-4 border-r-2 border-gray-800">
-                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">APPROVED BY</div>
+                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">
+                    APPROVED BY
+                  </div>
                   <input
                     type="text"
                     value={formData.approved_by}
-                    onChange={(e) => setFormData(prev => ({ ...prev, approved_by: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        approved_by: e.target.value,
+                      }))
+                    }
                     className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
                     placeholder="Name"
                   />
                 </div>
                 <div className="flex-1 p-4">
-                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">RECEIVER SIGNATURE</div>
+                  <div className="text-xs font-semibold text-gray-600 mb-2 text-center">
+                    RECEIVER SIGNATURE
+                  </div>
                   <input
                     type="text"
                     value={formData.receiver_signature}
-                    onChange={(e) => setFormData(prev => ({ ...prev, receiver_signature: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        receiver_signature: e.target.value,
+                      }))
+                    }
                     className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
                     placeholder="Name"
                   />

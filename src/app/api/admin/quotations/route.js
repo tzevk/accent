@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
-import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
+import {
+  ensurePermission,
+  RESOURCES,
+  PERMISSIONS,
+} from '@/utils/api-permissions';
 
 // GET - Fetch quotations (from both quotations and project_quotations tables)
 export async function GET(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.READ);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.READ
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -80,35 +88,43 @@ export async function GET(request) {
 
     // Add subject column to quotations if it doesn't exist
     try {
-      await connection.execute(`ALTER TABLE quotations ADD COLUMN subject VARCHAR(500)`);
+      await connection.execute(
+        `ALTER TABLE quotations ADD COLUMN subject VARCHAR(500)`
+      );
     } catch (alterError) {
       // Column might already exist, ignore
     }
 
     // Add total column to quotations if it doesn't exist
     try {
-      await connection.execute(`ALTER TABLE quotations ADD COLUMN total DECIMAL(15, 2) DEFAULT 0`);
+      await connection.execute(
+        `ALTER TABLE quotations ADD COLUMN total DECIMAL(15, 2) DEFAULT 0`
+      );
     } catch (alterError) {
       // Column might already exist, ignore
     }
 
     // Add valid_until column to quotations if it doesn't exist
     try {
-      await connection.execute(`ALTER TABLE quotations ADD COLUMN valid_until DATE`);
+      await connection.execute(
+        `ALTER TABLE quotations ADD COLUMN valid_until DATE`
+      );
     } catch (alterError) {
       // Column might already exist, ignore
     }
 
     // Add status column to quotations if it doesn't exist
     try {
-      await connection.execute(`ALTER TABLE quotations ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'`);
+      await connection.execute(
+        `ALTER TABLE quotations ADD COLUMN status ENUM('draft', 'sent', 'approved', 'rejected') DEFAULT 'draft'`
+      );
     } catch (alterError) {
       // Column might already exist, ignore
     }
 
     // Build combined query using UNION to get from both tables
     let allQuotations = [];
-    
+
     // Query from quotations table
     if (!source || source === 'all' || source === 'quotations') {
       let query1 = `
@@ -126,12 +142,12 @@ export async function GET(request) {
         FROM quotations WHERE 1=1
       `;
       const params1 = [];
-      
+
       if (status && status !== 'all') {
         query1 += ' AND status = ?';
         params1.push(status);
       }
-      
+
       const [quotations] = await connection.execute(query1, params1);
       allQuotations = [...allQuotations, ...quotations];
     }
@@ -157,14 +173,14 @@ export async function GET(request) {
         WHERE pq.quotation_number IS NOT NULL AND pq.quotation_number != ''
       `;
       const params2 = [];
-      
+
       if (status && status !== 'all') {
         query2 += ' AND pq.status = ?';
         params2.push(status);
       }
-      
+
       const [projectQuotations] = await connection.execute(query2, params2);
-      
+
       // Try to fetch project names separately if projects table exists
       try {
         for (let q of projectQuotations) {
@@ -187,12 +203,14 @@ export async function GET(request) {
       } catch (e) {
         // Projects table might not exist or have different structure, ignore
       }
-      
+
       allQuotations = [...allQuotations, ...projectQuotations];
     }
 
     // Sort by created_at descending
-    allQuotations.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    allQuotations.sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
 
     // Get total count
     const total = allQuotations.length;
@@ -203,10 +221,11 @@ export async function GET(request) {
     // Calculate stats from combined data
     const stats = {
       total: allQuotations.length,
-      draft: allQuotations.filter(q => q.status === 'draft' || !q.status).length,
-      sent: allQuotations.filter(q => q.status === 'sent').length,
-      approved: allQuotations.filter(q => q.status === 'approved').length,
-      rejected: allQuotations.filter(q => q.status === 'rejected').length
+      draft: allQuotations.filter((q) => q.status === 'draft' || !q.status)
+        .length,
+      sent: allQuotations.filter((q) => q.status === 'sent').length,
+      approved: allQuotations.filter((q) => q.status === 'approved').length,
+      rejected: allQuotations.filter((q) => q.status === 'rejected').length,
     };
 
     return NextResponse.json({
@@ -217,8 +236,8 @@ export async function GET(request) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     console.error('Error fetching quotations:', error);
@@ -234,7 +253,11 @@ export async function GET(request) {
 // POST - Create new quotation
 export async function POST(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.CREATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.CREATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -256,12 +279,15 @@ export async function POST(request) {
       notes,
       terms,
       valid_until,
-      status
+      status,
     } = body;
 
     if (!quotation_number || !client_name) {
       return NextResponse.json(
-        { success: false, error: 'Quotation number and client name are required' },
+        {
+          success: false,
+          error: 'Quotation number and client name are required',
+        },
         { status: 400 }
       );
     }
@@ -289,20 +315,23 @@ export async function POST(request) {
         terms || null,
         valid_until || null,
         status || 'draft',
-        authResult.user?.id || null
+        authResult.user?.id || null,
       ]
     );
 
     return NextResponse.json({
       success: true,
       message: 'Quotation created successfully',
-      id: result.insertId
+      id: result.insertId,
     });
   } catch (error) {
     console.error('Error creating quotation:', error);
     if (error.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { success: false, error: 'A quotation with this number already exists' },
+        {
+          success: false,
+          error: 'A quotation with this number already exists',
+        },
         { status: 400 }
       );
     }
@@ -318,7 +347,11 @@ export async function POST(request) {
 // PUT - Update quotation
 export async function PUT(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.UPDATE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.UPDATE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -341,7 +374,7 @@ export async function PUT(request) {
       notes,
       terms,
       valid_until,
-      status
+      status,
     } = body;
 
     if (!id) {
@@ -389,7 +422,7 @@ export async function PUT(request) {
         terms || null,
         valid_until || null,
         status || 'draft',
-        id
+        id,
       ]
     );
 
@@ -402,7 +435,7 @@ export async function PUT(request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Quotation updated successfully'
+      message: 'Quotation updated successfully',
     });
   } catch (error) {
     console.error('Error updating quotation:', error);
@@ -418,7 +451,11 @@ export async function PUT(request) {
 // DELETE - Delete quotation
 export async function DELETE(request) {
   // RBAC check
-  const authResult = await ensurePermission(request, RESOURCES.PROPOSALS, PERMISSIONS.DELETE);
+  const authResult = await ensurePermission(
+    request,
+    RESOURCES.PROPOSALS,
+    PERMISSIONS.DELETE
+  );
   if (authResult.authorized === false) return authResult.response;
 
   let connection;
@@ -449,7 +486,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Quotation deleted successfully'
+      message: 'Quotation deleted successfully',
     });
   } catch (error) {
     console.error('Error deleting quotation:', error);
