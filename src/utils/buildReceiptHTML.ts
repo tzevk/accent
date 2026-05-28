@@ -1,36 +1,37 @@
 import { numberToWords } from './numberToWords';
 
-// Trigger rebuild
+// Trigger rebuild 1
+// Trigger rebuild 2
 
 export interface ReceiptData {
-  receipt_no: string;
-  receipt_date: string;
+	receipt_no: string;
+	receipt_date: string;
 
-  company_name: string;
+	company_name: string;
 
-  amount: number; // raw number
-  amount_words?: string; // formatted words
+	amount: number; // raw number
+	amount_words?: string; // formatted words
 
-  transaction_id?: string;
-  payment_date?: string;
-  bank_name: string;
-  remark: string;
+	transaction_id?: string;
+	payment_date?: string;
+	bank_name: string;
+	remark: string;
 
-  invoice_no?: string;
-  invoice_date?: string;
+	invoice_no?: string;
+	invoice_date?: string;
 }
 
 const formatAmount = (amount: number): string => {
-  return amount.toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+	return amount.toLocaleString('en-IN', {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
 };
 
 export const buildReceiptHTML = (data: ReceiptData): string => {
-  const amountWords = data.amount_words || numberToWords(data.amount);
+	const amountWords = data.amount_words || numberToWords(data.amount);
 
-  return `
+	return `
 <!doctype html>
 <html lang="en">
 <head>
@@ -78,7 +79,7 @@ export const buildReceiptHTML = (data: ReceiptData): string => {
 };
 
 const getCSS = (): string => {
-  return `			* {
+	return `			* {
 				margin: 0;
 				padding: 0;
 				box-sizing: border-box;
