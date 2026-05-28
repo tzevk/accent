@@ -2,6 +2,14 @@ import { dbConnect } from '@/utils/database';
 import ExcelJS from 'exceljs';
 import { ensurePermission, RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 
+async function generateCompanyId(db) {
+  const [rows] = await db.execute(
+    `SELECT company_id FROM companies WHERE company_id REGEXP '^COM-[0-9]+$' ORDER BY CAST(SUBSTRING(company_id, 5) AS UNSIGNED) DESC LIMIT 1`
+  );
+  const next = rows && rows.length > 0 ? parseInt(rows[0].company_id.replace('COM-', ''), 10) + 1 : 1;
+  return `COM-${String(next).padStart(5, '0')}`;
+}
+
 export async function POST(request) {
   // RBAC check
   const authResult = await ensurePermission(request, RESOURCES.COMPANIES, PERMISSIONS.CREATE);
@@ -68,8 +76,9 @@ async function importCompaniesFromData(companies, fileType) {
       const placeholders = [];
 
       // Always include required fields
+      const generatedId = company.company_id && company.company_id.trim() ? company.company_id.trim() : await generateCompanyId(db);
       fields.push('company_id', 'company_name');
-      values.push(company.company_id || null, company.company_name.trim());
+      values.push(generatedId, company.company_name.trim());
       placeholders.push('?', '?');
 
       // Add optional fields if they exist and have values
@@ -165,10 +174,12 @@ async function importCompaniesFromExcel(file) {
         continue;
       }
 
+      const finalId = companyData.company_id || await generateCompanyId(db);
+
       // Insert company with only ID and name
       await db.execute(
         `INSERT INTO companies (company_id, company_name) VALUES (?, ?)`,
-        [companyData.company_id, companyData.company_name]
+        [finalId, companyData.company_name]
       );
 
       importedCount++;
